@@ -221,7 +221,7 @@ const ContainerTypesSection: React.FC = () => {
             9 standard defaults are seeded to start from.
           </p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Container Type</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Container Type</button>
       </div>
 
       <div className="ps-conf-form-row">

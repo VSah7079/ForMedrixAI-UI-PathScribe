@@ -237,7 +237,7 @@ const ScanStationsSection: React.FC = () => {
             workflow stage are yours to set for your own real benches.
           </p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Scan Station</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Scan Station</button>
       </div>
 
       {/* Real feature, per direct follow-up: "Station barcode label

@@ -194,7 +194,7 @@ const PrinterProfilesSection: React.FC = () => {
           </p>
         </div>
         <div className="ps-specdict-header-actions">
-          <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Printer Profile</button>
+          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Printer Profile</button>
         </div>
       </div>
 

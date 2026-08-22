@@ -724,7 +724,7 @@ const BillingDictionarySection: React.FC = () => {
 
   return (
     <div>
-      <div className="ps-conf-section-header ps-conf-section-header--center">
+      <div className="ps-conf-section-header">
         <div>
           <h3 className="ps-conf-section-title">Billing Dictionary</h3>
           <p className="ps-conf-section-subtitle">
@@ -735,7 +735,7 @@ const BillingDictionarySection: React.FC = () => {
             fields only — PathScribe does not enforce, validate, or auto-suppress a real charge because of them.
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setNewVersionState({ siteId: activeSiteId })}>+ New Billing Code</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setNewVersionState({ siteId: activeSiteId })}>+ Add Billing Code</button>
       </div>
 
       {errorMsg && <p className="ps-conf-error-text">{errorMsg}</p>}

@@ -36,6 +36,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
   const [vendor, setVendor] = useState(entry?.vendor ?? '');
   const [turnaround, setTurnaround] = useState(entry?.defaultTurnaroundHours?.toString() ?? '');
   const [defaultBillingCode, setDefaultBillingCode] = useState(entry?.defaultBillingCode ?? '');
+  const [excludeFromIhcSequenceCounting, setExcludeFromIhcSequenceCounting] = useState(entry?.excludeFromIhcSequenceCounting ?? false);
   const [active, setActive] = useState(entry?.active ?? true);
   const [nameError, setNameError] = useState<string | null>(null);
 
@@ -54,7 +55,13 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
       name: name.trim(), category, description: description.trim() || undefined,
       antibodyClone: antibodyClone.trim() || undefined, vendor: vendor.trim() || undefined,
       defaultTurnaroundHours: turnaround ? Number(turnaround) : undefined,
-      defaultBillingCode: defaultBillingCode.trim() || undefined, active,
+      defaultBillingCode: defaultBillingCode.trim() || undefined,
+      // Only meaningful alongside a real defaultBillingCode — never
+      // persisted true on its own, which would be a real, confusing
+      // combination nothing downstream expects (see the field's own
+      // doc comment in IStainService.ts).
+      excludeFromIhcSequenceCounting: defaultBillingCode.trim() ? excludeFromIhcSequenceCounting : undefined,
+      active,
     });
   };
 
@@ -96,6 +103,26 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
               app's generic rule. Free text for now — a real picker against the Billing Dictionary is pending that
               dictionary's own build.
             </p>
+            {defaultBillingCode.trim() && category === 'IHC' && (
+              <div className="ps-conf-toggle-row ps-conf-section-subtitle--top-gap">
+                <div onClick={() => setExcludeFromIhcSequenceCounting(!excludeFromIhcSequenceCounting)}
+                  className={`ps-conf-toggle-track ${excludeFromIhcSequenceCounting ? 'ps-conf-toggle-track--active' : ''}`}>
+                  <div className="ps-conf-toggle-thumb" />
+                </div>
+                <span className={`ps-conf-toggle-label ${excludeFromIhcSequenceCounting ? 'ps-conf-toggle-label--active' : ''}`}>
+                  Standalone billing unit — exclude from the IHC first/additional sequence
+                </span>
+              </div>
+            )}
+            {defaultBillingCode.trim() && category === 'IHC' && (
+              <p className="ps-conf-section-subtitle">
+                Off (default): this stain still occupies a real position in the specimen's IHC sequence for whatever
+                comes after it — use this for a single antibody billed at its own rate but still, clinically, one
+                real IHC stain. On: this stain neither gets sequence-assigned itself nor consumes a slot for a
+                later stain — use this for a self-contained multiplex/combination panel like "PIN-4," which was
+                never really a countable individual IHC stain to begin with.
+              </p>
+            )}
           </div>
           {(category === 'IHC' || category === 'Immunofluorescence') && (
             <div className="ps-conf-form-row">
@@ -401,7 +428,7 @@ const StainDictionarySection: React.FC = () => {
               <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>Import Spreadsheet</button>
               <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
             </div>
-            <button className="ps-conf-btn-primary" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Stain Type</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Stain Type</button>
           </div>
           {stainImportPreview && (
             <div className="ps-conf-import-preview">
@@ -448,7 +475,7 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary" onClick={() => setProtocolModal({ mode: 'add' })}>+ Add Protocol</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setProtocolModal({ mode: 'add' })}>+ Add Protocol</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
@@ -482,7 +509,7 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary" onClick={() => setMacroModal({ mode: 'add' })}>+ Add Macro</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setMacroModal({ mode: 'add' })}>+ Add Macro</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">

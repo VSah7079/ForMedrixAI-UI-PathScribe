@@ -349,7 +349,7 @@ const SpecimenCategoriesSection: React.FC = () => {
             The coarse-grained classification that controls Grossing Template assignment, accession numbering, and per-category retention exceptions at intake.
           </p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Category</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Category</button>
       </div>
 
       <div className="ps-conf-form-row">

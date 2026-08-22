@@ -191,7 +191,7 @@ const SystemTab: React.FC = () => {
       {/* ── Real, per the confirmed group-tab redesign — one tab per real
           group, selecting a tab jumps the sidebar+content to that
           group's own first real section. ── */}
-      <div className="ps-sub-tab-group">
+      <div className="ps-sub-tab-group ps-sub-tab-group--gap-below">
         {GROUPS.map(g => (
           <button
             key={g}

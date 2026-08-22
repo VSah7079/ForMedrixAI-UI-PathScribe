@@ -168,7 +168,7 @@ const CassetteColorsSection: React.FC = () => {
             substitute for Blue" is a real property of Blue itself, not something each rule should decide separately.
           </p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Color</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Color</button>
       </div>
 
       <div className="ps-conf-table-wrap">

@@ -12027,6 +12027,16 @@ h3[data-section-id]:first-child {
 .ps-vs-content               { flex: 1; min-height: 0; overflow-y: auto; padding-top: 16px; }
 .ps-sub-tab-group            { display: flex; gap: 3px; padding: 3px; background: rgba(255,255,255,0.03); border: 1px solid #1e293b; border-radius: 8px; align-self: flex-start; margin-bottom: 0; }
 
+/* Real, per direct report: "the top of the button is up against the
+   bottom border of the tab row." Confirmed the real, precise cause —
+   the shared base rule above has margin-bottom: 0, and neither
+   ps-conf-section-header (margin-top: none) nor ps-confsys-content
+   (padding-top: none) provide any real gap either. Real, scoped
+   modifier — the shared class's own zero margin is correct and used
+   elsewhere (Validation Studies' own Studies/Dashboard/Reports row),
+   so this is additive here, not a change to the shared rule. */
+.ps-sub-tab-group--gap-below { margin-bottom: 20px; }
+
 /* Studies tab */
 .ps-vs-studies               { display: flex; flex-direction: column; gap: 12px; }
 .ps-vs-section-header        { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
