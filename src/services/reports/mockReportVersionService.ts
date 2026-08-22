@@ -13,6 +13,7 @@ import type { IReportVersionService } from './IReportVersionService';
 import { caseRouter } from '../cases/CaseRouter';
 import { mockPatientIndexService } from '../patients/mockPatientIndexService';
 import { mockEncounterService } from '../encounters/mockEncounterService';
+import { getEffectiveScanStationId } from '@/utils/effectiveScanStation';
 
 const STORAGE_KEY = 'report_version_records';
 
@@ -83,6 +84,11 @@ export const mockReportVersionService: IReportVersionService = {
       versionNumber: existing.length + 1,
       createdAt: new Date().toISOString(),
       patientEncounterSnapshot,
+      // Real feature, per direct follow-up: "Stamp every saved
+      // draft... with... station_id captured at the exact moment of
+      // saving." Same real capture-at-creation moment as
+      // patientEncounterSnapshot immediately above.
+      createdFromStation: getEffectiveScanStationId(),
     };
     persist([...load(), newRecord]);
     return ok(newRecord);

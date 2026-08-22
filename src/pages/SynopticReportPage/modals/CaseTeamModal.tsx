@@ -562,7 +562,7 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
             <div>
               <div className="fm-eyebrow">Case Team</div>
               <div className="fm-title-row">
-                <h2 className="fm-title">{caseData.accession?.fullAccession ?? caseData.id}</h2>
+                <h2 className="fm-title" data-phi="accession">{caseData.accession?.fullAccession ?? caseData.id}</h2>
               </div>
               <div className="ps-ctm-header-subtitle">
                 {caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : ''}

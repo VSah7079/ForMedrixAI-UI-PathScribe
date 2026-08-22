@@ -31,7 +31,22 @@ const CATEGORY_TO_TYPE: Record<AuditEvent['category'], 'ai' | 'user' | 'system'>
   system: 'system',
 };
 
-export function logEvent(event: Omit<AuditEvent, "id" | "timestamp">) {
+/**
+ * Real feature, per direct follow-up: "when we are tracking actions,
+ * I don't believe we include the physical location of that action,
+ * just the person - Correct?" Confirmed, then fixed — but NOT here.
+ * A direct trace found 16 separate real files calling
+ * mockAuditService.logEvent(), most going straight there rather than
+ * through this one wrapper — the real, single choke point every one
+ * of them funnels through is mockAuditService.logEvent() itself,
+ * which now injects getEffectiveScanStationId() unconditionally on
+ * every real write. stationId is still excluded from this function's
+ * own caller-facing input type below (no caller anywhere needs to
+ * know or care that this field exists at all), but the actual
+ * injection lives one level down — see mockAuditService.ts's own
+ * comment for the full reasoning.
+ */
+export function logEvent(event: Omit<AuditEvent, "id" | "timestamp" | "stationId">) {
   // Fire-and-forget — matches every other audit call site in this app
   // (an audit write failing must never block or fail the action it
   // describes) and keeps this function's own signature synchronous, so

@@ -1,6 +1,6 @@
 // src/hooks/useDraftCache.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 2 of the Inactivity Timeout & Draft Recovery spec (see PRIORITY_FIXES.md).
+// Phase 2 of the Inactivity Timeout & Draft Recovery spec.
 //
 // Usage sketch (see SynopticReportPage.tsx for the real, wired usage):
 //

@@ -1,11 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildPoolGroupRows, splitPoolRowsByUrgency, computeRestrictedPoolKeys, type PoolDividerRow, type SubspecialtyForRestrictionCheck } from './poolGrouping';
+import { buildAmendmentGroupRows, type AmendmentDividerRow } from './amendmentGrouping';
+import type { AmendmentType } from '@/types/reports/AmendmentRecord';
 import { storageGet, storageSet } from '@/services/mockStorage';
 import { useAuth } from "@/contexts/AuthContext";
 import { useSystemConfig } from "@/contexts/SystemConfigContext";
 import { getFacilityDateParts } from '@/utils/facilityTime';
-import { messageService, facilityService, auditService, specimenDeficiencyService, subspecialtyService, userService } from "@/services";
+import { facilityService, auditService, specimenDeficiencyService, subspecialtyService, accessRequestService } from "@/services";
+import { sendAccessRequestToAdmins } from "@/utils/accessRequests";
 import { useMessaging } from "@/contexts/MessagingContext";
 import { getOrganisationByHospitalId, getOrganisationShortName } from '../../services/organisation/organisationService';
 import { formatDate as formatDateLocale, localeForJurisdiction, formatAge } from '@/utils/formatDate';
@@ -29,13 +32,19 @@ type SortEntry = {
 
 type DividerRow = 
   | { __divider: true; label: string; count: number; isPool: false; isUrgent: boolean; restrictedCount?: number }
-  | PoolDividerRow;
+  | PoolDividerRow
+  | AmendmentDividerRow;
 
 type DisplayRow = Case | DividerRow;
 
 interface WorklistTableProps {
   cases: Case[];
   activeFilter: string;
+  /** Real feature, per direct follow-up: "we could segment the filter
+   *  results into those subgroups... Amendment and Correction at the
+   *  top followed by Addenda." Only meaningful when activeFilter ===
+   *  'amended' — see amendmentGrouping.ts. */
+  amendmentTypeByCaseId?: ReadonlyMap<string, AmendmentType | 'notice'>;
   tableHeight?: number;
   delegatedCaseIds?: string[];
   onBeforeNavigate?: (caseId: string) => void;
@@ -225,6 +234,12 @@ const getStatusStyle = (status: string) => {
       return { bg: 'rgba(236,72,153,0.15)',  color: '#EC4899', border: 'rgba(236,72,153,0.3)'  }; // pink — matches Finalizing tile
     case 'pool':
       return { bg: 'rgba(249,115,22,0.15)',  color: '#F97316', border: 'rgba(249,115,22,0.3)'  }; // orange — matches Pool tile
+    // Real feature, per direct specification: Post-Sign-Out Release
+    // Buffer. Found missing during a pre-push audit — same teal as
+    // HeaderBar.tsx's own dedicated pending-release styling and
+    // SearchPage.tsx's STATUS_PILL_META, for cross-page consistency.
+    case 'pending-release':
+      return { bg: 'rgba(28,141,227,0.15)',   color: '#1C8DE3', border: 'rgba(28,141,227,0.3)'   }; // blue — matches HeaderBar's pending-release badge
     default:
       return { bg: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: 'rgba(255,255,255,0.1)' };
   }
@@ -315,60 +330,8 @@ function getReportBreakdown(c: any): { finalized: number; total: number } | null
   return { finalized, total: reports.length };
 }
 
-/**
- * Real bug fix: both Pediatric and Orchestration access-request buttons
- * below used to send a message to a hardcoded `recipientId: 'u3'`,
- * `recipientName: 'System Admin'` — but no user with id 'u3' exists
- * anywhere in the real, canonical services/users/mockUserService.ts
- * directory (confirmed directly: real ids are '1'-'10', 'PATH-xxx',
- * 'PA-001'). 'u3' was only ever a stand-in id from AppShell.tsx's own,
- * separate, hand-maintained INTERNAL_USERS messaging directory — the
- * exact same real ID-collision pattern RequestReviewModal.tsx's own
- * header comment already documents and fixed ('u3'/'u4' meaning
- * different people in different, disconnected lists). Sending to 'u3'
- * here meant these access-request messages were silently vanishing —
- * no real inbox anywhere ever received them.
- *
- * Real fix: sources real, active Admin-role users from the same
- * canonical userService RequestReviewModal.tsx, StaffTab.tsx, and
- * CaseTeamModal.tsx all already use. Scoped to the requesting user's
- * own organisation first — the UI copy says "your System Admin", and
- * an admin at an unrelated hospital across the world has no real
- * authority to grant a client-level or staff-record permission for a
- * different organisation's case. Falls back to every real admin
- * system-wide only if that organisation genuinely has none configured
- * yet, so the request is never silently dropped the way it was before.
- * messageService.send() takes one recipient at a time, so a real admin
- * pool sends one message per real admin, not just the first one found.
- */
-async function sendAccessRequestToAdmins(
-  requestingUser: { id: string; name: string; organisationId?: string },
-  subject: string,
-  body: string,
-  configLink: string,
-): Promise<void> {
-  const usersRes = await userService.getAll();
-  if (!usersRes.ok) return;
-  const allAdmins = usersRes.data.filter(u =>
-    u.status === 'Active' && u.roles.includes('Admin') && u.id !== requestingUser.id
-  );
-  const orgAdmins = requestingUser.organisationId
-    ? allAdmins.filter(u => u.organisationId === requestingUser.organisationId)
-    : [];
-  const recipients = orgAdmins.length > 0 ? orgAdmins : allAdmins;
-  await Promise.all(recipients.map(admin => messageService.send({
-    senderId: requestingUser.id,
-    senderName: requestingUser.name,
-    recipientId: admin.id,
-    recipientName: `${admin.firstName} ${admin.lastName}`.trim(),
-    subject,
-    body,
-    configLink,
-    timestamp: new Date(),
-    isUrgent: false,
-  })));
-}
-
+// getReportBreakdown, and sendAccessRequestToAdmins (now shared —
+// see src/utils/accessRequests.ts) used to both live in this block.
 const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionType?: RevisionType; reportBreakdown?: { finalized: number; total: number } | null }> = React.memo(({ status, isGrossed, lastRevisionType, reportBreakdown }) => {
   const isRevisedFinal = hasDisplayableRevision(status, lastRevisionType);
   const s = isRevisedFinal ? REVISION_ACCENT : getStatusStyle(status);
@@ -415,6 +378,7 @@ const UrgentDot: React.FC = React.memo(() => (
 const WorklistTable: React.FC<WorklistTableProps> = ({
   cases,
   activeFilter,
+  amendmentTypeByCaseId,
   tableHeight,
   delegatedCaseIds = [],
   onBeforeNavigate,
@@ -505,23 +469,13 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // ── Pediatric access state ──────────────────────────────────────────────
   const [pedBlockedCase, setPedBlockedCase] = React.useState<{id:string;age:number;clientId?:string}|null>(null);
 
-  // Persisted set of case IDs where access has been requested — survives refresh
-  const [pedRequestedIds, setPedRequestedIds] = React.useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem('pathscribe_ped_requested');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
-  });
-
-  const markPedRequested = React.useCallback((caseId: string) => {
-    setPedRequestedIds(prev => {
-      const next = new Set(prev).add(caseId);
-      localStorage.setItem('pathscribe_ped_requested', JSON.stringify([...next]));
-      return next;
-    });
-  }, []);
-
-  const pedRequestSent = pedBlockedCase ? pedRequestedIds.has(pedBlockedCase.id) : false;
+  // Real feature, per direct follow-up: "Do we Track the request to
+  // gain access?... Do we generate a ticket system that has its own
+  // status." Replaces the old, bare per-browser localStorage sets
+  // (pathscribe_ped_requested / pathscribe_orch_requested) — not real,
+  // status-bearing records, and not genuinely user-specific across
+  // sessions. Both derived from one real fetch against the tracked
+  // AccessRequestService below (pedRequestedIds/orchRequestedIds).
 
   // ── Orchestration access state ──────────────────────────────────────────
   // Structurally mirrors the pediatric block above — same request/audit/
@@ -533,19 +487,30 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // migration risk with existing pediatric request state.
   const [orchBlockedCase, setOrchBlockedCase] = React.useState<{id:string}|null>(null);
 
-  const [orchRequestedIds, setOrchRequestedIds] = React.useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem('pathscribe_orch_requested');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
-  });
+  const [pedRequestedIds, setPedRequestedIds] = React.useState<Set<string>>(new Set());
+  const [orchRequestedIds, setOrchRequestedIds] = React.useState<Set<string>>(new Set());
+
+  const refreshAccessRequestState = React.useCallback(() => {
+    const userId = (user as any)?.id;
+    if (!userId) return;
+    accessRequestService.getAllForUser(userId).then(res => {
+      if (!res.ok) return;
+      const pending = res.data.filter(r => r.status === 'pending');
+      setPedRequestedIds(new Set(pending.filter(r => r.type === 'pediatric' && r.caseId).map(r => r.caseId!)));
+      setOrchRequestedIds(new Set(pending.filter(r => r.type === 'orchestration' && r.caseId).map(r => r.caseId!)));
+    }).catch(() => {});
+  }, [(user as any)?.id]);
+
+  React.useEffect(() => { refreshAccessRequestState(); }, [refreshAccessRequestState]);
+
+  const markPedRequested = React.useCallback((caseId: string) => {
+    setPedRequestedIds(prev => new Set(prev).add(caseId));
+  }, []);
+
+  const pedRequestSent = pedBlockedCase ? pedRequestedIds.has(pedBlockedCase.id) : false;
 
   const markOrchRequested = React.useCallback((caseId: string) => {
-    setOrchRequestedIds(prev => {
-      const next = new Set(prev).add(caseId);
-      localStorage.setItem('pathscribe_orch_requested', JSON.stringify([...next]));
-      return next;
-    });
+    setOrchRequestedIds(prev => new Set(prev).add(caseId));
   }, []);
 
   const orchRequestSent = orchBlockedCase ? orchRequestedIds.has(orchBlockedCase.id) : false;
@@ -696,7 +661,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // effective yet still represents unfinished quality work, so it
   // stays flagged here too, not just genuinely-open items. Only
   // 'closed' clears the flag. This is just a signal pointing at the
-  // dedicated Deficiencies work queue (src/pages/DeficienciesPage.tsx),
+  // dedicated Deficiencies work queue (src/pages/QualityAssurancePage.tsx),
   // not where resolution happens — see that page's own header comment
   // for why deficiency resolution is deliberately independent of any
   // single case's lifecycle.
@@ -843,7 +808,6 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       if (activeFilter === 'delegated') return delegatedCaseIds.includes(c.id);
 
       // 4. Status-based filters — cast to any to bypass CaseStatus union constraint
-      if (activeFilter === 'review')     return c.status === 'pending-review';
       if (activeFilter === 'inprogress') return c.status === 'in-progress';
       // 'amended' (displayed as "Amendment & Addenda") is no longer a
       // CaseStatus value to match against — WorklistPage computes it via
@@ -851,6 +815,11 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       // filteredCases before it ever reaches this component, so this is
       // a pass-through rather than a second status-string check.
       if (activeFilter === 'amended')    return true;
+      // Same real pass-through reasoning as 'amended' above -
+      // informalReviewCaseIds is also computed live in WorklistPage
+      // (informalReviewService.getPendingForReviewer) and cases are
+      // pre-filtered before reaching this component.
+      if (activeFilter === 'informalreview') return true;
       if (activeFilter === 'draft')      return c.status === 'draft';
       if (activeFilter === 'finalizing') return c.status === 'finalizing';
 
@@ -930,10 +899,28 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * Triggers the navigation to the synoptic reporting view,
    * passing the current worklist order in the router state.
    */
+  /**
+   * openCase:
+   * Triggers the navigation to the synoptic reporting view,
+   * passing the current worklist order in the router state.
+   *
+   * Real feature, per direct follow-up: "when those cases are
+   * selected it opens to that intermediate page where they can
+   * publish their review." Only the Informal Review filter routes to
+   * FullReportPage (the real, read-only intermediate view) instead of
+   * the full editor — every other filter's behavior is completely
+   * unchanged.
+   */
   const openCase = useCallback(
     (id: string) => {
       sessionStorage.setItem('pathscribe:navFrom', navSource);
       onBeforeNavigate?.(id);
+      if (activeFilter === 'informalreview') {
+        navigate(`/report/${id}`, {
+          state: { fromFilter: activeFilter, openInternalNotes: true },
+        });
+        return;
+      }
       navigate(`/case/${id}/synoptic`, {
         state: { 
           // Pass the IDs so the case view can implement "Next/Prev"
@@ -941,7 +928,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
         },
       });
     },
-    [navigate, onBeforeNavigate, finalCases, navSource]
+    [navigate, onBeforeNavigate, finalCases, navSource, activeFilter]
   );
 
   /**
@@ -1025,6 +1012,17 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * Maps the sorted cases into a format that includes UI dividers.
    */
   const displayRows = useMemo<DisplayRow[]>(() => {
+    // Real feature, per direct follow-up: "we could segment the filter
+    // results into those subgroups... Amendment and Correction at the
+    // top followed by Addenda." The default Urgent/All Cases grouping
+    // below doesn't apply here — amended-filter cases never include
+    // pool cases in the first place (see the status-filter comment
+    // above) — so this is a genuinely separate branch, not a variant
+    // of the default one.
+    if (activeFilter === 'amended' && amendmentTypeByCaseId) {
+      return buildAmendmentGroupRows(finalCases, amendmentTypeByCaseId);
+    }
+
     const pool        = finalCases.filter(c => c.status === 'pool');
     const urgent      = finalCases.filter(c => isUrgentCase(c) && c.status !== 'pool');
     const normal      = finalCases.filter(c => !isUrgentCase(c) && c.status !== 'pool');
@@ -1063,7 +1061,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     rows.push(...normalPoolRows);
 
     return rows;
-  }, [finalCases, isUrgentCase, restrictedPoolKeys]);
+  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId]);
 
   /**
    * visibleRows:
@@ -1078,7 +1076,9 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     for (const row of displayRows) {
       if ('__divider' in row) {
         result.push(row);
-        skippingCollapsedGroup = row.isPool && collapsedPoolKeys.has(row.poolKey);
+        // Amendment & Addenda dividers are never collapsible - only real
+        // pool sub-groups (poolKey) support the collapsed-group feature.
+        skippingCollapsedGroup = 'isPool' in row && row.isPool && collapsedPoolKeys.has(row.poolKey);
         continue;
       }
 
@@ -1218,6 +1218,19 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                 // Section divider
                 if ('__divider' in row) {
+                  // Real feature, per direct follow-up: Amendment &
+                  // Addenda's own group dividers - genuinely simpler
+                  // than pool dividers (never collapsible, no
+                  // restricted-pool-membership concept applies here).
+                  if ('isAmendmentGroup' in row) {
+                    return (
+                      <div key={`div-${row.label}-${rowIndex}`} className="wl-card-divider">
+                        <span className="wl-card-divider__label">{row.label}</span>
+                        <span className="wl-card-divider__count">{row.count}</span>
+                        <div className="wl-card-divider__line" />
+                      </div>
+                    );
+                  }
                   const isCollapsible = row.isPool;
                   const isCollapsed   = row.isPool && collapsedPoolKeys.has(row.poolKey);
                   const restrictedCount = row.isPool === false ? row.restrictedCount : undefined;
@@ -1234,13 +1247,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       <span className={`wl-card-divider__label${row.isUrgent ? ' wl-card-divider__label--urgent' : row.isPool ? ' wl-card-divider__label--pool' : ''}`}>
                         {row.label}
                       </span>
+                      {/* Real feature, per direct follow-up: "it should
+                          show first the number of cases in the group,
+                          and the number of restricted cases in the
+                          group. The arrows going up is not the easiest
+                          to read." Total count now comes right after
+                          the label, ahead of the restricted-cases
+                          badge — previously last. Arrow removed; text
+                          now says "Restricted" directly, matching the
+                          same word used to describe this everywhere
+                          else, rather than a directional glyph. */}
+                      <span className="wl-card-divider__count">{row.count}</span>
                       {row.isPool && row.restrictedForMe && (
                         <span className="wl-card-divider__restricted" title="You aren't a member of this pool — visible, not claimable">Restricted</span>
                       )}
                       {!!restrictedCount && (
-                        <span className="wl-card-divider__restricted" title="Additional unassigned cases of the same type, sitting in the pool">{restrictedCount} Restricted</span>
+                        <span className="wl-card-divider__restricted" title="More cases of this same type are sitting unclaimed in the pool, not counted in this group's own total">{restrictedCount} Restricted</span>
                       )}
-                      <span className="wl-card-divider__count">{row.count}</span>
                       <div className="wl-card-divider__line" />
                     </div>
                   );
@@ -1494,6 +1517,22 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                 // Section divider
                 if ('__divider' in row) {
+                  // Real feature, per direct follow-up: Amendment &
+                  // Addenda's own group dividers - same simpler
+                  // treatment as the tablet/card view above.
+                  if ('isAmendmentGroup' in row) {
+                    return (
+                      <tr key={`div-${row.label}-${rowIndex}`}>
+                        <td colSpan={11} className="wl-td-divider--normal">
+                          <div className="wl-card-divider" style={{ padding: 0 }}>
+                            <span className="wl-card-divider__label">{row.label}</span>
+                            <span className="wl-card-divider__count">{row.count}</span>
+                            <div className="wl-card-divider__line" />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
                   const isCollapsible = row.isPool;
                   const isCollapsed   = row.isPool && collapsedPoolKeys.has(row.poolKey);
                   const restrictedCount = row.isPool === false ? row.restrictedCount : undefined;
@@ -1512,13 +1551,16 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           <span className={`wl-card-divider__label${row.isUrgent ? ' wl-card-divider__label--urgent' : row.isPool ? ' wl-card-divider__label--pool' : ''}`}>
                             {row.label}
                           </span>
+                          {/* Real feature, per direct follow-up: same
+                              count-first, arrow-free reorder as the
+                              tablet/card view above. */}
+                          <span className="wl-card-divider__count">{row.count}</span>
                           {row.isPool && row.restrictedForMe && (
                             <span className="wl-card-divider__restricted" title="You aren't a member of this pool — visible, not claimable">Restricted</span>
                           )}
                           {!!restrictedCount && (
-                            <span className="wl-card-divider__restricted" title="Additional unassigned cases of the same type, sitting in the pool">{restrictedCount} Restricted</span>
+                            <span className="wl-card-divider__restricted" title="More cases of this same type are sitting unclaimed in the pool, not counted in this group's own total">{restrictedCount} Restricted</span>
                           )}
-                          <span className="wl-card-divider__count">{row.count}</span>
                           <div className="wl-card-divider__line" />
                         </div>
                       </td>
@@ -1739,8 +1781,9 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       `Pediatric Access Request — ${(user as any).name}`,
                       `${(user as any).name} needs Pediatric Access for case ${pedBlockedCase.id} (patient age ${pedBlockedCase.age}).\n\nTo grant access:\n1. Go to Configuration → Facility Configuration\n2. Open the submitting facility for this case\n3. Add ${(user as any).name} to the Authorized Pediatric Pathologists list\n\nNote: Both the user-level Pediatric flag AND the facility authorization must be set for access to be granted.`,
                       pedBlockedCase.clientId
-                        ? `/configuration?tab=system&section=clients&client=${pedBlockedCase.clientId}`
-                        : '/configuration?tab=system&section=clients',
+                        ? `/configuration?tab=integrations&section=clients&client=${pedBlockedCase.clientId}`
+                        : '/configuration?tab=integrations&section=clients',
+                      { type: 'pediatric', caseId: pedBlockedCase.id, clientId: pedBlockedCase.clientId },
                     );
                     markPedRequested(pedBlockedCase.id);
                     reloadInbox();
@@ -1819,6 +1862,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       `Orchestration Access Request — ${(user as any).name}`,
                       `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-client list.)`,
                       '/configuration?tab=system&section=staff',
+                      { type: 'orchestration', caseId: orchBlockedCase.id },
                     );
                     markOrchRequested(orchBlockedCase.id);
                     reloadInbox();

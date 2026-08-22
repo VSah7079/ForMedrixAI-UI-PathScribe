@@ -12,6 +12,18 @@ export interface CaseComment {
   id: string;
   authorId: string;
   authorName: string;
+  /**
+   * Real feature, per direct follow-up: "Stamp every saved draft...
+   * with... station_id captured at the exact moment of saving...
+   * specimen-log." Same real, additive shape as Case.
+   * lastUpdatedFromStation/ReportVersionRecord.createdFromStation —
+   * captured automatically at real comment creation
+   * (SynopticReportPage.tsx's own handleAddCaseComment/
+   * handleAddSpecimenComment), not a caller-provided value. Genuinely
+   * absent for any comment posted before this field existed, or with
+   * no station known at the moment it was posted.
+   */
+  stationId?: string | null;
   /** Rich text (HTML) — same PathScribeEditor content both comment
    *  modals already used before this change. */
   text: string;

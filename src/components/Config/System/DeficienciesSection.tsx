@@ -163,7 +163,7 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
 
 // The Deficiency Log tab that used to live here has been removed —
 // superseded by the dedicated Deficiencies page (src/pages/
-// DeficienciesPage.tsx, reachable from Home), which does everything
+// QualityAssurancePage.tsx, reachable from Home), which does everything
 // this tab did (view the log) plus what it never could (actually
 // resolve an open item). Config now only holds the two things that
 // genuinely belong here: the Deficiency Type and Resolution Type

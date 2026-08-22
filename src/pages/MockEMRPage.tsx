@@ -85,7 +85,7 @@ const MockEMRPage: React.FC<MockEMRPageProps> = ({ patientId: patientIdProp }) =
         <div className="ps-mockemr-banner-left">
           <div className="ps-mockemr-nhs-badge">NHS</div>
           <div>
-            <h1 className="ps-mockemr-patient-name">{patientName}</h1>
+            <h1 className="ps-mockemr-patient-name" data-phi="name">{patientName}</h1>
             <span className="ps-mockemr-patient-meta">
               {dob ? `DOB: ${dob}` : 'DOB: not recorded'}{gender ? ` (${gender})` : ''} • MRN: {patientId}
             </span>

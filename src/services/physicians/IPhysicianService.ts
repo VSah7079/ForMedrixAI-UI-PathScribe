@@ -19,6 +19,20 @@ export interface Physician {
   /** @deprecated Use familyNames. Always mirrors it. */
   lastName: string;
 
+  /** Internal PathScribe identifier for this physician — required,
+   *  globally unique, and independent of NPI (PS-73). Not every
+   *  physician has an NPI (e.g. UK physicians), but every physician
+   *  needs a stable code staff/system can reference regardless of NPI
+   *  status. Validated in PhysiciansSection.tsx's own modal, same
+   *  single-key `findDuplicate` convention as every other dictionary's
+   *  required+unique field (see e.g. DelegationType.id) — not checked
+   *  here at the service layer, matching how every sibling dictionary
+   *  in this codebase does it. */
+  physicianCode: string;
+  /** Optional — confirmed not every physician has one (e.g. UK
+   *  physicians under RCPath rather than NPI). Uniqueness is only
+   *  enforced when a value is present; blank/blank never collides with
+   *  another blank. */
   npi: string;
   specialty: string;
   phone: string;
@@ -56,5 +70,42 @@ export interface IPhysicianService {
   verify(id: ID): Promise<ServiceResult<Physician>>;
   deactivate(id: ID): Promise<ServiceResult<Physician>>;
   /** Called by transaction ingestion — creates unverified record if NPI not found */
+  /** Real, structured matching — real, per PS-81 (Jira): resolves the
+   *  same real gap findOrCreateByName's own free-text parsing can't
+   *  fully close. Two real inbound pipelines (ADT's attendingProvider,
+   *  Order Intake's requestingProvider) each independently flatten
+   *  structured HL7-equivalent name data into a DIFFERENT free-text
+   *  string format ("LastName, FirstName" vs "Dr. FirstName
+   *  LastName") before ever reaching a resolution step — the same
+   *  real physician named in both would resolve to two different
+   *  Physician records, confirmed directly via a real test before this
+   *  method existed. Matching directly on already-split
+   *  familyNames/givenNames sidesteps the format-mismatch entirely -
+   *  both pipelines feed the SAME structured shape in here, so the
+   *  free-text formatting choice each one happened to make upstream
+   *  never matters. Never blocks on ambiguity — matches purely on
+   *  name when no real identifier is given, same real, fail-open
+   *  posture as every other resolution in this app.
+   *
+   *  identifiers is a real array, per direct guidance, mirroring
+   *  FHIR's own real Practitioner.identifier[] / repeating-XCN
+   *  pattern — a physician can genuinely carry more than one real
+   *  identifier in the same inbound mention (e.g. a real NPI AND a
+   *  real local LIS id at once). Only the first entry with
+   *  type: 'NPI' (if any) is used to populate Physician.npi
+   *  specifically — every other real identifier type/value is
+   *  captured for reference but doesn't write into a dedicated
+   *  Physician field (this app's own Physician type only has a
+   *  dedicated npi field, not a generic identifiers array). */
+  findOrCreateByStructuredName(
+    name: {
+      namePrefix?: string;
+      givenNames: string;
+      familyNames: string;
+      nameSuffix?: string;
+      identifiers?: { value: string; type: string; assigningAuthority?: string }[];
+    },
+    clientId?: string
+  ): Promise<ServiceResult<Physician>>;
   findOrCreateByNpi(npi: string, name: { first: string; last: string }): Promise<ServiceResult<Physician>>;
 }

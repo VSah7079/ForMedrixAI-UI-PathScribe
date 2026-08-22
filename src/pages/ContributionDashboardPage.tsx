@@ -686,7 +686,7 @@ const ContributionDashboardPage: React.FC = () => {
                   teachingRecords={teachingRecords}
                   countersignRecords={countersignRecords}
                   subspecialties={subspecialties}
-                  onOpen={() => navigate('/deficiencies')}
+                  onOpen={() => navigate('/quality-assurance')}
                   onExport={(e) => { e.stopPropagation(); exportCaseLog(); }}
                 />
               )}

@@ -15,10 +15,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
-import { interfaceExceptionService } from '@/services';
+import { interfaceExceptionService, orderIntakeService, specimenDictionaryService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { InterfaceException } from '@/services/interfaceExceptions/IInterfaceExceptionService';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
+import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
+import { SearchableCombobox } from '@/components/Common/SearchableCombobox';
 
 interface CaseSummary {
   id: string;
@@ -46,6 +48,15 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [resultNote, setResultNote] = useState<string | null>(null);
+  // Real, per the "Map & Link" contextual resolution feature — a real
+  // Specimen Dictionary picker for unmapped_order_code exceptions
+  // specifically. Kept separate from `busy` above (case-binding's own
+  // busy state) so the two real actions this modal can now perform
+  // never interfere with each other's loading state.
+  const [dictionary, setDictionary] = useState<SpecimenEntry[]>([]);
+  const [mapDictionaryEntryId, setMapDictionaryEntryId] = useState('');
+  const [mapBusy, setMapBusy] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +88,15 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
     return () => { cancelled = true; };
   }, [exception.sourcePatientId, exception.targetPatientId]);
 
+  // Real, per the "Map & Link" contextual resolution feature — only
+  // fetches the real Specimen Dictionary when it's actually needed
+  // (an unmapped_order_code exception), not for every real exception
+  // type this modal handles.
+  useEffect(() => {
+    if (exception.eventType !== 'unmapped_order_code') return;
+    specimenDictionaryService.getAll().then(res => { if (res.ok) setDictionary(res.data); });
+  }, [exception.eventType]);
+
   const toggleCase = (caseId: string) => {
     setSelectedCaseIds(prev => {
       const next = new Set(prev);
@@ -101,6 +121,45 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
       : `Moved ${movedCount} case(s) to patient ${exception.targetPatientId}: ${[...selectedCaseIds].join(', ')}`;
     await interfaceExceptionService.resolve(exception.id, requestedBy, note);
     setBusy(false);
+    setResultNote(note);
+    onResolved();
+  };
+
+  // Real, per the "Map & Link" contextual resolution feature — writes
+  // the real, new crosswalk entry (via addCrosswalkEntry, the same
+  // real method Config → Integrations' own "Add Mapping" form uses)
+  // directly from this triage view, then resolves the exception. Never
+  // silently skips the real, required clientId — an exception raised
+  // before this field existed (or from before this feature's own
+  // clientId capture was added) genuinely can't be mapped from here;
+  // the UI guards this rather than creating a mis-scoped crosswalk
+  // entry.
+  const handleMapAndLink = async () => {
+    if (!exception.clientId || !exception.rawOrderCode || !mapDictionaryEntryId) return;
+    setMapBusy(true);
+    setMapError(null);
+    // Real, deliberate: narrows the plain string InterfaceException.codingSystem
+    // carries (a genuinely looser type than SpecimenCodeCrosswalkEntry's
+    // own real OrderCodeCodingSystem union) rather than blindly casting
+    // — a value that somehow isn't one of the three real coding
+    // systems is passed through as undefined, matching this app's own
+    // "never fabricate, never silently coerce" posture.
+    const validCodingSystem = (['HL7_LOCAL', 'LOINC', 'SNOMED'] as const).find(s => s === exception.codingSystem);
+    const created = await orderIntakeService.addCrosswalkEntry({
+      clientId: exception.clientId,
+      externalCode: exception.rawOrderCode,
+      codingSystem: validCodingSystem,
+      dictionaryEntryId: mapDictionaryEntryId,
+      createdBy: requestedBy,
+    });
+    if (created.ok === false) {
+      setMapBusy(false);
+      setMapError(created.error);
+      return;
+    }
+    const note = `Mapped order code "${exception.rawOrderCode}" to Specimen Dictionary entry ${mapDictionaryEntryId} — real crosswalk entry created.`;
+    await interfaceExceptionService.resolve(exception.id, requestedBy, note);
+    setMapBusy(false);
     setResultNote(note);
     onResolved();
   };
@@ -199,7 +258,66 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                 </div>
               )}
 
-              {exception.eventType !== 'A43' && (
+              {exception.eventType === 'unmapped_order_code' && (
+                <div className="ps-iexc-no-cases">
+                  <p>
+                    A real inbound order code the Specimen Code Crosswalk had no match for, in any coding system
+                    tried — order processing was not blocked; a pending Specimen Dictionary entry was auto-created
+                    so the order could still flow through, but a real crosswalk entry should be added for this code
+                    so future orders resolve automatically instead of repeating this same exception.
+                  </p>
+                  <div className="ps-conf-form-row">
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">Raw order code</label>
+                      <span className="ps-conf-identity-name">{exception.rawOrderCode ?? '—'}</span>
+                    </div>
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">Normalized</label>
+                      <span className="ps-conf-identity-name">{exception.normalizedOrderCode ?? '—'}</span>
+                    </div>
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">Coding system</label>
+                      <span className="ps-conf-identity-name">{exception.codingSystem ?? 'HL7_LOCAL (default)'}</span>
+                    </div>
+                  </div>
+                  {mapError && <p className="ps-conf-error-text">{mapError}</p>}
+                  {exception.clientId ? (
+                    <>
+                      <div className="ps-conf-form-field">
+                        <label className="ps-conf-label">Map to Specimen Dictionary entry</label>
+                        <SearchableCombobox
+                          value={mapDictionaryEntryId}
+                          onChange={setMapDictionaryEntryId}
+                          placeholder="Select a specimen type…"
+                          noMatchText="No specimen types match"
+                          disabled={mapBusy}
+                          options={dictionary.map(d => ({
+                            id: d.id,
+                            label: d.name,
+                            sublabel: [d.procedure, d.type].filter(Boolean).join(' · '),
+                            searchText: d.synonyms.join(' '),
+                          }))}
+                        />
+                      </div>
+                      <p>
+                        Creates the real crosswalk entry directly — future orders with this exact code resolve
+                        automatically instead of repeating this exception.
+                      </p>
+                      <button className="ps-conf-btn-primary" disabled={mapBusy || !mapDictionaryEntryId} onClick={handleMapAndLink}>
+                        {mapBusy ? 'Mapping…' : 'Map & Link'}
+                      </button>
+                    </>
+                  ) : (
+                    <p>
+                      This exception was raised before real client tracking existed for this event type — add the
+                      real crosswalk entry from the Order Type Dictionary screen (Config → Integrations) instead,
+                      then dismiss this exception.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {exception.eventType !== 'A43' && exception.eventType !== 'unmapped_order_code' && (
                 <div className="ps-iexc-no-cases">
                   This is a real, unresolved identity issue (ADT^{exception.eventType}), not a case-binding problem — manual identity resolution isn't built into this modal yet. Dismiss once the real, correct identity has been confirmed and corrected upstream (e.g. via a corrected re-send from the EHR).
                 </div>

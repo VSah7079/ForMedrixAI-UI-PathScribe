@@ -92,12 +92,12 @@ describe('computeRvu30 — real fix, the actual point of versioning: a case keep
   const version2026: RvuTableVersion = {
     id: 'v-2026', label: 'CMS 2026', effectiveDate: '2026-01-01T00:00:00.000Z',
     uploadedAt: '2026-01-01T00:00:00.000Z', uploadedBy: 'admin', isActive: false,
-    entries: [{ code: '88305', description: 'Level IV', workRvu: 0.73 }],
+    entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73 }],
   };
   const version2027: RvuTableVersion = {
     id: 'v-2027', label: 'CMS 2027', effectiveDate: '2027-01-01T00:00:00.000Z',
     uploadedAt: '2027-01-01T00:00:00.000Z', uploadedBy: 'admin', isActive: true,
-    entries: [{ code: '88305', description: 'Level IV', workRvu: 0.80 }], // real rate increase
+    entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.80 }], // real rate increase
   };
   const versions = [version2026, version2027];
 

@@ -8,6 +8,9 @@ import { Patient } from "./Patient";
 import { Specimen } from "./Specimen";
 import { CaseFlag } from "./CaseFlag";
 import { SpecimenFlag } from "./SpecimenFlag";
+import type { RetentionHold } from "./RetentionHold";
+import type { CaseHold } from "./CaseHold";
+import type { MatrixBlock } from "./MatrixBlock";
 import { CaseComment } from "./CaseComment";
 import type { Icd10Code } from "@/services/diagnosisCodes/IDiagnosisCodesService";
 import { CaseStatus } from "./CaseStatus";
@@ -208,9 +211,7 @@ export interface SynopticReportInstance {
   /** AI-suggested values per field — keyed by fieldId */
   aiSuggestions?: Record<string, AiFieldSuggestion>;
   /** Draft | finalized */
-  status: 'draft' | 'finalized' | 'pending-countersign' | 'deferred';
-  /** If deferred, what is pending (e.g. 'IHC', 'Molecular panel', 'FISH') */
-  deferredPending?: string;
+  status: 'draft' | 'finalized' | 'pending-countersign';
   /** Per-report comment (html) */
   comment?: string;
 
@@ -285,6 +286,58 @@ export interface SynopticReportInstance {
 // PA-performed, single-sign-off work; add them back if a review/cosign
 // workflow for grossing turns out to be needed later.
 // ─────────────────────────────────────────────────────────────
+/**
+ * Real feature, per direct follow-up: "So after gross complete, then
+ * the next logical step is to generate a Microscopic Description...
+ * Perhaps a gap in our orchestration flow." Confirmed directly before
+ * building this: Stage 1 (evaluateSynopticAssignment) only ever fires
+ * at Gross Complete — before microscopic text can realistically
+ * exist — and no real trigger anywhere re-evaluates template
+ * assignment once it does, in either Orchestration OR Assist mode
+ * (confirmed directly against every real inbound HL7/LIS handler in
+ * this app; none reference microscopic text at all). This closes
+ * that gap's own data-model half.
+ *
+ * Deliberately simple/free-text, not a structured checklist like
+ * GrossingReportInstance — per direct decision, both dictation and
+ * typed entry feed the SAME single narrative field ("both,
+ * pathologist's choice, matches how Gross already works" — though
+ * confirmed directly that Gross itself has no dedicated pre-template
+ * dictation surface today either; this is genuinely the first real
+ * instance of that pattern, not a mirror of an existing one).
+ */
+export interface MicroscopicReportInstance {
+  instanceId: string;
+  /** Which specimen this Microscopic narrative belongs to — same
+   *  real per-specimen scope as GrossingReportInstance.specimenId,
+   *  since different specimens on the same case can carry genuinely
+   *  different microscopic findings and, downstream, different CAP
+   *  template determinations. */
+  specimenId: string;
+  text: string;
+  /**
+   * 'draft' while actively being typed/dictated and not yet
+   * explicitly confirmed; 'saved' once the pathologist confirms it
+   * (even if left blank — a deliberate, reviewed skip, per direct
+   * decision's own "Conditional Blocking" design; see
+   * utils/evaluateMicroscopicFinalizeGate.ts). No stored
+   * 'not-started' value — the genuine absence of any instance for a
+   * specimen already means that on its own; callers building that
+   * gate function's own input treat a missing instance as
+   * 'not-started' rather than this type needing to represent it.
+   */
+  status: 'draft' | 'saved';
+  /** Real, honest provenance — did this text arrive by dictation,
+   *  typing, or a mix of both in the same session. Not used by the
+   *  finalize gate itself (which only cares about status/content),
+   *  kept for the same real audit-trail value entryMethod-style
+   *  fields already carry elsewhere in this app. */
+  entryMethod?: 'dictated' | 'typed' | 'mixed';
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
 export interface GrossingReportInstance {
   /** Unique ID for this report instance */
   instanceId: string;
@@ -327,6 +380,49 @@ export interface GrossingReportInstance {
   previouslyFinalized?: boolean;
   /** Optional free-text comment from the PA (html) */
   comment?: string;
+
+  /**
+   * Real feature, per direct follow-up: "Do we capture failed template
+   * association? That might be a good quality measure." Confirmed
+   * directly before adding this: nothing on this type (or anywhere
+   * else in the real data model) ever persisted the AI's routing
+   * confidence/reasoning/fallback status for the initial Grossing
+   * Template assignment — it only ever existed transiently, in a toast
+   * and in AccessionPage.tsx's own React state, gone the moment the
+   * page was navigated away from. Genuinely absent (`undefined`) only
+   * for the brief real window between Case creation and the
+   * background AI evaluation resolving — see AccessionPage.tsx's own
+   * `refineGrossingTemplatesInBackground()`, the one real writer of
+   * this field. Every specimen gets one, real outcome, not just the
+   * ones that changed from the default — a specimen where the AI
+   * genuinely, confidently agreed with the default is a real,
+   * different outcome from one where the AI call failed outright, and
+   * both are real, distinct signals worth being able to tell apart
+   * later.
+   */
+  templateAssignmentOutcome?: {
+    /** 'ai' — a real, specific AI routing decision, at or above the
+     *  confidence threshold. 'fallback' — the AI ran, but its
+     *  confidence was below threshold (or it found no good match),
+     *  and the configured fail-open default was used instead (S0-FR-05).
+     *  'override' — a Pass G0 client-specific routing override applied;
+     *  the AI never ran for this specimen at all. 'failed' — the real
+     *  AI call itself failed (network/provider error) — this specimen
+     *  is still using the safe, immediate default from Case creation,
+     *  but was never actually evaluated. */
+    outcome: 'ai' | 'fallback' | 'override' | 'failed';
+    /** 0–100. Absent for 'override' (no AI evaluation ran) and 'failed'
+     *  (no real result to report a confidence for). */
+    confidence?: number;
+    /** Plain-language reason from the real AI analysis, or the fixed
+     *  "Pass G0 override" / fallback explanation
+     *  evaluateGrossingTemplateAssignment itself already produces.
+     *  Absent for 'failed'. */
+    reason?: string;
+    /** Real, honest error detail — only present for 'failed'. */
+    errorMessage?: string;
+    evaluatedAt: string;
+  };
 
   /** Timestamps */
   createdAt: string;
@@ -450,6 +546,15 @@ export interface Case {
   // see GrossingReportInstance above.
   grossingReports?: GrossingReportInstance[];
 
+  // ── Microscopic narrative system (Orchestration "Stage 1.5") ──
+  // Each entry is one specimen's real, free-text Microscopic
+  // Description — the real gap between Gross Complete and diagnostic
+  // Synoptic Template determination, per direct follow-up. See
+  // MicroscopicReportInstance above and
+  // utils/evaluateMicroscopicFinalizeGate.ts for the real, conditional
+  // finalize-blocking rules built against this field.
+  microscopicReports?: MicroscopicReportInstance[];
+
   // ── Synoptic fit re-evaluation (Orchestration Stage 2) ─────
   // Persisted result of the most recent evaluateSynopticAssignment() run
   // triggered by the Stage 2 BACKGROUND check (Save Draft with non-empty
@@ -514,6 +619,31 @@ export interface Case {
    *  finalizeCase actually writes at the case root. */
   finalizedAt?: string;
   finalizedBy?: string;
+  /** Real feature, per direct follow-up: "How will pathscribe know it
+   *  needs to retain the patient's specimen? ... The hold Retention
+   *  flag should be also on the accession screen." See
+   *  types/case/RetentionHold.ts's own header for the full reasoning.
+   *  Case-level (not per-specimen) — settable at accession, before
+   *  individual specimens even exist yet. Multiple real holds can
+   *  accumulate over a case's life (a patient request, later a
+   *  litigation hold); none are ever deleted, only released. */
+  retentionHolds?: RetentionHold[];
+  /** Real feature, per direct follow-up: "putting a case on Hold at
+   *  the case level makes sense if there is something truly wrong...
+   *  add a tile in their worklist for Cases on Hold." See
+   *  types/case/CaseHold.ts's own header for the full reasoning and
+   *  why this is deliberately NOT the same thing as retentionHolds
+   *  above. Gates finalize (useSignOutWorkflow.ts) while any entry is
+   *  active — same "multiple can accumulate, none ever deleted" real
+   *  history posture as retentionHolds. */
+  caseHolds?: CaseHold[];
+  /** Real, architectural fix, per direct follow-up: "the matrix block
+   *  itself is the tracked asset." Case-level, not nested under any
+   *  one Specimen — see types/case/MatrixBlock.ts's own header for
+   *  the full reasoning. Each real, physical cassette shared by more
+   *  than one specimen lives here, exactly once; a specimen with no
+   *  shared tissue never touches this array at all. */
+  matrixBlocks?: MatrixBlock[];
   /** Real feature, per direct specification: Post-Sign-Out Release Buffer.
    *  The real, buffer-aware moment this report actually became final and
    *  dispatch-eligible — set immediately (equal to finalizedAt) when no
@@ -557,6 +687,21 @@ export interface Case {
   lastRevisionType?: RevisionType;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Real feature, per direct follow-up: "Stamp every saved draft...
+   * with... station_id captured at the exact moment of saving. I
+   * only fixed the audit trail. The underlying case/report save
+   * operations themselves still don't carry station attribution."
+   * Confirmed directly: no equivalent of updatedBy even existed on
+   * Case at all before this — auto-injected at the one, real choke
+   * point every case write already passes through
+   * (CaseRouter.updateCase(), getEffectiveScanStationId()), the same
+   * pattern already proven for the audit trail. Genuinely absent (not
+   * backfilled) for any case whose last write predates this field —
+   * always reflects the REAL station of the most recent save, not a
+   * history of every station that ever touched this case.
+   */
+  lastUpdatedFromStation?: string | null;
   /** Real, incrementing optimistic-concurrency version for the whole case
    *  record — per the Case Hydration & Optimistic Concurrency Control
    *  spec's §3.1. Distinct from OrchestratorSection.updatedAt (per-section

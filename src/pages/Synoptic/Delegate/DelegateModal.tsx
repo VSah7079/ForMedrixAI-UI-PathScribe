@@ -167,6 +167,26 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
       memberCount: s.userIds?.length ?? 0,
     }));
 
+  // Real fix, per direct follow-up: "How is it possible to apply an
+  // individual to the Move To Pool delegation Type?" Move to Pool's
+  // own definition is "any available pathologist" (a workgroup
+  // queue) — never one specific, named person — so the moment it's
+  // selected, the directory should show pools, not individuals, and
+  // vice versa the moment any other type is selected. Also clears any
+  // already-selected recipient that no longer makes sense for the
+  // newly-selected type (e.g. switching away from Move to Pool with a
+  // pool already picked).
+  useEffect(() => {
+    const shouldShowPools = delegationType === 'POOL';
+    setFilter(shouldShowPools ? 'pools' : 'individuals');
+    setSelectedId(prev => {
+      if (!prev) return prev;
+      const isCurrentSelectionAPool = contextPools.some(p => p.id === prev);
+      return isCurrentSelectionAPool === shouldShowPools ? prev : null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delegationType]);
+
   useEffect(() => {
     if (isOpen) {
       setSearchTerm(''); setSelectedId(null); setConfirming(false);
@@ -216,6 +236,18 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
     return () => unsubscribe();
   }, [isOpen, registry, onClose]);
 
+  // Real fix, per direct follow-up: "How is it possible to apply an
+  // individual to the Move To Pool delegation Type?" Confirmed
+  // directly: the filter toggle below (Individual / Pool) was
+  // completely independent of the selected delegation type — a user
+  // could pick "Move to Pool" and still switch to "Individual" and
+  // drag a named staff member onto it, even though that type's own
+  // definition is "any available pathologist" (a workgroup queue),
+  // not one specific, named person. The real fix lives at the filter
+  // level below (auto-synced to the delegation type, with the
+  // inapplicable toggle hidden entirely) rather than here — emptying
+  // these arrays alone would just turn into a confusing, unexplained
+  // "no results" state if the two ever got out of sync.
   const filteredStaff = staff.filter(s =>
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -390,6 +422,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
               <div style={{ padding: '16px 16px 0', flexShrink: 0 }}>
                 <div className="fm-section-label" style={{ marginBottom: 8 }}>Delegate To</div>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                  {delegationType !== 'POOL' && (
                   <button
                     onClick={() => { setFilter('individuals'); }}
                     style={{
@@ -401,6 +434,8 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
                   >
                     👤 Individual
                   </button>
+                  )}
+                  {delegationType === 'POOL' && (
                   <button
                     onClick={() => { setFilter('pools'); }}
                     style={{
@@ -412,6 +447,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
                   >
                     👥 Pool / Queue
                   </button>
+                  )}
                 </div>
                 <input
                   autoFocus

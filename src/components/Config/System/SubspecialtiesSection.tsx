@@ -218,13 +218,25 @@ const SubspecialtiesSection: React.FC = () => {
     if (modalMode === "add") {
       await subspecialtyService.add({
         name: d.name, active: d.active, userIds: d.userIds, specimenIds: [],
-        clientIds: d.clientIds, isWorkgroup: d.isWorkgroup, isWorkgroupEnabled: false,
+        // Real fix, per direct product decision: in the field, an admin
+        // building a workgroup (adding real members to a real pool) is
+        // already declaring who belongs — there's no real scenario
+        // where they'd want a pool with a defined member list that
+        // still lets anyone claim from it regardless. isWorkgroupEnabled
+        // now mirrors isWorkgroup directly rather than being hardcoded
+        // off — which, before this fix, meant membership enforcement
+        // could never actually be turned on through this UI at all,
+        // since no control for it existed here separately.
+        clientIds: d.clientIds, isWorkgroup: d.isWorkgroup, isWorkgroupEnabled: d.isWorkgroup,
         description: d.description, status: d.active ? 'Active' : 'Inactive',
       });
     } else {
       await subspecialtyService.update(target!.id, {
         name: d.name, active: d.active, userIds: unlinkAll ? [] : d.userIds,
-        clientIds: d.clientIds, isWorkgroup: d.isWorkgroup,
+        // Same real fix as the add path above — previously omitted
+        // entirely here, meaning an existing pool's enforcement could
+        // never be changed by editing isWorkgroup after creation either.
+        clientIds: d.clientIds, isWorkgroup: d.isWorkgroup, isWorkgroupEnabled: d.isWorkgroup,
         description: d.description, status: d.active ? 'Active' : 'Inactive',
       });
     }
@@ -312,13 +324,21 @@ const SubspecialtiesSection: React.FC = () => {
                     <td className="ps-sub-td">
                       <div className="ps-sub-name-cell">
                         <Avatar name={sub.name} />
-                        <div>
+                        <div className="ps-sub-name-text-wrap">
                           <div className="ps-sub-name-row">
                             <span className="ps-sub-name">{sub.name}</span>
                             {(sub as any).isWorkgroup && <span className="ps-sub-workgroup-dot" title="Workgroup / Pool" />}
+                            {(sub as any).isSystemManaged && (
+                              <span
+                                className="ps-sub-system-badge"
+                                title="Managed automatically by the system's own case-routing logic — not editable here"
+                              >
+                                SYSTEM
+                              </span>
+                            )}
                           </div>
                           {(sub as any).description && (
-                            <div className="ps-sub-desc">{(sub as any).description}</div>
+                            <div className="ps-sub-desc" title={(sub as any).description}>{(sub as any).description}</div>
                           )}
                         </div>
                       </div>
@@ -333,7 +353,16 @@ const SubspecialtiesSection: React.FC = () => {
                       </div>
                     </td>
                     <td className="ps-sub-td" style={{ textAlign: "right" }}>
-                      <button className="ps-sub-edit-btn" onClick={() => openEdit(sub)}>Edit</button>
+                      {(sub as any).isSystemManaged ? (
+                        <span
+                          className="ps-sub-readonly-label"
+                          title="This pool is created and maintained automatically — there's nothing here for an admin to configure"
+                        >
+                          Read-only
+                        </span>
+                      ) : (
+                        <button className="ps-sub-edit-btn" onClick={() => openEdit(sub)}>Edit</button>
+                      )}
                     </td>
                   </tr>
                 );

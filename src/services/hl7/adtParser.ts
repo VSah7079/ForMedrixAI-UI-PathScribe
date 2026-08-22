@@ -29,7 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { parseHL7Message, getField, getComponent, getRepetitions, type ParsedHL7Segment } from './hl7Parser';
-import type { EncounterClass } from '../encounters/IEncounterService';
+import type { EncounterClass, EncounterDiagnosis } from '../encounters/IEncounterService';
 
 // Real feature, per direct confirmation, working through the full list
 // of ADT trigger events that carry real PID+PV1 encounter/location
@@ -138,7 +138,16 @@ export interface ParsedAdtMessage {
     building?: string;
     /** PV1-3.8 */
     floor?: string;
-    attendingProvider?: string;
+    /** PV1-7 — real, per PS-81 (Jira): now the real, structured XCN
+     *  shape (id/lastName/firstName), never flattened to a string here
+     *  — that flattening used to happen in this exact spot and was the
+     *  real, confirmed root cause of ADT/Order-Intake provider
+     *  resolution mismatches (same physician, two different free-text
+     *  formats, two different Physician records). The real ID
+     *  component (XCN.1) was previously extracted and silently
+     *  discarded by the old flattening code; it's real, structured
+     *  data now, not lost. */
+    attendingProvider?: { id?: string; lastName?: string; firstName?: string };
     admitTime?: string;
     /** PV1-45 — real, required field for A03. Genuinely absent for
      *  A01/A04/A08 (a visit hasn't ended yet). */
@@ -166,6 +175,14 @@ export interface ParsedAdtMessage {
     /** PV1-20 (HL7 Table 0064, Financial Class) — real for A08. */
     financialClass?: string;
   };
+  /** Real feature, per direct, detailed correction: DG1 is its own,
+   *  dedicated segment (not part of OBR, and not exclusively an
+   *  "order-level" concept), which legitimately rides with A01/A04/
+   *  A08 among other real message types. Every real DG1 segment on
+   *  this message, in real DG1-1 set-id order — genuinely an empty
+   *  array, not undefined, when the message carried none (most real
+   *  ADT traffic won't). */
+  diagnoses: EncounterDiagnosis[];
 }
 
 const PATIENT_CLASS_MAP: Record<string, EncounterClass> = {
@@ -282,13 +299,21 @@ function parsePV1(pv1: ParsedHL7Segment | null): ParsedAdtMessage['encounter'] {
     personLocationType: getComponent(locationField, 5) || undefined,
     building: getComponent(locationField, 6) || undefined,
     floor: getComponent(locationField, 7) || undefined,
-    // PV1-7 real, standard component order: id^lastName^firstName^...
+    // PV1-7 — real, standard XCN component order (0-indexed here, per
+    // getComponent's own real convention): index 0 = XCN.1 (ID Number),
+    // index 1 = XCN.2 (Family Name), index 2 = XCN.3 (Given Name).
+    // Real, per PS-81: preserves this structured shape directly now,
+    // rather than flattening it into a "LastName, FirstName" string —
+    // that flattening was the real, confirmed root cause of ADT/
+    // Order-Intake provider resolution ending up as two different
+    // Physician records for the same real physician.
     attendingProvider: (() => {
       const raw = getField(pv1, 7);
       if (!raw) return undefined;
-      const last = getComponent(raw, 1);
-      const first = getComponent(raw, 2);
-      return last ? `${last}${first ? ', ' + first : ''}` : undefined;
+      const id = getComponent(raw, 0) || undefined;
+      const lastName = getComponent(raw, 1) || undefined;
+      const firstName = getComponent(raw, 2) || undefined;
+      return (id || lastName || firstName) ? { id, lastName, firstName } : undefined;
     })(),
     admitTime: fromHL7Date(getField(pv1, 44)),
     dischargeTime: fromHL7Date(getField(pv1, 45)),
@@ -306,6 +331,33 @@ function parsePV1(pv1: ParsedHL7Segment | null): ParsedAdtMessage['encounter'] {
     admitSource: getField(pv1, 14) || undefined,
     financialClass: getField(pv1, 20) || undefined,
   };
+}
+
+/** Real feature, per direct, detailed correction: DG1 is its own,
+ *  dedicated, real segment — not part of OBR, and legitimately
+ *  repeating (real DG1-1 is a per-segment set-id, exactly like the
+ *  existing repeating-segment handling this app already established
+ *  for NK1 elsewhere — getAllSegments('DG1'), not getSegment). Real,
+ *  confirmed DG1-3 component structure — identifier^text^codingSystem
+ *  — mirrors this app's own, already-existing outbound DG1 builder
+ *  (services/hl7/segmentBuilders.ts's buildDG1) exactly, rather than
+ *  inventing a different shape for the same real field on the
+ *  parsing side. A DG1 segment with no real DG1-3.1 identifier is
+ *  never a genuine diagnosis — silently dropped rather than producing
+ *  a hollow entry with no real code. */
+function parseDG1(dg1Segments: ParsedHL7Segment[]): EncounterDiagnosis[] {
+  return dg1Segments
+    .map(dg1 => {
+      const codeField = getField(dg1, 3);
+      return {
+        code: getComponent(codeField, 0),
+        description: getComponent(codeField, 1) || undefined,
+        codingSystem: getComponent(codeField, 2) || undefined,
+        // DG1-6 (HL7 Table 0052) — real diagnosis type: A/W/F.
+        diagnosisType: getField(dg1, 6) || undefined,
+      };
+    })
+    .filter(dx => dx.code);
 }
 
 /** Real, honest parse — throws only when the message genuinely cannot
@@ -327,11 +379,13 @@ export function parseAdtMessage(raw: string): ParsedAdtMessage {
   const evn = message.getSegment('EVN');
   const pid = message.getSegment('PID');
   const pv1 = message.getSegment('PV1');
+  const dg1Segments = message.getAllSegments('DG1');
 
   return {
     eventType: eventType as AdtEventType,
     recordedAt: fromHL7Date(getField(evn, 2)) ?? new Date().toISOString(),
     patient: parsePID(pid),
     encounter: parsePV1(pv1),
+    diagnoses: parseDG1(dg1Segments),
   };
 }

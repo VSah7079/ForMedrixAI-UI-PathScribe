@@ -338,7 +338,7 @@ export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onCl
                           onMouseLeave={e => { if (p.id !== baseTemplate) e.currentTarget.style.background = 'transparent'; }}
                         >
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600 }}>{p.name}</div>
+                            <div style={{ fontWeight: 600 }} data-phi="name">{p.name}</div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
                               {p.source} · {p.fields} fields · v{p.version}
                             </div>

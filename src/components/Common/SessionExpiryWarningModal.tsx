@@ -1,6 +1,6 @@
 // src/components/Common/SessionExpiryWarningModal.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 1 of the Inactivity Timeout & Draft Recovery spec (see PRIORITY_FIXES.md).
+// Phase 1 of the Inactivity Timeout & Draft Recovery spec.
 //
 // NOTE on copy: the original spec's wireframe text ("Any unsaved changes will
 // be safely cached on this device") describes Phase 2 (draft preservation),

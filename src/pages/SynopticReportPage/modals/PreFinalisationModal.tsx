@@ -6,8 +6,7 @@
 //   Header (case + mode)
 //   ┌─── LEFT (38%) ──────┬─── RIGHT (62%) ─────────────────────┐
 //   │ Specimens (draggable)│ Report preview — as sent to LIS     │
-//   │ Synoptic ordering   │ Q&A format, updates on exclude/order │
-//   │ Include/Exclude     │                                      │
+//   │ Synoptic ordering   │ Q&A format, updates on reorder       │
 //   └─────────────────────┴──────────────────────────────────────┘
 //   Signing panel (biometric → password fallback)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +56,6 @@ interface StagedSynoptic {
   answeredCount:   number;
   totalCount:      number;
   requiredFields?: string[];
-  excluded:        boolean;
   answers:       Record<string, string | string[]>;
   fieldLabels:   Record<string, string>;
   fieldOrder:    string[];
@@ -98,7 +96,6 @@ function buildStaged(synoptics: SynopticForReview[]): StagedSpecimen[] {
       answeredCount:   syn.answeredCount,
       totalCount:      syn.totalCount,
       requiredFields:  syn.requiredFields ?? [],
-      excluded:      false,
       answers:       syn.answers,
       fieldLabels:   syn.fieldLabels,
       fieldOrder:    syn.fieldOrder,
@@ -121,13 +118,13 @@ const ordinal = (i: number) =>
 
 const ReportPreview: React.FC<{ staged: StagedSpecimen[] }> = ({ staged }) => {
   const included = staged.flatMap(sp =>
-    sp.synoptics.filter(s => !s.excluded).map(s => ({ ...s, sp }))
+    sp.synoptics.map(s => ({ ...s, sp }))
   );
 
   if (included.length === 0) {
     return (
       <div className="ps-prefin-preview-empty">
-        All synoptics excluded — nothing to transmit.
+        No synoptic reports to transmit.
       </div>
     );
   }
@@ -189,12 +186,11 @@ const SigningPanel: React.FC<{
   userId:          string;
   userDisplayName: string;
   userCredentials: string;
-  excludedCount:   number;
   totalCount:      number;
   finalizeAndNext: boolean;
   onSign:          () => void;
   onCancel:        () => void;
-}> = ({ userId, userDisplayName, userCredentials, excludedCount, totalCount, finalizeAndNext, onSign, onCancel }) => {
+}> = ({ userId, userDisplayName, userCredentials, totalCount, finalizeAndNext, onSign, onCancel }) => {
   const [showBio,    setShowBio]    = React.useState(false);
   const [bioStep,    setBioStep]    = React.useState<BioStep>('idle');
   const [deviceName, setDeviceName] = React.useState('Biometric');
@@ -229,8 +225,6 @@ const SigningPanel: React.FC<{
     setPwError(''); onSign();
   };
 
-  const included = totalCount - excludedCount;
-
   return (
     <div className="ps-prefin-signing">
       {bioFailMsg && <div className="ps-prefin-signing-biofail">⚠ {bioFailMsg}</div>}
@@ -240,8 +234,7 @@ const SigningPanel: React.FC<{
             Signing as {userDisplayName}{userCredentials ? ` · ${userCredentials}` : ''}
           </p>
           <p className="ps-prefin-signing-meta">
-            {included} synoptic{included !== 1 ? 's' : ''} transmitted
-            {excludedCount > 0 && <span className="ps-prefin-signing-excluded"> · {excludedCount} excluded</span>}
+            {totalCount} synoptic{totalCount !== 1 ? 's' : ''} transmitted
             {finalizeAndNext && <span className="ps-prefin-signing-next"> · next case queued</span>}
           </p>
         </div>
@@ -308,13 +301,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
   if (!show) return null;
 
   const all = staged.flatMap(sp => sp.synoptics);
-  const excludedCount = all.filter(s => s.excluded).length;
   const totalCount    = all.length;
-
-  const toggleExclude = (si: number, syi: number) =>
-    setStaged(prev => prev.map((sp, i) =>
-      i !== si ? sp : { ...sp, synoptics: sp.synoptics.map((s, j) => j !== syi ? s : { ...s, excluded: !s.excluded }) }
-    ));
 
   const onDragStart = (e: React.DragEvent, type: 'specimen' | 'synoptic', si: number, syi: number) => {
     setDragSrc({ type, si, syi }); e.dataTransfer.effectAllowed = 'move';
@@ -342,9 +329,8 @@ export const PreFinalisationModal: React.FC<Props> = ({
   const onDragEnd = () => { setDragSrc(null); setDragOver(null); };
 
   const handleSign = () => {
-    const ordered  = staged.flatMap(sp => sp.synoptics.filter(s => !s.excluded).map(s => s.instanceId));
-    const excluded = staged.flatMap(sp => sp.synoptics.filter(s => s.excluded).map(s => s.instanceId));
-    onConfirm(ordered, excluded);
+    const ordered = staged.flatMap(sp => sp.synoptics.map(s => s.instanceId));
+    onConfirm(ordered, []);
   };
 
   return (
@@ -402,21 +388,20 @@ export const PreFinalisationModal: React.FC<Props> = ({
                     return (
                       <div
                         key={syn.instanceId}
-                        draggable={!syn.excluded && sp.synoptics.length > 1}
+                        draggable={sp.synoptics.length > 1}
                         onDragStart={e => { e.stopPropagation(); onDragStart(e, 'synoptic', si, syi); }}
                         onDragOver={e => { e.stopPropagation(); onDragOver(e, si, syi); }}
                         onDrop={e => { e.stopPropagation(); onDrop(e, si, syi); }}
                         className={`ps-prefin-synoptic-row${synDragOver ? ' ps-prefin-synoptic-row--dragover' : ''}`}
-                        style={{ opacity: syn.excluded ? 0.5 : dragSrc?.si === si && dragSrc?.syi === syi && dragSrc?.type === 'synoptic' ? 0.3 : 1 }}
+                        style={{ opacity: dragSrc?.si === si && dragSrc?.syi === syi && dragSrc?.type === 'synoptic' ? 0.3 : 1 }}
                       >
                         <div className="ps-prefin-synoptic-header">
                           <div className="ps-prefin-synoptic-info">
                             <p className="ps-prefin-synoptic-name">{syn.templateName}</p>
                             <p className="ps-prefin-synoptic-meta">
                               {syn.answeredCount}/{syn.totalCount} fields
-                              {syn.excluded && <span className="ps-prefin-synoptic-excluded-tag">Excluded</span>}
                             </p>
-                            {!syn.excluded && (() => {
+                            {(() => {
                               const emptyRequired = (syn.requiredFields ?? []).filter(k => {
                                 const v = syn.answers[k];
                                 return v === '' || v === null || v === undefined || (Array.isArray(v) && v.length === 0);
@@ -454,12 +439,6 @@ export const PreFinalisationModal: React.FC<Props> = ({
                               );
                             })()}
                           </div>
-                          <button
-                            onClick={() => toggleExclude(si, syi)}
-                            className={`ps-prefin-exclude-btn${syn.excluded ? ' ps-prefin-exclude-btn--included' : ''}`}
-                          >
-                            {syn.excluded ? 'Re-include' : 'Exclude'}
-                          </button>
                         </div>
                       </div>
                     );
@@ -467,14 +446,6 @@ export const PreFinalisationModal: React.FC<Props> = ({
                 </div>
               );
             })}
-
-            {/* Excluded addendum note — Assisted mode only */}
-            {reportingMode === 'assisted' && excludedCount > 0 && (
-              <div className="ps-prefin-excluded-note">
-                <strong>{excludedCount} synoptic{excludedCount > 1 ? 's' : ''} excluded.</strong>{' '}
-                Retained in PathScribe — transmit via addendum when ready.
-              </div>
-            )}
           </div>
 
           {/* RIGHT — live report preview */}
@@ -493,7 +464,6 @@ export const PreFinalisationModal: React.FC<Props> = ({
           userId={userId}
           userDisplayName={userDisplayName}
           userCredentials={userCredentials}
-          excludedCount={excludedCount}
           totalCount={totalCount}
           finalizeAndNext={finalizeAndNext}
           onSign={handleSign}

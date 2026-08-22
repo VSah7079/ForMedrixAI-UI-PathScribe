@@ -22,7 +22,7 @@ describe('mockReportVersionService — real fix, Phase 5: the actual point - a r
 
     const encounterRes = await mockEncounterService.resolveOrCreateEncounter({
       organisationId: 'ORG-A', patientId: patientRes.patientId, encounterNumber: 'FIN-SNAP-1', encounterClass: 'Inpatient',
-      facility: 'Main Campus', ward: 'ICU', room: '301', bed: 'A', attendingProvider: 'WILLIAMS, CAROL',
+      facility: 'Main Campus', ward: 'ICU', room: '301', bed: 'A', attendingProvider: { lastName: 'WILLIAMS', firstName: 'CAROL' },
     });
     if (!encounterRes.ok) throw new Error('setup failed');
 
@@ -123,6 +123,36 @@ describe('mockReportVersionService — real fix, Phase 5: the actual point - a r
     if (!result.ok) throw new Error('create failed');
     expect(result.data.patientEncounterSnapshot?.patientId).toBe(patientRes.patientId);
     expect(result.data.patientEncounterSnapshot?.encounterId).toBeUndefined();
+
+    vi.restoreAllMocks();
+  });
+
+  it('a real version captures the real, current station at the moment of creation, per direct follow-up: "Stamp every saved draft... with... station_id captured at the exact moment of saving"', async () => {
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: undefined } as any);
+    localStorage.setItem('pathscribe_current_scan_station_id', 'station-stain-2');
+
+    const result = await mockReportVersionService.create({
+      caseId: 'CASE-STATION-1', mode: 'orchestration', trigger: 'initial_signout',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    if (!result.ok) throw new Error('create failed');
+    expect(result.data.createdFromStation).toBe('station-stain-2');
+
+    localStorage.removeItem('pathscribe_current_scan_station_id');
+    vi.restoreAllMocks();
+  });
+
+  it('a real version genuinely has no station when none is known — never a guessed/default value', async () => {
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: undefined } as any);
+    localStorage.removeItem('pathscribe_current_scan_station_id');
+    localStorage.removeItem('pathscribe-user');
+
+    const result = await mockReportVersionService.create({
+      caseId: 'CASE-STATION-2', mode: 'orchestration', trigger: 'initial_signout',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    if (!result.ok) throw new Error('create failed');
+    expect(result.data.createdFromStation).toBeNull();
 
     vi.restoreAllMocks();
   });

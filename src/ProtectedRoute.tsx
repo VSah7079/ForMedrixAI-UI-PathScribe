@@ -18,8 +18,7 @@ const ProtectedRoute = () => {
     // is derived from localStorage in the updated AuthContext.
   }, []);
 
-  // Phase 1 of the Inactivity Timeout & Draft Recovery spec (see
-  // PRIORITY_FIXES.md). Only active once actually authenticated -- no
+  // Phase 1 of the Inactivity Timeout & Draft Recovery spec. Only active once actually authenticated -- no
   // point running an idle timer against the login page itself.
   const { showWarning, secondsRemaining, expired, stayLoggedIn } = useIdleTimeout(isAuthenticated);
 

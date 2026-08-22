@@ -12,9 +12,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
-import { protocolService, stainTypeService } from '../../../services';
+import { protocolService, stainTypeService, specimenCategoryService } from '../../../services';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
+import type { SpecimenCategory } from '../../../services/specimenCategories/ISpecimenCategoryService';
 import type { Protocol, ProtocolPathway, PathwayTask, StainType } from '../../../services';
 
 type Draft = Omit<Protocol, 'id' | 'version' | 'updatedBy' | 'updatedAt'>;
@@ -23,9 +24,9 @@ const emptyTask = (stepOrder: number): PathwayTask => ({
   id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
   stepOrder, action: '', stainTypeIds: [], isHold: false,
 });
-const emptyPathway = (): ProtocolPathway => ({
+const emptyPathway = (defaultMaterialKind: ProtocolPathway['materialKind'] = 'block'): ProtocolPathway => ({
   id: `track-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-  pathwayName: '', fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false,
+  pathwayName: '', materialKind: defaultMaterialKind, fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false,
   processingFormat: 'Standard', tasks: [emptyTask(1)],
 });
 const emptyDraft = (): Draft => ({
@@ -47,6 +48,13 @@ interface ProtocolRow {
   'Requires Triage': string;
   'Triage Checklist': string;
   'Track Name': string;
+  /** Real, new column, per direct follow-up's own Hybrid Model —
+   *  see ProtocolPathway.materialKind's own doc comment
+   *  (IProtocolService.ts) for the full reasoning. Round-trips as a
+   *  plain "Block"/"Decant" string, same real, human-readable
+   *  convention as every other Yes/No column here — never the raw
+   *  'block'/'decant' union value directly. */
+  'Material Kind': string;
   'Fixative': string;
   'Processing Format': string;
   'Requires Decal': string;
@@ -70,6 +78,7 @@ function protocolsToRows(protocols: Protocol[], stainTypes: StainType[]): Protoc
           'Requires Triage': p.requiresTriage ? 'Yes' : 'No',
           'Triage Checklist': (p.triageChecklist ?? []).join('; '),
           'Track Name': pw.pathwayName,
+          'Material Kind': pw.materialKind === 'decant' ? 'Decant' : 'Block',
           'Fixative': pw.fixativeType,
           'Processing Format': pw.processingFormat,
           'Requires Decal': pw.requiresDecal ? 'Yes' : 'No',
@@ -125,6 +134,11 @@ function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsR
       protocol._tracksByName.set(trackName, {
         id: `track-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         pathwayName: trackName,
+        // Real, honest default — a real import row missing this new
+        // column (an older export, or a hand-edited sheet) falls back
+        // to 'block', the same safe default emptyPathway() itself
+        // uses, rather than failing the whole import.
+        materialKind: String(row['Material Kind'] ?? '').trim().toLowerCase() === 'decant' ? 'decant' : 'block',
         fixativeType: String(row['Fixative'] ?? '').trim(),
         requiresDecal: String(row['Requires Decal'] ?? '').trim().toLowerCase() === 'yes',
         processingFormat: String(row['Processing Format'] ?? '').trim(),
@@ -236,12 +250,18 @@ interface EditorModalProps {
   entry?: Protocol;
   stainTypes: StainType[];
   usage: SpecimenEntry[];
+  /** Real feature, per direct follow-up's own Hybrid Model — see
+   *  ProtocolDictionarySection's own computation for the full
+   *  reasoning. Purely a UI default for a NEW track's own
+   *  materialKind selector — never overrides an already-set value on
+   *  an existing track, and the admin can always change it. */
+  defaultsToDecant: boolean;
   onSave: (draft: Draft) => void;
   onRestore: (protocolId: string, version: number) => void;
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usage, onSave, onRestore, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usage, defaultsToDecant, onSave, onRestore, onClose }) => {
   const [draft, setDraft] = useState<Draft>(entry ? {
     name: entry.name, description: entry.description ?? '', requiresTriage: entry.requiresTriage,
     triageChecklist: entry.triageChecklist ?? [], pathways: entry.pathways, active: entry.active,
@@ -255,7 +275,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
     set('pathways', draft.pathways.map((p, i) => i === idx ? { ...p, ...changes } : p));
   };
   const removePathway = (idx: number) => set('pathways', draft.pathways.filter((_, i) => i !== idx));
-  const addPathway = () => set('pathways', [...draft.pathways, emptyPathway()]);
+  const addPathway = () => set('pathways', [...draft.pathways, emptyPathway(defaultsToDecant ? 'decant' : 'block')]);
 
   const updateTask = (pathwayIdx: number, taskIdx: number, changes: Partial<PathwayTask>) => {
     const pathway = draft.pathways[pathwayIdx];
@@ -391,6 +411,22 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
                     )}
                   </div>
                   <div className="ps-conf-form-row">
+                    {/* Real feature, per direct follow-up's own Hybrid
+                        Model: "The pathway definition always dictates
+                        whether a block or decant entity is
+                        instantiated." Placed first, ahead of the
+                        existing fixative/format/decal fields, since
+                        this is the real, load-bearing choice that
+                        determines what physical object accessioning's
+                        own pathway-driven generation actually creates. */}
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">Material Kind</label>
+                      <select className="ps-conf-select" value={pathway.materialKind}
+                        onChange={e => updatePathway(pIdx, { materialKind: e.target.value as ProtocolPathway['materialKind'] })}>
+                        <option value="block">Block (solid tissue, cassette)</option>
+                        <option value="decant">Decant (fluid / cytology)</option>
+                      </select>
+                    </div>
                     <div className="ps-conf-form-field">
                       <label className="ps-conf-label">Fixative</label>
                       <input className="ps-conf-input" value={pathway.fixativeType} onChange={e => updatePathway(pIdx, { fixativeType: e.target.value })} />
@@ -514,6 +550,20 @@ const ProtocolDictionarySection: React.FC = () => {
   };
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: Protocol } | null>(null);
   const { dictionary } = useSpecimenDictionary();
+  // Real feature, per direct follow-up's own Hybrid Model: "Sensible
+  // UI fallback: SpecimenCategory provides defaults... the
+  // configuration UI pre-selects materialKind: 'decant'." Real,
+  // deliberate scope: matches by NAME ("Fluid / Cytology"), not a
+  // hardcoded id — the real seed id could change, but the real,
+  // human-facing category name is what an admin actually configures
+  // against. A category renamed away from "Fluid" would correctly
+  // stop being treated as fluid/cytology here too.
+  const [specimenCategories, setSpecimenCategories] = useState<SpecimenCategory[]>([]);
+  useEffect(() => { specimenCategoryService.getAll().then(res => { if (res.ok) setSpecimenCategories(res.data); }); }, []);
+  const fluidCategoryIds = useMemo(() =>
+    new Set(specimenCategories.filter(c => c.name.toLowerCase().includes('fluid') || c.name.toLowerCase().includes('cytology')).map(c => c.id)),
+    [specimenCategories]
+  );
 
   const loadAll = () => {
     protocolService.getAll().then(res => { if (res.ok) setProtocols(res.data); });
@@ -599,10 +649,10 @@ const ProtocolDictionarySection: React.FC = () => {
               {protocols.map(p => (
                 <tr key={p.id} className="ps-conf-tr">
                   <td className="ps-conf-td">
-                    <div className="ps-conf-identity-name">{p.name}</div>
+                    <div className="ps-conf-identity-name" data-phi="name">{p.name}</div>
                     {p.description && <div className="ps-specreq-meta">{p.description}</div>}
                   </td>
-                  <td className="ps-conf-td">{p.pathways.map(pw => pw.pathwayName).join(', ')}</td>
+                  <td className="ps-conf-td">{p.pathways.map(pw => `${pw.pathwayName}${pw.materialKind === 'decant' ? ' (Decant)' : ''}`).join(', ')}</td>
                   <td className="ps-conf-td">{usageFor(p.id).length || '—'}</td>
                   <td className="ps-conf-td">{p.requiresTriage ? 'Yes' : 'No'}</td>
                   <td className="ps-conf-td">
@@ -625,6 +675,7 @@ const ProtocolDictionarySection: React.FC = () => {
 
       {modal && (
         <EditorModal mode={modal.mode} entry={modal.entry} stainTypes={stainTypes} usage={modal.entry ? usageFor(modal.entry.id) : []}
+          defaultsToDecant={!!modal.entry && usageFor(modal.entry.id).some(e => !!e.specimenCategoryId && fluidCategoryIds.has(e.specimenCategoryId))}
           onSave={handleSave} onRestore={handleRestore} onClose={() => setModal(null)} />
       )}
     </div>

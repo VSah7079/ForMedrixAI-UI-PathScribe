@@ -46,8 +46,40 @@ const CONTACT = 'support@formedrixai.com';
 /** Per request. Two sequential calls, so the worst case before giving up is 6s. */
 const REQUEST_TIMEOUT_MS = 3_000;
 
-const CACHE_KEY = 'pathscribe_pubmed_ticker_cache';
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_KEY_BASE = 'pathscribe_pubmed_ticker_cache';
+// Real fix, per direct follow-up: "I don't think refresh is working.
+// Its been on the same article since we started." Confirmed directly:
+// the OLD design (a rolling 24h window from the last fetch) was
+// mechanically correct but paired with a hook that only ever checked
+// on mount (see useLatestResearch.ts) — if the ticker's host page
+// simply isn't revisited soon after the cache happens to expire, it
+// can go stale far longer than a day with nothing wrong in this file
+// at all. Switched to a genuine calendar-day boundary (valid only
+// through the end of the day it was fetched, real local time) — more
+// precisely matches "refresh each day" than a rolling window ever did,
+// and combined with the new periodic re-check in useLatestResearch.ts,
+// no longer depends on when the user happens to revisit.
+function isSameLocalDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear()
+    && da.getMonth() === db.getMonth()
+    && da.getDate() === db.getDate();
+}
+
+// Real feature, per direct follow-up: "I would like the Users
+// subspeciality be taken into consideration." Different users now get
+// genuinely different queries — a single, shared cache key would let
+// whichever user happens to load the ticker first each day silently
+// overwrite the article for everyone else, regardless of their own
+// subspecialty. Each distinct set of subspecialty names gets its own
+// real, separate cache entry.
+function cacheKeyFor(subspecialtyNames: string[] | undefined): string {
+  const suffix = (subspecialtyNames && subspecialtyNames.length > 0)
+    ? '_' + [...subspecialtyNames].sort().join('|')
+    : '_default';
+  return CACHE_KEY_BASE + suffix;
+}
 
 /** How long to stop calling NCBI after a 429. */
 const BACKOFF_KEY = 'pathscribe_pubmed_ticker_backoff';
@@ -57,6 +89,16 @@ const BACKOFF_MS = 30 * 60 * 1000;
 interface CacheEnvelope {
   timestamp: number;
   data: ResearchArticle | null;
+  /** Real feature, per direct follow-up: "If they access the article
+   *  and then search and find a different article, can we update the
+   *  pubmed article link... so they don't have to search again." A
+   *  manually-set article (via setFeaturedArticle below) is real,
+   *  deliberate user intent — the periodic re-check in
+   *  useLatestResearch.ts must never silently replace it with the
+   *  automated pick later the same day. Cleared naturally once the
+   *  calendar day rolls over, same as any other cache entry — a
+   *  pinned choice is "for today," not permanent. */
+  pinned?: boolean;
 }
 
 function apiKey(): string | undefined {
@@ -67,12 +109,12 @@ function apiKey(): string | undefined {
 
 /* ------------------------------------------------------------------ cache */
 
-function readCache(): ResearchArticle | null | undefined {
+function readCache(cacheKey: string): ResearchArticle | null | undefined {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as CacheEnvelope;
-    if (Date.now() - parsed.timestamp > CACHE_TTL_MS) return undefined;
+    if (!isSameLocalDay(Date.now(), parsed.timestamp)) return undefined;
     return parsed.data;
   } catch {
     // Corrupt entry, storage disabled, private browsing — all mean "no
@@ -81,10 +123,21 @@ function readCache(): ResearchArticle | null | undefined {
   }
 }
 
-function writeCache(data: ResearchArticle | null): void {
+function isPinned(cacheKey: string): boolean {
   try {
-    const envelope: CacheEnvelope = { timestamp: Date.now(), data };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as CacheEnvelope;
+    return !!parsed.pinned && isSameLocalDay(Date.now(), parsed.timestamp);
+  } catch {
+    return false;
+  }
+}
+
+function writeCache(cacheKey: string, data: ResearchArticle | null, pinned = false): void {
+  try {
+    const envelope: CacheEnvelope = { timestamp: Date.now(), data, pinned };
+    localStorage.setItem(cacheKey, JSON.stringify(envelope));
   } catch {
     /* caching is an optimisation, not a requirement */
   }
@@ -105,6 +158,53 @@ function startBackoff(): void {
   } catch {
     /* no storage: the request simply retries next mount */
   }
+}
+
+/* ----------------------------------------------------------- personalisation */
+
+// Real feature, per direct follow-up: "I would like the Users
+// subspeciality be taken into consideration when finding recent
+// pubmed articles." Maps each real Subspecialty.name (see
+// mockSubspecialtyService.ts's own seed list) to a real PubMed
+// Title/Abstract search term. Deliberately not exhaustive of every
+// possible subspecialty an admin might add later — an unmapped name
+// is silently skipped rather than breaking the query, so a genuine
+// admin-added subspecialty with no mapping here still gets the base,
+// unpersonalised query rather than an error.
+const SUBSPECIALTY_QUERY_TERMS: Record<string, string> = {
+  'Gastrointestinal': 'gastrointestinal pathology',
+  'Breast': 'breast pathology',
+  'Dermatopathology': 'dermatopathology',
+  'Neuropathology': 'neuropathology',
+  'Hematopathology': 'hematopathology',
+  'Gynecological': 'gynecologic pathology',
+  'Urological': 'genitourinary pathology',
+  'Thoracic': 'thoracic pathology',
+  'General Pathology': 'surgical pathology',
+};
+
+/**
+ * Real, deliberate design choice, corrected after a real bug found
+ * while building this: OR-wrapping the whole admin query would have
+ * let the subspecialty branch bypass every one of the base query's own
+ * quality filters (english[Language], NOT retracted/preprint/
+ * editorial/comment/letter) — those clauses only bind to the original
+ * OR-branch, not globally, in raw PubMed query syntax. AND-wrapping
+ * two fully self-contained, parenthesized expressions together has no
+ * such issue regardless of either side's internal structure, so this
+ * narrows to the real intersection first — genuinely more personal
+ * when a match exists — and getLatestArticle() below falls back to
+ * the plain base query if that intersection comes up empty, rather
+ * than ever showing nothing.
+ */
+function personalizeQuery(baseQuery: string, subspecialtyNames: string[] | undefined): string | null {
+  if (!subspecialtyNames || subspecialtyNames.length === 0) return null;
+  const terms = subspecialtyNames
+    .map(name => SUBSPECIALTY_QUERY_TERMS[name])
+    .filter((t): t is string => !!t);
+  if (terms.length === 0) return null;
+  const subspecialtyClause = terms.map(t => `(${t}[Title/Abstract])`).join(' OR ');
+  return `(${baseQuery}) AND (${subspecialtyClause})`;
 }
 
 /* ------------------------------------------------------------- sanitising */
@@ -168,64 +268,100 @@ async function getJson(url: string, signal?: AbortSignal): Promise<any> {
 
 /* ----------------------------------------------------------------- service */
 
+/** Real, shared two-stage fetch — esearch for a term, then esummary for
+ *  whatever PMID it returns. Used for both the base and (when tried
+ *  first) the personalized query, so the two attempts share identical,
+ *  real sanitising/error handling rather than two subtly different
+ *  copies of the same logic. */
+async function fetchLatestForTerm(
+  config: { apiBaseUrl: string; articleUrlTemplate: string },
+  term: string,
+  signal: AbortSignal | undefined,
+  /** Real feature, per direct follow-up: "by clicking the pubmed
+   *  button, I'd like to trigger a refresh of the presented article."
+   *  NCBI's "most recent" for an unchanged query often returns the
+   *  exact same top result if nothing new has actually been
+   *  published — a refresh that just re-shows the same article would
+   *  feel broken even though it genuinely re-checked. Fetching a few
+   *  real candidates and skipping whichever PMID is already on screen
+   *  makes an explicit refresh click actually show something
+   *  different whenever a real alternative exists, honest when it
+   *  genuinely doesn't (falls back to the same, real top result). */
+  excludePmid?: string,
+): Promise<ResearchArticle | null> {
+  const search = await getJson(
+    buildUrl(config.apiBaseUrl, 'esearch.fcgi', {
+      db: 'pubmed', term, retmode: 'json', retmax: excludePmid ? '5' : '1', sort: 'pub_date',
+    }),
+    signal,
+  );
+  const candidates: string[] = search?.esearchresult?.idlist ?? [];
+  if (candidates.length === 0) return null;
+  const pmid = (excludePmid ? candidates.find(id => id !== excludePmid) : candidates[0]) ?? candidates[0];
+
+  const summary = await getJson(
+    buildUrl(config.apiBaseUrl, 'esummary.fcgi', { db: 'pubmed', id: pmid, retmode: 'json' }),
+    signal,
+  );
+  const record = summary?.result?.[pmid];
+  const title = toPlainText(record?.title ?? '');
+  if (!title) return null;
+
+  return {
+    id: pmid,
+    title,
+    source: toPlainText(record?.source ?? ''),
+    pubdate: toPlainText(record?.pubdate ?? ''),
+    url: config.articleUrlTemplate.replace('{PMID}', pmid),
+  };
+}
+
 export const pubmedResearchFeedService: IResearchFeedService = {
-  async getLatestArticle(signal?: AbortSignal): Promise<ResearchArticle | null> {
+  async getLatestArticle(signal?: AbortSignal, subspecialtyNames?: string[]): Promise<ResearchArticle | null> {
     // URLs and query come from admin config, so an NCBI restructure is an
     // admin edit rather than a release. Every field falls back to its
     // built-in default independently — see the config service.
     const config = await mockResearchFeedConfigService.getConfig();
     if (!config.enabled) return null;
 
-    const cached = readCache();
+    const cacheKey = cacheKeyFor(subspecialtyNames);
+
+    // Real feature, per direct follow-up: a manually pasted-in article
+    // (setFeaturedArticle below) is real, deliberate user intent for
+    // today — never silently overwritten by the periodic auto-refresh
+    // in useLatestResearch.ts just because it happens to run again the
+    // same day.
+    if (isPinned(cacheKey)) {
+      const pinnedArticle = readCache(cacheKey);
+      if (pinnedArticle !== undefined) return pinnedArticle;
+    }
+
+    const cached = readCache(cacheKey);
     if (cached !== undefined) return cached;
 
     // Shared egress IP is currently throttled; do not add to it.
     if (isBackedOff()) return null;
 
     try {
-      // Stage 1 — most recent PMID for the domain query.
-      const search = await getJson(
-        buildUrl(config.apiBaseUrl, 'esearch.fcgi', {
-          db: 'pubmed',
-          term: config.query,
-          retmode: 'json',
-          retmax: '1',
-          sort: 'pub_date',
-        }),
-        signal,
-      );
+      const personalizedTerm = personalizeQuery(config.query, subspecialtyNames);
 
-      const pmid: string | undefined = search?.esearchresult?.idlist?.[0];
-      if (!pmid) {
+      // Real feature, per direct follow-up: try the real, narrowed
+      // intersection (base domain AND the user's own subspecialty)
+      // first — genuinely more personal when it exists. Falls back to
+      // the plain, unpersonalized base query if that intersection is
+      // empty, rather than ever showing nothing just because a
+      // narrow, two-way match doesn't exist today.
+      let article = personalizedTerm ? await fetchLatestForTerm(config, personalizedTerm, signal) : null;
+      if (!article) article = await fetchLatestForTerm(config, config.query, signal);
+
+      if (!article) {
         mockResearchFeedConfigService.recordHealth('empty');
-        writeCache(null);
+        writeCache(cacheKey, null);
         return null;
       }
-
-      // Stage 2 — metadata for that PMID.
-      const summary = await getJson(
-        buildUrl(config.apiBaseUrl, 'esummary.fcgi', { db: 'pubmed', id: pmid, retmode: 'json' }),
-        signal,
-      );
-
-      const record = summary?.result?.[pmid];
-      const title = toPlainText(record?.title ?? '');
-      if (!title) {
-        mockResearchFeedConfigService.recordHealth('empty');
-        writeCache(null);
-        return null;
-      }
-
-      const article: ResearchArticle = {
-        id: pmid,
-        title,
-        source: toPlainText(record?.source ?? ''),
-        pubdate: toPlainText(record?.pubdate ?? ''),
-        url: config.articleUrlTemplate.replace('{PMID}', pmid),
-      };
 
       mockResearchFeedConfigService.recordHealth('success');
-      writeCache(article);
+      writeCache(cacheKey, article);
       return article;
     } catch (error) {
       if (error instanceof RateLimitedError) {
@@ -242,5 +378,92 @@ export const pubmedResearchFeedService: IResearchFeedService = {
     }
   },
 };
+
+/**
+ * Real feature, per direct follow-up: "If they access the article and
+ * then search and find a different article, can we update the pubmed
+ * article link to the new article so they don't have to search
+ * again." A real PMID (already parsed/validated by the caller — see
+ * parsePubMedInput in PubMedTicker.tsx) fetched directly via esummary
+ * (no esearch stage — the caller already knows exactly which article
+ * they want) and pinned as today's featured article for this user's
+ * own real cache key, so the periodic auto-refresh in
+ * useLatestResearch.ts leaves it alone for the rest of the day.
+ */
+export async function setFeaturedArticle(
+  pmid: string,
+  subspecialtyNames?: string[],
+  signal?: AbortSignal,
+): Promise<ResearchArticle | null> {
+  const config = await mockResearchFeedConfigService.getConfig();
+  try {
+    const summary = await getJson(
+      buildUrl(config.apiBaseUrl, 'esummary.fcgi', { db: 'pubmed', id: pmid, retmode: 'json' }),
+      signal,
+    );
+    const record = summary?.result?.[pmid];
+    const title = toPlainText(record?.title ?? '');
+    if (!title) return null;
+
+    const article: ResearchArticle = {
+      id: pmid,
+      title,
+      source: toPlainText(record?.source ?? ''),
+      pubdate: toPlainText(record?.pubdate ?? ''),
+      url: config.articleUrlTemplate.replace('{PMID}', pmid),
+    };
+    writeCache(cacheKeyFor(subspecialtyNames), article, /* pinned */ true);
+    return article;
+  } catch {
+    // Invalid PMID, offline, rate limited — all non-events for this
+    // manual, best-effort action. The caller's own UI shows its own
+    // "couldn't find that article" state; this never throws into it.
+    return null;
+  }
+}
+
+/**
+ * Real feature, per direct follow-up: "by clicking the pubmed button,
+ * I'd like to trigger a refresh of the presented article." A real,
+ * explicit, cache-bypassing re-check — unlike getLatestArticle() above
+ * (which reads the real, still-valid same-day cache first), this
+ * always hits the network, tries the same personalized-then-base
+ * fallback as the automatic path, and skips whichever PMID is
+ * currently on screen when a real alternative exists. Not pinned:
+ * a refresh is "check again right now," a genuinely different intent
+ * from setFeaturedArticle's "I specifically chose this one" — the
+ * periodic 30-minute auto-check in useLatestResearch.ts is fine to
+ * read this back later the same day rather than being locked out of it.
+ */
+export async function refreshFeaturedArticle(
+  currentPmid: string | undefined,
+  subspecialtyNames?: string[],
+  signal?: AbortSignal,
+): Promise<ResearchArticle | null> {
+  const config = await mockResearchFeedConfigService.getConfig();
+  if (!config.enabled) return null;
+
+  try {
+    const personalizedTerm = personalizeQuery(config.query, subspecialtyNames);
+    let article = personalizedTerm ? await fetchLatestForTerm(config, personalizedTerm, signal, currentPmid) : null;
+    if (!article) article = await fetchLatestForTerm(config, config.query, signal, currentPmid);
+
+    if (!article) {
+      mockResearchFeedConfigService.recordHealth('empty');
+      return null;
+    }
+    mockResearchFeedConfigService.recordHealth('success');
+    writeCache(cacheKeyFor(subspecialtyNames), article, /* pinned */ false);
+    return article;
+  } catch (error) {
+    if (error instanceof RateLimitedError) {
+      startBackoff();
+      mockResearchFeedConfigService.recordHealth('rate-limited');
+    } else {
+      mockResearchFeedConfigService.recordHealth('error');
+    }
+    return null;
+  }
+}
 
 export default pubmedResearchFeedService;

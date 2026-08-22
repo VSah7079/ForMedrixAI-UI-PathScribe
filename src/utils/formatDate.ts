@@ -129,6 +129,22 @@ export function formatRelative(iso: string | undefined, locale?: string): string
   return formatDate(iso, locale);
 }
 
+/** Real feature, per direct follow-up: "Maybe time in military
+ *  style? Will it reflect regional preference for date?" Exposes the
+ *  same real 12h/24h detection formatDateTime already uses
+ *  internally (localeToJurisdiction below), so a caller that needs a
+ *  DIFFERENT date/time SHAPE than formatDateTime's own fixed one
+ *  (e.g. a compact, no-year timestamp for a short-duration log) can
+ *  still reuse the real, shared jurisdiction logic for whether that
+ *  format should be 12h or 24h — instead of re-deriving that decision
+ *  independently, which would risk silently drifting from this file's
+ *  own real source of truth the moment one changes without the
+ *  other. */
+export function is24HourForLocale(locale?: string): boolean {
+  const j = localeToJurisdiction(locale);
+  return j ? timeFormatForJurisdiction(j) === '24h' : false;
+}
+
 // ── Internal helper ───────────────────────────────────────────────────────────
 
 /** Best-effort reverse lookup: locale string → Jurisdiction.

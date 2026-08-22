@@ -465,6 +465,56 @@ describe('processAdtMessage — real feature, per direct confirmation: working t
     expect(enc.ok && enc.data?.admitSource).toBe('EMR');
   });
 
+  // Real feature, per direct, detailed correction: DG1 is its own,
+  // dedicated segment, legitimately riding with A01/A04/A05
+  // (creation) and A08 (update) — end-to-end coverage through the
+  // real parser AND the real service, not just one or the other.
+  it('a real DG1 riding with A01 creates the encounter with real diagnoses attached', async () => {
+    const a01WithDg1 = [
+      buildAdtEvent('A01', 'MRN-EVTDG1', 'MAIN_CAMPUS', 'FIN-EVTDG1'),
+      'DG1|1|I10|E11.9^Type 2 diabetes mellitus without complications^I10|Type 2 Diabetes||A',
+    ].join('\r');
+    const result = await processAdtMessage(a01WithDg1, 'ORG-A', 'FAC-A');
+    expect(result.encounterId).toBeTruthy();
+
+    const enc = await mockEncounterService.getById(result.encounterId!);
+    expect(enc.ok && enc.data?.diagnoses).toEqual([
+      { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications', codingSystem: 'I10', diagnosisType: 'A' },
+    ]);
+  });
+
+  it('a real A01 with no DG1 creates an encounter with genuinely no diagnoses — most real ADT traffic won\'t carry one', async () => {
+    const result = await processAdtMessage(buildAdtEvent('A01', 'MRN-EVTNODG1', 'MAIN_CAMPUS', 'FIN-EVTNODG1'), 'ORG-A', 'FAC-A');
+    const enc = await mockEncounterService.getById(result.encounterId!);
+    expect(enc.ok && enc.data?.diagnoses).toBeUndefined();
+  });
+
+  it('a real DG1 riding with a later A08 updates the diagnoses on the real, EXISTING encounter — the same real gap PV1-10/14/20 metadata had before this event type\'s own effect was wired in', async () => {
+    const a01Result = await processAdtMessage(buildAdtEvent('A01', 'MRN-EVT08DG1', 'MAIN_CAMPUS', 'FIN-EVT08DG1'), 'ORG-A', 'FAC-A');
+
+    const a08WithDg1 = [
+      'MSH|^~\\&|EPIC|EPICADT|SMS|SMSADT|202601161000|CHARRIS|ADT^A08|MSG-A08DG1|P|2.5',
+      'EVN||202601161000',
+      'PID|1||MRN-EVT08DG1^^^MAIN_CAMPUS^MR||GARCIA^MARIA^L||19901105|F',
+      'PV1|1|I|ICU^301^A^MAIN_CAMPUS||||9876543^WILLIAMS^CAROL^L^^^MD||||||||||||FIN-EVT08DG1',
+      'DG1|1|I10|J45.909^Unspecified asthma, uncomplicated^I10|Asthma||F',
+    ].join('\r');
+    const a08Result = await processAdtMessage(a08WithDg1, 'ORG-A', 'FAC-A');
+    expect(a08Result.encounterId).toBe(a01Result.encounterId);
+    expect(a08Result.encounterDiagnosesApplied).toBe(true);
+
+    const enc = await mockEncounterService.getById(a01Result.encounterId!);
+    expect(enc.ok && enc.data?.diagnoses).toEqual([
+      { code: 'J45.909', description: 'Unspecified asthma, uncomplicated', codingSystem: 'I10', diagnosisType: 'F' },
+    ]);
+  });
+
+  it('an A08 with no DG1 leaves encounterDiagnosesApplied genuinely undefined — never calls updateDiagnoses when the message carried nothing to apply', async () => {
+    await processAdtMessage(buildAdtEvent('A01', 'MRN-EVT08NODG1', 'MAIN_CAMPUS', 'FIN-EVT08NODG1'), 'ORG-A', 'FAC-A');
+    const a08Result = await processAdtMessage(buildAdtEvent('A08', 'MRN-EVT08NODG1', 'MAIN_CAMPUS', 'FIN-EVT08NODG1'), 'ORG-A', 'FAC-A');
+    expect(a08Result.encounterDiagnosesApplied).toBeUndefined();
+  });
+
   it('a genuinely stale, out-of-order event is honestly rejected for the new event types too — same sequence-control discipline as updateStatus', async () => {
     // Real fix: this test originally used static, hardcoded
     // identifiers ('MRN-EVT-STALE'/'FIN-EVT-STALE'), violating this

@@ -22,7 +22,8 @@ import { getFacilityDateParts } from '@/utils/facilityTime';
 import { isUrgentCase } from '@/utils/caseUrgency';
 import { AmendedAddendaTriageTile } from './AmendedAddendaTriageTile';
 import { flagService }    from '@/services';
-import { amendmentService, lisAmendmentNoticeService } from '@/services';
+import { amendmentService, lisAmendmentNoticeService, informalReviewService } from '@/services';
+import type { AmendmentType } from '@/types/reports/AmendmentRecord';
 import { Flag }           from '@/services/flags/IFlagService';
 
 // Single source of truth for both the page title above the table and
@@ -40,22 +41,35 @@ const FILTER_LABELS: Record<string, string> = {
   all:           'Active Cases',
   urgent:        'Urgent',
   pool:          'Pool Cases',
-  delegated:     'Delegated to Me',
-  countersign:   'Awaiting My Countersign',
+  // Real feature, per direct follow-up: "The Tile titles are getting
+  // cut off with no ... Maybe consider abbreviation." Shortened the
+  // real worst offenders (longest labels, most likely to actually
+  // need it) rather than every label indiscriminately — a label that
+  // already fits doesn't need shortening just because others do.
+  // 'Amend & Addenda' keeps the same, deliberate both-types clarity
+  // the original 'Amendment & Addenda' wording was fixed to convey
+  // (see the Worklist Filters item this was built for) — just
+  // shortened the one long word, not dropped either type.
+  delegated:     'Delegated',
+  countersign:   'Awaiting Countersign',
   // Real feature, per direct specification: Post-Sign-Out Release
   // Buffer. Same real "queue that's specifically mine" pattern as
   // countersign above — where a pathologist finds a case they might
   // need to recall before it releases.
   pendingrelease: 'Queued for Release',
-  review:        'Needs Review',
   inprogress:    'In Progress',
   draft:         'Draft',
   finalizing:    'Finalizing',
-  amended:       'Amendment & Addenda',
+  amended:       'Amend & Addenda',
+  informalreview: 'Informal Review',
   completed:     'Completed Today',
   physician:     'Physician View',
   accessioned:   'Awaiting Grossing',
   grosscomplete: 'Gross Complete',
+  // Real feature, per direct follow-up: "putting a case on Hold at
+  // the case level makes sense if there is something truly wrong...
+  // add a tile in their worklist for Cases on Hold."
+  onhold:        'Cases on Hold',
 };
 
 const WorklistPage: React.FC = () => {
@@ -83,7 +97,7 @@ const WorklistPage: React.FC = () => {
   }, [contextFilter]);
 
   // activeFilter:  which sub-filter within that context
-  const [activeFilter, setActiveFilter]       = useState<'all' | 'review' | 'completed' | 'urgent' | 'physician' | 'pool' | 'delegated' | 'inprogress' | 'amended' | 'draft' | 'finalizing' | 'accessioned' | 'grosscomplete' | 'countersign' | 'pendingrelease'>('all');
+  const [activeFilter, setActiveFilter]       = useState<'all' | 'completed' | 'urgent' | 'physician' | 'pool' | 'delegated' | 'inprogress' | 'amended' | 'draft' | 'finalizing' | 'accessioned' | 'grosscomplete' | 'countersign' | 'pendingrelease' | 'informalreview' | 'onhold'>('all');
   const [realCases, setRealCases]             = useState<Case[]>([]);
 
   // Note: orchestrator mode flag read via localStorage when needed at case open
@@ -95,7 +109,23 @@ const WorklistPage: React.FC = () => {
   // missed open addendum drafts (the S26-4401 gap). Same two calls
   // AmendedAddendaTriageTile already makes — see
   // AMENDMENT_STATUS_REDESIGN_BRIEF.md.
-  const [amendmentAddendaCaseIds, setAmendmentAddendaCaseIds] = useState<Set<string>>(new Set());
+  // Real feature, per direct follow-up: "we could segment the filter
+  // results into those subgroups... Amendment and Correction at the
+  // top followed by Addenda." Changed from a bare Set<string> to a
+  // Map carrying each case's real revision type — needed to actually
+  // group the filtered results, not just know which cases matched.
+  // 'notice' covers LisAmendmentNotice records specifically: those are
+  // pending_review LIS-detected changes the pathologist hasn't yet
+  // decided how to act on — genuinely not yet any of amendment/
+  // addendum/correction, not a type to guess at.
+  const [amendmentAddendaCaseIds, setAmendmentAddendaCaseIds] = useState<Map<string, AmendmentType | 'notice'>>(new Map());
+  // Real feature, per direct follow-up: "I want to queue these
+  // informal requests on the worklist with a Tile." Real, pending
+  // InformalReviewRequest records assigned to the current user as
+  // reviewer - a genuinely separate concept from amendmentAddendaCaseIds
+  // above (which tracks amendment/addendum/correction work, not
+  // informal peer-review asks).
+  const [informalReviewCaseIds, setInformalReviewCaseIds] = useState<Set<string>>(new Set());
   const [physicianFilter, setPhysicianFilter] = useState<string>('');
   const [physicianPrompt, setPhysicianPrompt] = useState<string | null>(null);
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
@@ -171,17 +201,70 @@ const WorklistPage: React.FC = () => {
   }, [user?.id, location.key, CURRENT_USER_ID]);
 
   useEffect(() => {
-    if (!user?.id) { setAmendmentAddendaCaseIds(new Set()); return; }
+    if (!user?.id) { setAmendmentAddendaCaseIds(new Map()); return; }
     Promise.all([
       lisAmendmentNoticeService.getPendingForPathologist(user.id),
       amendmentService.getOpenDraftsForPathologist(user.id),
     ]).then(([noticesRes, draftsRes]) => {
-      const ids = new Set<string>();
-      if (noticesRes.ok) for (const n of noticesRes.data) ids.add(n.caseId);
-      if (draftsRes.ok)  for (const d of draftsRes.data)  ids.add(d.caseId);
+      const ids = new Map<string, AmendmentType | 'notice'>();
+      // Real, deliberate order: draft records set first, notices second
+      // but only fill in a case that isn't already covered by a real
+      // draft — a case with both an open draft AND a pending notice is
+      // more accurately represented by the draft's own, real type than
+      // by 'notice', since the pathologist has already started acting
+      // on it.
+      if (draftsRes.ok)  for (const d of draftsRes.data)  ids.set(d.caseId, d.type);
+      if (noticesRes.ok) for (const n of noticesRes.data) if (!ids.has(n.caseId)) ids.set(n.caseId, 'notice');
       setAmendmentAddendaCaseIds(ids);
     }).catch(() => {});
   }, [user?.id, location.key]);
+
+  // Real feature, per direct follow-up: populates the Informal Review
+  // tile's real, pending count/case set - same real
+  // getPendingForReviewer() call the Worklist tile itself needs.
+  useEffect(() => {
+    if (!user?.id) { setInformalReviewCaseIds(new Set()); return; }
+    informalReviewService.getPendingForReviewer(user.id).then(res => {
+      if (res.ok) setInformalReviewCaseIds(new Set(res.data.map(r => r.caseId)));
+    }).catch(() => {});
+  }, [user?.id, location.key]);
+
+  // Real fix, per direct follow-up: "A case could be sitting in the
+  // queue for an informal review." Confirmed directly: delegatedCaseIds
+  // / amendmentAddendaCaseIds / informalReviewCaseIds were only ever
+  // used to FILTER cases already present in realCases (from
+  // listCasesForUser's own narrow assignedTo-or-pool rule) — never to
+  // EXPAND that set. A case delegated to, or awaiting informal review
+  // by, someone who is neither the assigned pathologist nor pulling
+  // from the pool would never actually appear in their Worklist at
+  // all — defeating the entire point of those features, which is
+  // specifically asking someone who ISN'T already on the case to look
+  // at it. Fetches any referenced case genuinely missing from
+  // realCases and merges it in. Purely additive — never removes or
+  // reorders what listCasesForUser already returned; converges to a
+  // no-op once every referenced case is present, since a case already
+  // in realCases can never become "missing" again.
+  useEffect(() => {
+    const referencedIds = new Set<string>([
+      ...delegatedCaseIds,
+      ...amendmentAddendaCaseIds.keys(),
+      ...informalReviewCaseIds,
+    ]);
+    const existingIds = new Set(realCases.map(c => c.id));
+    const missingIds = [...referencedIds].filter(id => id && !existingIds.has(id));
+    if (missingIds.length === 0) return;
+    Promise.all(missingIds.map(id => caseRouter.getCase(id, user?.id ?? 'current')))
+      .then(fetched => {
+        const validCases = fetched.filter((c): c is Case => !!c);
+        if (validCases.length === 0) return;
+        setRealCases(prev => {
+          const prevIds = new Set(prev.map(c => c.id));
+          const newOnes = validCases.filter(c => !prevIds.has(c.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      })
+      .catch(() => {});
+  }, [delegatedCaseIds, amendmentAddendaCaseIds, informalReviewCaseIds, realCases, user?.id]);
 
   // Auto-clear the "Access requested" badge for any case that is no longer restricted
   useEffect(() => {
@@ -383,12 +466,13 @@ const WorklistPage: React.FC = () => {
       if (activeFilter === 'all')        return true;
       if (c.status === 'pool')           return activeFilter === 'urgent' && isUrgentCase(c);
       if (activeFilter === 'urgent')     return isUrgentCase(c);
-      if (activeFilter === 'review')     return c.status === 'pending-review';
       if (activeFilter === 'draft')      return c.status === 'draft';
       if (activeFilter === 'inprogress') return c.status === 'in-progress';
       if (activeFilter === 'amended')    return amendmentAddendaCaseIds.has(c.id);
+      if (activeFilter === 'informalreview') return informalReviewCaseIds.has(c.id);
       if (activeFilter === 'accessioned')   return c.status === 'accessioned';
       if (activeFilter === 'grosscomplete') return c.status === 'gross-complete';
+      if (activeFilter === 'onhold')        return (c.caseHolds ?? []).some(h => h.active);
       if (activeFilter === 'physician')  return (c.order?.requestingProvider ?? '').toLowerCase().includes(physicianFilter.toLowerCase());
       // Real fix: this branch previously only checked c.status ===
       // 'finalized' with no real "today" restriction at all, despite
@@ -427,7 +511,7 @@ const WorklistPage: React.FC = () => {
       if (activeFilter === 'pendingrelease') return c.status === 'pending-release' && (c as any).finalizedBy === user?.id;
       return true;
     });
-  }, [sourceCases, activeFilter, physicianFilter, amendmentAddendaCaseIds, delegatedCaseIds, user?.id, config.facilityTimezone]);
+  }, [sourceCases, activeFilter, physicianFilter, amendmentAddendaCaseIds, informalReviewCaseIds, delegatedCaseIds, user?.id, config.facilityTimezone]);
 
   // Stats — always from sourceCases so tile counts match the current context
   const statsCases   = sourceCases;
@@ -439,7 +523,13 @@ const WorklistPage: React.FC = () => {
   // gap: the tile could read "4" with 2 more urgent cases waiting,
   // unassigned, with zero indication they existed. Same statsCases
   // source as the main urgent count, just the pool half of it.
-  const urgentRestrictedCount = React.useMemo(
+  //
+  // Real fix, per direct follow-up: this was previously named
+  // urgentRestrictedCount and displayed as "X Restricted" — genuinely
+  // misleading, since this app has a real, separate "Restricted
+  // Patient" concept (pediatric access gating) that this has nothing
+  // to do with. Renamed to say what it actually counts.
+  const urgentPoolCount = React.useMemo(
     () => statsCases.filter(c => c.status === 'pool' && canViewCase(c) && isUrgentCase(c)).length,
     [statsCases, canViewCase]);
 
@@ -456,12 +546,18 @@ const WorklistPage: React.FC = () => {
     outreach:       orchCases.length,
     urgent:         nonPoolStats.filter(c => isUrgentCase(c)).length,
     inProgress:     nonPoolStats.filter(c => c.status === 'in-progress').length,
-    needsReview:    nonPoolStats.filter(c => c.status === 'pending-review').length,
     amended:        nonPoolStats.filter(c => amendmentAddendaCaseIds.has(c.id)).length,
+    informalReview: nonPoolStats.filter(c => informalReviewCaseIds.has(c.id)).length,
     draft:          nonPoolStats.filter(c => c.status === 'draft').length,
     finalizing:     nonPoolStats.filter(c => c.status === 'finalizing').length,
     accessioned:    nonPoolStats.filter(c => c.status === 'accessioned').length,
     grossComplete:  nonPoolStats.filter(c => c.status === 'gross-complete').length,
+    // Real feature, per direct follow-up: "add a tile in their
+    // worklist for Cases on Hold." Reads Case.caseHolds directly —
+    // the same real data every case already carries, no separate
+    // service query needed (unlike informalReviewCaseIds below, which
+    // does need one).
+    onHold:         nonPoolStats.filter(c => (c.caseHolds ?? []).some(h => h.active)).length,
     completedToday: nonPoolStats.filter(c => {
       if (c.status !== 'finalized') return false;
       if (!c.updatedAt) return false;
@@ -566,7 +662,6 @@ const WorklistPage: React.FC = () => {
     // Filter commands — reset selection when filter changes
     const filterUrgent    = () => { setActiveFilter('urgent');    setSelectedIndex(-1); setSelectedCaseId(null); };
     const filterCompleted = () => { setActiveFilter('completed'); setSelectedIndex(-1); setSelectedCaseId(null); };
-    const filterReview    = () => { setActiveFilter('review');    setSelectedIndex(-1); setSelectedCaseId(null); };
     const clearFilter     = () => { setActiveFilter('all');       setSelectedIndex(-1); setSelectedCaseId(null); };
 
     // Sort commands — forward to WorklistTable's internal sort system via custom events
@@ -591,23 +686,33 @@ const WorklistPage: React.FC = () => {
     const openResources = () => setIsResourcesOpen(true);
 
     const worklistState = { worklistCaseIds: filteredCases.map(c => c.id) };
+    // Real feature, per direct follow-up: same routing rule openCase
+    // in WorklistTable.tsx applies for mouse clicks - voice-driven
+    // navigation needs to stay consistent, not silently bypass it.
+    const openCaseId = (id: string) => {
+      if (activeFilter === 'informalreview') {
+        navigate(`/report/${id}`, { state: { fromFilter: activeFilter, openInternalNotes: true } });
+      } else {
+        navigate(`/case/${id}/synoptic`, { state: worklistState });
+      }
+    };
 
     const openSelected = () => {
       if (selectedIndex >= 0 && filteredCases[selectedIndex]) {
-        navigate(`/case/${filteredCases[selectedIndex].id}/synoptic`, { state: worklistState });
+        openCaseId(filteredCases[selectedIndex].id);
       }
     };
 
     const nextCase = () => {
       const idx = clamp(ensureSelection(selectedIndex) + 1);
       syncId(idx);
-      navigate(`/case/${filteredCases[idx].id}/synoptic`, { state: worklistState });
+      openCaseId(filteredCases[idx].id);
     };
 
     const prevCase = () => {
       const idx = clamp(ensureSelection(selectedIndex) - 1);
       syncId(idx);
-      navigate(`/case/${filteredCases[idx].id}/synoptic`, { state: worklistState });
+      openCaseId(filteredCases[idx].id);
     };
 
     window.addEventListener('PATHSCRIBE_TABLE_NEXT',             next);
@@ -621,7 +726,6 @@ const WorklistPage: React.FC = () => {
     window.addEventListener('PATHSCRIBE_TABLE_FILTER_URGENT',    filterUrgent);
     window.addEventListener('PATHSCRIBE_TABLE_FILTER_COMPLETED', filterCompleted);
     window.addEventListener('PATHSCRIBE_TABLE_CLEAR_FILTER',     clearFilter);
-    window.addEventListener('PATHSCRIBE_TABLE_FILTER_REVIEW',    filterReview);
     window.addEventListener('PATHSCRIBE_TABLE_FILTER_PHYSICIAN', filterPhysician);
     window.addEventListener('PATHSCRIBE_READ_FLAGS',             readFlags);
     window.addEventListener('PATHSCRIBE_READ_SPECIMEN',          readSpecimen);
@@ -650,7 +754,6 @@ const WorklistPage: React.FC = () => {
       window.removeEventListener('PATHSCRIBE_TABLE_FILTER_URGENT',    filterUrgent);
       window.removeEventListener('PATHSCRIBE_TABLE_FILTER_COMPLETED', filterCompleted);
       window.removeEventListener('PATHSCRIBE_TABLE_CLEAR_FILTER',     clearFilter);
-      window.removeEventListener('PATHSCRIBE_TABLE_FILTER_REVIEW',    filterReview);
       window.removeEventListener('PATHSCRIBE_TABLE_FILTER_PHYSICIAN', filterPhysician);
       window.removeEventListener('PATHSCRIBE_READ_FLAGS',             readFlags);
       window.removeEventListener('PATHSCRIBE_READ_SPECIMEN',          readSpecimen);
@@ -686,37 +789,42 @@ const WorklistPage: React.FC = () => {
             {/* ── Header: Row 1 = Title + Search, Row 2 = Mode tiles + Filter tiles ── */}
             <div data-capture-hide="true" className="ps-wl-header" style={{ marginBottom: '12px', flexShrink: 0 }}>
 
-              {/* Row 1 — Title left, Search right */}
-              <div className="ps-wl-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '10px' }}>
-                <h1 style={{ fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
-                  {FILTER_LABELS[activeFilter] ?? 'Active Cases'}
-                </h1>
-
-              </div>
-
-              {/* Row 2 — Mode tiles left, Filter tiles right, same row = visual alignment */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0', minWidth: 0, paddingTop: '3px' }}>
+              {/* Row 1 — Real feature, per direct follow-up: "move the two
+                  main Tiles (LIS Cases and OutReach) up a line and to the
+                  left of the Title. This will give more breathing room for
+                  the other tiles." LIS Cases/Outreach are genuinely
+                  different from the filter tiles to their right below —
+                  they're a scope switch (which whole case population
+                  you're looking at), not a status filter — so pairing them
+                  with the title, rather than competing with the filter
+                  strip for the same row's width, is a real, correct
+                  grouping too, not just a space trick. */}
+              <div className="ps-wl-header-row">
 
                 {/* Left: LIS Cases + Outreach */}
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch', flexShrink: 0 }}>
+                <div className="ps-wl-mode-tiles">
                   {/* LIS TILE */}
                   {(() => {
                     const isActive  = contextFilter === 'lis';
                     const showBadge = contextFilter === 'outreach';
                     return (
                       <button
+                        className="ps-wl-mode-tile"
                         title={isActive ? 'Currently in LIS Cases' : 'Switch to LIS Cases'}
                         onClick={() => { setContextFilter('lis'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
-                        style={{ background: isActive ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${isActive ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.14)'}`, borderRadius: '8px', padding: '6px 10px', backdropFilter: 'blur(10px)', minWidth: '80px', height: '61px', cursor: 'pointer', transition: 'all 0.15s ease', textAlign: 'left' as const, outline: 'none',  display: 'flex', alignItems: 'center', gap: '8px' }}
+                        style={{
+                          '--tile-bg': isActive ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)',
+                          '--tile-border': isActive ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.14)',
+                        } as React.CSSProperties}
                       >
-                        <div style={{ flex: '0 0 auto' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: isActive ? '#e2e8f0' : '#8899aa', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>LIS Cases</div>
-                          <div style={{ fontSize: '20px', fontWeight: 800, color: '#e2e8f0', lineHeight: 1 }}>{lisNonPoolCount}</div>
+                        <div className="ps-wl-mode-tile__main">
+                          <div className="ps-wl-mode-tile__label" style={{ '--tile-label-color': isActive ? '#e2e8f0' : '#8899aa' } as React.CSSProperties}>LIS Cases</div>
+                          <div className="ps-wl-mode-tile__count" style={{ '--tile-count-color': '#e2e8f0' } as React.CSSProperties}>{lisNonPoolCount}</div>
                         </div>
                         {showBadge && (lisUrgentCount > 0 || lisPoolCount > 0) && (
-                          <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: '3px' }}>
-                            {lisUrgentCount > 0 && <span style={{ fontSize: '9px', fontWeight: 900, color: '#EF4444', letterSpacing: '0.6px', textTransform: 'uppercase', lineHeight: 1 }}>Urgent</span>}
-                            {lisPoolCount > 0 && <span style={{ fontSize: '9px', fontWeight: 900, color: hasUrgentLisPool ? '#EF4444' : '#F97316', letterSpacing: '0.6px', textTransform: 'uppercase', lineHeight: 1 }}>Pool</span>}
+                          <div className="ps-wl-mode-tile__badges">
+                            {lisUrgentCount > 0 && <span className="ps-wl-mode-tile__badge" style={{ '--badge-color': '#EF4444' } as React.CSSProperties}>Urgent</span>}
+                            {lisPoolCount > 0 && <span className="ps-wl-mode-tile__badge" style={{ '--badge-color': hasUrgentLisPool ? '#EF4444' : '#F97316' } as React.CSSProperties}>Pool</span>}
                           </div>
                         )}
                       </button>
@@ -729,18 +837,23 @@ const WorklistPage: React.FC = () => {
                     const poolColor = hasUrgentPool ? '#EF4444' : '#F97316';
                     return (
                       <button
+                        className="ps-wl-mode-tile"
                         title={isActive ? 'Currently in Outreach Cases' : 'Switch to Outreach Cases'}
                         onClick={() => { setContextFilter('outreach'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
-                        style={{ background: isActive ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.05)', border: `1.5px solid ${isActive ? '#F59E0B' : 'rgba(245,158,11,0.18)'}`, boxShadow: isActive ? '0 0 12px rgba(245,158,11,0.4)' : 'none', borderRadius: '8px', padding: '6px 10px', backdropFilter: 'blur(10px)', minWidth: '80px', height: '61px', cursor: 'pointer', transition: 'all 0.15s ease', textAlign: 'left' as const, outline: 'none',  display: 'flex', alignItems: 'center', gap: '8px' }}
+                        style={{
+                          '--tile-bg': isActive ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.05)',
+                          '--tile-border': isActive ? '#F59E0B' : 'rgba(245,158,11,0.18)',
+                          '--tile-shadow': isActive ? '0 0 12px rgba(245,158,11,0.4)' : 'none',
+                        } as React.CSSProperties}
                       >
-                        <div style={{ flex: '0 0 auto' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: isActive ? '#F59E0B' : '#8899aa', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Outreach</div>
-                          <div style={{ fontSize: '20px', fontWeight: 800, color: '#F59E0B', lineHeight: 1 }}>{orchAssignedCount}</div>
+                        <div className="ps-wl-mode-tile__main">
+                          <div className="ps-wl-mode-tile__label" style={{ '--tile-label-color': isActive ? '#F59E0B' : '#8899aa' } as React.CSSProperties}>Outreach</div>
+                          <div className="ps-wl-mode-tile__count" style={{ '--tile-count-color': '#F59E0B' } as React.CSSProperties}>{orchAssignedCount}</div>
                         </div>
                         {showBadge && (orchUrgentCount > 0 || orchPoolCount > 0) && (
-                          <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: '3px' }}>
-                            {orchUrgentCount > 0 && <span style={{ fontSize: '9px', fontWeight: 900, color: '#EF4444', letterSpacing: '0.6px', textTransform: 'uppercase', lineHeight: 1 }}>Urgent</span>}
-                            {orchPoolCount > 0 && <span style={{ fontSize: '9px', fontWeight: 900, color: poolColor, letterSpacing: '0.6px', textTransform: 'uppercase', lineHeight: 1 }}>Pool</span>}
+                          <div className="ps-wl-mode-tile__badges">
+                            {orchUrgentCount > 0 && <span className="ps-wl-mode-tile__badge" style={{ '--badge-color': '#EF4444' } as React.CSSProperties}>Urgent</span>}
+                            {orchPoolCount > 0 && <span className="ps-wl-mode-tile__badge" style={{ '--badge-color': poolColor } as React.CSSProperties}>Pool</span>}
                           </div>
                         )}
                       </button>
@@ -748,72 +861,90 @@ const WorklistPage: React.FC = () => {
                   })()}
                 </div>
 
-                {/* Right: filter tiles */}
+                <h1 className="ps-wl-title">
+                  {FILTER_LABELS[activeFilter] ?? 'Active Cases'}
+                </h1>
+
+              </div>
+
+              {/* Row 2 — filter tiles now have the full row's width to
+                  themselves, real breathing room instead of sharing it
+                  with the LIS Cases/Outreach tiles above. */}
+              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, paddingTop: '3px' }}>
+
+                {/* Filter tiles */}
                 <div className="ps-wl-filter-strip" style={{ display: 'flex', gap: '6px', alignItems: 'center', overflowX: 'auto', flexShrink: 1, minWidth: 0, paddingBottom: '2px', paddingTop: '2px' }}>
 
                 {([
-                  { key: 'pool',       label: activeFilter === 'pool'       ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.pool,      count: stats.pool,           color: '#F97316', bg: 'rgba(249,115,22,0.05)',  border: 'rgba(249,115,22,0.18)',  activeBg: 'rgba(249,115,22,0.18)',  activeBorder: '#F97316',  glow: '0 0 12px rgba(249,115,22,0.4)',  sublabel: undefined },
-                  { key: 'delegated',  label: activeFilter === 'delegated'  ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.delegated, count: delegatedToMeCount,   color: '#38bdf8', bg: 'rgba(56,189,248,0.05)',  border: 'rgba(56,189,248,0.18)',  activeBg: 'rgba(56,189,248,0.18)',  activeBorder: '#38bdf8',  glow: '0 0 12px rgba(56,189,248,0.4)',  sublabel: undefined },
-                  { key: 'countersign', label: activeFilter === 'countersign' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.countersign, count: countersignPendingCount, color: '#a78bfa', bg: 'rgba(167,139,250,0.05)', border: 'rgba(167,139,250,0.18)', activeBg: 'rgba(167,139,250,0.18)', activeBorder: '#a78bfa', glow: '0 0 12px rgba(167,139,250,0.4)', sublabel: undefined },
+                  // Real fix, per direct accessibility follow-up: "Let's
+                  // not use the same color for two different tiles. How
+                  // are we dealing with colorblindness here?" Confirmed
+                  // quantitatively (Euclidean distance under simulated
+                  // deuteranopia/protanopia): pool vs Outreach's own
+                  // summary color, delegated vs countersign, and
+                  // pendingrelease vs inprogress were all genuinely close
+                  // to indistinguishable for red-green colorblind users —
+                  // review vs Outreach specifically at 4.5/5.1 distance,
+                  // essentially the same color. Fixed as a genuine
+                  // two-channel problem (fill hue AND border hue, not
+                  // fill alone) after confirming 15 mutually-distinct
+                  // hues don't fit the wheel with real separation margin.
+                  // review/delegated get real new fill colors; pool/
+                  // pendingrelease/inprogress/amended keep their original
+                  // fill (preserving existing visual identity/muscle
+                  // memory) and get a distinct border instead. Per direct,
+                  // explicit rule: red stays exclusive to the urgent tile
+                  // — no other tile's fill or border uses it, including
+                  // during this fix.
+                  { key: 'pool',       label: activeFilter === 'pool'       ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.pool,      count: stats.pool,           color: '#F97316', bg: 'rgba(249,115,22,0.05)',  border: 'rgba(38,217,74,0.18)',  activeBg: 'rgba(249,115,22,0.18)',  activeBorder: '#26D94A',  glow: '0 0 12px rgba(38,217,74,0.4)',  sublabel: undefined },
+                  { key: 'delegated',  label: activeFilter === 'delegated'  ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.delegated, count: delegatedToMeCount,   color: '#E4F042', bg: 'rgba(228,240,66,0.05)',  border: 'rgba(228,240,66,0.18)',  activeBg: 'rgba(228,240,66,0.18)',  activeBorder: '#E4F042',  glow: '0 0 12px rgba(228,240,66,0.4)',  sublabel: undefined },
+                  { key: 'countersign', label: activeFilter === 'countersign' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.countersign, count: countersignPendingCount, color: '#AB1CE3', bg: 'rgba(171,28,227,0.05)', border: 'rgba(171,28,227,0.18)', activeBg: 'rgba(171,28,227,0.18)', activeBorder: '#AB1CE3', glow: '0 0 12px rgba(171,28,227,0.4)', sublabel: undefined },
                   // Real feature, per direct specification: Post-Sign-Out
                   // Release Buffer. Same real "queue that's specifically
                   // mine" pattern as countersign immediately above — where
                   // a pathologist finds a case they might need to recall
                   // before it releases. Teal matches HeaderBar.tsx's own
                   // dedicated pending-release color, for cross-page
-                  // consistency.
-                  { key: 'pendingrelease', label: activeFilter === 'pendingrelease' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.pendingrelease, count: pendingReleaseCount, color: '#06b6d4', bg: 'rgba(6,182,212,0.05)', border: 'rgba(6,182,212,0.18)', activeBg: 'rgba(6,182,212,0.18)', activeBorder: '#06b6d4', glow: '0 0 12px rgba(6,182,212,0.4)', sublabel: undefined },
-                  { key: 'urgent',     label: activeFilter === 'urgent'     ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.urgent,          count: stats.urgent,         color: '#EF4444', bg: 'rgba(239,68,68,0.05)',   border: 'rgba(239,68,68,0.18)',   activeBg: 'rgba(239,68,68,0.18)',   activeBorder: '#EF4444',  glow: '0 0 12px rgba(239,68,68,0.4)',   sublabel: urgentRestrictedCount > 0 ? `${urgentRestrictedCount} Restricted` : undefined },
-                  { key: 'inprogress', label: activeFilter === 'inprogress' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.inprogress,     count: stats.inProgress,     color: '#0891B2', bg: 'rgba(8,145,178,0.05)',   border: 'rgba(8,145,178,0.18)',   activeBg: 'rgba(8,145,178,0.18)',   activeBorder: '#0891B2',  glow: '0 0 12px rgba(8,145,178,0.4)',   sublabel: undefined },
-                  { key: 'accessioned',   label: activeFilter === 'accessioned'   ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.accessioned, count: stats.accessioned,   color: '#6366F1', bg: 'rgba(99,102,241,0.05)',  border: 'rgba(99,102,241,0.18)',  activeBg: 'rgba(99,102,241,0.18)',  activeBorder: '#6366F1',  glow: '0 0 12px rgba(99,102,241,0.4)',  sublabel: undefined },
-                  { key: 'grosscomplete', label: activeFilter === 'grosscomplete' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.grosscomplete,    count: stats.grossComplete, color: '#14B8A6', bg: 'rgba(20,184,166,0.05)',  border: 'rgba(20,184,166,0.18)',  activeBg: 'rgba(20,184,166,0.18)',  activeBorder: '#14B8A6',  glow: '0 0 12px rgba(20,184,166,0.4)',  sublabel: undefined },
-                  { key: 'review',     label: activeFilter === 'review'     ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.review,    count: stats.needsReview,    color: '#EAB308', bg: 'rgba(234,179,8,0.05)',  border: 'rgba(234,179,8,0.18)',  activeBg: 'rgba(234,179,8,0.18)',  activeBorder: '#EAB308',  glow: '0 0 12px rgba(245,158,11,0.4)',  sublabel: undefined },
-                  { key: 'amended',    label: activeFilter === 'amended'    ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.amended, count: stats.amended,        color: '#7C3AED', bg: 'rgba(124,58,237,0.05)',  border: 'rgba(124,58,237,0.18)',  activeBg: 'rgba(124,58,237,0.18)',  activeBorder: '#7C3AED',  glow: '0 0 12px rgba(124,58,237,0.4)',  sublabel: undefined },
+                  // consistency. Border color deliberately differs from
+                  // fill — see the accessibility fix note above.
+                  { key: 'pendingrelease', label: activeFilter === 'pendingrelease' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.pendingrelease, count: pendingReleaseCount, color: '#1C8DE3', bg: 'rgba(28,141,227,0.05)', border: 'rgba(74,217,38,0.18)', activeBg: 'rgba(28,141,227,0.18)', activeBorder: '#4AD926', glow: '0 0 12px rgba(74,217,38,0.4)', sublabel: undefined },
+                  { key: 'urgent',     label: activeFilter === 'urgent'     ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.urgent,          count: stats.urgent,         color: '#EF4444', bg: 'rgba(239,68,68,0.05)',   border: 'rgba(239,68,68,0.18)',   activeBg: 'rgba(239,68,68,0.18)',   activeBorder: '#EF4444',  glow: '0 0 12px rgba(239,68,68,0.4)',   sublabel: urgentPoolCount > 0 ? `+${urgentPoolCount} in Pool` : undefined },
+                  { key: 'inprogress', label: activeFilter === 'inprogress' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.inprogress,     count: stats.inProgress,     color: '#536EEA', bg: 'rgba(83,110,234,0.05)',   border: 'rgba(19,236,236,0.18)',   activeBg: 'rgba(83,110,234,0.18)',   activeBorder: '#13ECEC',  glow: '0 0 12px rgba(19,236,236,0.4)',   sublabel: undefined },
+                  { key: 'accessioned',   label: activeFilter === 'accessioned'   ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.accessioned, count: stats.accessioned,   color: '#261CE3', bg: 'rgba(38,28,227,0.05)',  border: 'rgba(38,28,227,0.18)',  activeBg: 'rgba(38,28,227,0.18)',  activeBorder: '#261CE3',  glow: '0 0 12px rgba(38,28,227,0.4)',  sublabel: undefined },
+                  { key: 'grosscomplete', label: activeFilter === 'grosscomplete' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.grosscomplete,    count: stats.grossComplete, color: '#53E2EA', bg: 'rgba(83,226,234,0.05)',  border: 'rgba(83,226,234,0.18)',  activeBg: 'rgba(83,226,234,0.18)',  activeBorder: '#53E2EA',  glow: '0 0 12px rgba(83,226,234,0.4)',  sublabel: undefined },
+                  { key: 'onhold',     label: activeFilter === 'onhold'     ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.onhold,          count: stats.onHold,         color: '#F87171', bg: 'rgba(248,113,113,0.05)', border: 'rgba(248,113,113,0.18)', activeBg: 'rgba(248,113,113,0.18)', activeBorder: '#F87171',  glow: '0 0 12px rgba(248,113,113,0.4)', sublabel: undefined },
+                  { key: 'amended',    label: activeFilter === 'amended'    ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.amended, count: stats.amended,        color: '#EA53DD', bg: 'rgba(234,83,221,0.05)',  border: 'rgba(224,167,82,0.18)',  activeBg: 'rgba(234,83,221,0.18)',  activeBorder: '#E0A752',  glow: '0 0 12px rgba(224,167,82,0.4)',  sublabel: undefined },
                   { key: 'completed',  label: activeFilter === 'completed'  ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.completed, count: stats.completedToday, color: '#10B981', bg: 'rgba(16,185,129,0.05)',  border: 'rgba(16,185,129,0.18)',  activeBg: 'rgba(16,185,129,0.18)',  activeBorder: '#10B981',  glow: '0 0 12px rgba(16,185,129,0.4)',  sublabel: undefined },
-                  { key: 'draft',      label: activeFilter === 'draft'      ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.draft,           count: stats.draft,          color: '#94a3b8', bg: 'rgba(148,163,184,0.05)', border: 'rgba(148,163,184,0.18)', activeBg: 'rgba(148,163,184,0.18)', activeBorder: '#94a3b8',  glow: '0 0 12px rgba(148,163,184,0.3)', sublabel: undefined },
+                  { key: 'draft',      label: activeFilter === 'draft'      ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.draft,           count: stats.draft,          color: '#94a3b8', bg: 'rgba(148,163,184,0.05)', border: 'rgba(148,163,184,0.18)', activeBg: 'rgba(148,163,184,0.18)', activeBorder: '#94a3b8',  glow: '0 0 12px rgba(148,163,184,0.4)', sublabel: undefined },
                   { key: 'finalizing', label: activeFilter === 'finalizing' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.finalizing,      count: stats.finalizing,     color: '#EC4899', bg: 'rgba(236,72,153,0.05)',  border: 'rgba(236,72,153,0.18)',  activeBg: 'rgba(236,72,153,0.18)',  activeBorder: '#EC4899',  glow: '0 0 12px rgba(236,72,153,0.4)',  sublabel: undefined },
+                  // Real feature, per direct follow-up: "I want to
+                  // queue these informal requests on the worklist with
+                  // a Tile." Deliberately a distinct violet, not
+                  // reused from "completed"'s own green (the retired
+                  // "Needs Review" tile used that green before it was
+                  // removed) or grosscomplete's cyan.
+                  { key: 'informalreview', label: activeFilter === 'informalreview' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.informalreview, count: stats.informalReview, color: '#8B5CF6', bg: 'rgba(139,92,246,0.05)',  border: 'rgba(139,92,246,0.18)',  activeBg: 'rgba(139,92,246,0.18)',  activeBorder: '#8B5CF6',  glow: '0 0 12px rgba(139,92,246,0.4)',  sublabel: undefined },
                 ] as const).map(tile => {
                   const isActive = activeFilter === tile.key;
                   return (
                     <button
                       key={tile.key}
+                      className="ps-wl-filter-tile"
                       title={isActive ? `Showing: ${tile.label} — click to reset` : `Filter by: ${tile.label}`}
                       onClick={() => { setActiveFilter(isActive ? 'all' : tile.key as any); setSelectedIndex(-1); setSelectedCaseId(null); }}
                       style={{
-                        background:     isActive ? tile.activeBg  : tile.bg,
-                        border:         `1.5px solid ${isActive ? tile.activeBorder : tile.border}`,
-                        boxShadow:      isActive ? tile.glow : 'none',
-                        borderRadius:   '8px', padding: '6px 12px', backdropFilter: 'blur(10px)',
-                        // Real fix, per direct feedback: tiles were
-                        // inconsistent height (49px vs 61px) because (a)
-                        // minHeight is only a floor, not a fixed size, and
-                        // (b) the sublabel row below was only rendered —
-                        // and only reserved vertical space — for tiles
-                        // that actually had one (only 'urgent' ever does).
-                        // Fixed height + flex centering, and the sublabel
-                        // row always reserves its space now (below),
-                        // whether or not this specific tile has real
-                        // content for it, so every tile is the same size
-                        // regardless of label length or sublabel presence.
-                        minWidth: '80px', height: '61px', cursor: 'pointer',
-                        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                        transition: 'all 0.15s ease', textAlign: 'left' as const, outline: 'none',
-                      }}
+                        '--tile-bg':     isActive ? tile.activeBg  : tile.bg,
+                        '--tile-border': isActive ? tile.activeBorder : tile.border,
+                        '--tile-shadow': isActive ? tile.glow : 'none',
+                      } as React.CSSProperties}
                     >
-                      <div style={{
-                        fontSize: '10px', fontWeight: 700, color: isActive ? tile.color : '#8899aa',
-                        textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px', lineHeight: 1.3,
-                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
-                      }}>
+                      <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? tile.color : '#8899aa' } as React.CSSProperties}>
                         {tile.label}
                       </div>
-                      <div style={{ fontSize: '20px', fontWeight: 800, color: tile.color, lineHeight: 1 }}>
+                      <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': tile.color } as React.CSSProperties}>
                         {tile.count}
                       </div>
-                      <div style={{
-                        fontSize: '9px', fontWeight: 600, color: tile.color, opacity: tile.sublabel ? 0.75 : 0,
-                        marginTop: '2px', letterSpacing: '0.2px', lineHeight: 1.2,
-                      }}>
+                      <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': tile.color, '--tile-sublabel-opacity': tile.sublabel ? 0.75 : 0 } as React.CSSProperties}>
                         {tile.sublabel || '\u00A0'}
                       </div>
                     </button>
@@ -855,14 +986,25 @@ const WorklistPage: React.FC = () => {
                 flagDefinitions={allFlags}
                 cases={filteredCases}
                 activeFilter={activeFilter}
+                amendmentTypeByCaseId={amendmentAddendaCaseIds}
                 tableHeight={tableHeight}
                 delegatedCaseIds={delegatedCaseIds}
                 onPoolCaseClick={(caseId, summary) => {
                   const c = realCases.find(c => c.id === caseId);
+                  // Real, separate bug found and fixed here: this used
+                  // c?.originHospitalId (the hospital/facility id, e.g.
+                  // 'HOSP-MFT') as the pool name — confirmed directly
+                  // against a real case's own data that the actual pool
+                  // name ('Gastrointestinal') lives on c.poolName
+                  // instead. Explains why the claim modal's own header
+                  // showed a hospital id where a real pool name
+                  // belonged, and would have broken this feature's own
+                  // per-pool access-request tracking and membership
+                  // matching too, both of which depend on the real name.
                   setClaimModal({
                     caseId,
                     summary,
-                    poolName: c?.originHospitalId ?? 'MFT Pool',
+                    poolName: (c as any)?.poolName ?? 'MFT Pool',
                   });
                 }}
                 selectedIndex={selectedIndex}
@@ -899,6 +1041,7 @@ const WorklistPage: React.FC = () => {
         poolName={claimModal?.poolName}
         currentUserId={CURRENT_USER_ID}
         currentUserName={CURRENT_USER_NAME}
+        currentUserOrganisationId={(user as any)?.organisationId}
         fromFilter="pool"
         continueToReport={true}
         onAccepted={() => {

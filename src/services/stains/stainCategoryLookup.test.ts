@@ -31,7 +31,7 @@ describe('resolveStainCategory — real fix: closes the gap StainOrder.stainName
   });
 });
 
-describe('resolveStainType — real fix: the general-purpose lookup resolveStainCategory is now built on, giving callers the full real record (e.g. defaultCptCode), not just category', () => {
+describe('resolveStainType — real fix: the general-purpose lookup resolveStainCategory is now built on, giving callers the full real record (e.g. defaultBillingCode), not just category', () => {
   it('returns the full, real matched record, not just its category', () => {
     const types = [makeStainType({ name: 'Ki-67', category: 'IHC', antibodyClone: '30-9' })];
     const result = resolveStainType('Ki-67', types);

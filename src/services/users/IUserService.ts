@@ -83,6 +83,17 @@ export interface StaffUser {
   gmcNumber?: string;
   /** Middle name or initial */
   middleName?: string;
+  /**
+   * Real feature, per direct follow-up building a real fallback chain
+   * for session station init: "Fallback to User Profile: If no
+   * device-level ID exists, pull the logged-in user's
+   * default_station_id." A real, admin-assigned home station for
+   * roaming staff — distinct from the device-level, localStorage-
+   * backed sticky station (useCurrentScanStation.ts), which still
+   * takes priority when it exists (a fixed workstation's own identity
+   * always wins over whichever user happens to log in there).
+   */
+  defaultScanStationId?: string;
 }
 
 export interface IUserService {

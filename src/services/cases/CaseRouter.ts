@@ -42,6 +42,7 @@ import { getSessionUser, canAccessCaseWithPools, filterAccessibleCasesWithPools,
 import { mockSubspecialtyService as subspecialtyService } from '../subspecialties/mockSubspecialtyService';
 import { isOrchCaseId } from './reportingModeRouting';
 import { mergeDualSourcePages } from './caseFilterUtils';
+import { getEffectiveScanStationId } from '../../utils/effectiveScanStation';
 
 // Real dimension-3 (pool/subspecialty) enforcement needs a lookup of every
 // subspecialty by id to check isWorkgroupEnabled/userIds against a case's
@@ -308,6 +309,14 @@ class CaseRouter implements ICaseService {
     const patchedUpdates: Partial<Case> = 'participants' in updates
       ? { ...updates, eligibleFinalizerIds: deriveEligibleFinalizerIds(updates.participants as any) }
       : updates;
+    // Real feature, per direct follow-up: "Stamp every saved draft...
+    // with... station_id captured at the exact moment of saving."
+    // Same real, single choke point every case write already passes
+    // through — auto-injected here, always fresh (never cached),
+    // exactly matching the same real pattern already proven for the
+    // audit trail (mockAuditService.logEvent()'s own
+    // getEffectiveScanStationId() call).
+    const stationStampedUpdates: Partial<Case> = { ...patchedUpdates, lastUpdatedFromStation: getEffectiveScanStationId() };
 
     const [service, audit] = isOrchCaseId(caseId)
       ? [this.orchService, this.orchAudit]
@@ -315,7 +324,7 @@ class CaseRouter implements ICaseService {
     const userId = getSessionUser()?.id ?? 'unknown';
 
     try {
-      await service.updateCase(caseId, patchedUpdates, expectedVersion);
+      await service.updateCase(caseId, stationStampedUpdates, expectedVersion);
       audit.log({ eventType: 'case.write', caseId, userId, outcome: 'success' });
     } catch (err) {
       if (err instanceof ConcurrencyConflictError) {

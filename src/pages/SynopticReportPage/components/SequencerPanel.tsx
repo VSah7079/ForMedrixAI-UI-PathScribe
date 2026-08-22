@@ -159,7 +159,7 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
           <div className="ps-seq-header-left">
             <div className="ps-seq-header-title-row">
               <h2 className="fm-title ps-seq-title">Report Sequencer</h2>
-              {accession && <span className="ps-seq-case-badge">{accession}</span>}
+              {accession && <span className="ps-seq-case-badge" data-phi="accession">{accession}</span>}
             </div>
             <div className="ps-seq-subtitle">
               Drag specimens or synoptics to set transmission order · Click a row to jump to it

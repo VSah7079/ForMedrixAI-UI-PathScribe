@@ -163,6 +163,17 @@ const ORG_CONFIG_KEY    = 'pathscribe_ai_org_config';   // populated by your aut
 // ─── Config resolution ────────────────────────────────────────
 
 /**
+ * The full, real set of request-shape identifiers callAi() knows how
+ * to build a request for — kept as one, single source of truth so
+ * this list and AiProviderSettings.tsx's own PROVIDER_MODELS keys
+ * can't quietly drift apart.
+ */
+const VALID_PROVIDER_IDS: readonly AiProviderId[] = [
+  'structured_messages', 'chat_completions', 'chat_completions_managed',
+  'model_gateway', 'structured_content', 'mock', 'custom',
+];
+
+/**
  * Returns the active AI provider config, respecting the priority chain:
  *   user override > org config > env defaults
  *
@@ -188,6 +199,25 @@ export function resolveAiConfig(): AiProviderConfig {
       Object.assign(base, user);
     }
   } catch { /* corrupt storage — fall through */ }
+
+  // Real fix, per direct report: "⚠ [PathScribe AI] Unknown provider:
+  // anthropic." Confirmed directly: AiProviderSettings.tsx (the admin
+  // settings SCREEN) already had a guard for exactly this — an
+  // unrecognized stored providerId, falling back to
+  // 'structured_messages' — but that guard only ever applied to the
+  // settings screen's own DISPLAY. This function is the one callAi()
+  // actually calls, and it had no equivalent validation at all — a
+  // stale or invalid providerId sitting in either localStorage layer
+  // (org or user override) would sail through here untouched, so the
+  // settings screen could look completely fine (self-healing on
+  // display) while every real AI call still hit the hard error the
+  // moment it tried to build a request. Same fallback, same reasoning,
+  // now applied to the actual call path, not just the screen that
+  // shows it.
+  if (!VALID_PROVIDER_IDS.includes(base.providerId)) {
+    console.warn(`[PathScribe AI] Stored providerId '${base.providerId}' isn't a real request-shape identifier — falling back to structured_messages. Check Configuration → AI Behavior.`);
+    base.providerId = 'structured_messages';
+  }
 
   return base;
 }

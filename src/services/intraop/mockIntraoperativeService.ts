@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
-import type { IntraoperativeEntry, IntraopSpecimen, MilestoneEntry, MatchCandidate, MilestoneType, SkipReason, EntryMatch, FrozenCategory, MergeResolutionContext } from '@/types/intraop/IntraoperativeEntry';
+import type { IntraoperativeEntry, IntraopSpecimen, MilestoneEntry, MatchCandidate, MilestoneType, SkipReason, EntryMatch, FrozenCategory, MergeResolutionContext, PreparationType, PreparationOutput } from '@/types/intraop/IntraoperativeEntry';
 import type { IIntraoperativeService } from './IIntraoperativeService';
 import { caseRouter } from '../cases/CaseRouter';
 import { mockAuditService } from '../auditlog/mockAuditService';
@@ -78,6 +78,12 @@ const SEED_ENTRIES: IntraoperativeEntry[] = [
           { id: 'm2', milestone: 'touch_prep_performed',  timestamp: '2026-07-11T14:20:40.000Z' },
           { id: 'm3', milestone: 'frozen_section_cut',    timestamp: '2026-07-11T14:22:15.000Z' },
         ],
+        // Real, itemized outputs matching the milestone narrative above —
+        // one touch prep was actually performed, then one block frozen.
+        preparations: [
+          { id: 'p1', type: 'touch_prep', identifier: 'FS-A-TP1', timestamp: '2026-07-11T14:20:40.000Z' },
+          { id: 'p2', type: 'frozen_block', identifier: 'FS-A1', timestamp: '2026-07-11T14:22:15.000Z' },
+        ],
         preliminaryCytologyDictation: 'Touch prep shows cohesive clusters, mild atypia. Proceeding to freeze.',
         quickGrossDictation: 'Received fresh, labeled "left breast, margins." Irregular tan-white fibrofatty tissue, 4.2 x 3.1 x 1.8 cm. Sectioned to reveal firm, ill-defined white mass, 1.4 cm greatest dimension.',
       },
@@ -101,6 +107,13 @@ const SEED_ENTRIES: IntraoperativeEntry[] = [
           { id: 'm2', milestone: 'touch_prep_skipped',  timestamp: '2026-07-11T13:02:05.000Z', skipReason: 'direct_to_frozen' },
           { id: 'm3', milestone: 'frozen_section_cut',  timestamp: '2026-07-11T13:03:40.000Z' },
         ],
+        // Real example of why preparations != milestones: touch prep was
+        // SKIPPED here (direct to frozen), so there's no real touch prep
+        // output at all — only the one real frozen block that was
+        // actually produced.
+        preparations: [
+          { id: 'p1', type: 'frozen_block', identifier: 'FS-A1', timestamp: '2026-07-11T13:03:40.000Z' },
+        ],
         quickGrossDictation: 'Received fresh, right colon segment with attached mass, dense and fibrotic on palpation — proceeding direct to frozen, touch prep not expected to yield adequate cellularity.',
         frozenSectionDiagnosis: 'Invasive adenocarcinoma, moderately differentiated. Radial margin grossly uninvolved, pending permanent confirmation.',
       },
@@ -113,6 +126,7 @@ const SEED_ENTRIES: IntraoperativeEntry[] = [
         milestones: [
           { id: 'm1', milestone: 'gross_logged', timestamp: '2026-07-11T13:06:00.000Z' },
         ],
+        preparations: [], // real, honest state — only gross logged so far, nothing actually produced yet
         quickGrossDictation: 'Single lymph node, 0.8 cm, submitted entirely for frozen.',
       },
     ],
@@ -133,6 +147,7 @@ const SEED_ENTRIES: IntraoperativeEntry[] = [
         milestones: [
           { id: 'm1', milestone: 'gross_logged', timestamp: '2026-07-11T09:43:20.000Z' },
         ],
+        preparations: [], // real, honest state — only gross logged so far, nothing actually produced yet
         quickGrossDictation: 'Received a 1.8 cm firm tan nodule, left thyroid lobe. No sutures placed, no orientation given by surgeon.',
       },
     ],
@@ -159,6 +174,10 @@ const SEED_ENTRIES: IntraoperativeEntry[] = [
           { id: 'm1', milestone: 'gross_logged',         timestamp: '2026-07-19T10:04:10.000Z' },
           { id: 'm2', milestone: 'touch_prep_performed', timestamp: '2026-07-19T10:05:35.000Z' },
           { id: 'm3', milestone: 'frozen_section_cut',   timestamp: '2026-07-19T10:07:20.000Z' },
+        ],
+        preparations: [
+          { id: 'p1', type: 'touch_prep', identifier: 'FS-A-TP1', timestamp: '2026-07-19T10:05:35.000Z' },
+          { id: 'p2', type: 'frozen_block', identifier: 'FS-A1', timestamp: '2026-07-19T10:07:20.000Z' },
         ],
         preliminaryCytologyDictation: 'Touch prep shows follicular cells without clear-cut nuclear features of papillary carcinoma.',
         quickGrossDictation: 'Received fresh, labeled "left thyroid lobe." Encapsulated tan-brown nodule, 1.9 cm greatest dimension, well-circumscribed.',
@@ -212,6 +231,7 @@ const MERGED_TAT_SEED: IntraoperativeEntry[] = Array.from({ length: 18 }, (_, i)
       specimenLabel: `Specimen A`,
       arrivalTimestamp: createdAt.toISOString(),
       milestones: [],
+      preparations: [],
     }],
     status: 'merged',
     mergedIntoCaseId: `O26-TAT-${9000 + i}`,
@@ -225,6 +245,43 @@ const persist = (data: IntraoperativeEntry[]) => storageSet(STORAGE_KEY, data);
 
 const ok  = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data  });
 const err = <T>(msg: string): ServiceResult<T> => ({ ok: false, error: msg });
+
+/** Real, robust specimen-letter derivation for real preparation
+ *  identifiers (FS-A1, FS-B1, etc.) — the specimen's own POSITION
+ *  within the session's specimens[] array (0-indexed -> A, B, C...),
+ *  never parsed out of the free-text specimenLabel. Labels are
+ *  free-form clinical text ("Specimen A: Left breast, margins") and
+ *  parsing them for an "A" would be fragile — this is the same real
+ *  index already implied by the seed data's own A/B/C convention, just
+ *  computed robustly instead of assumed from text. */
+function specimenLetter(entry: IntraoperativeEntry, specimenId: string): string {
+  const idx = entry.specimens.findIndex(s => s.id === specimenId);
+  const safeIdx = idx === -1 ? 0 : idx;
+  return String.fromCharCode(65 + (safeIdx % 26)); // A, B, C... wraps at Z, same as any real 26-letter scheme would need to eventually
+}
+
+/** Real, per-(specimen, PreparationType) sequence — the second real
+ *  output of the same type on the same specimen is real, distinct
+ *  output #2, never reusing #1's identifier. Per direct guidance's own
+ *  example format: "FS-A1" for a frozen block (specimen letter +
+ *  sequence, no type marker needed since frozen_block is the
+ *  historically dominant/default case), "FS-A-TP1" for a touch prep
+ *  (specimen letter + explicit type marker + sequence, since a touch
+ *  prep needs to be told apart from a frozen block on the same
+ *  specimen) — extends the given example's own asymmetry deliberately,
+ *  flagged directly as a real, open question rather than assumed
+ *  silently correct. */
+function generatePreparationIdentifier(entry: IntraoperativeEntry, specimenId: string, type: PreparationType): string {
+  const specimen = entry.specimens.find(s => s.id === specimenId);
+  const letter = specimenLetter(entry, specimenId);
+  const existingOfType = (specimen?.preparations ?? []).filter(p => p.type === type);
+  const seq = existingOfType.length + 1;
+  if (type === 'frozen_block') return `FS-${letter}${seq}`;
+  if (type === 'touch_prep') return `FS-${letter}-TP${seq}`;
+  if (type === 'squash_prep') return `FS-${letter}-SQ${seq}`;
+  if (type === 'cytology_fluid') return `FS-${letter}-CY${seq}`;
+  return `FS-${letter}-GO${seq}`; // gross_only
+}
 
 /** Last name only, case-insensitive — "Whitfield, Margaret" -> "whitfield". */
 const lastName = (fullName: string) => fullName.split(',')[0].trim().toLowerCase();
@@ -425,6 +482,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
       specimenLabel: specimenLabel.trim(),
       arrivalTimestamp: new Date().toISOString(),
       milestones: [],
+      preparations: [],
     };
     entries[idx] = { ...entries[idx], specimens: [...entries[idx].specimens, newSpecimen] };
     persist(entries);
@@ -475,6 +533,42 @@ export const mockIntraoperativeService: IIntraoperativeService = {
       ...specimen,
       milestones: [...specimen.milestones, newMilestone],
       ...(quickGrossText ? { quickGrossDictation: quickGrossText } : {}),
+    };
+    const updatedSpecimens = [...entries[idx].specimens];
+    updatedSpecimens[specIdx] = updatedSpecimen;
+    entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
+    persist(entries);
+    return ok({ ...entries[idx] });
+  },
+
+  /** Real, new method, per direct guidance — resolves PS-82's real,
+   *  confirmed gap: the itemized, countable record of what was
+   *  actually produced at the bench (a specific frozen block, a
+   *  specific touch prep slide), distinct from milestones[]'s own
+   *  workflow-sequence tracking (see this file's own header and
+   *  PreparationOutput's own doc comment for the full reasoning).
+   *  identifier is auto-generated (generatePreparationIdentifier
+   *  above) when not explicitly given — never left to free-text entry,
+   *  so real outputs can never collide. Does NOT require Quick Gross
+   *  first the way touch_prep/frozen_section_cut milestones do — a
+   *  real preparation output is itself downstream evidence that real
+   *  bench work happened; forcing a redundant Quick Gross check here
+   *  would just be friction, not a real safeguard. */
+  async addPreparationOutput(sessionId: string, specimenId: string, type: PreparationType, identifier?: string): Promise<ServiceResult<IntraoperativeEntry>> {
+    const entries = load();
+    const idx = entries.findIndex(e => e.id === sessionId);
+    if (idx === -1) return err(`Intraoperative session ${sessionId} not found`);
+    const specIdx = entries[idx].specimens.findIndex(s => s.id === specimenId);
+    if (specIdx === -1) return err(`Specimen ${specimenId} not found in session ${sessionId}`);
+    const specimen = entries[idx].specimens[specIdx];
+
+    const realIdentifier = identifier?.trim() || generatePreparationIdentifier(entries[idx], specimenId, type);
+    const newOutput: PreparationOutput = {
+      id: `p-${Date.now().toString(36)}`, type, identifier: realIdentifier, timestamp: new Date().toISOString(),
+    };
+    const updatedSpecimen: IntraopSpecimen = {
+      ...specimen,
+      preparations: [...specimen.preparations, newOutput],
     };
     const updatedSpecimens = [...entries[idx].specimens];
     updatedSpecimens[specIdx] = updatedSpecimen;

@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // services/index.ts
 // ─────────────────────────────────────────────────────────────────────────────
+export const IS_MOCK_BACKEND = true;
 export { mockUserService          as userService          } from './users/mockUserService';
 export { mockRoleService          as roleService          } from './roles/mockRoleService';
 export { mockPhysicianService     as physicianService     } from './physicians/mockPhysicianService';
@@ -11,6 +12,8 @@ export { mockReconciliationService as reconciliationService } from './quality/mo
 export { mockAmendmentService as amendmentService } from './reports/mockAmendmentService';
 export { mockReportVersionService as reportVersionService } from './reports/mockReportVersionService';
 export { mockLisAmendmentNoticeService as lisAmendmentNoticeService } from './reports/mockLisAmendmentNoticeService';
+export { mockInformalReviewService as informalReviewService } from './reports/mockInformalReviewService';
+export { mockAccessRequestService as accessRequestService } from './access/mockAccessRequestService';
 export { mockSubspecialtyService  as subspecialtyService  } from './subspecialties/mockSubspecialtyService';
 export { mockFacilityService       as facilityService     } from './facilities/mockFacilityService';
 export { mockLocationService       as locationService     } from './locations/mockLocationService';
@@ -26,7 +29,10 @@ export { mockStainTypeService as stainTypeService } from './stains/mockStainType
 export { mockSectioningProtocolService as sectioningProtocolService } from './stains/mockSectioningProtocolService';
 export { mockStainOrderMacroService as stainOrderMacroService } from './stains/mockStainOrderMacroService';
 export { mockManagementReviewService as managementReviewService } from './deficiencies/mockManagementReviewService';
+export { mockBatchService as batchService } from './batches/mockBatchService';
+export { mockHardwareContainerRegistryService as hardwareContainerRegistryService } from './hardwareContainers/mockHardwareContainerRegistryService';
 export { mockProtocolService as protocolService } from './protocols/mockProtocolService';
+export { mockPrinterProfileService as printerProfileService } from './printerProfiles/mockPrinterProfileService';
 export { mockDiagnosisCodesService as diagnosisCodesService } from './diagnosisCodes/mockDiagnosisCodesService';
 export { mockOrderIntakeService as orderIntakeService } from './orderIntake/mockOrderIntakeService';
 export { mockDeficiencyTypeService as deficiencyTypeService } from './deficiencies/mockDeficiencyTypeService';
@@ -36,6 +42,7 @@ export { mockSystemConfigService  as systemConfigService  } from './systemConfig
 export { mockMacroService         as macroService         } from './macros/mockMacroService';
 export { mockFontService          as fontService          } from './fonts/mockFontService';
 export { mockAIBehaviorService    as aiBehaviorService    } from './aiBehavior/mockAIBehaviorService';
+export { mockPrintSettingsService as printSettingsService } from './printSettings/mockPrintSettingsService';
 export { mockModelService         as modelService         } from './models/mockModelService';
 export { mockSavedSearchService   as savedSearchService   } from './savedSearches/mockSavedSearchService';
 export { mockAuditService         as auditService         } from './auditlog/mockAuditService';
@@ -72,6 +79,7 @@ export type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } fr
 export type { IncomingOrder, IncomingOrderSpecimen, SpecimenCodeCrosswalkEntry, OrderResolutionResult } from './orderIntake/IOrderIntakeService';
 export type { DeficiencyType, ResolutionType, SpecimenDeficiency, ManagementReview } from './deficiencies/IDeficiencyService';
 export type { Protocol, ProtocolPathway, PathwayTask, ProtocolHistoryEntry } from './protocols/IProtocolService';
+export type { PrinterProfile, PrinterVendor, PrinterBridgeType } from './printerProfiles/IPrinterProfileService';
 export type { Icd10Code } from './diagnosisCodes/IDiagnosisCodesService';
 export type { SystemConfig }      from './systemConfig/mockSystemConfigService';
 export type { Macro }             from './macros/IMacroService';

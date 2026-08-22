@@ -200,7 +200,7 @@ export const ReconciliationTab: React.FC = () => {
               {discordant.length === 0 && <tr><td className="ps-conf-td" colSpan={8}>No discordant reconciliations in this scope.</td></tr>}
               {discordant.map(r => (
                 <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
-                  <td className="ps-conf-td">{r.caseId}</td>
+                  <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                   <td className="ps-conf-td">{r.caseType}</td>
                   <td className="ps-conf-td">{r.frozenCategory} → {r.finalCategory}</td>
                   <td className="ps-conf-td">{r.delta}</td>
@@ -224,7 +224,7 @@ export const ReconciliationTab: React.FC = () => {
               {concordant.length === 0 && <tr><td className="ps-conf-td" colSpan={5}>No concordant reconciliations in this scope.</td></tr>}
               {concordant.slice(0, 25).map(r => (
                 <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
-                  <td className="ps-conf-td">{r.caseId}</td>
+                  <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                   <td className="ps-conf-td">{r.caseType}</td>
                   <td className="ps-conf-td">{r.finalCategory}</td>
                   <td className="ps-conf-td">{r.recordedBy.userName}</td>

@@ -70,6 +70,7 @@ function baseParams(overrides: Partial<Parameters<typeof useGrossingCompletion>[
     setConcurrencyConflict: vi.fn(),
     grossingSnapshotRef: { current: new Map<string, string>() },
     handleProtocolChangesDetected: vi.fn(),
+    handleGrossingProtocolChangesDetected: vi.fn(),
     // Real fix, per direct report: "I added some gross text, but the
     // system is not allowing me to mark gross complete." Defaults to
     // empty here — matching pre-existing behavior for every test

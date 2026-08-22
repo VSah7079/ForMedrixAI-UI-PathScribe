@@ -1,7 +1,7 @@
 // src/components/Config/System/SessionSecuritySection.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 // Org-wide default for idle session timeout (Phase 1 of the Inactivity
-// Timeout & Draft Recovery spec — see PRIORITY_FIXES.md #13). Per-performing-lab
+// Timeout & Draft Recovery spec, complete). Per-performing-lab
 // overrides are set on the Facility Configuration edit modal instead — this
 // screen only controls the org-wide fallback used when a lab has no
 // override, or when no case is currently open (Worklist, Home, etc.).

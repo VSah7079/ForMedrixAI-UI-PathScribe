@@ -128,7 +128,7 @@ const ReportPreviewPage: React.FC = () => {
         <div className="rp-topbar-left">
           <span className="rp-topbar-logo">PathScribe</span>
           <span className="rp-topbar-sep">·</span>
-          <span className="rp-topbar-accession">{accession}</span>
+          <span className="rp-topbar-accession" data-phi="accession">{accession}</span>
           {caseData?.patient && (
             <>
               <span className="rp-topbar-sep">·</span>

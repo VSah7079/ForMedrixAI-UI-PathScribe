@@ -7,6 +7,7 @@ import { useMessaging } from '../../contexts/MessagingContext';
 import { EnhancementRequestButton } from '../EnhancementRequest/EnhancementRequestButton';
 import { loadEnhancementConfig } from '../../services/enhancementRequestService';
 import { VoiceToggleButton } from '../Voice/VoiceToggleButton';
+import { NavBarScanStation } from './NavBarScanStation';
 import CaseSearchBar from '../Search/CaseSearchBar';
 import { VoiceCommandOverlay } from '../Voice/VoiceCommandOverlay';
 import { VoiceMissPrompt } from '../Voice/VoiceMissPrompt';
@@ -362,6 +363,14 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
               Focused Mode
             </button>
           )}
+
+          {/* Real fix, per direct follow-up: "the Current station...
+              should be identified at login. Should be sticky too."
+              Real, always-visible, global place to check/change it —
+              never buried in a specific case again. */}
+          <NavBarScanStation />
+
+          <div className="ps-nav-divider" />
 
           {/* User avatar — opens system info + fires onProfileClick */}
           <div

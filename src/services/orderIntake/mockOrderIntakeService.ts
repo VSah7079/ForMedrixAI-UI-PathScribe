@@ -3,11 +3,14 @@
 import type { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type {
-  IOrderIntakeService, IncomingOrder, SpecimenCodeCrosswalkEntry, OrderResolutionResult,
+  IOrderIntakeService, IncomingOrder, SpecimenCodeCrosswalkEntry, OrderResolutionResult, OrderCodeCodingSystem,
 } from './IOrderIntakeService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
 import { mockSpecimenCategoryService } from '../specimenCategories/mockSpecimenCategoryService';
 import { mockSpecimenDictionaryService } from '../specimenDictionary/mockSpecimenDictionaryService';
+import { mockInterfaceExceptionService } from '../interfaceExceptions/mockInterfaceExceptionService';
+import { resolveProviderName } from '../physicians/resolveProviderName';
+import { normalizeOrderCode } from '@/utils/normalizeOrderCode';
 
 const ok    = <T>(data: T): ServiceResult<T> => ({ ok: true, data });
 const err   = <T>(error: string): ServiceResult<T> => ({ ok: false, error });
@@ -71,7 +74,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: '2026-06-29T08:14:00.000Z', status: 'pending',
     externalAssigningAuthority: 'FGH',
     patient: { firstName: 'Margaret', lastName: 'Wilcox', dateOfBirth: '1958-02-11', sex: 'F', mrn: '' },
-    requestingProvider: 'Mr. Ian Faulkner', priority: 'Routine',
+    requestingProvider: { rawName: 'Mr. Ian Faulkner', namePrefix: 'Mr.', givenNames: 'Ian', familyNames: 'Faulkner' }, priority: 'Routine',
     clinicalIndication: 'Right breast lump on screening mammography, BI-RADS 4. Core needle biopsy for histological diagnosis.',
     icd10Codes: [{ code: 'N63.10', description: 'Unspecified lump in right breast' }],
     specimens: [
@@ -84,7 +87,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: '2026-06-29T09:02:00.000Z', status: 'pending',
     externalAssigningAuthority: 'NEWCLINIC01',
     patient: { firstName: 'Daniel', lastName: 'Ortiz', dateOfBirth: '1990-07-23', sex: 'M', mrn: '778812' },
-    requestingProvider: 'Dr. Priya Nair', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Priya Nair', namePrefix: 'Dr.', givenNames: 'Priya', familyNames: 'Nair' }, priority: 'Routine',
     clinicalIndication: 'Suspicious pigmented lesion left forearm, changing over 3 months. Excisional biopsy.',
     specimens: [
       { description: 'Left forearm skin excision, pigmented lesion' },
@@ -95,7 +98,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: '2026-06-29T10:31:00.000Z', status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Robert', lastName: 'Fenn', dateOfBirth: '1971-11-04', sex: 'M', mrn: '' },
-    requestingProvider: 'Mr. Colin Baxter', priority: 'STAT',
+    requestingProvider: { rawName: 'Mr. Colin Baxter', namePrefix: 'Mr.', givenNames: 'Colin', familyNames: 'Baxter' }, priority: 'STAT',
     clinicalIndication: 'New pericardial effusion, unknown aetiology. Pericardiocentesis for cytological evaluation.',
     specimens: [
       // 'PERI-FL-01' has no crosswalk entry for this client — the
@@ -117,7 +120,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'FGH',
     patient: { firstName: 'Harold', lastName: 'Whitfield', dateOfBirth: '1951-06-02', sex: 'M', mrn: '' },
-    requestingProvider: 'Dr. Naomi Blackwood', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Naomi Blackwood', namePrefix: 'Dr.', givenNames: 'Naomi', familyNames: 'Blackwood' }, priority: 'Routine',
     clinicalIndication: 'Slowly enlarging nodule on the nose, pearly appearance with telangiectasia. Clinically suspicious for basal cell carcinoma. Shave excision.',
     specimens: [{ description: 'Nose, skin excision — pearly nodule', externalSpecimenCode: 'SURG-01' }],
     rawMessage: 'MSH|^~\\&|LIS|FGH|PATHSCRIBE|LAB|' + isoDaysAgo(0).replace(/[-:T.Z]/g, '').slice(0, 14) + '||ORM^O01|MSG88301|P|2.5.1',
@@ -127,7 +130,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'SCUH',
     patient: { firstName: 'Denise', lastName: 'Palowski', dateOfBirth: '1985-09-19', sex: 'F', mrn: '' },
-    requestingProvider: 'Dr. Rebecca Sung', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Rebecca Sung', namePrefix: 'Dr.', givenNames: 'Rebecca', familyNames: 'Sung' }, priority: 'Routine',
     clinicalIndication: 'Colposcopy: HSIL (CIN2) on cervical biopsy, HPV 16/18 positive. LEEP/LLETZ excision for definitive treatment.',
     specimens: [{ description: 'Cervix, LEEP excision', externalSpecimenCode: 'SURG-01' }],
   },
@@ -136,7 +139,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'FGH',
     patient: { firstName: 'Walter', lastName: 'Bramwell', dateOfBirth: '1962-01-27', sex: 'M', mrn: '' },
-    requestingProvider: 'Dr. Anita Kapoor', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Anita Kapoor', namePrefix: 'Dr.', givenNames: 'Anita', familyNames: 'Kapoor' }, priority: 'Routine',
     clinicalIndication: 'Pancytopenia of unknown cause, 6-week workup. Peripheral smear shows dysplastic changes. Bone marrow biopsy and aspirate for morphological evaluation.',
     specimens: [{ description: 'Bone marrow biopsy and aspirate, posterior iliac crest' }],
   },
@@ -147,7 +150,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'WSSC',
     patient: { firstName: 'Rosalind', lastName: 'Marchetti', dateOfBirth: '1969-04-14', sex: 'F', mrn: '' },
-    requestingProvider: 'Dr. Wayne Ostrowski', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Wayne Ostrowski', namePrefix: 'Dr.', givenNames: 'Wayne', familyNames: 'Ostrowski' }, priority: 'Routine',
     clinicalIndication: 'Symptomatic cholelithiasis with recurrent biliary colic. Ultrasound: multiple gallstones, wall thickening. Laparoscopic cholecystectomy.',
     specimens: [{ description: 'Gallbladder, cholecystectomy', externalSpecimenCode: 'SURG-01' }],
   },
@@ -156,7 +159,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'WSSC',
     patient: { firstName: 'Constance', lastName: 'Ferreira', dateOfBirth: '1958-12-30', sex: 'F', mrn: '' },
-    requestingProvider: 'Dr. Grace Ibekwe', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Grace Ibekwe', namePrefix: 'Dr.', givenNames: 'Grace', familyNames: 'Ibekwe' }, priority: 'Routine',
     clinicalIndication: 'Postmenopausal bleeding. Transvaginal ultrasound: endometrial thickness 14mm. Pipelle endometrial biopsy to exclude malignancy.',
     specimens: [{ description: 'Endometrium, pipelle biopsy' }],
   },
@@ -165,7 +168,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'WSSC',
     patient: { firstName: 'Bruce', lastName: 'Halvorsen', dateOfBirth: '1994-02-08', sex: 'M', mrn: '' },
-    requestingProvider: 'Dr. Marcus Feldman', priority: 'STAT',
+    requestingProvider: { rawName: 'Dr. Marcus Feldman', namePrefix: 'Dr.', givenNames: 'Marcus', familyNames: 'Feldman' }, priority: 'STAT',
     clinicalIndication: 'Painless right testicular mass. Ultrasound: 2.8 cm heterogeneous intratesticular lesion, AFP and beta-hCG elevated. Radical inguinal orchiectomy.',
     specimens: [{ description: 'Right testis, radical orchiectomy' }],
   },
@@ -176,7 +179,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Diane', lastName: 'Postlethwaite', dateOfBirth: '2014-05-06', sex: 'F', mrn: '' },
-    requestingProvider: 'Mr. Julian Bardsley', priority: 'Routine',
+    requestingProvider: { rawName: 'Mr. Julian Bardsley', namePrefix: 'Mr.', givenNames: 'Julian', familyNames: 'Bardsley' }, priority: 'Routine',
     clinicalIndication: 'Recurrent tonsillitis, 6 episodes in the past year, with one tonsil grossly asymmetric — query lymphoma. Bilateral tonsillectomy.',
     specimens: [{ description: 'Bilateral tonsils, tonsillectomy', externalSpecimenCode: 'SURG-01' }],
   },
@@ -185,7 +188,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Reginald', lastName: 'Openshaw', dateOfBirth: '1979-08-21', sex: 'M', mrn: '' },
-    requestingProvider: 'Dr. Priyanka Desai', priority: 'STAT',
+    requestingProvider: { rawName: 'Dr. Priyanka Desai', namePrefix: 'Dr.', givenNames: 'Priyanka', familyNames: 'Desai' }, priority: 'STAT',
     clinicalIndication: 'Nephrotic syndrome — proteinuria 6.2g/24hr, hypoalbuminaemia, oedema. Renal ultrasound normal size, no obstruction. Percutaneous renal biopsy for medical renal workup.',
     specimens: [{ description: 'Kidney, percutaneous core biopsy — native, medical renal' }],
   },
@@ -194,7 +197,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Sheila', lastName: 'Trenholme', dateOfBirth: '1966-10-11', sex: 'F', mrn: '' },
-    requestingProvider: 'Dr. Aidan Foster', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Aidan Foster', namePrefix: 'Dr.', givenNames: 'Aidan', familyNames: 'Foster' }, priority: 'Routine',
     clinicalIndication: 'Enlarging left axillary lymphadenopathy over 8 weeks, associated night sweats. PET-CT: hypermetabolic nodal mass. Excisional lymph node biopsy for lymphoma staging.',
     specimens: [{ description: 'Left axillary lymph node, excisional biopsy' }],
   },
@@ -205,7 +208,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Norman', lastName: 'Ridgeway', dateOfBirth: '1988-03-25', sex: 'M', mrn: '' },
-    requestingProvider: 'Dr. Fatima Al-Rashid', priority: 'Routine',
+    requestingProvider: { rawName: 'Dr. Fatima Al-Rashid', namePrefix: 'Dr.', givenNames: 'Fatima', familyNames: 'Al-Rashid' }, priority: 'Routine',
     clinicalIndication: 'Chronic scaly plaques, extensor surfaces, poor response to topical steroids. Query psoriasis vs. eczema vs. cutaneous lymphoma. Punch biopsy for histological confirmation.',
     specimens: [{ description: 'Skin, punch biopsy — extensor forearm', externalSpecimenCode: 'SURG-01' }],
   },
@@ -214,7 +217,7 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Vera', lastName: 'Cholmondeley', dateOfBirth: '1957-07-17', sex: 'F', mrn: '' },
-    requestingProvider: 'Miss Amara Osei', priority: 'Routine',
+    requestingProvider: { rawName: 'Miss Amara Osei', namePrefix: 'Miss', givenNames: 'Amara', familyNames: 'Osei' }, priority: 'Routine',
     clinicalIndication: 'Submandibular gland swelling, FNA suspicious for pleomorphic adenoma. Submandibular gland excision.',
     specimens: [{ description: 'Submandibular gland, excision' }],
   },
@@ -223,15 +226,274 @@ const SEED_ORDERS: IncomingOrder[] = [
     receivedAt: isoDaysAgo(0), status: 'pending',
     externalAssigningAuthority: 'RMANC',
     patient: { firstName: 'Trevor', lastName: 'Pickersgill', dateOfBirth: '1996-11-30', sex: 'M', mrn: '' },
-    requestingProvider: 'Mr. Duncan Wray', priority: 'STAT',
+    requestingProvider: { rawName: 'Mr. Duncan Wray', namePrefix: 'Mr.', givenNames: 'Duncan', familyNames: 'Wray' }, priority: 'STAT',
     clinicalIndication: 'Acute right iliac fossa pain, 18 hours, guarding on examination, raised CRP and white cell count. Clinical diagnosis of acute appendicitis. Emergency laparoscopic appendicectomy.',
     specimens: [{ description: 'Appendix, appendicectomy' }],
   },
+
+  // ── 14 real, seeded test-patient orders — per direct follow-up's own
+  //    exact clinical data (patient/MRN/DOB/ICD-10/specimen), used
+  //    verbatim rather than paraphrased. Real, honest note: most
+  //    specimen descriptions below are deliberately Pete's own,
+  //    clinically specific wording, not forced to exactly match a
+  //    Specimen Dictionary entry's own name/normalizedLabel — a
+  //    genuinely accurate clinical description ("Prostate needle core
+  //    biopsies (12 cores: 6 right, 6 left)") rarely matches a generic
+  //    dictionary name character-for-character, so most of these will
+  //    correctly show needsDictionaryResolution on import — real,
+  //    honest behavior, not something to mask by rewording Pete's own
+  //    text to force a false match.
+  {
+    id: 'ord-016', externalOrderNumber: 'EPO-ORD-40112', source: 'hl7',
+    receivedAt: isoDaysAgo(3), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Margaret', lastName: 'Higgins', dateOfBirth: '1958-04-12', sex: 'F', mrn: '90481237' },
+    requestingProvider: { rawName: 'Dr. Owen Fairweather', namePrefix: 'Dr.', givenNames: 'Owen', familyNames: 'Fairweather' }, priority: 'Routine',
+    clinicalIndication: 'Right upper lobe lung nodule, 2.3 cm, PET-avid on staging imaging. Wedge resection for tissue diagnosis.',
+    icd10Codes: [{ code: 'C34.11', description: 'Malignant neoplasm of upper lobe, right bronchus or lung' }],
+    specimens: [{ description: 'Right upper lobe lung wedge resection' }],
+  },
+  {
+    id: 'ord-017', externalOrderNumber: 'WSC-ORD-19045', source: 'hl7',
+    receivedAt: isoDaysAgo(3), status: 'pending',
+    externalAssigningAuthority: 'WSC',
+    patient: { firstName: 'Liam', lastName: 'Vance', dateOfBirth: '2012-11-03', sex: 'M', mrn: '41290384' },
+    requestingProvider: { rawName: 'Dr. Patricia Ndiaye', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Ndiaye' }, priority: 'STAT',
+    clinicalIndication: 'Acute right lower quadrant pain, 24 hours, fever and guarding on examination. Clinical diagnosis of acute appendicitis. Emergency appendectomy.',
+    icd10Codes: [{ code: 'K35.80', description: 'Unspecified acute appendicitis' }],
+    specimens: [{ description: 'Appendix (Appendectomy)' }],
+  },
+  {
+    id: 'ord-018', externalOrderNumber: 'NSC-ORD-27788', source: 'api',
+    receivedAt: isoDaysAgo(2), status: 'pending',
+    externalAssigningAuthority: 'NSC',
+    patient: { firstName: 'Sophia', lastName: 'Patel', dateOfBirth: '1991-08-25', sex: 'F', mrn: '78310924' },
+    requestingProvider: { rawName: 'Dr. Renata Alves', namePrefix: 'Dr.', givenNames: 'Renata', familyNames: 'Alves' }, priority: 'Routine',
+    clinicalIndication: 'Pelvic pain and menorrhagia; transvaginal ultrasound shows a uterine fibroid and thickened endometrium. Myomectomy with endometrial sampling.',
+    icd10Codes: [{ code: 'N80.00', description: 'Endometriosis of uterus, unspecified' }],
+    specimens: [
+      { description: 'Uterine leiomyoma' },
+      { description: 'Endometrial biopsy' },
+    ],
+  },
+  {
+    id: 'ord-019', externalOrderNumber: 'EPO-ORD-40156', source: 'hl7',
+    receivedAt: isoDaysAgo(2), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Arthur', lastName: 'Pendelton', dateOfBirth: '1949-01-15', sex: 'M', mrn: '10928374' },
+    requestingProvider: { rawName: 'Dr. Owen Fairweather', namePrefix: 'Dr.', givenNames: 'Owen', familyNames: 'Fairweather' }, priority: 'Routine',
+    clinicalIndication: 'Elevated PSA 8.4 ng/mL with abnormal digital rectal exam. MRI-fusion guided prostate biopsy for tissue diagnosis.',
+    icd10Codes: [{ code: 'C61', description: 'Malignant neoplasm of prostate' }],
+    specimens: [{ description: 'Prostate needle core biopsies (12 cores: 6 right, 6 left)' }],
+  },
+  {
+    id: 'ord-020', externalOrderNumber: 'EPO-ORD-40167', source: 'hl7',
+    receivedAt: isoDaysAgo(2), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Elena', lastName: 'Rostova', dateOfBirth: '1983-06-30', sex: 'F', mrn: '65421980' },
+    requestingProvider: { rawName: 'Dr. Marguerite Delacroix', namePrefix: 'Dr.', givenNames: 'Marguerite', familyNames: 'Delacroix' }, priority: 'Routine',
+    clinicalIndication: 'Left breast mass, upper-outer quadrant, BI-RADS 5 on diagnostic mammography. Core needle biopsy with sentinel lymph node biopsy.',
+    icd10Codes: [{ code: 'C50.412', description: 'Malignant neoplasm of upper-outer quadrant of left female breast' }],
+    specimens: [
+      { description: 'Left breast core needle biopsy' },
+      { description: 'Sentinel lymph node' },
+    ],
+  },
+  {
+    id: 'ord-021', externalOrderNumber: 'RMC-ORD-63304', source: 'api',
+    receivedAt: isoDaysAgo(1), status: 'pending',
+    externalAssigningAuthority: 'RMC',
+    patient: { firstName: 'Derrick', lastName: 'Hayes', dateOfBirth: '1975-09-14', sex: 'M', mrn: '33819204' },
+    requestingProvider: { rawName: 'Dr. Samuel Okonkwo', namePrefix: 'Dr.', givenNames: 'Samuel', familyNames: 'Okonkwo' }, priority: 'Routine',
+    clinicalIndication: 'Screening colonoscopy — cecal polyp removed by snare polypectomy; separate sigmoid colon biopsy for a mucosal abnormality.',
+    icd10Codes: [{ code: 'K63.5', description: 'Polyp of colon' }],
+    specimens: [
+      { description: 'Cecal polyp' },
+      { description: 'Sigmoid colon biopsy' },
+    ],
+  },
+  {
+    id: 'ord-022', externalOrderNumber: 'NSC-ORD-27812', source: 'manual',
+    receivedAt: isoDaysAgo(1), status: 'pending',
+    externalAssigningAuthority: 'NSC',
+    patient: { firstName: 'Chloe', lastName: 'Bennett', dateOfBirth: '2004-02-08', sex: 'F', mrn: '88201943' },
+    requestingProvider: { rawName: 'Dr. Renata Alves', namePrefix: 'Dr.', givenNames: 'Renata', familyNames: 'Alves' }, priority: 'Routine',
+    clinicalIndication: 'Pigmented lesion, left cheek, stable in size; patient requesting removal. Punch biopsy for histological evaluation.',
+    icd10Codes: [{ code: 'D22.39', description: 'Melanocytic nevi of other and unspecified parts of face' }],
+    specimens: [{ description: 'Left cheek skin punch biopsy' }],
+  },
+  {
+    id: 'ord-023', externalOrderNumber: 'EPO-ORD-40179', source: 'hl7',
+    receivedAt: isoDaysAgo(1), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Mateo', lastName: 'Gomez', dateOfBirth: '1966-05-19', sex: 'M', mrn: '51092384' },
+    requestingProvider: { rawName: 'Dr. Marguerite Delacroix', namePrefix: 'Dr.', givenNames: 'Marguerite', familyNames: 'Delacroix' }, priority: 'Routine',
+    clinicalIndication: 'Gross painless hematuria; cystoscopy revealed a papillary bladder mass. TURBT for tissue diagnosis and staging.',
+    icd10Codes: [{ code: 'C67.9', description: 'Malignant neoplasm of bladder, unspecified' }],
+    specimens: [{ description: 'Transurethral resection of bladder tumor (TURBT)' }],
+  },
+  {
+    id: 'ord-024', externalOrderNumber: 'RMC-ORD-63319', source: 'api',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'RMC',
+    patient: { firstName: 'Hannah', lastName: 'Lindqvist', dateOfBirth: '1998-10-12', sex: 'F', mrn: '24901823' },
+    requestingProvider: { rawName: 'Dr. Samuel Okonkwo', namePrefix: 'Dr.', givenNames: 'Samuel', familyNames: 'Okonkwo' }, priority: 'Routine',
+    clinicalIndication: 'Palpable right thyroid nodule, 1.8 cm, TI-RADS 4 on ultrasound. Fine needle aspiration for cytological evaluation.',
+    icd10Codes: [{ code: 'E04.1', description: 'Nontoxic single thyroid nodule' }],
+    specimens: [{ description: "Right thyroid lobe fine needle aspiration (FNA) cell block & smear" }],
+  },
+  {
+    id: 'ord-025', externalOrderNumber: 'EPO-ORD-40195', source: 'hl7',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Samuel', lastName: "O'Connor", dateOfBirth: '1953-03-04', sex: 'M', mrn: '60293841' },
+    requestingProvider: { rawName: 'Dr. Owen Fairweather', namePrefix: 'Dr.', givenNames: 'Owen', familyNames: 'Fairweather' }, priority: 'Routine',
+    clinicalIndication: 'Ascending colon mass on colonoscopy, biopsy-proven adenocarcinoma. Right hemicolectomy for definitive resection.',
+    icd10Codes: [{ code: 'C18.2', description: 'Malignant neoplasm of ascending colon' }],
+    specimens: [{ description: 'Right hemicolectomy specimen' }],
+  },
+  {
+    id: 'ord-026', externalOrderNumber: 'NSC-ORD-27840', source: 'manual',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'NSC',
+    patient: { firstName: 'Aisha', lastName: 'Jackson', dateOfBirth: '1988-07-22', sex: 'F', mrn: '81920347' },
+    requestingProvider: { rawName: 'Dr. Renata Alves', namePrefix: 'Dr.', givenNames: 'Renata', familyNames: 'Alves' }, priority: 'Routine',
+    clinicalIndication: 'HSIL on Pap smear; colposcopy-directed biopsy confirmed CIN3. LEEP excision with endocervical curettage.',
+    icd10Codes: [{ code: 'C53.9', description: 'Malignant neoplasm of cervix uteri, unspecified' }],
+    specimens: [
+      { description: 'Cervical LEEP excision' },
+      { description: 'Endocervical curettage (ECC)' },
+    ],
+  },
+  {
+    id: 'ord-027', externalOrderNumber: 'WSC-ORD-19067', source: 'hl7',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'WSC',
+    patient: { firstName: 'Julian', lastName: 'Zhang', dateOfBirth: '2018-12-01', sex: 'M', mrn: '14930284' },
+    requestingProvider: { rawName: 'Dr. Patricia Ndiaye', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Ndiaye' }, priority: 'Routine',
+    clinicalIndication: 'Recurrent tonsillitis, six episodes in the past year, with sleep-disordered breathing. Tonsillectomy and adenoidectomy.',
+    icd10Codes: [{ code: 'J35.01', description: 'Chronic tonsillitis' }],
+    specimens: [{ description: 'Bilateral palatine tonsils and adenoids' }],
+  },
+  {
+    id: 'ord-028', externalOrderNumber: 'RMC-ORD-63337', source: 'api',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'RMC',
+    patient: { firstName: 'Nora', lastName: 'Vance', dateOfBirth: '1990-09-18', sex: 'F', mrn: '39021845' },
+    requestingProvider: { rawName: 'Dr. Samuel Okonkwo', namePrefix: 'Dr.', givenNames: 'Samuel', familyNames: 'Okonkwo' }, priority: 'Routine',
+    clinicalIndication: 'Right adnexal cystic mass on ultrasound with elevated CA-125. Image-guided fluid aspiration for cytological evaluation.',
+    icd10Codes: [{ code: 'C56.9', description: 'Malignant neoplasm of unspecified ovary' }],
+    specimens: [{ description: 'Right ovarian cyst fluid aspiration (Non-Gynecologic Cytology - Fluid & Cell Block)' }],
+  },
+  {
+    id: 'ord-029', externalOrderNumber: 'EPO-ORD-40208', source: 'hl7',
+    receivedAt: isoDaysAgo(0), status: 'pending',
+    externalAssigningAuthority: 'EPO',
+    patient: { firstName: 'Victor', lastName: 'Sterling', dateOfBirth: '1957-05-04', sex: 'M', mrn: '71289034' },
+    requestingProvider: { rawName: 'Dr. Marguerite Delacroix', namePrefix: 'Dr.', givenNames: 'Marguerite', familyNames: 'Delacroix' }, priority: 'Routine',
+    clinicalIndication: 'Left lower lobe mass on CT chest; bronchoscopy performed with bronchial washing and brushing for cytological evaluation.',
+    icd10Codes: [{ code: 'C34.90', description: 'Malignant neoplasm of unspecified part of unspecified bronchus or lung' }],
+    specimens: [{ description: 'Left lower lobe bronchial washing and brushing (Pulmonary Cytology - Direct Smear & Cell Block)' }],
+  },
 ];
 
-const loadOrders    = () => storageGet<IncomingOrder[]>('pathscribe_incoming_orders', SEED_ORDERS);
 const persistOrders = (data: IncomingOrder[]) => storageSet('pathscribe_incoming_orders', data);
+
+// Real fix, per direct follow-up: "Can we simply add the data to the
+// tables?" Confirmed directly before building this: storageGet's own
+// fallback-to-SEED_ORDERS only ever applies when the real,
+// persisted 'pathscribe_incoming_orders' key is completely absent —
+// for anyone who has already loaded the Accession page once (true
+// for this app's own primary tester), that key already exists, so
+// editing SEED_ORDERS in code alone would be silently ignored
+// forever. Same real version-bump re-seed trigger as
+// mockCaseService.ts's own MOCK_VERSION — but a genuine MERGE, never
+// that file's own destructive wipe: an order a tech has already
+// imported/linked to a real case (status: 'linked', a real
+// linkedCaseId) must keep that real, current state, never silently
+// revert to 'pending' just because it also happens to still be
+// present in the SEED_ORDERS constant. Only genuinely new seed
+// orders (by id, not yet in the real, persisted store) are appended;
+// no existing order's own fields are ever touched.
+const ORDERS_SEED_VERSION = '2'; // bumped: added 14 real, seeded test-patient orders (ord-016..ord-029) — per direct follow-up
+const ORDERS_SEED_VERSION_KEY = 'pathscribe_orders_seed_version';
+
+function loadOrders(): IncomingOrder[] {
+  const stored = storageGet<IncomingOrder[]>('pathscribe_incoming_orders', SEED_ORDERS);
+  const storedVersion = localStorage.getItem(ORDERS_SEED_VERSION_KEY);
+  if (storedVersion === ORDERS_SEED_VERSION) return stored;
+
+  const existingIds = new Set(stored.map(o => o.id));
+  const newOnes = SEED_ORDERS.filter(o => !existingIds.has(o.id));
+  const merged = newOnes.length > 0 ? [...stored, ...newOnes] : stored;
+  localStorage.setItem(ORDERS_SEED_VERSION_KEY, ORDERS_SEED_VERSION);
+  if (newOnes.length > 0) persistOrders(merged);
+  return merged;
+}
+
 let ORDERS: IncomingOrder[] = loadOrders();
+
+/** Real, priority-ordered crosswalk match — resolves PS-80's real,
+ *  confirmed gap: the old match was a single, flat `.find()` on
+ *  (clientId, externalCode) alone, completely ignoring
+ *  SpecimenCodeCrosswalkEntry.codingSystem even though that field
+ *  already existed. Two real crosswalk entries for the same
+ *  (clientId, externalCode) but different codingSystem values would
+ *  previously resolve to whichever happened to come first in the
+ *  array — a real, silent, wrong-match risk this fixes.
+ *
+ *  Real, most-specific-wins priority, matching the same pattern
+ *  already proven for BillingRuleVersion/CaseMaskConfig site
+ *  overrides in this app:
+ *    1. Exact codingSystem match, when the incoming specimen actually
+ *       carried one.
+ *    2. A crosswalk entry with NO codingSystem set at all (every real
+ *       entry created before multi-code-system matching existed, or
+ *       one deliberately left general) — a real, backward-compatible
+ *       fallback so pre-existing crosswalk entries keep matching
+ *       exactly as they did before this fix.
+ *    3. Any remaining match on (clientId, externalCode) as a final,
+ *       last-resort fallback — never leaves a real match on the table
+ *       over a coding-system mismatch alone; a genuinely wrong
+ *       codingSystem tag on either side (a real, plausible data-entry
+ *       error) shouldn't turn a real match into a false miss.
+ *
+ *  Uses normalizeOrderCode (utils/normalizeOrderCode.ts) for
+ *  comparison, not the old plain .toLowerCase() — strips punctuation
+ *  and collapses whitespace too, a real, strictly safer comparison
+ *  (can only remove false negatives, never introduce a false
+ *  positive — see that file's own header).
+ *
+ *  Real, disclosed, deliberate scope boundary: does NOT filter by
+ *  SpecimenCodeCrosswalkEntry.siteId at all — confirmed directly
+ *  before writing this that IncomingOrder has no siteId/organisationId
+ *  field anywhere, so there is no real value to match against yet. A
+ *  site-scoped crosswalk entry is created and stored correctly, but
+ *  cannot actually be exercised from real inbound order data until
+ *  IncomingOrder itself gains a real site-identifying field — a real,
+ *  separate decision (and, per this app's own architecture, one the
+ *  interface engine would need to populate) not made here. */
+function findCrosswalkMatch(
+  crosswalk: SpecimenCodeCrosswalkEntry[],
+  clientId: string,
+  externalCode: string,
+  codingSystem: OrderCodeCodingSystem | undefined,
+): SpecimenCodeCrosswalkEntry | undefined {
+  const normalizedTarget = normalizeOrderCode(externalCode);
+  const candidates = crosswalk.filter(
+    x => x.clientId === clientId && normalizeOrderCode(x.externalCode) === normalizedTarget
+  );
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+
+  if (codingSystem) {
+    const exact = candidates.find(x => x.codingSystem === codingSystem);
+    if (exact) return exact;
+  }
+  const legacy = candidates.find(x => !x.codingSystem);
+  if (legacy) return legacy;
+  return candidates[0];
+}
 
 export const mockOrderIntakeService: IOrderIntakeService = {
 
@@ -294,6 +556,32 @@ export const mockOrderIntakeService: IOrderIntakeService = {
       }
     }
 
+    // ── Requesting physician resolution — real, per PS-81 (Jira),
+    // completing the "requesting" side to match the ADT pipeline's own
+    // "attending_of_record" resolution. Prefers structured matching
+    // (familyNames/givenNames, sidesteps any free-text formatting
+    // difference from other pipelines) when the order carries a real,
+    // confident split; falls back to matching on rawName as free text
+    // otherwise. Never blocks order resolution on a physician-
+    // resolution failure — same fail-open posture as client/specimen
+    // resolution above. ──────────────────────────────────────────────
+    const providerResolved = order.requestingProvider.familyNames
+      ? await resolveProviderName(
+          {
+            namePrefix: order.requestingProvider.namePrefix,
+            givenNames: order.requestingProvider.givenNames,
+            familyNames: order.requestingProvider.familyNames,
+            nameSuffix: order.requestingProvider.nameSuffix,
+            identifiers: order.requestingProvider.identifiers,
+          },
+          'requesting',
+          order.clientId
+        )
+      : await resolveProviderName(order.requestingProvider.rawName, 'requesting', order.clientId);
+    if (providerResolved.ok && providerResolved.data) {
+      order.requestingProviderPhysicianId = providerResolved.data.physician.id;
+    }
+
     // ── Per-specimen resolution — Specimen Dictionary first, category
     // derived transitively ────────────────────────────────────────────
     const dictionaryRes = await mockSpecimenDictionaryService.getAll();
@@ -304,11 +592,10 @@ export const mockOrderIntakeService: IOrderIntakeService = {
       // resolves to a specific SpecimenEntry, not straight to a
       // category, so "TISSUE-01" resolves to "Left breast core biopsy"
       // and its category follows transitively, not a bare category
-      // guess that loses the actual specimen type.
+      // guess that loses the actual specimen type. Real, priority-
+      // ordered match (findCrosswalkMatch above) — resolves PS-80.
       if (spec.externalSpecimenCode && order.clientId) {
-        const xwalkMatch = CROSSWALK.find(
-          x => x.clientId === order.clientId && x.externalCode.toLowerCase() === spec.externalSpecimenCode!.toLowerCase()
-        );
+        const xwalkMatch = findCrosswalkMatch(CROSSWALK, order.clientId, spec.externalSpecimenCode, spec.externalCodingSystem);
         const entry = xwalkMatch ? dictionary.find(d => d.id === xwalkMatch.dictionaryEntryId) : undefined;
         if (entry) {
           return {
@@ -317,6 +604,29 @@ export const mockOrderIntakeService: IOrderIntakeService = {
             specimenCategoryId: entry.specimenCategoryId, categoryWasAutoCreated: false,
           };
         }
+      }
+
+      // Real, per direct guidance's own confirmed resolution
+      // (PS-80): raising a real InterfaceException happens ALONGSIDE
+      // the existing auto-create-and-continue fallback below, never
+      // instead of it — matches the same fail-open, never-block-order-
+      // processing posture this whole function already applies to
+      // clients and categories. Only for a specimen that actually
+      // carried a real code the crosswalk tried and missed — a
+      // description-only specimen (no externalSpecimenCode at all) was
+      // never going to have a crosswalk entry in the first place, so
+      // that's not a real "unmapped code" event, just the normal,
+      // expected description-only path.
+      if (spec.externalSpecimenCode && order.clientId) {
+        await mockInterfaceExceptionService.create({
+          eventType: 'unmapped_order_code',
+          reason: `No crosswalk match for order code "${spec.externalSpecimenCode}"${spec.externalCodingSystem ? ` (${spec.externalCodingSystem})` : ''} on order ${order.externalOrderNumber} from client assigning authority "${order.externalAssigningAuthority}" — auto-created a pending Specimen Dictionary entry so order processing wasn't blocked; a real crosswalk entry should be added for this code.`,
+          rawMessage: order.rawMessage ?? `${spec.externalSpecimenCode} — ${spec.description}`,
+          rawOrderCode: spec.externalSpecimenCode,
+          normalizedOrderCode: normalizeOrderCode(spec.externalSpecimenCode),
+          codingSystem: spec.externalCodingSystem,
+          clientId: order.clientId,
+        });
       }
 
       // No crosswalk match (or no code at all) — fall back to the

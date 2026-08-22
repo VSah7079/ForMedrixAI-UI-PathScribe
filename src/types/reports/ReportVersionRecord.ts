@@ -29,6 +29,17 @@ export interface ReportVersionRecord {
   mode: ReportVersionMode;
   trigger: ReportVersionTrigger;
   createdBy: { userId: string; userName: string };
+  /**
+   * Real feature, per direct follow-up: "Stamp every saved draft...
+   * with... station_id captured at the exact moment of saving."
+   * Same real, additive shape as Case.lastUpdatedFromStation's own
+   * doc comment — captured automatically by
+   * mockReportVersionService.create() at the moment of creation,
+   * same as patientEncounterSnapshot below. Genuinely absent for a
+   * version created before this field existed, or if no station was
+   * known at the moment of creation.
+   */
+  createdFromStation?: string | null;
   /** Full case PDF (every synoptic instance rendered together), same
    *  pipeline as the print button — not a second, separately-built artifact. */
   pdfBase64?: string;

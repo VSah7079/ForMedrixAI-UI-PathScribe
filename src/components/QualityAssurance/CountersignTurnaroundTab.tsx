@@ -173,7 +173,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
             {pending.length === 0 && <tr><td className="ps-conf-td" colSpan={4}>Nothing pending — every released case has been countersigned.</td></tr>}
             {pending.map(r => (
               <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
-                <td className="ps-conf-td">{r.caseId}</td>
+                <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                 <td className="ps-conf-td">{r.residentName}</td>
                 <td className="ps-conf-td">{new Date(r.releasedAt).toLocaleString()}</td>
                 <td className="ps-conf-td">{hoursBetween(r.releasedAt, new Date().toISOString()).toFixed(1)}h</td>
@@ -198,7 +198,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
             {countersigned.length === 0 && <tr><td className="ps-conf-td" colSpan={6}>No countersigned records in this scope yet.</td></tr>}
             {countersigned.map(r => (
               <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
-                <td className="ps-conf-td">{r.caseId}</td>
+                <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                 <td className="ps-conf-td">{r.residentName}</td>
                 <td className="ps-conf-td">{r.attendingName}</td>
                 <td className="ps-conf-td">{hoursBetween(r.releasedAt, r.countersignedAt!).toFixed(1)}h</td>

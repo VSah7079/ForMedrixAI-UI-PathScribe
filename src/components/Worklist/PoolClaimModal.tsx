@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import '@/pathscribe.css';
 import { claimPoolCase, acceptPoolCase, passPoolCase } from '../../services/cases/mockCaseService';
 import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
+import { sendAccessRequestToAdmins } from '@/utils/accessRequests';
 
 interface PoolClaimModalProps {
   isOpen:            boolean;
@@ -19,6 +20,13 @@ interface PoolClaimModalProps {
   poolName?:         string;
   currentUserId:     string;
   currentUserName:   string;
+  // Real feature, per direct product decision: pool-restricted cases
+  // stay visible with a real request-access path, the same as
+  // Pediatric, rather than being hidden entirely. Needed for
+  // sendAccessRequestToAdmins' own org-scoping — see that function's
+  // own header comment for why an unrelated hospital's admin
+  // shouldn't be the one granted this request by default.
+  currentUserOrganisationId?: string;
   continueToReport?: boolean;
   fromFilter?:       string;
   onAccepted:        () => void;
@@ -26,11 +34,11 @@ interface PoolClaimModalProps {
   onClose:           () => void;
 }
 
-type Step = 'claiming' | 'ready' | 'blocked' | 'accepting' | 'passing';
+type Step = 'claiming' | 'ready' | 'blocked' | 'access-denied' | 'accepting' | 'passing';
 
 export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
   isOpen, caseId, caseSummary, poolName,
-  currentUserId, currentUserName,
+  currentUserId, currentUserName, currentUserOrganisationId,
   continueToReport = false,
   fromFilter,
   onAccepted, onPassed, onClose,
@@ -38,6 +46,28 @@ export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
   const navigate = useNavigate();
   const [step,      setStep]      = useState<Step>('claiming');
   const [blockedBy, setBlockedBy] = useState<string | null>(null);
+  // Real feature, per direct product decision: pool-restricted cases
+  // stay visible with a real request-access path, mirroring the
+  // Pediatric Access modal's own tracked-per-restriction pattern
+  // (pedRequestedIds in WorklistTable.tsx). Scoped to the POOL, not
+  // the individual case — the real thing being requested is
+  // membership in that pool, so having asked once already covers
+  // every other case sitting in the same restricted pool, not just
+  // this one.
+  const [accessRequestedPools, setAccessRequestedPools] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('pathscribe_pool_access_requested');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+  const markAccessRequested = (pool: string) => {
+    setAccessRequestedPools(prev => {
+      const next = new Set(prev).add(pool);
+      try { localStorage.setItem('pathscribe_pool_access_requested', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  const accessAlreadyRequested = poolName ? accessRequestedPools.has(poolName) : false;
 
   const handleViewReport = () => {
     if (!caseId) return;
@@ -54,9 +84,20 @@ export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
     claimPoolCase(caseId, currentUserId).then(result => {
       if (result.success) {
         setStep('ready');
-      } else {
-        setBlockedBy((result as any).claimedBy ?? 'another pathologist');
+      } else if ((result as any).claimedBy) {
+        // Someone else is actively reviewing it right now — real,
+        // temporary contention, not a permissions question.
+        setBlockedBy((result as any).claimedBy);
         setStep('blocked');
+      } else {
+        // Real feature, per direct product decision: pool-restricted
+        // cases stay visible with a real request-access path, the same
+        // as Pediatric, rather than being hidden entirely. No
+        // claimedBy means this is canUserClaimPoolCase's own
+        // membership rejection, not a concurrent-claim race — a
+        // genuinely different situation needing a genuinely different
+        // (actionable) response, not the same "try again later" copy.
+        setStep('access-denied');
       }
     });
 
@@ -119,7 +160,7 @@ export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className={step === 'claiming' || step === 'blocked' ? 'ps-pool-body--centered' : 'ps-pool-body'}>
+        <div className={step === 'claiming' || step === 'blocked' || step === 'access-denied' ? 'ps-pool-body--centered' : 'ps-pool-body'}>
 
           {/* Claiming */}
           {step === 'claiming' && <>
@@ -138,6 +179,53 @@ export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
             </div>
             <div style={{ marginTop: 20 }}>
               <button className="ps-btn-secondary" onClick={onClose}>Close</button>
+            </div>
+          </>}
+
+          {/* Access denied — real feature, per direct product decision:
+              pool-restricted cases stay visible with a real
+              request-access path, mirroring the Pediatric Access
+              modal's own structure and tone, rather than being hidden
+              entirely (an admin oversight in pool membership shouldn't
+              leave a pathologist with no way to even find out a case
+              exists, let alone ask for access to it). */}
+          {step === 'access-denied' && <>
+            <div className="ps-pool-icon">🔒</div>
+            <div className="ps-pool-blocked-title">Pool Access Required</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+              This case belongs to the <strong style={{ color: '#e2e8f0' }}>{poolName ?? 'this'}</strong> pool,
+              which is restricted to its own members. Your System Admin can add you via{' '}
+              <strong style={{ color: '#e2e8f0' }}>Configuration → Synoptic Library → Subspecialties</strong>.
+            </div>
+            {accessAlreadyRequested ? (
+              <div className="ps-ped-pending">
+                ⏳ Access request pending — your System Admin has been notified.<br/>
+                <span className="ps-ped-pending-sub">You'll receive a message when access is granted.</span>
+              </div>
+            ) : (
+              <div className="ps-ped-info-box">
+                <strong className="ps-ped-highlight">Request Pool Access</strong><br/>
+                One click sends an automated request to your System Admin.
+              </div>
+            )}
+            <div style={{ marginTop: 20, display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="ps-btn-secondary" onClick={onClose}>Close</button>
+              {!accessAlreadyRequested && (
+                <button className="ps-btn-primary" onClick={async () => {
+                  try {
+                    await sendAccessRequestToAdmins(
+                      { id: currentUserId, name: currentUserName, organisationId: currentUserOrganisationId },
+                      `Pool Access Request — ${currentUserName}`,
+                      `${currentUserName} needs access to the ${poolName ?? 'restricted'} pool (attempted to claim case ${caseId}).\n\nTo grant access:\n1. Go to Configuration → Synoptic Library → Subspecialties\n2. Open the ${poolName ?? ''} pool\n3. Add ${currentUserName} to its member list\n\nThis was likely an oversight when the pool was originally configured.`,
+                      '/configuration?tab=synoptic-library&section=subspecialties',
+                    );
+                  } finally {
+                    if (poolName) markAccessRequested(poolName);
+                  }
+                }}>
+                  Request Pool Access
+                </button>
+              )}
             </div>
           </>}
 

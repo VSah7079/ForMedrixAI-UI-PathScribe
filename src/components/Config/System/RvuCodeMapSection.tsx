@@ -23,8 +23,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
-import type { RvuTableVersion, CptWorkRvuEntry } from '@/services/billing/RvuTableVersion';
-import { parseRvuUploadRows } from '@/services/billing/codeMapTable';
+import type { RvuTableVersion, BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
+import { parseRvuUploadRows, type ParsedRvuUploadRow } from '@/services/billing/codeMapTable';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 
 const TEMPLATE_EXAMPLE_ROWS = [
@@ -37,6 +37,102 @@ function formatDate(iso: string): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Real, per direct question: "is there a reason we do not have a way
+// to add a RVU code outside of using CSV files. Also, can't edit or
+// duplicate?" Confirmed directly — there wasn't a real architectural
+// reason; the service layer's own createVersion already accepts any
+// real entries array, the UI simply never exposed a single-entry path,
+// only the bulk CSV one. This modal is that real, single-entry path —
+// add, edit, or duplicate all route through it. Reuses the exact real
+// ps-ms-overlay/ps-ms-modal pattern already proven throughout
+// BillingDictionarySection.tsx this same session, not a new one.
+interface EntryModalProps {
+  seed?: BillingDictionaryEntry;
+  /** True when duplicating — seed's own values pre-fill the form, but
+   *  code/billingCode are cleared, since a real duplicate needs a
+   *  real, distinct code, not a silent overwrite of the original. */
+  isDuplicate?: boolean;
+  onSave: (entry: BillingDictionaryEntry) => void;
+  onClose: () => void;
+  busy: boolean;
+}
+
+const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onClose, busy }) => {
+  const isEdit = !!seed && !isDuplicate;
+  const [code, setCode] = useState(isDuplicate ? '' : seed?.code ?? '');
+  const [description, setDescription] = useState(seed?.description ?? '');
+  const [billingCode, setBillingCode] = useState(isDuplicate ? '' : seed?.billingCode ?? '');
+  const [hcpcsCode, setHcpcsCode] = useState(seed?.hcpcsCode ?? '');
+  const [workRvu, setWorkRvu] = useState(seed?.workRvu?.toString() ?? '');
+  const [rvuPe, setRvuPe] = useState(seed?.rvuPe?.toString() ?? '');
+  const [rvuMp, setRvuMp] = useState(seed?.rvuMp?.toString() ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = () => {
+    if (!code.trim()) { setError('Code is required.'); return; }
+    if (!billingCode.trim()) { setError('Billing code is required.'); return; }
+    if (workRvu.trim() && !(Number(workRvu) > 0)) { setError('Work RVU must be a positive number if given — leave blank if unverified.'); return; }
+    onSave({
+      code: code.trim(),
+      billingCode: billingCode.trim(),
+      description: description.trim() || code.trim(),
+      hcpcsCode: hcpcsCode.trim() || undefined,
+      workRvu: workRvu.trim() ? Number(workRvu) : undefined,
+      rvuPe: rvuPe.trim() ? Number(rvuPe) : undefined,
+      rvuMp: rvuMp.trim() ? Number(rvuMp) : undefined,
+    });
+  };
+
+  return (
+    <div className="ps-ms-overlay ps-ms-overlay--top-align">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">{isEdit ? `Edit — ${seed?.code}` : isDuplicate ? `Duplicate — ${seed?.code}` : 'Add Code'}</div>
+        <div className="ps-ms-body">
+          <div className="ps-conf-form-row">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">Code <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={code} onChange={e => setCode(e.target.value)} disabled={isEdit} placeholder="e.g. 88305" />
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">Billing Code <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={billingCode} onChange={e => setBillingCode(e.target.value)} disabled={isEdit} placeholder="Often same as Code" />
+            </div>
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Description</label>
+            <input className="ps-conf-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Real, human-readable description" />
+          </div>
+          <div className="ps-conf-form-row--3">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">Work RVU</label>
+              <input className="ps-conf-input" type="number" step="0.01" value={workRvu} onChange={e => setWorkRvu(e.target.value)} placeholder="Blank if unverified" />
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">RVU — Practice Expense</label>
+              <input className="ps-conf-input" type="number" step="0.01" value={rvuPe} onChange={e => setRvuPe(e.target.value)} />
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">RVU — Malpractice</label>
+              <input className="ps-conf-input" type="number" step="0.01" value={rvuMp} onChange={e => setRvuMp(e.target.value)} />
+            </div>
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">HCPCS Code</label>
+            <input className="ps-conf-input" value={hcpcsCode} onChange={e => setHcpcsCode(e.target.value)} placeholder="Optional" />
+          </div>
+          {error && <span className="ps-conf-error-text">{error}</span>}
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-primary" disabled={busy} onClick={handleSave}>
+            {busy ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Code'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RvuCodeMapSection: React.FC = () => {
   const [versions, setVersions]   = useState<RvuTableVersion[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -47,13 +143,28 @@ const RvuCodeMapSection: React.FC = () => {
 
   // Upload preview state - nothing is committed until the admin
   // explicitly confirms, same "preview then apply" pattern this app
-  // already uses for spreadsheet uploads elsewhere.
-  const [uploadPreview, setUploadPreview] = useState<CptWorkRvuEntry[] | null>(null);
+  // already uses for spreadsheet uploads elsewhere. Real fix, per
+  // direct guidance (Charge Capture work): was typed CptWorkRvuEntry[]
+  // (now BillingDictionaryEntry[]) purely by structural coincidence -
+  // a raw parsed upload row genuinely has no billingCode yet (a real
+  // CMS PPRRVU file has no concept of this app's internal billing
+  // codes), so ParsedRvuUploadRow[] is the real, correct type. See
+  // handleApplyUpload's own comment for how billingCode gets a real,
+  // honest default at commit time.
+  const [uploadPreview, setUploadPreview] = useState<ParsedRvuUploadRow[] | null>(null);
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadLabel, setUploadLabel] = useState('');
   const [uploadEffectiveDate, setUploadEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [activateOnSave, setActivateOnSave] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Real, per direct question: single-entry add/edit/duplicate state —
+  // undefined entryModalState means the modal is closed; entry
+  // undefined within it means "Add"; isDuplicate distinguishes a real
+  // duplicate (code/billingCode cleared) from a real edit (code/
+  // billingCode locked, since those are this entry's real identity).
+  const [entryModalState, setEntryModalState] = useState<{ entry?: BillingDictionaryEntry; isDuplicate?: boolean } | null>(null);
+  const [entryBusy, setEntryBusy] = useState(false);
 
   const refresh = useCallback(() => {
     mockRvuCodeMapService.getAllVersions().then(res => {
@@ -83,6 +194,43 @@ const RvuCodeMapSection: React.FC = () => {
       setToast(`"${res.data.label}" is now the active version.`);
       refresh();
     }
+  };
+
+  // ── Single-entry add / edit / duplicate ──────────────────────────────────
+  // Real, per direct question — the same real createVersion the upload
+  // flow already uses, just computing its entries array from a single
+  // real change instead of a whole parsed CSV. isEdit real replaces
+  // the matching entry in place (by code); add/duplicate real appends.
+  const handleSaveEntry = async (entry: BillingDictionaryEntry) => {
+    const isEdit = !!entryModalState?.entry && !entryModalState?.isDuplicate;
+    const current = activeVersion?.entries ?? [];
+    if (!isEdit && current.some(e => e.code === entry.code)) {
+      setToast(`Code "${entry.code}" already exists in the active version.`);
+      return;
+    }
+    const newEntries = isEdit
+      ? current.map(e => e.code === entry.code ? entry : e)
+      : [...current, entry];
+
+    setEntryBusy(true);
+    const user = getSessionUser();
+    const label = isEdit ? `Manual edit — ${entry.code}` : `Manual add — ${entry.code}`;
+    const res = await mockRvuCodeMapService.createVersion({
+      label,
+      effectiveDate: new Date().toISOString(),
+      entries: newEntries,
+      uploadedBy: user?.id ?? 'admin',
+    });
+    if (res.ok === false) {
+      setEntryBusy(false);
+      setToast(res.error);
+      return;
+    }
+    await mockRvuCodeMapService.activateVersion(res.data.id);
+    setEntryBusy(false);
+    setEntryModalState(null);
+    setToast(`"${entry.code}" ${isEdit ? 'updated' : 'added'} and activated.`);
+    refresh();
   };
 
   // ── Spreadsheet upload ────────────────────────────────────────────────────
@@ -124,10 +272,20 @@ const RvuCodeMapSection: React.FC = () => {
     if (!uploadPreview || uploadPreview.length === 0) return;
     setBusy(true);
     const user = getSessionUser();
+    // Real, disclosed default, per direct guidance: a raw CMS PPRRVU
+    // upload has no concept of this app's internal billingCode labels
+    // (IHC-FIRST, PIN4-PANEL, etc.) - defaults billingCode to the CPT
+    // code itself for every uploaded row, same as every base
+    // surgical-pathology-level entry already does in CODE_MAP_TABLE.
+    // Real indirection (a genuinely distinct internal label) needs a
+    // real admin to configure it manually afterward - not built here,
+    // since inferring which uploaded codes need one isn't something
+    // this app should guess at.
+    const entriesWithBillingCode: BillingDictionaryEntry[] = uploadPreview.map(row => ({ ...row, billingCode: row.code }));
     const res = await mockRvuCodeMapService.createVersion({
       label: uploadLabel.trim() || uploadFileName,
       effectiveDate: new Date(uploadEffectiveDate).toISOString(),
-      entries: uploadPreview,
+      entries: entriesWithBillingCode,
       uploadedBy: user?.id ?? 'admin',
       sourceFileName: uploadFileName,
     });
@@ -171,6 +329,7 @@ const RvuCodeMapSection: React.FC = () => {
           </p>
         </div>
         <div className="ps-specdict-header-actions">
+          <button className="ps-conf-btn-primary" onClick={() => setEntryModalState({})}>+ Add Code</button>
           <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
           <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
           <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx"
@@ -192,13 +351,19 @@ const RvuCodeMapSection: React.FC = () => {
           </div>
           <div className="ps-conf-table-wrap" style={{ marginTop: '12px' }}>
             <table className="ps-conf-table">
-              <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th><th className="ps-conf-th">Work RVU</th></tr></thead>
+              <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th><th className="ps-conf-th">Work RVU</th><th className="ps-conf-th">Actions</th></tr></thead>
               <tbody>
                 {activeVersion.entries.map(e => (
                   <tr key={e.code}>
                     <td className="ps-conf-td">{e.code}</td>
                     <td className="ps-conf-td">{e.description}</td>
-                    <td className="ps-conf-td">{e.workRvu}</td>
+                    <td className="ps-conf-td">{e.workRvu === undefined ? <span className="ps-conf-error-text">Unverified</span> : e.workRvu}</td>
+                    <td className="ps-conf-td">
+                      <div className="ps-conf-row-actions">
+                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e, isDuplicate: true })}>Duplicate</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -280,6 +445,16 @@ const RvuCodeMapSection: React.FC = () => {
             <button className="ps-conf-btn-row" onClick={() => { setUploadPreview(null); setUploadError(null); }}>Cancel</button>
           </div>
         </div>
+      )}
+
+      {entryModalState && (
+        <EntryModal
+          seed={entryModalState.entry}
+          isDuplicate={entryModalState.isDuplicate}
+          busy={entryBusy}
+          onSave={handleSaveEntry}
+          onClose={() => setEntryModalState(null)}
+        />
       )}
     </div>
   );

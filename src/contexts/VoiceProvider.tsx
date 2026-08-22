@@ -273,7 +273,21 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [commandPhase, setCommandPhase]         = useState<'ai' | 'local'>('ai');
   const [transcript, setTranscript]             = useState('');
   const [isFinal, setIsFinal]                   = useState(false);
-  const [accent, setAccent]                     = useState('en-US');
+  // Real fix, per direct follow-up: persist the user's chosen voice
+  // accent/locale across reloads. Confirmed directly: this genuinely
+  // drives the real SpeechRecognition engine (recognition.lang =
+  // accent, below) — not a cosmetic setting — but had zero
+  // persistence, resetting to 'en-US' on every reload regardless of
+  // what the user had actually picked. Client-side only (no real
+  // server-side user-profile store exists in this mock app to persist
+  // to instead).
+  const [accent, setAccentState] = useState(() => {
+    try { return localStorage.getItem('pathscribe_voice_accent') || 'en-US'; } catch { return 'en-US'; }
+  });
+  const setAccent = useCallback((next: string) => {
+    setAccentState(next);
+    try { localStorage.setItem('pathscribe_voice_accent', next); } catch { /* persistence is an optimisation, not a requirement */ }
+  }, []);
   const [dictationTarget, setDictationTarget]   = useState<DictationTarget | null>(null);
   const [isRefining, setIsRefining]             = useState(false);
   const [justHeardLiteral, setJustHeardLiteral] = useState(false);
@@ -314,6 +328,49 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setTranscript('');
     }
   }, [voiceEnabled, killMic]);
+
+  // ── Real, missing keyboard shortcut dispatcher ──────────────────────────────
+  // Per direct follow-up: "are we not mapping keyboard commands in the
+  // Action Registry?" Confirmed directly, after a genuinely thorough
+  // trace (every real keydown listener in the app, every use of
+  // parseShortcut, every caller of executeAction): the shortcut field
+  // was real, stored, admin-editable data that never actually fired
+  // anything on a real, physical key press — only voice commands ever
+  // called executeAction. This is the real, missing receiving half.
+  // Shares mockActionRegistryService's own getEligibleActions() — the
+  // exact same isActive + GLOBAL_CATEGORIES-or-current-context rule
+  // voice matching already uses — so keyboard and voice can never
+  // silently drift apart on which actions are eligible right now.
+  useEffect(() => {
+    const handleGlobalShortcut = (e: KeyboardEvent) => {
+      // Real, deliberate rule: ignore while genuinely typing into a
+      // real field — a bare-key shortcut (e.g. 'S', 'Escape') that
+      // happens to collide with normal typing must never fire
+      // mid-keystroke. Modifier-bearing combos (Alt/Ctrl/Meta) are
+      // exempt — normal typing never holds those down.
+      const hasModifier = e.altKey || e.ctrlKey || e.metaKey;
+      const target = e.target as HTMLElement | null;
+      const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (isTyping && !hasModifier) return;
+
+      const eligible = mockActionRegistryService.getEligibleActions();
+      const matched = eligible.find(a => {
+        if (!a.shortcut) return false;
+        const sc = parseShortcut(a.shortcut);
+        return (
+          e.ctrlKey  === sc.ctrl  && e.shiftKey === sc.shift &&
+          e.altKey   === sc.alt   && e.metaKey  === sc.meta  &&
+          e.key.toLowerCase() === sc.key
+        );
+      });
+      if (matched) {
+        e.preventDefault();
+        mockActionRegistryService.executeAction(matched);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalShortcut);
+  }, []);
 
   // ── Shortcut confirmation for missed voice commands ────────────────────────
   useEffect(() => {

@@ -296,9 +296,8 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
             {node.showLogo && <div className="ps-tpp-print-header-logo">PathScribe Laboratory</div>}
             <div className="ps-tpp-print-header-sub">Department of Anatomic Pathology</div>
           </div>
-          <div className="ps-tpp-print-header-right">
-            {node.showAccession && <div className="ps-tpp-print-header-accession">{MOCK_CTX.order.fullAccession}</div>}
-            {node.showPatientName && <div className="ps-tpp-print-header-patient">{MOCK_CTX.patient.name}</div>}
+          <div className="ps-tpp-print-header-right" data-phi="accession">{node.showAccession && <div className="ps-tpp-print-header-accession">{MOCK_CTX.order.fullAccession}</div>}
+            {node.showPatientName && <div className="ps-tpp-print-header-patient" data-phi="name">{MOCK_CTX.patient.name}</div>}
             <div className="ps-tpp-print-header-sub">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
           </div>
         </div>

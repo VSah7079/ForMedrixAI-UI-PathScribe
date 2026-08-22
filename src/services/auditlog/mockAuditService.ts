@@ -1,5 +1,6 @@
 import { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
+import { getEffectiveScanStationId } from '../../utils/effectiveScanStation';
 import type {
   AuditLog, ErrorLog,
   AuditFilterParams, ErrorFilterParams,
@@ -185,7 +186,20 @@ export const mockAuditService: IAuditService = {
 
   async logEvent(entry) {
     await delay();
-    const newEntry: AuditLog = { ...entry, id: 'al-' + Date.now(), timestamp: nowTs() };
+    // Real fix, per direct follow-up: "when we are tracking actions,
+    // I don't believe we include the physical location of that
+    // action, just the person - Correct?" Confirmed, then fixed HERE
+    // specifically, not in audit/auditLogger.ts alone — a direct
+    // trace found 16 separate real files calling this function,
+    // most going straight to mockAuditService.logEvent() rather than
+    // through that one wrapper. This is the actual, single choke
+    // point every one of them funnels through regardless of which
+    // intermediate file they use, so injecting the real, current
+    // station here — always, unconditionally overwriting whatever
+    // (if anything) the caller passed — is what genuinely covers
+    // every real audit event in this app, not just the three
+    // consumers of one specific bridge file.
+    const newEntry: AuditLog = { ...entry, stationId: getEffectiveScanStationId(), id: 'al-' + Date.now(), timestamp: nowTs() };
     MOCK_AUDIT_LOGS = [newEntry, ...MOCK_AUDIT_LOGS];
     persistAudit(MOCK_AUDIT_LOGS);
     return ok({ ...newEntry });

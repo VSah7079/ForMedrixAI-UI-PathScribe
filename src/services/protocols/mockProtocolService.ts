@@ -16,7 +16,7 @@ const load = () => storageGet<Protocol[]>('pathscribe_protocols', [
     ],
     pathways: [
       {
-        id: 'path-renal-lm', pathwayName: 'Light Microscopy',
+        id: 'path-renal-lm', pathwayName: 'Light Microscopy', materialKind: 'block',
         fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false, processingFormat: 'Standard',
         tasks: [
           { id: 't1', stepOrder: 1, action: 'Cut Level 1', stainTypeIds: ['st-he'] },
@@ -27,14 +27,14 @@ const load = () => storageGet<Protocol[]>('pathscribe_protocols', [
         ],
       },
       {
-        id: 'path-renal-if', pathwayName: 'Immunofluorescence',
+        id: 'path-renal-if', pathwayName: 'Immunofluorescence', materialKind: 'block',
         fixativeType: "Michel's Transport Medium", requiresDecal: false, processingFormat: 'Frozen Block',
         tasks: [
           { id: 't6', stepOrder: 1, action: 'Frozen Section', stainTypeIds: ['st-igg', 'st-iga', 'st-igm', 'st-c3', 'st-c1q', 'st-kappa', 'st-lambda'] },
         ],
       },
       {
-        id: 'path-renal-em', pathwayName: 'Electron Microscopy',
+        id: 'path-renal-em', pathwayName: 'Electron Microscopy', materialKind: 'block',
         fixativeType: 'Glutaraldehyde', requiresDecal: false, processingFormat: 'Resin Grid',
         tasks: [
           { id: 't7', stepOrder: 1, action: 'Ultra-thin Sectioning', stainTypeIds: ['st-uranyl-lead'] },

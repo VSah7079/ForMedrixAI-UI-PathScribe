@@ -19,6 +19,7 @@ import { VoiceProvider } from "./contexts/VoiceProvider";
 
 // Scanner Integration (barcode/QR scanner support)
 import { ScannerProvider } from "./contexts/ScannerProvider";
+import { MaterialScanTrackingBridge } from "./components/MaterialScanTrackingBridge";
 
 // Standard Wrappers
 import ProtectedRoute from "./ProtectedRoute";
@@ -37,7 +38,10 @@ const LoginPage = lazy(() => import("./pages/LoginPage"));
 const AccessionPage = lazy(() => import("./pages/AccessionPage/AccessionPage"));
 
 const WorklistPage = lazy(() => import("./pages/WorklistPage/WorklistPage"));
-const DeficienciesPage = lazy(() => import("./pages/DeficienciesPage"));
+const QualityAssurancePage = lazy(() => import("./pages/QualityAssurancePage"));
+const BatchManagementPage = lazy(() => import("./pages/BatchManagement/BatchManagementPage"));
+const DisposalQueuePage = lazy(() => import("./pages/BatchManagement/DisposalQueuePage"));
+const PendingBatchQueuePage = lazy(() => import("./pages/BatchManagement/PendingBatchQueuePage"));
 const IntraopQueuePage = lazy(() => import("./pages/IntraopQueuePage"));
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"));
 const ConfigurationPage = lazy(() => import("./pages/ConfigurationPage"));
@@ -115,11 +119,14 @@ const App: React.FC = () => (
                       {/* Protected Routes — ScannerProvider only active when authenticated */}
                       <Route element={<ProtectedRoute />}>
                         <Route element={<MobileRestrictedRoute />}>
-                        <Route element={<ScannerProvider><AppShell /></ScannerProvider>}>
+                        <Route element={<ScannerProvider><MaterialScanTrackingBridge /><AppShell /></ScannerProvider>}>
                           <Route path="/" element={<Home />} />
                           <Route path="/accession" element={<AccessionPage />} />
                           <Route path="/worklist" element={<WorklistPage />} />
-                          <Route path="/deficiencies" element={<DeficienciesPage />} />
+                          <Route path="/quality-assurance" element={<QualityAssurancePage />} />
+                          <Route path="/batch-management" element={<BatchManagementPage />} />
+                          <Route path="/batch-management/disposal" element={<DisposalQueuePage />} />
+                          <Route path="/batch-management/pending-load" element={<PendingBatchQueuePage />} />
                           <Route path="/intraop-queue" element={<IntraopQueuePage />} />
                           <Route path="/search" element={<SearchPage />} />
                           <Route path="/audit" element={<AuditLogPage />} />
@@ -134,14 +141,14 @@ const App: React.FC = () => (
                         </Route>
 
                         {/* Clinical Routes — full-screen, AppShell mounted for drawer/messaging but NavBar hidden */}
-                        <Route element={<ScannerProvider><AppShell hideNav /></ScannerProvider>}>
+                        <Route element={<ScannerProvider><MaterialScanTrackingBridge /><AppShell hideNav /></ScannerProvider>}>
                           <Route
                             path="/case/:caseId/synoptic"
                             element={<SynopticReportPage />}
                             loader={synopticLoader}
                           />
                           <Route
-                            path="/report/:accession"
+                            path="/report/:caseId"
                             element={<FullReportPage />}
                           />
                         </Route>

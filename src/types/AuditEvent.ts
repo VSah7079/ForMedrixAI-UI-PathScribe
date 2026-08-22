@@ -76,6 +76,23 @@ export interface AuditEvent {
    *  above — see that field's own doc comment. */
   facilityId?: string | null;
 
+  /**
+   * Real feature, per direct follow-up: "when we are tracking
+   * actions, I don't believe we include the physical location of
+   * that action, just the person - Correct?" Confirmed directly —
+   * this type had `user` (who) and `facilityId` (which building/
+   * site), but genuinely nothing for where WITHIN that facility an
+   * action happened. Auto-populated by auditLogger.ts's own
+   * logEvent() bridge for every real event that routes through it
+   * (getEffectiveScanStationId(), utils/effectiveScanStation.ts) —
+   * no caller anywhere needs to be changed to start carrying this;
+   * same real "one central bridge, not every call site" approach
+   * already used for caseId/facilityId. null when no station is
+   * currently known (device not configured, no user default) —
+   * genuinely absent, not a default/guessed value.
+   */
+  stationId?: string | null;
+
   // Optional lifecycle transition fields
   stateFrom?: TemplateLifecycleState;
   stateTo?: TemplateLifecycleState;

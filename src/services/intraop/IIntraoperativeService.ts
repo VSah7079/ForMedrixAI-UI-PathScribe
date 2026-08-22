@@ -13,7 +13,7 @@
 // points in their own workflow.
 // ─────────────────────────────────────────────────────────────────────────────
 import { ServiceResult } from '../types';
-import type { IntraoperativeEntry, MatchCandidate, MilestoneType, SkipReason, EntryMatch, FrozenCategory, MergeResolutionContext } from '@/types/intraop/IntraoperativeEntry';
+import type { IntraoperativeEntry, MatchCandidate, MilestoneType, SkipReason, EntryMatch, FrozenCategory, MergeResolutionContext, PreparationType } from '@/types/intraop/IntraoperativeEntry';
 
 export interface IIntraoperativeService {
   /** Simulated ADT feed lookup by MRN — real, deterministic result for
@@ -56,6 +56,17 @@ export interface IIntraoperativeService {
   ): Promise<ServiceResult<IntraoperativeEntry>>;
 
   setFrozenSectionDiagnosis(sessionId: string, specimenId: string, diagnosis: string, category?: FrozenCategory): Promise<ServiceResult<IntraoperativeEntry>>;
+
+  /** Real, new method, per direct guidance — resolves PS-82's real,
+   *  confirmed gap: the itemized, countable record of what was
+   *  actually produced at the bench (a specific frozen block, a
+   *  specific touch prep slide), distinct from addMilestone's own
+   *  workflow-sequence tracking. identifier is auto-generated
+   *  (specimen-scoped, e.g. "FS-A1"/"FS-A-TP1") when not explicitly
+   *  given. This is the real source suggestFrozenSectionCptCodes()
+   *  (services/billing/frozenSectionBilling.ts) counts frozen blocks
+   *  from - never milestones.length. */
+  addPreparationOutput(sessionId: string, specimenId: string, type: PreparationType, identifier?: string): Promise<ServiceResult<IntraoperativeEntry>>;
 
   merge(entryId: string, caseId: string, resolution: MergeResolutionContext): Promise<ServiceResult<IntraoperativeEntry>>;
 

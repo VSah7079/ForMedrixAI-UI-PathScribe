@@ -25,6 +25,7 @@
 
 import type { ServiceResult, ID } from '../types';
 import type { Icd10Code } from '../diagnosisCodes/IDiagnosisCodesService';
+import type { InboundProviderIdentifierType } from '../physicians/resolveProviderName';
 
 // ─── Crosswalk ──────────────────────────────────────────────────────────────
 
@@ -38,10 +39,33 @@ import type { Icd10Code } from '../diagnosisCodes/IDiagnosisCodesService';
  * specific type. Scoped per client (not global) because the same code
  * string means different things at different sending systems.
  */
+/** Which real coding system an inbound order code was expressed in.
+ *  'HL7_LOCAL' covers a sending system's own site-specific code table
+ *  (the historical default — every crosswalk entry before this field
+ *  existed is implicitly this). Optional: absent means the same thing
+ *  'HL7_LOCAL' would, for entries created before multi-code-system
+ *  matching existed. */
+export type OrderCodeCodingSystem = 'HL7_LOCAL' | 'LOINC' | 'SNOMED';
+
 export interface SpecimenCodeCrosswalkEntry {
   id: ID;
   clientId: string;
   externalCode: string;
+  /** Optional, additive — see OrderCodeCodingSystem's own doc comment.
+   *  Lets the same raw code string be crosswalked differently per
+   *  coding system when a sending message carries more than one (e.g.
+   *  a local code AND a LOINC code for the same order) — resolution
+   *  tries them in a real priority order (local → LOINC → SNOMED)
+   *  rather than only ever matching on one. */
+  codingSystem?: OrderCodeCodingSystem;
+  /** Optional — only meaningful for a multi-site organisation that
+   *  wants the SAME client's code to route differently depending on
+   *  which of the organisation's own Sites processes it (matches
+   *  Site.id from services/organisation/organisationService.ts).
+   *  Absent means "applies org-wide," same undefined-means-global
+   *  convention as Facility.performingLabFacilityId elsewhere in this
+   *  codebase — most crosswalk entries will never need this set. */
+  siteId?: string;
   /** References SpecimenEntry.id (Specimen Dictionary). */
   dictionaryEntryId: string;
   createdAt: string;
@@ -59,6 +83,14 @@ export interface IncomingOrderSpecimen {
    *  message carried one (not all sources will — manual/API orders may
    *  arrive as description-only). */
   externalSpecimenCode?: string;
+  /** Which coding system externalSpecimenCode is expressed in — see
+   *  OrderCodeCodingSystem's own doc comment. Absent is treated as
+   *  'HL7_LOCAL', matching every order received before this field
+   *  existed. The interface engine (not PathScribe — see
+   *  services/hl7/README.md's own architecture note) is responsible
+   *  for populating this correctly from whichever HL7v2/FHIR field the
+   *  source system actually carried it in. */
+  externalCodingSystem?: OrderCodeCodingSystem;
   /** Filled in once resolved via crosswalk or findOrCreateByName —
    *  undefined until resolveIncomingOrder() has run. */
   /** Filled in once resolved via the crosswalk (SpecimenCodeCrosswalkEntry
@@ -87,6 +119,33 @@ export interface IncomingOrderSpecimen {
   collectedAt?: string;
 }
 
+/** Real, structured provider shape, per PS-81 (Jira) — matches the
+ *  real, verified template already established for this exact real-
+ *  world concept in this app's own interface spec (Part E's own
+ *  orderingProvider: {npi?, lastName?, firstName?, contactPhone?,
+ *  rawName?}), confirmed directly before designing this: no real
+ *  inbound-order-receiving section exists anywhere in that spec (only
+ *  outbound Order Creation, Part E) — this app's own IncomingOrder
+ *  pipeline has no real, external, governed contract of its own yet.
+ *  Reusing the closest real precedent keeps this internally
+ *  consistent rather than inventing an unrelated shape.
+ *
+ *  rawName is required — same "always present" guarantee the old,
+ *  plain string field had; a real order always carries SOME text for
+ *  who requested it, even when a confident given/family split isn't
+ *  possible. familyNames/givenNames are optional, best-effort
+ *  components — resolveProviderName (services/physicians/) falls back
+ *  to matching on rawName alone as free text when familyNames isn't
+ *  populated, rather than guessing at a split. */
+export interface IncomingOrderProvider {
+  rawName: string;
+  namePrefix?: string;
+  givenNames?: string;
+  familyNames?: string;
+  nameSuffix?: string;
+  identifiers?: { value: string; type: InboundProviderIdentifierType; assigningAuthority?: string }[];
+}
+
 export interface IncomingOrder {
   id: ID;
   externalOrderNumber: string;
@@ -106,6 +165,14 @@ export interface IncomingOrder {
   /** True if clientId came from findOrCreateByAssigningAuthority's fallback (a
    *  brand-new pending client) rather than an existing match. */
   clientWasAutoCreated?: boolean;
+  /** Real, new field, per PS-81 (Jira) — filled in by resolveOrder(),
+   *  the real, stable Physician.id (services/physicians/) that
+   *  requestingProvider resolved against, via resolveProviderName.
+   *  Matches Encounter.attendingProviderPhysicianId's exact pattern on
+   *  the ADT side. Undefined when resolution didn't produce a real
+   *  match yet (order not resolved), or genuinely couldn't (no real
+   *  family name available even in requestingProvider.rawName). */
+  requestingProviderPhysicianId?: string;
 
   patient: {
     firstName: string;
@@ -115,7 +182,7 @@ export interface IncomingOrder {
     mrn?: string;
   };
   encounterNumber?: string;
-  requestingProvider: string;
+  requestingProvider: IncomingOrderProvider;
   priority?: 'Routine' | 'STAT';
   clinicalIndication?: string;
   /** Diagnosis codes as received on the referral, if any — real orders

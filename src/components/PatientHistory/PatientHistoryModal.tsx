@@ -476,7 +476,7 @@ export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, pat
           <div>
             <div style={S.metaLabel}>Patient History</div>
             <div>
-              <span style={S.patientName}>{patientName}</span>
+              <span style={S.patientName} data-phi="name">{patientName}</span>
               <span style={S.mrn}>· MRN {mrn}</span>
             </div>
             <div style={S.breadcrumb}>

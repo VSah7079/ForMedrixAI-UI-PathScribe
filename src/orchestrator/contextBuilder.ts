@@ -737,7 +737,7 @@ export async function buildContext(
   };
 }
 
-// Phase D of the biomarker display work (see PRIORITY_FIXES.md). Filters
+// Phase D of the biomarker display work. Filters
 // resolveAnswers' output down to just the fields belonging to a template's
 // dedicated "biomarkers" section, if it has one -- generic and
 // template-agnostic by design: works automatically for any template with

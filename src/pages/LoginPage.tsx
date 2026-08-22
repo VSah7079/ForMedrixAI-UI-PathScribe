@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../pathscribe.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -87,6 +87,39 @@ const LoginPage: React.FC = () => {
   const [showSessionConflict, setShowSessionConflict] = useState(false);
   const [showSupersededNotice, setShowSupersededNotice] = useState(false);
 
+  // Real fix, per direct bug report: "Sometimes when I log in it fails
+  // to copy the user name and password into the login form... after I
+  // select [Windows Hello face/PIN], it loads the user name and
+  // password... Sometimes it doesn't actually move the data into the
+  // fields." Confirmed directly: this is a real, well-documented class
+  // of bug, not something specific to this form's own logic — a
+  // password manager (especially one gated behind Windows Hello/PIN,
+  // which introduces a real delay between the form mounting and the
+  // credential actually being filled) writes the value straight into
+  // the DOM input, which does NOT fire the real 'input'/'change' event
+  // React's controlled value={} + onChange listens for — so React's
+  // own state can stay empty even though the field visually looks
+  // filled, and clicking Sign In submits the stale, empty state.
+  //
+  // Two-part fix: (1) a CSS animation on the real, standard
+  // :-webkit-autofill pseudo-class (see login-brand.css) fires a real,
+  // detectable animationstart DOM event the instant autofill happens
+  // — far faster than any polling interval — and syncs React state
+  // from the real DOM value immediately. (2) A ref-based fallback:
+  // handleSubmit reads the real, current DOM value directly at the
+  // moment of submission, never relying solely on React state that
+  // may not have caught up — so even a genuinely missed detection
+  // (a different browser, a timing edge case) still submits correctly
+  // rather than repeating the same "starts blank" failure.
+  const emailRef    = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const handleAutofillDetected = (field: 'email' | 'password') => (e: React.AnimationEvent<HTMLInputElement>) => {
+    if (e.animationName !== 'ps-login-autofill-detect') return;
+    const value = e.currentTarget.value;
+    if (field === 'email') setEmail(value); else setPassword(value);
+  };
+
   const environment = resolveEnvironment();
 
   useEffect(() => {
@@ -98,9 +131,9 @@ const LoginPage: React.FC = () => {
     } catch {}
   }, []);
 
-  const attemptLogin = async (forceSupersede: boolean) => {
+  const attemptLogin = async (forceSupersede: boolean, overrideEmail?: string, overridePassword?: string) => {
     setLoading(true);
-    const result = await login(email, password, forceSupersede);
+    const result = await login(overrideEmail ?? email, overridePassword ?? password, forceSupersede);
     setLoading(false);
     if (result === 'success') {
       navigate('/', { replace: true });
@@ -113,9 +146,20 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    // Real fix: reads the actual, current DOM value directly rather
+    // than trusting React state alone — the one place in this flow
+    // that must never be wrong, since it's the literal moment of
+    // submission. If the autofill-detection animation above already
+    // caught it, these agree and nothing changes; if it didn't, this
+    // still submits the real, current fields instead of silently
+    // repeating the same "starts blank" failure.
+    const realEmail    = emailRef.current?.value ?? email;
+    const realPassword = passwordRef.current?.value ?? password;
+    if (realEmail !== email) setEmail(realEmail);
+    if (realPassword !== password) setPassword(realPassword);
+    if (!realEmail || !realPassword) { setError('Please enter your email and password.'); return; }
     setError('');
-    await attemptLogin(false);
+    await attemptLogin(false, realEmail, realPassword);
   };
 
   return (
@@ -148,9 +192,11 @@ const LoginPage: React.FC = () => {
               <label className="ps-login-field-label" htmlFor="login-email">Email</label>
               <input
                 id="login-email"
+                ref={emailRef}
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                onAnimationStart={handleAutofillDetected('email')}
                 autoComplete="email"
                 autoFocus
                 className="ps-login-input"
@@ -170,9 +216,11 @@ const LoginPage: React.FC = () => {
               <div className="ps-login-pw-wrap">
                 <input
                   id="login-password"
+                  ref={passwordRef}
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
+                  onAnimationStart={handleAutofillDetected('password')}
                   autoComplete="current-password"
                   className="ps-login-input"
                 />

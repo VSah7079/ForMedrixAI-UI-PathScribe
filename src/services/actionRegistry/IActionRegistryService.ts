@@ -42,6 +42,11 @@ export interface IActionRegistryService {
   updateAction(id: SystemActionId, updates: Partial<SystemAction>): Promise<void>;
   setCurrentContext(context: string): void;
   executeAction(action: SystemAction, transcript?: string): void;
+  /** Real feature: the same isActive + GLOBAL_CATEGORIES-or-current-
+   *  context eligibility rule findActionByTrigger uses for voice —
+   *  exposed so keyboard shortcut matching uses the identical rule,
+   *  rather than a second, independently-maintained copy of it. */
+  getEligibleActions(): SystemAction[];
 
   // ─── Event Subscriptions ─────────────────────────────────────────────────
   /**

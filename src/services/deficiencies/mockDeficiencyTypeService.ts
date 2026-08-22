@@ -14,6 +14,16 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   { id: 'def-label-mismatch', name: 'Label Mismatch', description: 'Container/slide label does not match the requisition.', status: 'Active', level: 'specimen' },
   { id: 'def-container-damaged', name: 'Container Damaged', description: 'Specimen container arrived broken, leaking, or otherwise compromised.', status: 'Active', level: 'specimen' },
   { id: 'def-insufficient-volume', name: 'Insufficient Volume', description: 'Fluid/tissue quantity received is inadequate for the ordered testing.', status: 'Active', level: 'specimen' },
+  // Real feature, per direct follow-up: "an immediate Tissue
+  // Discrepancy QA Flag is raised before sectioning... Is the
+  // discrepancy being tracked in the Quality Assurance Module?"
+  // Confirmed directly: it wasn't — only a computed, derived badge on
+  // the Material tree, no real QA record anywhere. Reuses this same,
+  // real, ISO 15189-aligned deficiency engine (raised automatically
+  // by useSpecimenBlockManagement.ts's own handleUpdateBlock the
+  // moment a real piece-count mismatch is confirmed at embedding) —
+  // not a bespoke, parallel tracking mechanism.
+  { id: 'def-tissue-discrepancy', name: 'Tissue Discrepancy', description: 'Piece count observed at embedding does not match the count recorded at grossing — possible lost or misplaced tissue.', status: 'Active', level: 'specimen' },
   { id: 'def-missing-requisition', name: 'Missing Requisition', description: 'Specimen received without accompanying paperwork or order.', status: 'Active', level: 'case' },
   { id: 'def-order-discrepancy', name: 'Specimen/Order Discrepancy', description: 'Specimen received does not match what the order describes.', status: 'Active', level: 'both' },
   {

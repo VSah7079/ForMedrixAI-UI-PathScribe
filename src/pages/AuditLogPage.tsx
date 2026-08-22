@@ -32,11 +32,11 @@ import { mockPatientIndexService } from '../services/patients/mockPatientIndexSe
 import { listOrganisations } from '../services/organisation/organisationService';
 import { formatAuditTimestamp } from '../utils/formatDate';
 
-type ActiveTab = 'audit' | 'errors' | 'quality';
+type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality';
 
 // ── Quality Assurance groups ─────────────────────────────────────────────────
 // Every tabbed item group from the Quality Assurance working queue
-// (pages/DeficienciesPage.tsx), normalized into one searchable/exportable
+// (pages/QualityAssurancePage.tsx), normalized into one searchable/exportable
 // shape here — this is the complete historical record across all of them,
 // not just deficiencies. Each group keeps its own real status vocabulary
 // (a deficiency's Open/Pending/Closed isn't the same thing as a countersign's
@@ -167,6 +167,23 @@ function exportErrorCSV(rows: ErrorLog[], requestedBy: string, filters: Record<s
   downloadCSV(meta + data.join('\n'), `pathscribe-error-log-${new Date().toISOString().slice(0,10)}.csv`);
 }
 
+// Real, per direct request: "reduce the search bar in the audit log so
+// that we can still fit a way to download interface error to a
+// spreadsheet (csv)." Same real, established convention as the other
+// three exports on this page — same meta header, same PHI-safety
+// posture (sourcePatientIdentifier/targetPatientIdentifier only —
+// never a raw name, MRN, or DOB — matching exactly what the real,
+// on-screen table already shows, never anything more).
+function exportInterfaceCSV(rows: InterfaceException[], requestedBy: string, filters: Record<string, string>) {
+  const esc = (v: string | number | null) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const meta = buildMetaHeader('Interface Log', requestedBy, filters, rows.length);
+  const data = [
+    ['ID', 'Timestamp', 'Event Type', 'Reason', 'Source Patient', 'Target Patient', 'Status'].join(','),
+    ...rows.map(r => [r.id, r.createdAt, r.eventType, r.reason, r.sourcePatientIdentifier ?? '', r.targetPatientIdentifier ?? '', r.status].map(esc).join(','))
+  ];
+  downloadCSV(meta + data.join('\n'), `pathscribe-interface-log-${new Date().toISOString().slice(0,10)}.csv`);
+}
+
 // Same compliance-notice/meta-header convention as the other two exports
 // on this page, and the same PHI-safety principle qaReportUtils.ts
 // already established for this exact data elsewhere (Intraop Linkage,
@@ -263,13 +280,34 @@ const AuditLogPage: React.FC = () => {
 
   // Real feature, per direct confirmation: a high-priority message
   // about pending interface exceptions should land the recipient
-  // directly on the relevant view, not the generic page — real
-  // deep-linking via ?tab=errors&pill=interfaces, read once on mount.
+  // directly on the relevant view, not the generic page. Real, per
+  // direct redesign: interfaces is now its own real top-level tab
+  // (?tab=interfaces), not a pill within errors — the old
+  // ?tab=errors&pill=interfaces scheme (still the one real, live
+  // deep-link CrosswalkSection.tsx's own Unmapped Stubs banner uses)
+  // is kept working here too, rather than breaking that already-
+  // shipped link the moment this redesign landed.
   useEffect(() => {
     const tabParam = searchParams.get('tab');
     const pillParam = searchParams.get('pill');
-    if (tabParam === 'errors') setActiveTab('errors');
-    if (pillParam === 'interfaces') setErrorSeverity('interfaces');
+    const landingOnInterfaces = tabParam === 'interfaces' || (tabParam === 'errors' && pillParam === 'interfaces');
+    if (landingOnInterfaces) setActiveTab('interfaces');
+    else if (tabParam === 'errors') setActiveTab('errors');
+    else if (tabParam === 'quality') setActiveTab('quality');
+    // Real feature, per direct follow-up: "how would I see a report
+    // that shows all the tracking events for a case?" — same real
+    // deep-link pattern immediately above, extended with a ?search=
+    // param so a real "View Tracking History" link from a case can
+    // land here pre-filtered to that case's own events, not the
+    // generic, unfiltered log. dateRange also widened to 'all' — the
+    // default 7-day window would silently hide a case's own older
+    // tracking events, defeating the point of a deep link built
+    // specifically to show every one of them.
+    const searchParam = searchParams.get('search');
+    if (searchParam) {
+      if (landingOnInterfaces) setInterfaceSearch(searchParam);
+      else { setSearchQuery(searchParam); setDateRange('all'); }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -300,7 +338,7 @@ const AuditLogPage: React.FC = () => {
   const [dateTo,      setDateTo]      = useState('');
 
   // Error filters
-  const [errorSeverity, setErrorSeverity] = useState<'all' | 'error' | 'warning' | 'info' | 'interfaces'>('all');
+  const [errorSeverity, setErrorSeverity] = useState<'all' | 'error' | 'warning' | 'info'>('all');
   const [errorSearch,   setErrorSearch]   = useState('');
   const [errorResolved, setErrorResolved] = useState<'all' | 'open' | 'resolved'>('all');
   /** Real feature, per direct confirmation. Separate resolution filter
@@ -308,6 +346,7 @@ const AuditLogPage: React.FC = () => {
    *  ('pending'/'resolved'/'dismissed') is genuinely different from
    *  ErrorLog's own open/resolved boolean. */
   const [interfaceStatus, setInterfaceStatus] = useState<'all' | 'pending' | 'resolved' | 'dismissed'>('all');
+  const [interfaceSearch, setInterfaceSearch] = useState('');
 
   // Quality Assurance filters — Group first (which of the 8 tabbed item
   // groups from the working queue), then Status (that group's own real
@@ -417,8 +456,8 @@ const AuditLogPage: React.FC = () => {
 
   const filteredInterfaceExceptions = interfaceExceptions.filter(e => {
     if (interfaceStatus !== 'all' && e.status !== interfaceStatus) return false;
-    if (errorSearch) {
-      const q = errorSearch.toLowerCase();
+    if (interfaceSearch) {
+      const q = interfaceSearch.toLowerCase();
       if (![e.eventType, e.reason, e.sourcePatientIdentifier ?? '', e.targetPatientIdentifier ?? ''].some(s => s.toLowerCase().includes(q))) return false;
     }
     return true;
@@ -512,31 +551,6 @@ const AuditLogPage: React.FC = () => {
   // return — pulled out to a real component-body value, same standard
   // applied to business logic found embedded in the UI elsewhere in this
   // review.
-  const stats = activeTab === 'audit' ? [
-    { label: 'Total Events',  value: roleFilteredLogs.length,                                  colorClass: 'ps-auditlog-stat-value--teal',   icon: '📋' },
-    { label: 'AI Actions',    value: roleFilteredLogs.filter(l => l.type === 'ai').length,     colorClass: 'ps-auditlog-stat-value--purple', icon: '🤖' },
-    { label: 'User Changes',  value: roleFilteredLogs.filter(l => l.type === 'user').length,   colorClass: 'ps-auditlog-stat-value--green',  icon: '👤' },
-    { label: 'System Events', value: roleFilteredLogs.filter(l => l.type === 'system').length, colorClass: 'ps-auditlog-stat-value--gray',   icon: '⚙️' },
-  ] : activeTab === 'errors' ? [
-    { label: 'Total Errors', value: errorLogs.length,                                        colorClass: 'ps-auditlog-stat-value--red',   icon: '🚨' },
-    { label: 'Open Issues',  value: errorLogs.filter(e => !e.resolved).length,               colorClass: 'ps-auditlog-stat-value--amber', icon: '🔓' },
-    { label: 'Resolved',     value: errorLogs.filter(e => e.resolved).length,                colorClass: 'ps-auditlog-stat-value--green', icon: '✅' },
-    { label: 'Warnings',     value: errorLogs.filter(e => e.severity === 'warning').length,  colorClass: 'ps-auditlog-stat-value--amber', icon: '⚠️' },
-  ] : [
-    { label: 'Total Records', value: normalizedQualityRecords.length, colorClass: 'ps-auditlog-stat-value--teal', icon: '✓' },
-    ...GROUP_STATUS_OPTIONS[qualityGroup].map(opt => ({
-      label: opt.label,
-      value: normalizedQualityRecords.filter(r => r.statusValue === opt.value).length,
-      colorClass: opt.label === 'Closed' || opt.label === 'Merged' || opt.label === 'Concordant' || opt.label === 'Countersigned' || opt.label === 'Completed' || opt.label === 'Auto-Corrected'
-        ? 'ps-auditlog-stat-value--green'
-        : opt.label === 'Open' || opt.label === 'Discordant' || opt.label === 'Failed'
-        ? 'ps-auditlog-stat-value--red'
-        : 'ps-auditlog-stat-value--amber',
-      icon: opt.label === 'Closed' || opt.label === 'Merged' || opt.label === 'Concordant' || opt.label === 'Countersigned' || opt.label === 'Completed' || opt.label === 'Auto-Corrected' ? '✅'
-        : opt.label === 'Open' || opt.label === 'Discordant' || opt.label === 'Failed' ? '🔴' : '🟡',
-    })),
-  ];
-
   const quickLinks = {
     protocols:  [{ title: 'CAP Cancer Protocols', url: 'https://www.cap.org/protocols-and-guidelines' }, { title: 'WHO Classification', url: 'https://www.who.int/publications' }],
     references: [{ title: 'PathologyOutlines', url: 'https://www.pathologyoutlines.com' }, { title: 'UpToDate', url: 'https://www.uptodate.com' }],
@@ -569,27 +583,19 @@ const AuditLogPage: React.FC = () => {
               )}
             </div>
             <div className="ps-auditlog-tabswitch">
-              {(['audit', 'errors', 'quality'] as const).map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`ps-auditlog-tabswitch-btn${activeTab === tab ? ' ps-auditlog-tabswitch-btn--active' : ''}`}>
-                  {tab === 'audit' ? '📋 Audit Log' : tab === 'errors' ? '⚠️ Error Log' : '✓ Quality Assurance'}
+              {(['audit', 'errors', 'interfaces', 'quality'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`ps-auditlog-tabswitch-btn${activeTab === tab ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+                >
+                  {tab === 'audit' ? '📋 Audit Log' : tab === 'errors' ? '⚠️ Error Log' : tab === 'interfaces' ? '🔌 Interface Log' : '✓ Quality Assurance'}
                   {tab === 'errors' && openErrors > 0 && <span className="ps-auditlog-tabswitch-badge">{openErrors}</span>}
+                  {tab === 'interfaces' && pendingInterfaceCount > 0 && <span className="ps-auditlog-tabswitch-badge">{pendingInterfaceCount}</span>}
                   {tab === 'quality' && openQualityCount > 0 && <span className="ps-auditlog-tabswitch-badge">{openQualityCount}</span>}
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="ps-auditlog-stats-grid">
-            {stats.map((s, i) => (
-              <div key={i} className="ps-auditlog-stat-card">
-                <span className="ps-auditlog-stat-icon">{s.icon}</span>
-                <div>
-                  <div className={`ps-auditlog-stat-value ${s.colorClass}`}>{s.value}</div>
-                  <div className="ps-auditlog-stat-label">{s.label}</div>
-                </div>
-              </div>
-            ))}
           </div>
 
           {/* ── AUDIT TAB ── */}
@@ -597,10 +603,18 @@ const AuditLogPage: React.FC = () => {
             <>
               {/* Filters */}
               <div className="ps-auditlog-filter-row">
-                {/* Type pills */}
+                {/* Type pills — real counts, per direct redesign, replacing the removed stat cards */}
                 <div className="ps-auditlog-pill-group">
-                  {([{ id: 'all', label: 'All' }, { id: 'ai', label: '🤖 AI' }, { id: 'user', label: '👤 User' }, { id: 'system', label: '⚙️ System' }] as const).map(f => (
-                    <button key={f.id} onClick={() => setTypeFilter(f.id)} className={`ps-auditlog-pill${typeFilter === f.id ? ' ps-auditlog-pill--active-teal' : ''}`}>{f.label}</button>
+                  {([
+                    { id: 'all', label: 'All', count: roleFilteredLogs.length },
+                    { id: 'ai', label: '🤖 AI', count: roleFilteredLogs.filter(l => l.type === 'ai').length },
+                    { id: 'user', label: '👤 User', count: roleFilteredLogs.filter(l => l.type === 'user').length },
+                    { id: 'system', label: '⚙️ System', count: roleFilteredLogs.filter(l => l.type === 'system').length },
+                  ] as const).map(f => (
+                    <button key={f.id} onClick={() => setTypeFilter(f.id)} className={`ps-auditlog-pill${typeFilter === f.id ? ' ps-auditlog-pill--active-teal' : ''}`}>
+                      {f.label}
+                      <span className="ps-auditlog-pill-badge">{f.count}</span>
+                    </button>
                   ))}
                 </div>
                 <div className="ps-auditlog-filter-divider" />
@@ -682,113 +696,39 @@ const AuditLogPage: React.FC = () => {
               {/* Filters */}
               <div className="ps-auditlog-filter-row">
                 <div className="ps-auditlog-pill-group">
-                  {([{ id: 'all', label: 'All' }, { id: 'error', label: '🚨 Error' }, { id: 'warning', label: '⚠️ Warning' }, { id: 'info', label: 'ℹ️ Info' }, { id: 'interfaces', label: '🔌 Interfaces' }] as const).map(f => (
+                  {([
+                    { id: 'all', label: 'All', count: errorLogs.length },
+                    { id: 'error', label: '🚨 Error', count: errorLogs.filter(e => e.severity === 'error').length },
+                    { id: 'warning', label: '⚠️ Warning', count: errorLogs.filter(e => e.severity === 'warning').length },
+                    { id: 'info', label: 'ℹ️ Info', count: errorLogs.filter(e => e.severity === 'info').length },
+                  ] as const).map(f => (
                     <button key={f.id} onClick={() => setErrorSeverity(f.id)} className={`ps-auditlog-pill${errorSeverity === f.id ? ' ps-auditlog-pill--active-red' : ''}`}>
                       {f.label}
-                      {f.id === 'interfaces' && pendingInterfaceCount > 0 && <span className="ps-auditlog-tabswitch-badge">{pendingInterfaceCount}</span>}
+                      <span className="ps-auditlog-pill-badge">{f.count}</span>
                     </button>
                   ))}
                 </div>
                 <div className="ps-auditlog-filter-divider" />
-                {errorSeverity === 'interfaces' ? (
-                  <select value={interfaceStatus} onChange={e => setInterfaceStatus(e.target.value as 'all' | 'pending' | 'resolved' | 'dismissed')} aria-label="Filter by interface exception status" className="ps-auditlog-select">
-                    <option value="all">All Status</option>
-                    <option value="pending">Pending Only</option>
-                    <option value="resolved">Resolved Only</option>
-                    <option value="dismissed">Dismissed Only</option>
-                  </select>
-                ) : (
-                  <select value={errorResolved} onChange={e => setErrorResolved(e.target.value as 'all' | 'open' | 'resolved')} aria-label="Filter by resolution status" className="ps-auditlog-select">
-                    <option value="all">All Status</option>
-                    <option value="open">Open Only</option>
-                    <option value="resolved">Resolved Only</option>
-                  </select>
-                )}
+                <select value={errorResolved} onChange={e => setErrorResolved(e.target.value as 'all' | 'open' | 'resolved')} aria-label="Filter by resolution status" className="ps-auditlog-select">
+                  <option value="all">All Status</option>
+                  <option value="open">Open Only</option>
+                  <option value="resolved">Resolved Only</option>
+                </select>
                 <div className="ps-auditlog-search-wrap">
                   <div className="ps-auditlog-search-icon">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </div>
-                  <input type="text" value={errorSearch} onChange={e => setErrorSearch(e.target.value)} placeholder={errorSeverity === 'interfaces' ? 'Search event type, reason…' : 'Search message, code, source…'} className="ps-auditlog-select ps-auditlog-search-input" />
+                  <input type="text" value={errorSearch} onChange={e => setErrorSearch(e.target.value)} placeholder="Search message, code, source…" className="ps-auditlog-select ps-auditlog-search-input" />
                 </div>
-                {errorSeverity !== 'interfaces' && (
-                  <button onClick={() => exportErrorCSV(
-                      filteredErrorLogs,
-                      requestedByLabel,
-                      { 'Severity': errorSeverity, 'Status': errorResolved, 'Search': errorSearch }
-                    )} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
-                    ↓ Export CSV
-                  </button>
-                )}
-                {/* Real feature, per direct confirmation, building
-                    Phase B of the "Interface Exception & Case-Binding
-                    Module." Deliberately restricted (isAdmin only)
-                    and only surfaced alongside the related Interfaces
-                    pill — a rare, exceptional tool, not a general
-                    action. */}
-                {errorSeverity === 'interfaces' && isAdmin && storedUser?.organisationId && (
-                  <button onClick={() => setBreakGlassOpen(true)} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
-                    ⚡ Break-Glass Rebind
-                  </button>
-                )}
+                <button onClick={() => exportErrorCSV(
+                    filteredErrorLogs,
+                    requestedByLabel,
+                    { 'Severity': errorSeverity, 'Status': errorResolved, 'Search': errorSearch }
+                  )} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
+                  ↓ Export CSV
+                </button>
               </div>
 
-              {errorSeverity === 'interfaces' ? (
-                <>
-                  {/* Real feature, per direct confirmation: "Users
-                      should be able to see interface error log under
-                      Audit, a new pill Interfaces." Read-only display,
-                      matching the existing Error Log table's own
-                      convention exactly — no inline actions yet; see
-                      services/interfaceExceptions/README.md for the
-                      real resolve()/dismiss() methods this could wire
-                      up to later. */}
-                  <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Interface exception entries, scrollable table">
-                    <div className="ps-auditlog-table ps-auditlog-table--error">
-                      <div className="ps-auditlog-thead ps-auditlog-thead--interfaces">
-                        <div>Timestamp</div><div>Event Type</div><div>Reason</div><div>Source Patient</div><div>Target Patient</div><div>Status</div>
-                      </div>
-                      <div className="ps-auditlog-tbody">
-                        {filteredInterfaceExceptions.length === 0 ? (
-                          <div className="ps-auditlog-empty">
-                            <div className="ps-auditlog-empty-icon">✅</div>
-                            <div className="ps-auditlog-empty-text">No interface exceptions match your filters</div>
-                          </div>
-                        ) : filteredInterfaceExceptions.map((e) => (
-                          <div key={e.id} className="ps-auditlog-row ps-auditlog-row--interfaces">
-                            <div className="ps-auditlog-cell-time">{formatAuditTimestamp(e.createdAt)}</div>
-                            <div><span className="ps-auditlog-badge ps-auditlog-badge--info">{e.eventType}</span></div>
-                            <div className="ps-auditlog-cell-detail">{e.reason}</div>
-                            <div className="ps-auditlog-cell-user">{e.sourcePatientIdentifier ?? '—'}</div>
-                            <div className="ps-auditlog-cell-user">{e.targetPatientIdentifier ?? '—'}</div>
-                            <div>
-                              {/* Real feature, per direct confirmation:
-                                  "Manual Review Queue / Flagging
-                                  (Safest)." A pending exception is
-                                  actionable — clicking it opens the
-                                  review modal. Resolved/dismissed ones
-                                  stay a plain, read-only badge. */}
-                              {e.status === 'pending' ? (
-                                <button
-                                  onClick={() => setReviewingException(e)}
-                                  className="ps-auditlog-status-badge ps-auditlog-status-badge--open ps-iexc-review-btn"
-                                >
-                                  Review
-                                </button>
-                              ) : (
-                                <span className="ps-auditlog-status-badge ps-auditlog-status-badge--resolved">
-                                  {e.status === 'resolved' ? 'Resolved' : 'Dismissed'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ps-auditlog-count-footer">Showing {filteredInterfaceExceptions.length} of {interfaceExceptions.length} interface exceptions</div>
-                </>
-              ) : (
-                <>
               {/* Error Table */}
               <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Error log entries, scrollable table">
               <div className="ps-auditlog-table ps-auditlog-table--error">
@@ -819,15 +759,125 @@ const AuditLogPage: React.FC = () => {
               </div>
               </div>{/* end ps-table-scroll-wrap */}
               <div className="ps-auditlog-count-footer">Showing {filteredErrorLogs.length} of {errorLogs.length} errors</div>
-                </>
-              )}
+            </>
+          )}
+
+          {/* ── INTERFACE LOG TAB ──
+              Real, per direct redesign: a genuine, independent top-level
+              tab, not a pill within Error Log. Interface issues span
+              PathScribe, the interface engine, instruments, and 3rd-party
+              systems (PS-86 outbound dispatch, PS-87 Assist-mode LIS
+              milestones, PS-88 DP/Specimen Tracking are all real, queued
+              work that will each add their own event types here) — a
+              real, distinct domain, not one flavor of general error. */}
+          {activeTab === 'interfaces' && (
+            <>
+              {/* Filters — real counts on every pill, per direct
+                  redesign, same convention as Audit/Error Log above. */}
+              <div className="ps-auditlog-filter-row">
+                <div className="ps-auditlog-pill-group">
+                  {([
+                    { id: 'all', label: 'All', count: interfaceExceptions.length },
+                    { id: 'pending', label: '🔓 Pending', count: interfaceExceptions.filter(e => e.status === 'pending').length },
+                    { id: 'resolved', label: '✅ Resolved', count: interfaceExceptions.filter(e => e.status === 'resolved').length },
+                    { id: 'dismissed', label: '🚫 Dismissed', count: interfaceExceptions.filter(e => e.status === 'dismissed').length },
+                  ] as const).map(f => (
+                    <button key={f.id} onClick={() => setInterfaceStatus(f.id)} className={`ps-auditlog-pill${interfaceStatus === f.id ? ' ps-auditlog-pill--active-red' : ''}`}>
+                      {f.label}
+                      <span className="ps-auditlog-pill-badge">{f.count}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ps-auditlog-filter-divider" />
+                <div className="ps-auditlog-search-wrap ps-auditlog-search-wrap--narrow">
+                  <div className="ps-auditlog-search-icon">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  </div>
+                  <input type="text" value={interfaceSearch} onChange={e => setInterfaceSearch(e.target.value)} placeholder="Search event type, reason…" className="ps-auditlog-select ps-auditlog-search-input" />
+                </div>
+                {/* Real, per direct request: a real CSV export for
+                    Interface Log, matching the exact same real
+                    convention (buildMetaHeader, PHI-safety posture)
+                    already established for the other three exports on
+                    this page — this was the one real gap; the other
+                    three tabs already had this, Interface Log never
+                    did. */}
+                <button onClick={() => exportInterfaceCSV(
+                    filteredInterfaceExceptions,
+                    requestedByLabel,
+                    { 'Status': interfaceStatus, 'Search': interfaceSearch }
+                  )} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
+                  ↓ Export CSV
+                </button>
+                {/* Real feature, per direct confirmation, building
+                    Phase B of the "Interface Exception & Case-Binding
+                    Module." Deliberately restricted (isAdmin only) —
+                    a rare, exceptional tool, not a general action. */}
+                {isAdmin && storedUser?.organisationId && (
+                  <button onClick={() => setBreakGlassOpen(true)} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
+                    🔗 Map Patient
+                  </button>
+                )}
+              </div>
+
+              {/* Real feature, per direct confirmation: "Users should
+                  be able to see interface error log under Audit."
+                  Read-only display, matching Error Log's own table
+                  convention exactly — no inline actions yet beyond
+                  Review; see services/interfaceExceptions/README.md
+                  for the real resolve()/dismiss() methods this wires
+                  up to. */}
+              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Interface exception entries, scrollable table">
+                <div className="ps-auditlog-table ps-auditlog-table--error">
+                  <div className="ps-auditlog-thead ps-auditlog-thead--interfaces">
+                    <div>Timestamp</div><div>Event Type</div><div>Reason</div><div>Source Patient</div><div>Target Patient</div><div>Status</div>
+                  </div>
+                  <div className="ps-auditlog-tbody">
+                    {filteredInterfaceExceptions.length === 0 ? (
+                      <div className="ps-auditlog-empty">
+                        <div className="ps-auditlog-empty-icon">✅</div>
+                        <div className="ps-auditlog-empty-text">No interface exceptions match your filters</div>
+                      </div>
+                    ) : filteredInterfaceExceptions.map((e) => (
+                      <div key={e.id} className="ps-auditlog-row ps-auditlog-row--interfaces">
+                        <div className="ps-auditlog-cell-time">{formatAuditTimestamp(e.createdAt)}</div>
+                        <div><span className="ps-auditlog-badge ps-auditlog-badge--info">{e.eventType}</span></div>
+                        <div className="ps-auditlog-cell-detail">{e.reason}</div>
+                        <div className="ps-auditlog-cell-user">{e.sourcePatientIdentifier ?? '—'}</div>
+                        <div className="ps-auditlog-cell-user">{e.targetPatientIdentifier ?? '—'}</div>
+                        <div>
+                          {/* Real feature, per direct confirmation:
+                              "Manual Review Queue / Flagging
+                              (Safest)." A pending exception is
+                              actionable — clicking it opens the
+                              review modal. Resolved/dismissed ones
+                              stay a plain, read-only badge. */}
+                          {e.status === 'pending' ? (
+                            <button
+                              onClick={() => setReviewingException(e)}
+                              className="ps-auditlog-status-badge ps-auditlog-status-badge--open ps-iexc-review-btn"
+                            >
+                              Review
+                            </button>
+                          ) : (
+                            <span className="ps-auditlog-status-badge ps-auditlog-status-badge--resolved">
+                              {e.status === 'resolved' ? 'Resolved' : 'Dismissed'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="ps-auditlog-count-footer">Showing {filteredInterfaceExceptions.length} of {interfaceExceptions.length} interface exceptions</div>
             </>
           )}
 
           {/* ── QUALITY ASSURANCE TAB ──
               The permanent, complete Quality Assurance record — every
               tabbed item group from the working queue
-              (pages/DeficienciesPage.tsx), not just deficiencies, the
+              (pages/QualityAssurancePage.tsx), not just deficiencies, the
               record CAP and other certification bodies get pointed to
               during an inspection. Deliberately separate from the
               working queue itself: that page is for active, day-to-day

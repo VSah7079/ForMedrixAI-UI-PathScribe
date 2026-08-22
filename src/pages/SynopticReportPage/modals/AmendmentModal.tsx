@@ -27,6 +27,7 @@ import { physicianService } from '@/services';
 import type { Physician } from '@/services/physicians/IPhysicianService';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { getFacilityDateTimeParts } from '@/utils/facilityTime';
+import { initials, avatarColorClass, contactRowsFor } from '@/utils/physicianDisplay';
 // NOTE: verify this import path resolves in your build — your last tsc
 // output showed src/index.ts failing on a physician service import one
 // directory level different from this. If physicianService isn't found,
@@ -66,8 +67,6 @@ interface AmendmentModalProps {
    *  accepted as-is) or if the Delta step was skipped. */
   onFieldOverridesConfirmed: (overrides: Record<string, FieldOverride>) => void;
   submitError?: string | null;
-  triggeredBySynopticTitle?: string;
-  prefillText?: string;
   /** Resuming an existing draft (re-opening to edit reason/notification)
    *  rather than starting fresh. When set, the Delta step is skipped
    *  entirely — field sources were already chosen once when the draft
@@ -108,34 +107,10 @@ const versionLabel = (versionNumber: number, total: number): string => {
   if (versionNumber === total) return `${ordinal(versionNumber - 1)} Amended (Most Recent)`;
   return `${ordinal(versionNumber - 1)} Amended`;
 };
-
-const initials = (givenNames: string, familyNames: string): string =>
-  `${givenNames?.[0] ?? ''}${familyNames?.[0] ?? ''}`.toUpperCase();
-
-const AVATAR_COLOR_CLASSES = ['ps-avatar-color-0', 'ps-avatar-color-1', 'ps-avatar-color-2', 'ps-avatar-color-3', 'ps-avatar-color-4', 'ps-avatar-color-5'];
-const avatarColorClass = (seed: string): string => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  return AVATAR_COLOR_CLASSES[Math.abs(hash) % AVATAR_COLOR_CLASSES.length];
-};
-
-const contactRowsFor = (p: Physician): { icon: string; value: string; isPreferred: boolean }[] => {
-  const rows = [
-    { icon: '📞', value: p.phone, isPreferred: p.preferredContact === 'Phone' },
-    { icon: '📠', value: p.fax, isPreferred: p.preferredContact === 'Fax' },
-    { icon: '✉️', value: p.email, isPreferred: p.preferredContact === 'Email' },
-  ].filter(c => c.value);
-  // Preferred contact method first, so it's the one visible even if the
-  // row can't fit all three.
-  rows.sort((a, b) => Number(b.isPreferred) - Number(a.isPreferred));
-  return rows;
-};
-
-
 const AmendmentModal: React.FC<AmendmentModalProps> = ({
   show, amendmentMode, amendmentText, activeSynopticTitle, sequenceNumber, amendedByName = 'Unknown User',
   versionHistory = [], onModeChange, onTextChange, onClose, onSubmit,
-  onFieldOverridesConfirmed = () => {}, submitError, triggeredBySynopticTitle, prefillText, resuming,
+  onFieldOverridesConfirmed = () => {}, submitError, resuming,
   orderingPhysicianName,
 }) => {
   const { config } = useSystemConfig();
@@ -219,11 +194,6 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
       setNotifiedAt(resuming.notifiedAt ?? '');
     }
   }, [show, resuming]);
-
-  React.useEffect(() => {
-    if (show && prefillText && !amendmentText) onTextChange(prefillText);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show]);
 
   React.useEffect(() => {
     if (show) {
@@ -367,32 +337,17 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
 
         {step === 'edit' && (
           <>
-            {!triggeredBySynopticTitle && (
-              <div className="ps-amendment-mode-row">
-                {(['correction', 'amendment', 'addendum'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => onModeChange(mode)}
-                    className={`ps-amendment-mode-btn${amendmentMode === mode ? ' active' : ''} ps-amendment-mode-btn--${mode}`}
-                  >
-                    {mode === 'correction' ? '🩹 Minor Amendment' : mode === 'amendment' ? '✏️ Major Amendment' : '📎 Addendum'}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {triggeredBySynopticTitle && (
-              <div className="ps-amendment-deferred-banner">
-                <span className="ps-amendment-deferred-icon">🧪</span>
-                <div>
-                  <div className="ps-amendment-deferred-title">Deferred Synoptic Now Complete</div>
-                  <p className="ps-modal-dark-hint ps-modal-dark-hint--no-margin">
-                    <strong className="ps-text-light">{triggeredBySynopticTitle}</strong> was deferred at sign-out pending ancillary results.
-                    Review the pre-filled amendment text below, edit as needed, and actively submit to issue the amendment.
-                  </p>
-                </div>
-              </div>
-            )}
+            <div className="ps-amendment-mode-row">
+              {(['correction', 'amendment', 'addendum'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => onModeChange(mode)}
+                  className={`ps-amendment-mode-btn${amendmentMode === mode ? ' active' : ''} ps-amendment-mode-btn--${mode}`}
+                >
+                  {mode === 'correction' ? '🩹 Minor Amendment' : mode === 'amendment' ? '✏️ Major Amendment' : '📎 Addendum'}
+                </button>
+              ))}
+            </div>
 
             <div className="ps-modal-dark-header">
               <span className={`ps-modal-dark-title ps-amendment-header-label ${isAmendment ? 'ps-amendment-header-label--amendment' : isCorrection ? 'ps-amendment-header-label--correction' : 'ps-amendment-header-label--addendum'}`}>

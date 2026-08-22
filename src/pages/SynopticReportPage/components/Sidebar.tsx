@@ -12,14 +12,19 @@ interface SidebarProps {
   activeSpecimenId?: string;
   onSelectSpecimen?: (specimenId: string) => void;
   onAddSynoptic?: () => void;
+  onAddMicroscopic?: (specimenId: string) => void;
   onEditSpecimen?: (specimenId: string) => void;
   
   onOpenCaseComment?: () => void;
   onOpenSpecimenComment?: (specimenId: string) => void;
   hasCaseComment?: boolean;
+  onOpenRetentionHold?: () => void;
+  hasActiveRetentionHold?: boolean;
+  onOpenCaseHold?: () => void;
+  hasActiveCaseHold?: boolean;
   specimenComments?: Record<string, CaseComment[]>;
   activeReportInstanceId?: string;
-  onSelectReport?: (instanceId: string, specimenId: string, reportType: 'grossing' | 'synoptic') => void;
+  onSelectReport?: (instanceId: string, specimenId: string, reportType: 'grossing' | 'microscopic' | 'synoptic') => void;
   onDeleteReport?: (instanceId: string) => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -82,11 +87,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeSpecimenId,
   onSelectSpecimen,
   onAddSynoptic,
+  onAddMicroscopic,
   onEditSpecimen,
   
   onOpenCaseComment,
   onOpenSpecimenComment,
   hasCaseComment = false,
+  onOpenRetentionHold,
+  hasActiveRetentionHold = false,
+  onOpenCaseHold,
+  hasActiveCaseHold = false,
   specimenComments = {},
   activeReportInstanceId,
   onSelectReport,
@@ -201,6 +211,57 @@ const Sidebar: React.FC<SidebarProps> = ({
             {hasCaseComment && <span className="ps-syn-comment-check">✓</span>}
           </div>
 
+          {/* Real feature, per direct follow-up: "Retention Hold UI on
+              AccessionPage — not wired." AccessionPage.tsx already has
+              a real, working flow for placing a hold at the moment a
+              case is created — the real, remaining gap this closes is
+              an entry point for an ALREADY-accessioned case: placing
+              a new hold later, or releasing an active one. Same real
+              ps-syn-comment-btn pattern as Case Comment immediately
+              above — a case-level toggle action, not a specimen-level
+              one. */}
+          <div
+            className={`ps-syn-comment-btn${hasActiveRetentionHold ? ' has-comment' : ''}`}
+            onClick={() => onOpenRetentionHold?.()}
+            role="button" tabIndex={0}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpenRetentionHold?.()}
+          >
+            <span style={{ fontSize: 13, lineHeight: 1 }}>🔒</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="ps-syn-comment-label">
+                {hasActiveRetentionHold ? 'Active Retention Hold' : 'Retention Hold'}
+              </div>
+              {hasActiveRetentionHold && <div className="ps-syn-comment-sublabel">Blocks disposal until released</div>}
+            </div>
+            {hasActiveRetentionHold && <span className="ps-syn-comment-check" style={{ color: '#f87171' }}>●</span>}
+          </div>
+
+          {/* Real feature, per direct follow-up: "putting a case on
+              Hold at the case level makes sense if there is something
+              truly wrong... add a tile in their worklist for Cases on
+              Hold. Then remove the whole deferred bit." Deliberately a
+              separate entry from Retention Hold immediately above —
+              same real ps-syn-comment-btn pattern, but a genuinely
+              different concept (see types/case/CaseHold.ts's own
+              header): this one gates finalize on an active,
+              not-yet-done case, not disposal on an already-finalized
+              one. */}
+          <div
+            className={`ps-syn-comment-btn${hasActiveCaseHold ? ' has-comment' : ''}`}
+            onClick={() => onOpenCaseHold?.()}
+            role="button" tabIndex={0}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpenCaseHold?.()}
+          >
+            <span style={{ fontSize: 13, lineHeight: 1 }}>⛔</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="ps-syn-comment-label">
+                {hasActiveCaseHold ? 'Case On Hold' : 'Case Hold'}
+              </div>
+              {hasActiveCaseHold && <div className="ps-syn-comment-sublabel">Blocks finalize until released</div>}
+            </div>
+            {hasActiveCaseHold && <span className="ps-syn-comment-check" style={{ color: '#f87171' }}>●</span>}
+          </div>
+
           {/* Section label */}
           <div className="ps-syn-section-label">Specimens &amp; Reports</div>
 
@@ -211,6 +272,19 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             const grossingInstances = (caseData?.grossingReports ?? []).filter(r => r.specimenId === specimen.id)
               .map(r => ({ ...r, reportType: 'grossing' as const }));
+            // Real feature, per direct follow-up: "the next logical step
+            // is to generate a Microscopic Description... Perhaps a gap
+            // in our orchestration flow." Mapped into the same generic
+            // row shape (templateName/answers) the row renderer below
+            // already expects, rather than forking that rendering logic
+            // for a third, structurally different type — a free-text
+            // narrative has no real "template," so templateName here is
+            // a synthetic, display-only label, and answers is always
+            // empty (this row's own real "has content" signal is
+            // text.trim().length > 0, checked directly in the label
+            // below, not the generic hasAnswers check other rows use).
+            const microscopicInstances = (caseData?.microscopicReports ?? []).filter(r => r.specimenId === specimen.id)
+              .map(r => ({ ...r, templateName: 'Microscopic Description', answers: {}, reportType: 'microscopic' as const }));
             const instances = (caseData?.synopticReports ?? []).filter(r => r.specimenId === specimen.id)
               .map(r => ({ ...r, reportType: 'synoptic' as const }));
             const legacyId  = !instances.length && caseData?.synopticTemplateId;
@@ -228,7 +302,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             // then microscopic/synoptic), and lets the sidebar visually
             // separate the two kinds of report the same way accession →
             // grossing → sign-out treats them as sequential stages.
-            const allRows = [...grossingInstances, ...(instances.length > 0 ? instances : legacyRows)];
+            const allRows = [...grossingInstances, ...microscopicInstances, ...(instances.length > 0 ? instances : legacyRows)];
 
             const specimenHasAnswers = allRows.some(r =>
               Object.values(r.answers ?? {}).some(v => v !== '' && !(Array.isArray(v) && !v.length))
@@ -352,24 +426,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <div className="ps-syn-instance-name">
                               <span style={{
                                 fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                                color: inst.reportType === 'grossing' ? '#fbbf24' : '#38bdf8',
+                                color: inst.reportType === 'grossing' ? '#fbbf24' : inst.reportType === 'microscopic' ? '#ef4444' : '#38bdf8',
                                 marginRight: 6,
                               }}>
-                                {inst.reportType === 'grossing' ? 'Gross' : 'Synoptic'}
+                                {inst.reportType === 'grossing' ? 'Gross' : inst.reportType === 'microscopic' ? 'Micro' : 'Synoptic'}
                               </span>
-                              {inst.templateName}
+                              {inst.reportType === 'microscopic'
+                                ? ((inst as any).status === 'draft' ? 'Draft — unsaved' : (inst as any).text?.trim() ? 'Saved' : 'Saved — left blank')
+                                : inst.templateName}
                             </div>
                             <div
                               className="ps-syn-instance-meta"
                               style={unverifiedCount > 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}
                               title={unverifiedCount > 0 ? `${unverifiedCount} AI suggestion${unverifiedCount === 1 ? '' : 's'} still unverified on this report` : undefined}
                             >
-                              {filledCount} field{filledCount !== 1 ? 's' : ''} answered
-                              {unverifiedCount > 0 && ` · ${unverifiedCount} unverified`}
+                              {inst.reportType === 'microscopic'
+                                ? (() => { const len = ((inst as any).text ?? '').trim().length; return len > 0 ? `${len} character${len !== 1 ? 's' : ''}` : 'No narrative text yet'; })()
+                                : <>{filledCount} field{filledCount !== 1 ? 's' : ''} answered{unverifiedCount > 0 && ` · ${unverifiedCount} unverified`}</>}
                             </div>
                           </div>
                           <StatusDot status={instDot} />
-                          {inst.instanceId !== '__legacy__' && onDeleteReport && (
+                          {inst.instanceId !== '__legacy__' && inst.reportType !== 'microscopic' && onDeleteReport && (
                             <button
                               type="button"
                               className="ps-btn-icon-danger"
@@ -384,6 +461,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       );
                     })}
+                    {/* Real feature, per direct follow-up: "the next
+                        logical step is to generate a Microscopic
+                        Description." Only shown once — a specimen
+                        that already has a Microscopic row (even a
+                        blank, deliberately-skipped one) selects that
+                        real row above instead of offering to create a
+                        second one. */}
+                    {microscopicInstances.length === 0 && (
+                      <button
+                        type="button"
+                        className="ps-syn-instance-row"
+                        style={{ color: '#94a3b8', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left', width: '100%' }}
+                        onClick={() => onAddMicroscopic?.(specimen.id)}
+                      >
+                        <span style={{ fontSize: 13 }}>+ Add Microscopic Description</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -3,7 +3,8 @@ import React, { useEffect } from 'react';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import InternalNotesDrawer from '@/components/InternalNotes/InternalNotesDrawer';
-import { internalNoteService } from '@/services';
+import { internalNoteService, informalReviewService } from '@/services';
+import type { InformalReviewRequest } from '@/types/reports/InformalReviewRequest';
 import { getMarkersFromAnswers, type MarkerAnswer } from '@/orchestrator/contextBuilder';
 import { getTemplate } from '@/services/templates/templateService';
 import { matchSourceText } from '@/utils/sourceTextMatching';
@@ -20,6 +21,12 @@ interface LeftReportPanelProps {
    *  the field that triggered the highlight, instead of a silent
    *  no-op when the AI's cited source can't be located. */
   onMatchResolved?: (found: boolean) => void;
+  /** Real feature, per direct follow-up: "I assume we will launch the
+   *  Internal Notes Drawer when the case gets selected from the
+   *  worklist or the message." Set true when arriving via the
+   *  Informal Review Worklist tile or a message case link — opens the
+   *  drawer immediately, skipping the extra click. */
+  autoOpenNotes?: boolean;
 }
 
 // Splits text and wraps matching substring in a highlight mark.
@@ -53,10 +60,18 @@ const HighlightedText: React.FC<{
   );
 };
 
-const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightText, onMatchResolved }) => {
+const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightText, onMatchResolved, autoOpenNotes }) => {
   const { user } = useAuth();
-  const [notesOpen, setNotesOpen] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(!!autoOpenNotes);
   const [unreadNoteCount, setUnreadNoteCount] = React.useState(0);
+  // Real feature, per direct follow-up: "if there is a review that
+  // hasn't been opened, I would like to have some sort of effect in
+  // synopticreportpage's Internal Notes button." A real, published-
+  // but-not-yet-seen-by-the-requester InformalReviewRequest for this
+  // exact case, where the current user is the one who originally
+  // asked for the review. Never guesses — only a real, matched request
+  // triggers this, and it's cleared the moment the drawer is opened.
+  const [pendingReview, setPendingReview] = React.useState<InformalReviewRequest | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   // Real feature, per direct specification: Post-Sign-Out Release
@@ -78,7 +93,14 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
   // Count shared notes by other authors — proxy for "unread colleague notes"
   useEffect(() => {
     if (!caseData) return;
-    const accession = caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '';
+    // Real fix, found while wiring the Informal Review effect: this
+    // resolution was missing the same `?? caseData.id` fallback the
+    // real InternalNotesDrawer instantiation below already has — a
+    // case with neither accession.fullAccession nor accessionNumber
+    // set would silently skip this fetch entirely (the early return
+    // below), while the drawer itself still worked fine via its own
+    // fallback. Same accession value both places now.
+    const accession = caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? caseData.id ?? '';
     if (!accession) return;
     internalNoteService.getForCase(accession, user?.id ?? 'u1').then(result => {
       if (result.ok) {
@@ -87,9 +109,31 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
       }
     }).catch(() => {});
   }, [caseData, user?.id]);
+
+  // Real feature, per direct follow-up: find a real, published,
+  // not-yet-seen review the current user originally requested on this
+  // case, to drive the button's visual effect.
+  useEffect(() => {
+    if (!caseData?.id || !user?.id) { setPendingReview(null); return; }
+    informalReviewService.getSentByRequester(user.id).then(res => {
+      if (!res.ok) return;
+      const match = res.data.find(r => r.caseId === caseData.id && r.status === 'published');
+      setPendingReview(match ?? null);
+    }).catch(() => {});
+  }, [caseData?.id, user?.id]);
+
+  // Opening the drawer while a real, published review is waiting is
+  // the real "seen" event — closes the request out and clears the
+  // button's effect immediately, not on some separate, extra action.
+  useEffect(() => {
+    if (notesOpen && pendingReview) {
+      informalReviewService.markSeenByRequester(pendingReview.id).catch(() => {});
+      setPendingReview(null);
+    }
+  }, [notesOpen, pendingReview]);
   
 
-  // Phase D of the biomarker display work (see PRIORITY_FIXES.md). Resolves
+  // Phase D of the biomarker display work. Resolves
   // markers across ALL of this case's synoptic report instances (a case can
   // have more than one specimen, each with its own template) -- template-
   // agnostic by design via getMarkersFromAnswers(), so this works
@@ -173,6 +217,10 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
           0%   { background: rgba(251,191,36,0.9); box-shadow: 0 0 0 4px rgba(251,191,36,0.7); }
           100% { background: rgba(251,191,36,0.45); box-shadow: 0 0 0 2px rgba(251,191,36,0.5); }
         }
+        @keyframes ps-review-waiting-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.55); }
+          50%      { box-shadow: 0 0 0 6px rgba(139,92,246,0); }
+        }
       `}</style>
 
       {/* Header row */}
@@ -183,9 +231,17 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
         {caseData && (
           <button
             onClick={() => setNotesOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 12px', background: 'rgba(8,145,178,0.12)', border: '1px solid rgba(8,145,178,0.3)', borderRadius: '6px', color: '#0891B2', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s', position: 'relative' }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(8,145,178,0.22)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(8,145,178,0.12)'}
+            title={pendingReview ? `${pendingReview.toUserName} published an informal review — click to view` : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 12px',
+              background: pendingReview ? 'rgba(139,92,246,0.16)' : 'rgba(8,145,178,0.12)',
+              border: pendingReview ? '1px solid rgba(139,92,246,0.55)' : '1px solid rgba(8,145,178,0.3)',
+              borderRadius: '6px', color: pendingReview ? '#a78bfa' : '#0891B2',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s', position: 'relative',
+              animation: pendingReview ? 'ps-review-waiting-pulse 1.8s ease-in-out infinite' : undefined,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = pendingReview ? 'rgba(139,92,246,0.28)' : 'rgba(8,145,178,0.22)'}
+            onMouseLeave={e => e.currentTarget.style.background = pendingReview ? 'rgba(139,92,246,0.16)' : 'rgba(8,145,178,0.12)'}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -194,7 +250,12 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
               <line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
             Internal Notes
-            {unreadNoteCount > 0 && (
+            {pendingReview && (
+              <span style={{ background: '#8B5CF6', color: '#fff', borderRadius: '10px', padding: '0 6px', height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                Review Ready
+              </span>
+            )}
+            {!pendingReview && unreadNoteCount > 0 && (
               <span style={{ background: '#F59E0B', color: '#000', borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 {unreadNoteCount}
               </span>

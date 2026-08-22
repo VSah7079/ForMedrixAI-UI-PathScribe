@@ -256,7 +256,7 @@ export const PatientMatchReviewSection: React.FC = () => {
                   </div>
                   {(caseContext[record.id] ?? []).map((ctx, i) => (
                     <div key={i} style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
-                      {ctx.accession && <span>{ctx.accession}</span>}
+                      {ctx.accession && <span data-phi="accession">{ctx.accession}</span>}
                       {ctx.specimen && <span> · {ctx.specimen}</span>}
                       {ctx.provider && <span> · Referring: {ctx.provider}</span>}
                       {ctx.accessionedBy && <span> · Accessioned by {ctx.accessionedBy}</span>}

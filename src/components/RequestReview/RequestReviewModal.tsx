@@ -24,6 +24,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { mockMessageService } from '@/services/messages/mockMessageService';
+import { informalReviewService } from '@/services';
 import { userService, subspecialtyService } from '@/services';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { ServiceResult } from '@/services/types';
@@ -124,6 +125,26 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
       timestamp:     new Date(),
       isUrgent:      false,
     });
+
+    // Real feature, per direct follow-up: "I want informal reviews to
+    // be handled differently than delegations types... queue these
+    // informal requests on the worklist with a Tile." The message
+    // above is still real and useful (an immediate "heads up"), but
+    // it alone can't power a real, trackable Worklist tile — only
+    // informal_review specifically gets this real, separate,
+    // dedicated request record. Every other note type here stays
+    // message-only, unchanged.
+    if (noteType === 'informal_review') {
+      await informalReviewService.create({
+        caseId,
+        caseLabel,
+        fromUserId,
+        fromUserName,
+        toUserId:   selected.id,
+        toUserName: selected.name,
+        note:       message.trim() || undefined,
+      });
+    }
 
     setStatus('sent');
     onSent?.();

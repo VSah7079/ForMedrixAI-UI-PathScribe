@@ -7,7 +7,7 @@ import type { SpecimenDeficiency, ISpecimenDeficiencyService } from './IDeficien
 // Deficiencies are events, not configuration — this service itself
 // still writes nothing ahead of time. The four below are seeded
 // directly into storage's fallback default purely so the Deficiencies
-// page (src/pages/DeficienciesPage.tsx) has real, representative
+// page (src/pages/QualityAssurancePage.tsx) has real, representative
 // examples across all three lifecycle stages to show immediately,
 // rather than looking like an empty, unproven shell. All four
 // reference real existing seed cases.

@@ -11,15 +11,13 @@
 // releasePendingAmendmentOrAddendum and openAmendmentDraft are received
 // as parameters here, not redefined. That's the real call-graph
 // direction — handlePreFinalConfirm and handleFinalizeConfirm both call
-// finalizeCase() then releasePendingAmendmentOrAddendum() in sequence,
-// and handleFinalizeConfirm calls openAmendmentDraft() directly on the
-// deferred-synoptic-completion path.
+// finalizeCase() then releasePendingAmendmentOrAddendum() in sequence.
 //
 // STATE OWNED HERE (moved in fully — verified via grep that each is
 // only used within this file's original boundary or in JSX, before
 // moving): missingFields, showMissingWarning, reviewFields,
 // showAiReview, finalizeAndNextPending, showPreFinalise,
-// preFinalSynoptics, deferredAmendmentContext.
+// preFinalSynoptics.
 //
 // STATE DELIBERATELY NOT OWNED HERE, received as parameters instead:
 //   - activeReportInstanceId, orchSections: too central/widely-read
@@ -58,6 +56,8 @@ import type { FixativeGateSpecimen } from '../modals/FixativeTimeGateModal';
 import { PreFinalisationModal, type SynopticForReview } from '../modals/PreFinalisationModal';
 import { getFieldLabel, type ReportingStandard } from '@/utils/synopticFieldLabels';
 import { getTemplate } from '@/services/templates/templateService';
+import { evaluateMicroscopicFinalizeGate, type MicroscopicNarrativeStatus } from '@/utils/evaluateMicroscopicFinalizeGate';
+import { isVisible } from '../components/RightSynopticPanel';
 import type { Case, SynopticReportInstance, CaseParticipant } from '@/types/case/Case';
 import type { CaseStatus } from '@/types/case/CaseStatus';
 import type { Specimen } from '@/types/case/Specimen';
@@ -113,6 +113,13 @@ interface UseSignOutWorkflowParams {
    *  to actually be mounted/visible for its scrollToField effect to
    *  do anything. */
   safeSetLeftTab: (tab: string) => void;
+  /** Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
+   *  into handleRequestFinalize." Redirects the pathologist straight
+   *  to the blocking specimen's Microscopic panel — same real
+   *  "navigate to what's actually blocking" pattern setAlertFieldId
+   *  above already uses for the unverified-AI-suggestion check. */
+  setActiveSpecimenId: (id: string) => void;
+  setActiveReportType: (type: 'grossing' | 'microscopic' | 'synoptic') => void;
   setAmendmentMode: (mode: 'amendment' | 'correction' | 'addendum') => void;
   setShowAmendmentModal: (show: boolean) => void;
   setShowFinalizeModal: (show: boolean) => void;
@@ -128,6 +135,7 @@ export function useSignOutWorkflow({
   setCaseSigned, setShowSignOutModal, setPendingReconciliation,
   countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
   setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
+  setActiveSpecimenId, setActiveReportType,
   setShowAmendmentModal, setShowFinalizeModal, openAmendmentDraft,
   releasePendingAmendmentOrAddendum, log,
 }: UseSignOutWorkflowParams) {
@@ -310,8 +318,8 @@ export function useSignOutWorkflow({
         // synopticReports.some(r => r.status === 'pending-countersign'),
         // which would never have fired for a case released through this
         // gate since nothing ever set an instance to that status. Only
-        // 'draft' instances move — a report already 'finalized' or
-        // 'deferred' has its own real state that shouldn't be overwritten.
+        // 'draft' instances move — a report already 'finalized'
+        // has its own real state that shouldn't be overwritten.
         const updatedReportsForRelease = (caseData.synopticReports ?? []).map((r: SynopticReportInstance) =>
           r.status === 'draft' ? { ...r, status: 'pending-countersign' as const } : r
         );
@@ -440,7 +448,7 @@ export function useSignOutWorkflow({
   // ── Build SynopticForReview[] for PreFinalisationModal ─────────────────
   const buildSynopticsForReview = useCallback(async (): Promise<SynopticForReview[]> => {
     if (!caseData?.synopticReports?.length) return [];
-    const reports = caseData.synopticReports.filter(r => r.status !== 'deferred');
+    const reports = caseData.synopticReports;
 
     // Real section structure, per feedback — was previously a flat
     // field list with no grouping at all. getTemplate() gives the same
@@ -516,7 +524,7 @@ export function useSignOutWorkflow({
   // modal — no status change, no persistence, no audit event. The OTHER
   // finalize path (handleFinalizeConfirm, reached via the AI Review →
   // FinalizeModal route when uncertain fields exist) had real logic
-  // (signal capture, deferred-amendment handling) but ALSO never actually
+  // (signal capture) but ALSO never actually
   // set status: 'finalized' or persisted anything via caseRouter.updateCase.
   // Both paths must finalize identically — this is the one real
   // implementation both call.
@@ -603,14 +611,6 @@ export function useSignOutWorkflow({
           : undefined,
         releaseBufferDurationMinutes: bufferResolution.applies ? bufferResolution.durationMinutes : undefined,
         preReleaseBufferStatus: bufferResolution.applies ? caseData.status : undefined,
-        // Excluded synoptic instances (from the Pre-Finalisation Review's
-        // drag-to-exclude interaction) are marked deferred rather than
-        // dropped, so they remain visible/amendable later.
-        synopticReports: (caseData.synopticReports ?? []).map((r: SynopticReportInstance) =>
-          excludedInstanceIds.includes(r.instanceId)
-            ? { ...r, status: 'deferred' as const }
-            : r
-        ),
       };
 
       await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
@@ -651,8 +651,141 @@ export function useSignOutWorkflow({
     }
   }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPendingFinalizeArgs]);
 
+  // Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
+  // into handleRequestFinalize." Genuinely case-wide, unlike
+  // validateRequired() above (which only ever checks whichever ONE
+  // report instance happens to be active in the sidebar right now) —
+  // finalize blocks the entire case's sign-out, so every specimen's
+  // real microscopic state needs checking, not just whichever one a
+  // pathologist happened to have selected last.
+  //
+  // requiresMicroscopicNarrative hardcoded to false for every
+  // specimen — the real, admin-configurable procedure-code-level
+  // setting per direct decision doesn't have a real config screen
+  // built yet (a real, separate, flagged follow-up). Rule 4 (no
+  // synoptic template assigned at all) still applies regardless, so
+  // this isn't a silent no-op: a case with genuinely nothing
+  // documenting it is still correctly blocked.
+  const getMicroscopicBlockingSpecimens = useCallback(async (): Promise<{ specimenLabel: string; specimenId: string; reason: string }[]> => {
+    if (!caseData) return [];
+    const specimens = caseData.specimens ?? [];
+    const blocking: { specimenLabel: string; specimenId: string; reason: string }[] = [];
+
+    // Real, deliberate cache — several specimens can share the same
+    // real synoptic templateId (e.g. the same CAP protocol assigned
+    // to multiple specimens), and getTemplate() is a real, async
+    // service call not worth repeating per specimen when the result
+    // would be identical.
+    const templateCache = new Map<string, Awaited<ReturnType<typeof getTemplate>>>();
+
+    for (const specimen of specimens) {
+      const microInstance = (caseData.microscopicReports ?? []).find(m => m.specimenId === specimen.id);
+      const microscopicStatus: MicroscopicNarrativeStatus = microInstance?.status ?? 'not-started';
+      const microscopicText = microInstance?.text ?? '';
+
+      // Rules 1/2 in evaluateMicroscopicFinalizeGate never need
+      // synoptic data at all (draft always blocks; real, saved text
+      // always allows) — skip the real, async template fetch below
+      // entirely for those two cases, not just for tidiness: avoids
+      // a real network/service call finalize doesn't actually need to
+      // wait on.
+      if (microscopicStatus === 'draft' || (microscopicStatus === 'saved' && microscopicText.trim().length > 0)) {
+        const result = evaluateMicroscopicFinalizeGate({
+          microscopicStatus, microscopicText,
+          hasSynopticTemplate: false, allRequiredSynopticFieldsComplete: false,
+          requiresMicroscopicNarrative: false,
+        });
+        if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reason: result.reason! });
+        continue;
+      }
+
+      const synopticInstances = (caseData.synopticReports ?? [])
+        .filter(r => r.specimenId === specimen.id);
+      const hasSynopticTemplate = synopticInstances.length > 0;
+
+      let allRequiredSynopticFieldsComplete = true;
+      if (hasSynopticTemplate) {
+        for (const inst of synopticInstances) {
+          let detail = templateCache.get(inst.templateId);
+          if (!detail) {
+            try {
+              detail = await getTemplate(inst.templateId);
+              templateCache.set(inst.templateId, detail);
+            } catch (e) {
+              console.error(`[Finalize] Could not load template ${inst.templateId} for microscopic gate check:`, e);
+              // Real, honest fallback — an unloadable template's own
+              // completeness genuinely can't be verified; treated as
+              // incomplete rather than silently assumed complete, the
+              // same fail-safe direction every other real blocking
+              // check in this app already takes.
+              allRequiredSynopticFieldsComplete = false;
+              continue;
+            }
+          }
+          const answers = inst.answers ?? {};
+          const hasIncomplete = (detail.template?.sections ?? []).some(sec => {
+            if (!isVisible((sec as any).visibleWhen, answers)) return false;
+            return (sec.fields ?? []).some((f: any) => {
+              if (!f.required || !isVisible(f.visibleWhen, answers)) return false;
+              const val = answers[f.id];
+              return !val || (Array.isArray(val) ? val.length === 0 : val.toString().trim() === '');
+            });
+          });
+          if (hasIncomplete) allRequiredSynopticFieldsComplete = false;
+        }
+      }
+
+      const result = evaluateMicroscopicFinalizeGate({
+        microscopicStatus, microscopicText,
+        hasSynopticTemplate, allRequiredSynopticFieldsComplete,
+        requiresMicroscopicNarrative: false,
+      });
+      if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reason: result.reason! });
+    }
+
+    return blocking;
+  }, [caseData]);
+
   const handleRequestFinalize = useCallback(async (andNext: boolean) => {
     setFinalizeAndNextPending(andNext);
+    // Real feature, per direct follow-up: "putting a case on Hold at
+    // the case level makes sense if there is something truly wrong."
+    // Checked first, before every other gate below — an active hold
+    // means something genuinely needs resolving; there's no reason to
+    // walk a pathologist through the microscopic/fixative/required-
+    // field gates for a case that can't proceed regardless of what
+    // those checks find.
+    const activeCaseHold = (caseData?.caseHolds ?? []).find(h => h.active);
+    if (activeCaseHold) {
+      showToast(`This case is on hold: ${activeCaseHold.note} — release the hold before finalizing.`);
+      return;
+    }
+    // Real fix, found via direct live verification before shipping this:
+    // this check MUST run before the synopticPanelRef.current check
+    // below, not after it. It's genuinely independent of which panel
+    // happens to be mounted (it reads caseData directly, never
+    // synopticPanelRef) — but the pathologist is very often looking at
+    // the Microscopic panel itself right when they click Finalize
+    // (the exact moment this whole feature exists for), and
+    // RightSynopticPanel — and therefore synopticPanelRef.current —
+    // isn't mounted at all while that panel is showing. Running this
+    // after the old `if (!synopticPanelRef.current)` early return
+    // would have silently bypassed this entire gate in exactly the
+    // scenario it's built to catch, confirmed live: it opened
+    // PreFinalisationModal straight through, with zero warning, on a
+    // case with nothing documenting it at all.
+    const microscopicBlocking = await getMicroscopicBlockingSpecimens();
+    if (microscopicBlocking.length > 0) {
+      const first = microscopicBlocking[0];
+      showToast(
+        microscopicBlocking.length === 1
+          ? `Specimen ${first.specimenLabel}: ${first.reason}`
+          : `${microscopicBlocking.length} specimens need attention before finalizing — starting with Specimen ${first.specimenLabel}: ${first.reason}`
+      );
+      setActiveSpecimenId(first.specimenId);
+      setActiveReportType('microscopic');
+      return;
+    }
     if (!synopticPanelRef.current) {
       setPreFinalSynoptics(await buildSynopticsForReview());
       setShowPreFinalise(true);
@@ -679,15 +812,9 @@ export function useSignOutWorkflow({
       setAlertFieldId(blocking[0].fieldId);
       return;
     }
-    const deferred = (caseData?.synopticReports ?? []).filter((r: SynopticReportInstance) => r.status === 'deferred');
-    if (deferred.length > 0) {
-      const names = deferred.map((r: SynopticReportInstance) => r.templateName).join(', ');
-      // Note: deferred check handled by PreFinalisationModal advisory panel
-      console.info('[Finalise] Deferred synoptics:', names);
-    }
     setPreFinalSynoptics(await buildSynopticsForReview());
     setShowPreFinalise(true);
-  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab]);
+  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType]);
 
   const handlePreFinalConfirm = useCallback((_ordered: string[], _excluded: string[]) => {
     setShowPreFinalise(false);
@@ -709,8 +836,6 @@ export function useSignOutWorkflow({
       if (succeeded) await releasePendingAmendmentOrAddendum();
     })();
   }, [finalizeCase, releasePendingAmendmentOrAddendum]);
-
-  const [deferredAmendmentContext, setDeferredAmendmentContext] = useState<{ title: string; prefill: string } | null>(null);
 
   const handleFinalizeConfirm = useCallback(() => {
     if (synopticPanelRef.current) {
@@ -787,42 +912,19 @@ export function useSignOutWorkflow({
       ).catch(console.error);
     }
 
-    const activeReport = caseData?.synopticReports?.find(r => r.instanceId === activeReportInstanceId);
-    if (caseData?.status === 'finalized' && activeReport?.status === 'deferred') {
-      // Case is ALREADY finalized — this is the amendment path for a
-      // deferred synoptic now being completed, not a first-time finalize.
-      // Do not re-run finalizeCase() here; that would double-log the
-      // case_finalized audit event for a case that's already finalized.
-      const completedFields = Object.entries(activeReport.answers ?? {})
-        .filter(([, v]) => v && (Array.isArray(v) ? (v as string[]).length > 0 : (v as string).trim()))
-        .map(([k]) => k).join(', ');
-      const pendingNote = activeReport.deferredPending ? ` (${activeReport.deferredPending})` : '';
-      setDeferredAmendmentContext({
-        title: activeReport.templateName ?? 'Deferred Synoptic',
-        prefill: `Amendment — completion of deferred synoptic${pendingNote}: ${activeReport.templateName ?? ''}.
-
-Ancillary results now available. Completed fields: ${completedFields || 'see synoptic report'}.
-
-Original report issued pending ancillary studies. This amendment incorporates the completed findings.`,
-      });
-      setAmendmentMode('amendment');
-      setShowAmendmentModal(true);
-      openAmendmentDraft('amendment');
-    } else {
-      // Genuine first-time finalize OR amendment/addendum completion —
-      // properly sequenced now: finalizeCase() first (awaited, not
-      // fire-and-forget), THEN the amendment/addendum release, so there's
-      // no race between the two independently updating caseData from
-      // stale closures. Previously finalizeCase() ran fire-and-forget
-      // while this same logic ran inline right after it — whichever one's
-      // setCaseData call resolved last would silently clobber the other,
-      // which is exactly why the "AMENDMENT IN PROGRESS" banner stayed
-      // stuck inconsistently rather than every time.
-      (async () => {
-        const succeeded = await finalizeCase();
-        if (succeeded) await releasePendingAmendmentOrAddendum();
-      })();
-    }
+    // Genuine first-time finalize OR amendment/addendum completion —
+    // properly sequenced: finalizeCase() first (awaited, not
+    // fire-and-forget), THEN the amendment/addendum release, so there's
+    // no race between the two independently updating caseData from
+    // stale closures. Previously finalizeCase() ran fire-and-forget
+    // while this same logic ran inline right after it — whichever one's
+    // setCaseData call resolved last would silently clobber the other,
+    // which is exactly why the "AMENDMENT IN PROGRESS" banner stayed
+    // stuck inconsistently rather than every time.
+    (async () => {
+      const succeeded = await finalizeCase();
+      if (succeeded) await releasePendingAmendmentOrAddendum();
+    })();
   }, [setShowFinalizeModal, caseData, activeReportInstanceId, setAmendmentMode, setShowAmendmentModal, isOrchestrationMode, orchSections, finalizeCase, releasePendingAmendmentOrAddendum, signingUser, synopticPanelRef, openAmendmentDraft]);
 
   return {
@@ -839,7 +941,6 @@ Original report issued pending ancillary studies. This amendment incorporates th
     preFinalSynoptics,
     handleRequestFinalize,
     handlePreFinalConfirm,
-    deferredAmendmentContext, setDeferredAmendmentContext,
     handleFinalizeConfirm,
   };
 }

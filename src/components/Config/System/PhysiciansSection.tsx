@@ -13,6 +13,8 @@ import { physicianService, facilityService } from '../../../services';
 import type { Physician } from '../../../services';
 import { SuffixSelect } from '../../Common/SuffixSelect';
 import { formatFullDisplayName } from '../../../utils/personName';
+import { preparePersonDuplicate } from '../../../utils/duplicateEntry';
+import { findDuplicate } from '../../../utils/validateUnique';
 
 // Physician imported from services/physicians/IPhysicianService.ts (via
 // the services barrel) rather than redeclared locally — see git history
@@ -21,6 +23,18 @@ import { formatFullDisplayName } from '../../../utils/personName';
 
 function initials(p: Physician) { return (p.givenNames[0] + p.familyNames[0]).toUpperCase(); }
 function fullName(p: Physician) { return formatFullDisplayName(p); }
+
+// Person-specific/identity fields cleared when duplicating a physician
+// (PS-73) — name, NPI, physician code, and direct contact info. NOT
+// cleared: specialty, clientIds, preferredContact, status — those are
+// organizational context, the actual point of the starting-template
+// clone (see preparePersonDuplicate's own header for the full
+// reasoning on why this isn't prepareDuplicate's generic "(Copy)"
+// suffix behavior).
+const PHYSICIAN_PERSON_FIELDS: (keyof Physician)[] = [
+  'namePrefix', 'givenNames', 'familyNames', 'preferredName', 'nameSuffix',
+  'firstName', 'lastName', 'npi', 'physicianCode', 'phone', 'fax', 'email',
+];
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
@@ -38,19 +52,27 @@ type Draft = Omit<Physician, 'id'> & { active: boolean };
 const emptyDraft: Draft = {
   namePrefix: 'Dr.', givenNames: '', familyNames: '', preferredName: '', nameSuffix: '',
   firstName: '', lastName: '', // stale by design — mockPhysicianService always recomputes these from givenNames/familyNames on save
-  npi: '', specialty: '', phone: '', fax: '',
+  physicianCode: '', npi: '', specialty: '', phone: '', fax: '',
   email: '', preferredContact: 'Email', clientIds: [], status: 'Active', active: true,
 };
 
 interface PhysicianModalProps {
   mode: 'add' | 'edit';
   physician?: Physician;
+  /** Display name of the source physician, when `physician` is a
+   *  duplicate-template prefill rather than the real record being
+   *  edited. Header-only — the draft's own name fields are already
+   *  cleared by preparePersonDuplicate before this modal ever opens
+   *  (see PhysiciansSection's own handleClonePhysician), so there's no
+   *  name left in `physician` to read for the header text. */
+  cloneSourceName?: string;
   clients: { id: string; name: string }[];
+  existingEntries: Physician[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, clients, onSave, onClose }) => {
+const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneSourceName, clients, existingEntries, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(
     physician
       ? { ...physician, active: physician.status === 'Active' }
@@ -68,10 +90,36 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, client
     }));
   };
 
+  // excludeId only applies in real 'edit' mode — in 'add' mode
+  // (including a duplicate template, which prefills but is still a
+  // real add) nothing is excluded, so saving a clone without giving it
+  // its own physician code/NPI is correctly caught, same convention as
+  // every sibling dictionary's own required+unique field.
+  const excludeId = mode === 'edit' ? physician?.id : undefined;
+
   const validate = () => {
     const e: typeof errors = {};
     if (!draft.givenNames.trim()) e.givenNames = 'Required';
     if (!draft.familyNames.trim())  e.familyNames  = 'Required';
+
+    // Physician Code: required, unique across the whole directory
+    // (PS-73) — independent of NPI, so checked as its own single-key
+    // collision, not compounded with anything else.
+    if (!draft.physicianCode.trim()) {
+      e.physicianCode = 'Required';
+    } else {
+      const codeCollision = findDuplicate(existingEntries, { physicianCode: draft.physicianCode.trim() }, ['physicianCode'], excludeId);
+      if (codeCollision) e.physicianCode = `Physician code "${codeCollision.physicianCode}" is already assigned to ${fullName(codeCollision)}.`;
+    }
+
+    // NPI: optional (confirmed — not every physician has one, e.g. UK
+    // physicians) — uniqueness only checked when a value is actually
+    // present, never against another blank.
+    if (draft.npi.trim()) {
+      const npiCollision = findDuplicate(existingEntries, { npi: draft.npi.trim() }, ['npi'], excludeId);
+      if (npiCollision) e.npi = `NPI ${npiCollision.npi} is already assigned to ${fullName(npiCollision)}.`;
+    }
+
     return e;
   };
 
@@ -89,7 +137,11 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, client
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal ps-ms-modal--wide">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Physician' : `Edit — ${formatFullDisplayName(physician!)}`}
+          {mode === 'edit'
+            ? `Edit — ${formatFullDisplayName(physician!)}`
+            : cloneSourceName
+              ? `New Physician — from ${cloneSourceName} template`
+              : 'Add Physician'}
         </div>
 
         <div className="ps-ms-body">
@@ -131,16 +183,26 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, client
             <input data-phi="name" className="ps-conf-input" value={draft.preferredName ?? ''} onChange={e => set('preferredName', e.target.value)} placeholder="What staff should call them, if different" />
           </div>
 
-          {/* NPI + Specialty */}
+          {/* Physician Code + NPI */}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">NPI Number</label>
-              <input className="ps-conf-input" value={draft.npi} onChange={e => set('npi', e.target.value)} placeholder="10-digit NPI" />
+              <label className="ps-conf-label">Physician Code <span className="ps-conf-required">*</span></label>
+              <input className={`ps-conf-input ${errors.physicianCode ? 'ps-conf-input--error' : ''}`}
+                value={draft.physicianCode} onChange={e => set('physicianCode', e.target.value)} placeholder="Internal identifier, e.g. PHY-0231" />
+              {errors.physicianCode && <span className="ps-conf-error-text">{errors.physicianCode}</span>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Specialty</label>
-              <input className="ps-conf-input" value={draft.specialty} onChange={e => set('specialty', e.target.value)} placeholder="e.g. Gastroenterology" />
+              <label className="ps-conf-label">NPI Number</label>
+              <input className={`ps-conf-input ${errors.npi ? 'ps-conf-input--error' : ''}`}
+                value={draft.npi} onChange={e => set('npi', e.target.value)} placeholder="10-digit NPI — optional, not every physician has one" />
+              {errors.npi && <span className="ps-conf-error-text">{errors.npi}</span>}
             </div>
+          </div>
+
+          {/* Specialty */}
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Specialty</label>
+            <input className="ps-conf-input" value={draft.specialty} onChange={e => set('specialty', e.target.value)} placeholder="e.g. Gastroenterology" />
           </div>
 
           {/* Phone + Fax */}
@@ -177,7 +239,20 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, client
             <Toggle value={draft.active} onChange={v => set('active', v)} />
           </div>
 
-          {/* Client Affiliations */}
+          {/* Client Affiliations — confirmed, not assumed (PS-75): this
+              existing clientIds[] multi-facility model is the right
+              mechanism for physicians and is deliberately NOT the same
+              thing as ContainerTypesSection/DelegationTypeSection's own
+              PS-75 "Performing Lab" pattern (a single
+              performingLabFacilityId used to scope one dictionary
+              entry's ownership+uniqueness to one lab). A physician is a
+              real person who can validly submit to several
+              ordering/submitting facilities at once — clientIds here is
+              unfiltered by FacilityRole (unlike getActivePerformingLabs,
+              which filters to role: 'performing_lab' specifically) —
+              so adding a separate single-valued Performing Lab field
+              would be modeling the wrong cardinality for what a
+              physician's real-world facility relationship is. */}
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">Facility Affiliations</label>
             <div className="ps-conf-picker">
@@ -233,7 +308,7 @@ const PhysiciansSection: React.FC = () => {
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive' | 'Unverified'>('All');
-  const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; physician?: Physician } | null>(null);
+  const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; physician?: Physician; cloneSourceName?: string } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -247,7 +322,12 @@ const PhysiciansSection: React.FC = () => {
   }, []);
 
   const filtered = physicians.filter(p => {
-    const matchSearch = !search || fullName(p).toLowerCase().includes(search.toLowerCase()) || p.npi.includes(search) || p.specialty.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchSearch = !search
+      || fullName(p).toLowerCase().includes(q)
+      || p.physicianCode.toLowerCase().includes(q)
+      || p.npi.includes(search)
+      || p.specialty.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'All' || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -262,6 +342,27 @@ const PhysiciansSection: React.FC = () => {
       if (res.ok) setPhysicians(prev => prev.map(p => p.id === res.data.id ? res.data : p));
     }
     setModal(null);
+  };
+
+  // Opens the Add modal pre-filled as a real starting TEMPLATE, not a
+  // literal duplicate (PS-73) — a physician is a real person, so
+  // cloning must clear identity/direct-contact fields (name, NPI,
+  // physician code, phone/fax/email) rather than suffix a "(Copy)"
+  // onto a name like every other dictionary's own generic
+  // prepareDuplicate does. specialty/clientIds/preferredContact carry
+  // over as the actual organizational starting point; status resets to
+  // Active and autoCreated/autoCreatedAt reset — this is a fresh,
+  // staff-initiated record, not a snapshot from intake. mode: 'add' is
+  // what makes handleSave treat this as a real create(), matching the
+  // proven, confirmed-working pattern already used by
+  // ContainerTypesSection.tsx/StainDictionarySection.tsx (PS-73).
+  const handleClonePhysician = (source: Physician) => {
+    const template = preparePersonDuplicate(source, PHYSICIAN_PERSON_FIELDS);
+    setModal({
+      mode: 'add',
+      physician: { ...template, id: '__clone__', status: 'Active', autoCreated: false, autoCreatedAt: undefined },
+      cloneSourceName: fullName(source),
+    });
   };
 
   const handleVerify = async (id: string) => {
@@ -282,7 +383,7 @@ const PhysiciansSection: React.FC = () => {
       </div>
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by name, NPI, or specialty..." value={search} onChange={e => setSearch(e.target.value)}
+        <input type="text" placeholder="Search by name, code, NPI, or specialty..." value={search} onChange={e => setSearch(e.target.value)}
           className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
           <option value="All">All</option>
@@ -310,7 +411,7 @@ const PhysiciansSection: React.FC = () => {
                       <div className="ps-conf-avatar">{initials(p)}</div>
                       <div>
                         <div className="ps-conf-identity-name" data-phi="name">{fullName(p)}</div>
-                        <div className="ps-conf-identity-sub">NPI: {p.npi || '—'}</div>
+                        <div className="ps-conf-identity-sub">Code: {p.physicianCode}{p.npi ? ` · NPI: ${p.npi}` : ''}</div>
                       </div>
                     </div>
                   </td>
@@ -351,6 +452,7 @@ const PhysiciansSection: React.FC = () => {
                         <button className="ps-conf-btn-verify" onClick={() => handleVerify(p.id)}>Verify</button>
                       )}
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', physician: p })}>Edit</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleClonePhysician(p)}>Duplicate</button>
                     </div>
                   </td>
                 </tr>
@@ -363,7 +465,17 @@ const PhysiciansSection: React.FC = () => {
         </div>
       </div>
 
-      {modal && <PhysicianModal mode={modal.mode} physician={modal.physician} clients={clients} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && (
+        <PhysicianModal
+          mode={modal.mode}
+          physician={modal.physician}
+          cloneSourceName={modal.cloneSourceName}
+          clients={clients}
+          existingEntries={physicians}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 };

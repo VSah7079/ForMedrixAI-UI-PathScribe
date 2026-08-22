@@ -5,6 +5,7 @@ import { reconciliationService, facilityService, intraoperativeService } from '@
 import { mockAmendmentService } from '@/services/reports/mockAmendmentService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getDelegations } from '@/services/cases/mockCaseService';
+import { informalReviewService } from '@/services';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@/components/Config/System/TATConfigSection';
 import {
@@ -13,7 +14,7 @@ import {
   computeFrozenSectionOutliers, computeColdIschemiaOutliers,
   computeConsultResponseOutliers, computeConsultAwaitingOutliers, computeTatByClient,
   type RealDiscordantCase, type RealAmendedCase, type RealTotalTatOutlier, type RealFirstTouchOutlier,
-  type RealGenericTatOutlier, type TatEntryForResolution, type RealClientTatRow,
+  type RealGenericTatOutlier, type TatEntryForResolution, type RealClientTatRow, type DelegationForTatCalc,
 } from './qualityCalculations';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -325,14 +326,36 @@ const QualityTab: React.FC = () => {
       });
       if (!cancelled) setRealAmended(amendmentRecordsToAmendedCases(res.data, caseTypeByCaseId));
     });
+    const currentUser = getSessionUser();
     Promise.all([
       caseRouter.getAll(),
       facilityService.getAll(),
       intraoperativeService.getAll(),
       getDelegations(),
-    ]).then(([allCasesRes, clientRes, intraopRes, allDelegations]) => {
+      // Real fix, per direct follow-up: "I want informal reviews to be
+      // handled differently than delegations types, so remove the
+      // informal action from that workflow." CASUAL_REVIEW delegations
+      // are now dead going forward (no real UI creates or completes
+      // them anymore) - without this, CONSULTATION_RESPONSE/
+      // CONSULTATION_AWAITING below would silently stop reflecting
+      // anything real. Mapped into the same DelegationForTatCalc shape
+      // and merged with allDelegations below, so
+      // qualityCalculations.ts itself needs no changes.
+      currentUser ? informalReviewService.getAllForUser(currentUser.id) : Promise.resolve({ ok: true as const, data: [] }),
+    ]).then(([allCasesRes, clientRes, intraopRes, allDelegations, informalReviewsRes]) => {
       if (cancelled) return;
       const allCases = allCasesRes.ok ? allCasesRes.data : [];
+      const informalReviewsAsDelegations: DelegationForTatCalc[] = (informalReviewsRes.ok ? informalReviewsRes.data : []).map(r => ({
+        id: r.id,
+        caseId: r.caseId,
+        fromUserId: r.fromUserId,
+        toUserId: r.toUserId,
+        delegationType: 'CASUAL_REVIEW',
+        timestamp: r.requestedAt,
+        status: (r.status === 'published' || r.status === 'closed') ? 'completed' : 'pending',
+        completedAt: r.publishedAt,
+      }));
+      const combinedDelegations = [...allDelegations, ...informalReviewsAsDelegations];
       const tatEntries = (() => {
         try {
           const raw = localStorage.getItem(TAT_STORAGE_KEY);
@@ -349,10 +372,9 @@ const QualityTab: React.FC = () => {
       if (intraopRes.ok) {
         setRealFrozenSection(computeFrozenSectionOutliers(intraopRes.data, allCases, tatEntries, clientNameById));
       }
-      const currentUser = getSessionUser();
       if (currentUser) {
-        setRealConsultResponse(computeConsultResponseOutliers(allDelegations, allCases, currentUser.id, tatEntries, clientNameById));
-        setRealConsultAwaiting(computeConsultAwaitingOutliers(allDelegations, allCases, currentUser.id, tatEntries, clientNameById));
+        setRealConsultResponse(computeConsultResponseOutliers(combinedDelegations, allCases, currentUser.id, tatEntries, clientNameById));
+        setRealConsultAwaiting(computeConsultAwaitingOutliers(combinedDelegations, allCases, currentUser.id, tatEntries, clientNameById));
         if (clientRes.ok) {
           setRealTatByClient(computeTatByClient(allCases, tatEntries, clientRes.data, currentUser.id));
         }

@@ -1,6 +1,6 @@
 // src/pages/SynopticReportPage/components/MarkersPanel.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase D of the biomarker display work (see PRIORITY_FIXES.md). Shows
+// Phase D of the biomarker display work. Shows
 // resolved biomarker values grouped by marker (e.g. all ER-related fields --
 // Status, % Positivity, Intensity -- under one "ER" card with those details
 // listed together), rather than as separate, disconnected badges. Grouping
@@ -9,7 +9,7 @@
 // haven't been tagged yet still degrade gracefully.
 //
 // No provenance/block-slide linking yet — that's a real, separate future
-// piece (see PRIORITY_FIXES.md's note on CoPilot mode needing real LIS
+// piece (CoPilot mode needing real LIS
 // material-list data, not PathScribe's own mock blocks, before that's
 // safe to build for CoPilot cases specifically).
 // ─────────────────────────────────────────────────────────────────────────────

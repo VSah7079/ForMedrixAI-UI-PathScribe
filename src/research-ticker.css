@@ -81,7 +81,7 @@
                                     the line can push the layout */
   font-size: clamp(13px, 1.4vw, 15px);
   font-style: italic;
-  color: #ffffff; /* was var(--text-color) — theme picker descoped to dark-only, see PRIORITY_FIXES.md item #27 */
+  color: #ffffff; /* was var(--text-color) — theme picker descoped to dark-only (a deliberate product decision) */
 }
 
 .ps-litfeed-link:hover .ps-litfeed-title,

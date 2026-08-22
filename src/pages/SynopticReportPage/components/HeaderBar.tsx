@@ -236,7 +236,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   // CoPilot cases specifically. Real, granular material-status tracking
   // (block/slide-level, ideally sourced from an actual lab system like
   // Roche Vantage or Leica CEREBRO rather than derived internally) is a
-  // deliberately deferred future enhancement -- see PRIORITY_FIXES.md.
+  // deliberately deferred future enhancement, not a current gap -- the
+  // existing block.status/stain.status fields give a practical signal
+  // today; this is for when real per-touchpoint lab-system integration exists.
   const orchestrationStageMap: Record<string, number> = {
     'draft': 0, 'accessioned': 0,
     'gross-complete': 1, 'intraoperative-complete': 1,
@@ -270,7 +272,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
       <div className="ps-hb-compact">
         {/* Left: accession + patient + priority */}
         <div className="ps-hb-compact-left">
-          <span className="ps-hb-compact-acc">{accession}</span>
+          <span className="ps-hb-compact-acc" data-phi="accession">{accession}</span>
           <span className="ps-hb-compact-sep">·</span>
           <span className="ps-hb-compact-patient">{patient}</span>
           {caseData?.patient?.dateOfBirth && (
@@ -463,7 +465,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           {/* Accession block */}
           <div className="ps-hb-accession">
             <div className="ps-hb-field-label">Accession</div>
-            <div className="ps-hb-accession-number">{accession}</div>
+            <div className="ps-hb-accession-number" data-phi="accession">{accession}</div>
             {hospital && (
               <div className="ps-hb-hospital-sublabel">
                 {hospital.shortName} · {hospital.country === 'UK' ? 'NHS' : hospital.country}
@@ -492,11 +494,11 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
             </div>
             <div className="ps-hb-field">
               <div className="ps-hb-field-label">Date of Birth</div>
-              <div className="ps-hb-field-value">{dob}</div>
+              <div className="ps-hb-field-value" data-phi="dob">{dob}</div>
             </div>
             <div className="ps-hb-field">
               <div className="ps-hb-field-label">MRN</div>
-              <div className="ps-hb-field-value">{mrn}</div>
+              <div className="ps-hb-field-value" data-phi="mrn">{mrn}</div>
             </div>
             {clientName && (
               <div className="ps-hb-field">

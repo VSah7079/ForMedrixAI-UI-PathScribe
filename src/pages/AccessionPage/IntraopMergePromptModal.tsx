@@ -36,7 +36,7 @@ export const IntraopMergePromptModal: React.FC<Props> = ({ caseId, match, onMerg
           </p>
 
           <div className="ps-intraop-candidate-row">
-            <span className="ps-intraop-candidate-case">{entry.patientMatch.patientName}</span>
+            <span className="ps-intraop-candidate-case" data-phi="name">{entry.patientMatch.patientName}</span>
             <span className={`ps-intraop-candidate-badge ps-intraop-candidate-badge--${confidence}`}>
               {matchType === 'mrn_exact' ? 'MRN match' : `Fuzzy · ${confidence}`}
             </span>

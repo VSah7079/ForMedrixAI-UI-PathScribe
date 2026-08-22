@@ -36,7 +36,7 @@ import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { intraoperativeService, facilityService, locationService } from '@/services';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
-import type { IntraoperativeEntry, IntraopSpecimen, MatchCandidate, MilestoneType, SkipReason, FrozenCategory } from '@/types/intraop/IntraoperativeEntry';
+import type { IntraoperativeEntry, IntraopSpecimen, MatchCandidate, MilestoneType, SkipReason, FrozenCategory, PreparationType } from '@/types/intraop/IntraoperativeEntry';
 import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Location } from '@/services/locations/ILocationService';
 import { shouldRestrictToMobileWorkflow, setDesktopViewOverride, isConstrainedMobileDevice } from '@/utils/deviceDetection';
@@ -351,9 +351,9 @@ const NewEntryForm: React.FC<{
         {adtMatched ? (
           <div className="ps-intraop-identified-banner ps-intraop-identified-banner--stacked">
             <div className="ps-intraop-id-heading">Matched via ADT — confirm before proceeding</div>
-            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">Name</span><span className="ps-intraop-id-value">{patientName}</span></div>
-            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">DOB</span><span className="ps-intraop-id-value">{formatDateLong(dateOfBirth)}</span></div>
-            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">MRN</span><span className="ps-intraop-id-value">{mrn}</span></div>
+            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">Name</span><span className="ps-intraop-id-value" data-phi="name">{patientName}</span></div>
+            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">DOB</span><span className="ps-intraop-id-value" data-phi="dob">{formatDateLong(dateOfBirth)}</span></div>
+            <div className="ps-intraop-id-row"><span className="ps-intraop-id-label">MRN</span><span className="ps-intraop-id-value" data-phi="mrn">{mrn}</span></div>
           </div>
         ) : (
           <>
@@ -494,6 +494,96 @@ const SkipReasonMenu: React.FC<{ onPick: (reason: SkipReason, note?: string) => 
   );
 };
 
+const PREPARATION_TYPE_LABEL: Record<PreparationType, string> = {
+  frozen_block: 'Frozen Block(s)',
+  touch_prep: 'Touch Prep / Smear',
+  squash_prep: 'Squash Prep',
+  cytology_fluid: 'Cytology / Fluid Evaluation',
+  gross_only: 'Gross Only / Intraoperative Consultation',
+};
+const PREPARATION_TYPES: PreparationType[] = ['frozen_block', 'touch_prep', 'squash_prep', 'cytology_fluid', 'gross_only'];
+
+/** Real, new component, per direct guidance — the real bench-facing
+ *  entry point for addPreparationOutput() (services/intraop/), closing
+ *  the loop on PS-82's own data-model fix. Block Count is real,
+ *  dynamic — only meaningful (shown, defaulted to 1) for Frozen
+ *  Block(s); every other preparation type logs exactly one real
+ *  output per "Log" click, matching the real, given spec ("hides or
+ *  zeroes block count" for Touch Prep/Smear). Deliberately separate
+ *  from, not a replacement for, the existing Quick Gross/Touch Prep
+ *  milestone gate above — milestones[] still tracks the real workflow
+ *  sequence (did touch prep happen at all, when); this is the real,
+ *  itemized, repeatable record of what was actually produced, which a
+ *  single milestone tap could never represent (a specimen can have
+ *  both touch preps AND multiple frozen blocks). Stays visible/
+ *  re-usable after logging — a real bench workflow may add
+ *  preparations progressively, not all in one submission. */
+const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void }> = ({ sessionId, specimen, onLogged }) => {
+  const [type, setType] = useState<PreparationType>('frozen_block');
+  const [blockCount, setBlockCount] = useState('1');
+  const [busy, setBusy] = useState(false);
+
+  const handleLog = async () => {
+    setBusy(true);
+    const count = type === 'frozen_block' ? Math.max(1, Number(blockCount) || 1) : 1;
+    for (let i = 0; i < count; i++) {
+      // Sequential, not parallel — each real call needs the PRIOR
+      // call's own persisted state (via generatePreparationIdentifier's
+      // real sequence count) to correctly number the next real output;
+      // firing these concurrently would race and could produce
+      // duplicate identifiers.
+      // eslint-disable-next-line no-await-in-loop
+      await intraoperativeService.addPreparationOutput(sessionId, specimen.id, type);
+    }
+    // Real, deliberate: also logs the corresponding workflow milestone
+    // on the FIRST real output of that type only — preserves the
+    // existing TAT-tracking/audit value of milestones[] (frozen-section
+    // TAT calculation reads frozen_section_cut's own timestamp) without
+    // creating a redundant milestone entry for every additional block.
+    const hasTouchPrepStep = specimen.milestones.some(m => m.milestone === 'touch_prep_performed' || m.milestone === 'touch_prep_skipped');
+    const hasFrozenCut = specimen.milestones.some(m => m.milestone === 'frozen_section_cut');
+    if (type === 'touch_prep' && !hasTouchPrepStep) {
+      await intraoperativeService.addMilestone(sessionId, specimen.id, 'touch_prep_performed');
+    } else if (type === 'frozen_block' && !hasFrozenCut) {
+      await intraoperativeService.addMilestone(sessionId, specimen.id, 'frozen_section_cut');
+    }
+    setBusy(false);
+    onLogged();
+  };
+
+  return (
+    <div className="ps-intraop-action-block">
+      {specimen.preparations.length > 0 && (
+        <div className="ps-intraop-timeline">
+          {specimen.preparations.map(p => (
+            <div key={p.id} className="ps-intraop-timeline-row">
+              <span className="ps-intraop-timeline-dot" />
+              <span className="ps-intraop-timeline-label">{PREPARATION_TYPE_LABEL[p.type]} — {p.identifier}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="ps-conf-form-row">
+        <div className="ps-conf-form-field">
+          <label className="ps-conf-label">Preparation Type</label>
+          <select className="ps-conf-select" value={type} onChange={e => setType(e.target.value as PreparationType)}>
+            {PREPARATION_TYPES.map(t => <option key={t} value={t}>{PREPARATION_TYPE_LABEL[t]}</option>)}
+          </select>
+        </div>
+        {type === 'frozen_block' && (
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Block Count</label>
+            <input className="ps-conf-input" type="number" min="1" value={blockCount} onChange={e => setBlockCount(e.target.value)} />
+          </div>
+        )}
+      </div>
+      <button className="ps-conf-btn-primary" disabled={busy} onClick={handleLog}>
+        Log {type === 'frozen_block' ? `${Math.max(1, Number(blockCount) || 1)} Frozen Block${Number(blockCount) === 1 ? '' : 's'}` : PREPARATION_TYPE_LABEL[type]}
+      </button>
+    </div>
+  );
+};
+
 // ─── Milestone action controls — per specimen, not per session ────────────────
 const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void }> = ({ sessionId, specimen, onLogged }) => {
   const [quickGrossDraft, setQuickGrossDraft] = useState('');
@@ -502,7 +592,6 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
 
   const hasGrossLogged = specimen.milestones.some(m => m.milestone === 'gross_logged') && !!specimen.quickGrossDictation?.trim();
   const hasTouchPrepStep = specimen.milestones.some(m => m.milestone === 'touch_prep_performed' || m.milestone === 'touch_prep_skipped');
-  const hasFrozenCut = specimen.milestones.some(m => m.milestone === 'frozen_section_cut');
 
   const log = async (milestone: MilestoneType, skipReason?: SkipReason, skipReasonNote?: string, quickGrossText?: string) => {
     setBusy(true);
@@ -510,8 +599,6 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
     setBusy(false);
     if (res.ok) { onLogged(); setShowSkipMenu(false); setQuickGrossDraft(''); }
   };
-
-  if (hasFrozenCut) return null; // full sequence logged — nothing left to action here
 
   if (!hasGrossLogged) {
     return (
@@ -542,11 +629,13 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
     );
   }
 
-  return (
-    <div className="ps-intraop-action-block">
-      <button className="ps-conf-btn-primary" disabled={busy} onClick={() => log('frozen_section_cut')}>Log Frozen Section Cut</button>
-    </div>
-  );
+  // Real, dynamic — replaces the old, single-tap "Log Frozen Section
+  // Cut" (once-only, then nothing left to action) with the real
+  // Preparation Type selector + dynamic Block Count entry, per direct
+  // guidance. Stays available for repeated use, not a one-shot terminal
+  // state — a real bench workflow may log additional preparations
+  // (another block, a second touch prep) over time.
+  return <PreparationLogger sessionId={sessionId} specimen={specimen} onLogged={onLogged} />;
 };
 
 // ─── Merge modal ────────────────────────────────────────────────────────────
@@ -581,7 +670,7 @@ const MergeModal: React.FC<{
               {candidates.map(c => (
                 <label key={c.caseId} className="ps-intraop-candidate-row">
                   <input type="radio" name="matchCandidate" checked={selected === c.caseId} onChange={() => setSelected(c.caseId)} />
-                  <span className="ps-intraop-candidate-case">{c.caseId}</span>
+                  <span className="ps-intraop-candidate-case" data-phi="accession">{c.caseId}</span>
                   <span className={`ps-intraop-candidate-badge ps-intraop-candidate-badge--${c.confidence}`}>
                     {c.matchType === 'mrn_exact' ? 'MRN match' : `Fuzzy · ${c.confidence}`}
                   </span>

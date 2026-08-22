@@ -26,6 +26,27 @@ export interface ProtocolPathway {
    *  clarified when this was still embedded: "Protocol" is reserved for
    *  the outer container, "Track" for each branch inside it. */
   pathwayName: string;
+  /**
+   * Real, architectural fix, per direct follow-up's own Hybrid Model:
+   * "ProtocolPathway drives execution: The pathway definition always
+   * dictates whether a block or decant entity is instantiated." A real,
+   * genuine gap found while wiring "decant-level linking UI" —
+   * accessioning's own pathway-driven material generation
+   * (AccessionPage.tsx) previously ALWAYS produced a real
+   * HistologyBlock, regardless of specimen type, completely bypassing
+   * Decant even for a real, configured fluid/cytology protocol. Real
+   * confirmed reasoning for why this lives per-pathway, not per-
+   * protocol: "fluid processing often diverges within the same
+   * protocol... a pleural fluid specimen protocol might require a
+   * cell block pathway... alongside a direct smear or cytospin
+   * pathway" — a single protocol can genuinely need both kinds of
+   * track. Required, not optional/defaulted — the pathway must always
+   * make this real, explicit choice (see the other half of the Hybrid
+   * Model — SpecimenCategory only pre-selects a sensible default in
+   * the admin UI at configuration time; it never substitutes for this
+   * field at runtime).
+   */
+  materialKind: 'block' | 'decant';
   /** Free text, deliberately not a rigid enum — real fixative naming
    *  varies (e.g. "Michel's Transport Medium" vs. "Michel's medium"),
    *  and a closed enum would just force awkward mapping later. */

@@ -14,7 +14,7 @@ import { Case, CaseParticipant, ProtocolChange } from "../../types/case/Case";
 import { CaseStatus } from "../../types/case/CaseStatus";
 import { storageSet } from "../mockStorage";
 import type { SynopticEvaluationInput, SynopticEvaluationResult } from '../aiIntegration/IAIIntegrationService';
-import type { GrossingEvaluationInput, GrossingEvaluationResult, GrossingTemplateAssignment } from '../grossing/IGrossingEvaluationService';
+import type { GrossingEvaluationInput, GrossingEvaluationResult, GrossingTemplateAssignment, GrossingFitEvaluationInput, GrossingFitEvaluationResult } from '../grossing/IGrossingEvaluationService';
 import { applyCaseFilters, applyCasePagination } from './caseFilterUtils';
 import { mockOrchestratorCaseService } from './mockOrchestratorCaseService';
 import { mockDelegationTypeService } from '../delegationTypes/mockDelegationTypeService';
@@ -43,6 +43,20 @@ function isoDaysAgo(days: number): string {
   const d = new Date();
   // eslint-disable-next-line no-restricted-properties -- see real, honest justification above isoYearsAgo
   d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+/** Real feature, per direct follow-up: "update the mock data files -
+ *  bump the version." Same real justification as isoDaysAgo above —
+ *  seed timestamps need to stay relative to "now" (not a fixed date
+ *  that silently drifts stale as this app keeps running), and
+ *  locationHistory[] entries need real, spread-out HOUR-level
+ *  granularity (Accessioning through Aliquot storage realistically
+ *  spans under two days, not whole days apart) that isoDaysAgo alone
+ *  can't express. */
+function isoHoursAgo(hours: number): string {
+  const d = new Date();
+  // eslint-disable-next-line no-restricted-properties -- see real, honest justification above isoYearsAgo
+  d.setHours(d.getHours() - hours);
   return d.toISOString();
 }
 // ─── Mock Cases ────────────────────────────────────────────────────────────────
@@ -310,15 +324,66 @@ const MOCK_CASES: Case[] = [
     },
     specimens: [
       { id: 'S26-4403-SP-1', label: 'A', description: 'Right upper lobe lobectomy', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'migrated-f35-' + Math.random().toString(36).slice(2,8), flagDefinitionId: 'f35', appliedAt: isoDaysAgo(2), appliedBy: 'lis-import', source: 'system', deletedAt: null, deletedBy: null }, { id: 'migrated-f24-' + Math.random().toString(36).slice(2,8), flagDefinitionId: 'f24', appliedAt: isoDaysAgo(2), appliedBy: 'lis-import', source: 'system', deletedAt: null, deletedBy: null }],
+        // Real feature, per direct follow-up: "update the mock data
+        // files - bump the version." A real, working "example case
+        // with actual entries" (per an earlier direct question) baked
+        // directly into the seed data — the same real event
+        // sequence/vocabulary the "Sim ALL Locations" Dev Tools
+        // trigger already uses (useLisIntegration.ts), so both stay
+        // consistent, but available on a fresh page load without
+        // needing to click anything first.
+        locationHistory: [
+          { location: 'Accessioning Bench', workflowStage: 'Accessioning', action: 'Logged In', at: isoHoursAgo(30), source: 'LIS Middleware (simulated)', performedByName: 'Tech: M. Davis' },
+          { location: 'Grossing Station 3', workflowStage: 'Grossing', action: 'Grossed & Cut', at: isoHoursAgo(29), source: 'LIS Middleware (simulated)', performedByName: 'Pathologist: Dr. E. Reed' },
+        ],
         blocks: [
-          { id: 'blk-4403-a1', label: '1', status: 'Embedded', stains: [
-            { id: 'stn-4403-a1-1', stainName: 'H&E', status: 'Ready for Review' },
-            { id: 'stn-4403-a1-2', stainName: 'IHC Panel', status: 'Staining' },
+          { id: 'blk-4403-a1', label: '1', status: 'Embedded',
+            locationHistory: [
+              { location: 'Embedding Station 2', workflowStage: 'Embedding', action: 'Embedded', at: isoHoursAgo(26), source: 'LIS Middleware (simulated)', performedByName: 'Tech: J. Smith' },
+              { location: 'Microtomy Bench 1', workflowStage: 'Microtomy/Sectioning', action: 'Sectioned', at: isoHoursAgo(25), source: 'LIS Middleware (simulated)', performedByName: 'Tech: J. Smith' },
+            ],
+            stains: [
+            { id: 'stn-4403-a1-1', stainName: 'H&E', status: 'Ready for Review',
+              locationHistory: [
+                { location: 'Auto-Stainer 1', workflowStage: 'Staining', action: 'Stained & Coverslipped', at: isoHoursAgo(20), source: 'LIS Middleware (simulated)', performedByName: 'Tech: R. Patel' },
+                { location: 'Pathologist Desk (Dr. Vance)', action: 'Out for Review', at: isoHoursAgo(19), source: 'LIS Middleware (simulated)', performedByName: 'Tech: R. Patel' },
+                { location: 'Digital Scanner 02', action: 'Digitized WSI', at: isoHoursAgo(18), source: 'Digital Scanner (simulated)', performedByName: 'System: AutoScan' },
+              ],
+              aliquots: [
+                { id: 'aliq-4403-a1-1-a', label: 'A', aliquotType: 'Tissue Scraping', createdAt: isoHoursAgo(18), createdBy: 'LIS Middleware (simulated)',
+                  locationHistory: [
+                    { location: 'Molecular Freezer -80°C (Rack 3)', action: 'Stored', at: isoHoursAgo(17), source: 'LIS Middleware (simulated)', performedByName: 'Tech: A. Lee' },
+                  ] },
+              ] },
+            { id: 'stn-4403-a1-2', stainName: 'IHC Panel', status: 'Staining',
+              locationHistory: [
+                { location: 'Staging Cabinet B', action: 'Tray Staged', at: isoHoursAgo(16), source: 'LIS Middleware (simulated)', performedByName: 'Tech: R. Patel' },
+              ],
+              aliquots: [
+                { id: 'aliq-4403-a1-2-a', label: 'A', aliquotType: 'RNA Lysate', createdAt: isoHoursAgo(16), createdBy: 'LIS Middleware (simulated)',
+                  locationHistory: [
+                    { location: 'Molecular Prep Lab', action: 'Extracted', at: isoHoursAgo(15), source: 'LIS Middleware (simulated)', performedByName: 'Tech: C. Vance' },
+                    { location: 'Sendout Outbox (Courier #402)', action: 'In Transit', at: isoHoursAgo(14), source: 'LIS Middleware (simulated)', performedByName: 'Tech: A. Lee' },
+                  ] },
+              ] },
           ] },
-          { id: 'blk-4403-a2', label: '2', status: 'Grossed', stains: [{ id: 'stn-4403-a2-1', stainName: 'H&E', status: 'Staining' }] },
+          { id: 'blk-4403-a2', label: '2', status: 'Grossed',
+            locationHistory: [
+              { location: 'Archive Shelf 12B', workflowStage: 'Slide Archival', action: 'Archived', at: isoHoursAgo(8), source: 'LIS Middleware (simulated)', performedByName: 'Tech: LIS Middleware' },
+            ],
+            stains: [{ id: 'stn-4403-a2-1', stainName: 'H&E', status: 'Staining',
+              locationHistory: [
+                { location: 'Archive Shelf 12B', workflowStage: 'Slide Archival', action: 'Archived', at: isoHoursAgo(7), source: 'LIS Middleware (simulated)', performedByName: 'Tech: LIS Middleware' },
+              ] }] },
         ] },
-      { id: 'S26-4403-SP-2', label: 'B', description: 'Station 4R mediastinal lymph nodes', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
-      { id: 'S26-4403-SP-3', label: 'C', description: 'Station 7 subcarinal lymph nodes', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
+      { id: 'S26-4403-SP-2', label: 'B', description: 'Station 4R mediastinal lymph nodes', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [],
+        locationHistory: [
+          { location: 'Archive Shelf 12B', workflowStage: 'Slide Archival', action: 'Archived', at: isoHoursAgo(6), source: 'LIS Middleware (simulated)', performedByName: 'Tech: LIS Middleware' },
+        ] },
+      { id: 'S26-4403-SP-3', label: 'C', description: 'Station 7 subcarinal lymph nodes', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [],
+        locationHistory: [
+          { location: 'Archive Shelf 12B', workflowStage: 'Slide Archival', action: 'Archived', at: isoHoursAgo(5), source: 'LIS Middleware (simulated)', performedByName: 'Tech: LIS Middleware' },
+        ] },
     ],
     order: { priority: 'STAT', requestingProvider: 'Dr. James Park', clientId: 'c3', clientName: 'Northside Clinic', clinicalIndication: '2.3 cm right upper lobe solid nodule, PET-avid (SUVmax 8.4). CT-guided biopsy: adenocarcinoma. EGFR/ALK negative. Proceeding to VATS right upper lobectomy.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary',
       requisitionNumber: 'REQ-2026-44003', externalOrderId: 'EXT-LAB-0443', labNumber: 'BLK-SP2-A1', blockId: 'BLK-SP2-A1', referralNumber: null },
@@ -1565,7 +1630,11 @@ const MOCK_CASES: Case[] = [
     synopticReports: [],
     status: 'pool' as CaseStatus,
     poolId: 'URO-UK',
-    poolName: 'Uropathology',
+    // Real fix, per direct report: was 'Uropathology', which never
+    // matched the real Subspecialty record's own name ('Urological') —
+    // silently broke both display-layer restriction matching and
+    // canUserClaimPoolCase's own enforcement for this specific pool.
+    poolName: 'Urological',
     createdAt: isoDaysAgo(0), updatedAt: isoDaysAgo(0),
     caseFlags: [], specimenFlags: [],
     reportingMode: 'assist', coding: {},
@@ -1896,7 +1965,11 @@ const MOCK_CASES: Case[] = [
     diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
     synopticReports: [],
     status: 'pool' as CaseStatus,
-    poolId: 'GYN-MPA', poolName: 'Gynaecologic Pathology',
+    // Real fix, per direct report: poolName was 'Gynaecologic
+    // Pathology', which never matched the real Subspecialty record's
+    // own name ('Gynecological') — same silent enforcement gap as the
+    // 'Urological' fix above.
+    poolId: 'GYN-MPA', poolName: 'Gynecological',
     createdAt: isoDaysAgo(0), updatedAt: isoDaysAgo(0),
     caseFlags: [], specimenFlags: [], reportingMode: 'assist', coding: {},
   } as any,
@@ -3025,7 +3098,7 @@ export const mockPatientHistory = mockPatientHistoryMap['S26-4401'] ?? DEFAULT_H
 // ─── Persisted case store ─────────────────────────────────────────────────────
 // Version bump here forces a re-seed whenever mock data changes structurally.
 // Increment MOCK_VERSION whenever MOCK_CASES fields are added/changed.
-const MOCK_VERSION = '34'; // bumped: added CP-03/04/05 test scenario seed data — unlocked-for-amendment instances and an in-progress addendum instance
+const MOCK_VERSION = '35'; // bumped: locationHistory[]/Aliquot rebuild (was lastKnownLocation single-cache) + S26-4403 now seeded with a real, full example tracking history — per direct follow-up, so anyone with older, un-migrated persisted case data (still on the pre-rebuild field shape) gets a clean re-seed rather than a silently stale, empty-looking tree
 const VERSION_KEY  = 'pathscribe_mock_cases_version';
 
 const storedVersion = localStorage.getItem(VERSION_KEY);
@@ -3565,6 +3638,162 @@ Rules:
   }
 }
 
+// ─── evaluateGrossingTemplateFit ──────────────────────────────────────────────
+// Real feature, per direct follow-up: "there is kind of a workflow that
+// allows the Gross to be dictated and on submission, the AI reads the Text,
+// and updates the template. Not sure if there is bearing here." Confirmed
+// directly: real bearing — generateGrossingFieldSuggestionsFromDictation
+// above already re-populates whatever template's fields it's given from the
+// case's real, dictated Gross text. What's genuinely missing is a trigger to
+// RE-EVALUATE which Grossing Template fits best now that real dictated text
+// exists — evaluateGrossingTemplateAssignment above only ever runs once, at
+// accession, before any dictation exists, from a much thinner signal
+// (specimen description + clinical indication alone).
+//
+// Mirrors evaluateSynopticAssignment's own, already-proven Stage 1 pattern
+// exactly — same prompt shape, same defensive validation, same real
+// ProtocolChange output consumed by the same, already-working
+// ProtocolChangeModal.tsx. This is that same real pattern, one stage
+// earlier in the pipeline (Grossing Route, not the diagnostic Synoptic).
+export async function evaluateGrossingTemplateFit(
+  input: GrossingFitEvaluationInput
+): Promise<GrossingFitEvaluationResult> {
+  const warnings: string[] = [];
+
+  if (input.availableTemplates.length === 0) {
+    warnings.push('No candidate Grossing Templates were provided — cannot propose replace changes without real template IDs to ground against. Returning no changes.');
+    return { changes: [], warnings };
+  }
+  if (!input.dictatedGrossText.trim()) {
+    // Real, honest no-op — nothing to re-evaluate against. Never guesses
+    // from silence.
+    return { changes: [], warnings };
+  }
+
+  const templateList = input.availableTemplates
+    .map(t => `- ${t.id} | ${t.name} | category: ${t.category}`)
+    .join('\n');
+
+  const specimenBlocks = input.specimens.map(spec => {
+    const currentLine = spec.currentGrossingTemplate
+      ? `  - templateId: ${spec.currentGrossingTemplate.templateId} (${spec.currentGrossingTemplate.templateName}), instanceId: ${spec.currentGrossingTemplate.instanceId}`
+      : '  (no Grossing Template currently assigned)';
+    // Real fix, found via live testing: the earlier "SPECIMEN {id}
+    // ({label}): {desc}" header line let a real AI response copy the
+    // WHOLE header (id + parenthesized label) into the specimenId
+    // field of its own JSON reply, rather than just the real id. Now
+    // states the real id on its own, explicit "Specimen ID:" line,
+    // with the label kept but clearly labeled as separate — genuinely
+    // unambiguous which token is the real id to echo back.
+    return `SPECIMEN — Specimen ID: ${spec.specimenId} | Label: ${spec.specimenLabel} | Description: ${spec.specimenDesc}\n  Currently assigned Grossing Template:\n${currentLine}`;
+  }).join('\n\n');
+
+  const prompt = `You are a pathology AI assistant evaluating whether each specimen's currently-assigned Grossing Template still fits, now that the pathologist's assistant has dictated the real Gross Description.
+
+DICTATED GROSS DESCRIPTION (case-wide, may cover multiple specimens):
+${input.dictatedGrossText}
+
+${specimenBlocks}
+
+CANDIDATE GROSSING TEMPLATES (use ONLY these IDs for currentTemplateId/proposedTemplateId — never invent an ID not in this list):
+${templateList}
+
+For each specimen, decide one of:
+- "replace": the dictated findings suggest a DIFFERENT Grossing Template than currently assigned
+- Omit the specimen entirely if its current assignment still fits — do not propose a change just to have one.
+
+Return ONLY a JSON array (no markdown, no preamble) of proposed changes, each shaped exactly as:
+[
+  {
+    "specimenId": "...",
+    "action": "replace",
+    "currentInstanceId": "...",
+    "currentTemplateId": "...",
+    "proposedTemplateId": "...",
+    "reason": "short clinical justification, referencing the specific dictated finding",
+    "confidence": 0-100
+  }
+]
+
+Rules:
+- Only propose a change when the dictated text gives clear support for a different template — do not invent findings.
+- Do not return confidence below 50.
+- proposedTemplateId and currentTemplateId MUST be one of the candidate IDs listed above, exactly as written.
+- specimenId MUST be exactly the real value given after "Specimen ID:" above, character-for-character — never the Label, never a combination of the two.
+- If no specimen needs a change, return an empty array: []`;
+
+  try {
+    const { text: raw } = await callAi({
+      system: 'You are a pathology AI assistant. You return only valid JSON — no markdown, no preamble.',
+      prompt,
+      configOverride: await resolveAiConfigOverrideForClient(input.clientId),
+    });
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean) as Array<{
+      specimenId: string;
+      action: 'replace';
+      currentInstanceId?: string;
+      currentTemplateId?: string;
+      proposedTemplateId?: string;
+      reason: string;
+      confidence: number;
+    }>;
+
+    const templateNameById = new Map(input.availableTemplates.map(t => [t.id, t.name]));
+    const specimenById = new Map(input.specimens.map(s => [s.specimenId, s]));
+
+    const changes = parsed
+      // Same "don't trust, verify" defensive filter as
+      // evaluateSynopticAssignment/evaluateGrossingTemplateAssignment —
+      // drop anything referencing a template ID we didn't actually offer.
+      // Real fix, found via live testing: also validates specimenId
+      // itself now — a real AI response was observed echoing back the
+      // specimen's Label folded into the id (e.g. "SP-A (A)") despite
+      // the prompt listing the real id plainly. The prompt wording was
+      // fixed to stop this at the source, but this defensive check
+      // means a still-malformed id is dropped with a real, honest
+      // warning rather than silently propagating a change no real
+      // specimen in this case actually has.
+      .filter(c => {
+        const proposedValid = !c.proposedTemplateId || templateNameById.has(c.proposedTemplateId);
+        const currentValid  = !c.currentTemplateId  || templateNameById.has(c.currentTemplateId);
+        const specimenValid = specimenById.has(c.specimenId);
+        if (!specimenValid) {
+          warnings.push(`Dropped a proposed change — specimenId "${c.specimenId}" doesn't match any real specimen offered`);
+          return false;
+        }
+        if (!proposedValid || !currentValid) {
+          warnings.push(`Dropped a proposed change for specimen ${c.specimenId} — referenced a template ID not in the candidate list`);
+          return false;
+        }
+        return true;
+      })
+      .map((c, idx): ProtocolChange => {
+        const spec = input.specimens.find(s => s.specimenId === c.specimenId);
+        return {
+          id:                    `ai-gross-eval-${Date.now()}-${idx}`,
+          specimenId:            c.specimenId,
+          specimenLabel:         spec?.specimenLabel ?? c.specimenId,
+          specimenDesc:          spec?.specimenDesc ?? '',
+          action:                c.action,
+          currentInstanceId:     spec?.currentGrossingTemplate?.instanceId ?? c.currentInstanceId,
+          currentTemplateId:     c.currentTemplateId,
+          currentTemplateName:   spec?.currentGrossingTemplate?.templateName ?? (c.currentTemplateId ? templateNameById.get(c.currentTemplateId) : undefined),
+          proposedTemplateId:    c.proposedTemplateId,
+          proposedTemplateName:  c.proposedTemplateId ? templateNameById.get(c.proposedTemplateId) : undefined,
+          reason:                c.reason,
+          confidence:            c.confidence,
+        };
+      });
+
+    return { changes, warnings };
+  } catch (e) {
+    console.error('[PathScribe] Grossing template fit evaluation failed:', e);
+    warnings.push(`Grossing template fit evaluation failed (${(e as Error)?.message ?? 'unknown error'}) — no changes proposed`);
+    return { changes: [], warnings };
+  }
+}
+
 // ─── Migrate stored cases: backfill aiSuggestions from MOCK_CASES ────────────
 // Runs once after load. If a stored synopticReport instance is missing
 // aiSuggestions, it copies them from the matching MOCK_CASES entry.
@@ -3753,11 +3982,32 @@ function saveClaims(claims: Record<string, { userId: string; expiresAt: number }
 // default. A poolId that isn't a real Subspecialty record (e.g. the
 // 'general' fallback pool string) is treated as unrestricted, same as
 // a subspecialty with the restriction gate off.
-export async function canUserClaimPoolCase(poolId: string | undefined, userId: string): Promise<{ allowed: boolean; reason?: string }> {
-  if (!poolId) return { allowed: true };
-  const subResult = await mockSubspecialtyService.getById(poolId);
-  if (!subResult.ok) return { allowed: true };
-  const sub = subResult.data;
+// Real, critical fix, per direct product review: this function's own
+// lookup — mockSubspecialtyService.getById(poolId) — silently failed
+// for every real, seeded pool case in this app. Case data's own poolId
+// field uses ad-hoc values ('GI-UK', 'URO-UK', 'GYN-MPA', plain
+// numeric strings) that never match any real Subspecialty record's own
+// id ('gi', 'uro', 'gyn', ...) — only poolName ('Gastrointestinal')
+// ever did. getById() found nothing, silently fell through the
+// "unrecognized pool — allow" branch below, and every pool-membership
+// check in the entire app passed regardless of actual membership. The
+// worklist's own display layer (computeRestrictedPoolKeys) already
+// matches by EITHER a subspecialty's id OR its name for exactly this
+// reason; this function now does the same, checking both real
+// identifiers this case data might carry rather than just one.
+export async function canUserClaimPoolCase(
+  poolId: string | undefined,
+  userId: string,
+  poolName?: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  if (!poolId && !poolName) return { allowed: true };
+  const allResult = await mockSubspecialtyService.getAll();
+  if (!allResult.ok) return { allowed: true };
+  const sub = allResult.data.find(s =>
+    (poolId && (s.id === poolId || s.name === poolId)) ||
+    (poolName && (s.id === poolName || s.name === poolName))
+  );
+  if (!sub) return { allowed: true };
   if (!sub.isWorkgroupEnabled) return { allowed: true };
   const isMember = (sub.userIds ?? []).includes(userId);
   if (!isMember) return { allowed: false, reason: `Not a member of the ${sub.name} pool` };
@@ -3773,7 +4023,7 @@ export async function claimPoolCase(caseId: string, userId: string): Promise<Cla
   }
 
   const caseData = await getCaseAnyMode(caseId);
-  const membership = await canUserClaimPoolCase((caseData as any)?.poolId, userId);
+  const membership = await canUserClaimPoolCase((caseData as any)?.poolId, userId, (caseData as any)?.poolName);
   if (!membership.allowed) {
     return { success: false, error: membership.reason };
   }
@@ -3829,7 +4079,7 @@ export async function acceptPoolCase(caseId: string, userId: string, userName?: 
   await delay(300);
 
   const caseData = await getCaseAnyMode(caseId);
-  const membership = await canUserClaimPoolCase((caseData as any)?.poolId, userId);
+  const membership = await canUserClaimPoolCase((caseData as any)?.poolId, userId, (caseData as any)?.poolName);
   if (!membership.allowed) {
     throw new Error(membership.reason ?? 'Not a member of this pool');
   }
@@ -3840,10 +4090,21 @@ export async function acceptPoolCase(caseId: string, userId: string, userName?: 
 
   if (caseData) {
     const syncUpdates = syncPrimaryAssignee(caseData, userId, userId, userName);
-    const updates: Partial<Case> = { ...syncUpdates };
-    if (caseData.reportingMode === 'orchestrator') {
-      updates.status = 'in-progress' as CaseStatus;
-    }
+    // Real, critical fix, per direct report: this status transition was
+    // previously gated on `reportingMode === 'orchestrator'` only,
+    // leaving every Assist/CoPilot-mode pool case's status genuinely
+    // stuck at 'pool' forever after being accepted — confirmed directly:
+    // the case still showed "CASE: POOL" and a live "Claim This Case"
+    // button after navigating into it, requiring a second, redundant
+    // claim. 'in-progress' is the same, real, already-wired value
+    // Orchestration used here — and is independently already the
+    // established status for an actively-worked Assist-mode case
+    // elsewhere in this same file's own seed data. The alternative,
+    // 'accepted', was deliberately never used anywhere in the app (see
+    // mockOrchestratorCaseService.ts's own comment on its unused
+    // CaseStatus values) — using it here would trade one broken display
+    // for another, not fix anything.
+    const updates: Partial<Case> = { ...syncUpdates, status: 'in-progress' as CaseStatus };
     await updateCaseAnyMode(caseId, updates);
   }
 

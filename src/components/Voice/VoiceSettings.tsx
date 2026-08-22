@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { VoiceSection } from '../Config/System/VoiceSection';
+import { FootPedalSection } from '../Config/System/FootPedalSection';
 import { useVoice } from '../../contexts/VoiceProvider';
 import { VOICE_PROFILES, VoiceProfile, VoiceProfileId } from '../../constants/voiceProfiles';
 import SpeechConfigTab from './SpeechConfigTab';
@@ -112,6 +113,12 @@ const VoiceSettings: React.FC = () => {
           </p>
         </div>
         <SpeechConfigTab />
+      </div>
+
+      {/* Full Width: Foot Pedal binding — real feature, per direct
+          follow-up: "Foot pedal support specifically." */}
+      <div style={{ marginTop: '8px' }}>
+        <FootPedalSection />
       </div>
 
     </div>

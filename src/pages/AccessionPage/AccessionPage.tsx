@@ -34,7 +34,7 @@
 //     mapping work, not part of this skeleton.
 // ─────────────────────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 
@@ -49,10 +49,16 @@ import type { SpecimenCategory } from '@/services/specimenCategories/ISpecimenCa
 import { mockUserService } from '@/services/users/mockUserService';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { Case, GrossingReportInstance } from '@/types/case/Case';
-import type { HistologyBlock } from '@/types/case/Specimen';
+import type { HistologyBlock, Specimen } from '@/types/case/Specimen';
+import { generateDefaultMaterial } from '@/utils/generateDefaultMaterial';
+import { findForeignIdCollision, findWithinDraftForeignIdCollision } from '@/utils/foreignIdCollision';
+import type { ForeignIdCollision, WithinDraftForeignIdCollision } from '@/utils/foreignIdCollision';
 import type { CaseComment } from '@/types/case/CaseComment';
 import { deficiencyTypeService } from '@/services';
+import { resolveProviderName } from '@/services/physicians/resolveProviderName';
 import { physicianService } from '@/services';
+import type { Physician } from '@/services/physicians/IPhysicianService';
+import { initials, avatarColorClass, contactRowsFor } from '@/utils/physicianDisplay';
 import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
 import { protocolService } from '@/services';
@@ -63,10 +69,10 @@ import type { Icd10Code } from '@/services/diagnosisCodes/IDiagnosisCodesService
 import type { DeficiencyType } from '@/services/deficiencies/IDeficiencyService';
 import { ReportDeficiencyModal } from './ReportDeficiencyModal';
 import { IntraopMergePromptModal } from './IntraopMergePromptModal';
+import { OrderLookupModal } from './OrderLookupModal';
 import ConfirmModal from '@/components/Common/ConfirmModal';
 import type { EntryMatch } from '@/types/intraop/IntraoperativeEntry';
-import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
-import { getSpecimenLabel, getBlockLabel } from '@/utils/specimenLabeling';
+import { getSpecimenLabel } from '@/utils/specimenLabeling';
 import type { GrossingTemplateAssignment } from '@/services/grossing/IGrossingEvaluationService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
@@ -74,6 +80,18 @@ import { getFacilityDateParts } from '@/utils/facilityTime';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { orderIntakeService } from '@/services';
 import type { IncomingOrder } from '@/services';
+import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
+import { dobIncludesQuery, dobExactlyMatches } from '@/utils/isoDateForSearch';
+import { normalizeIdForSearch } from '@/utils/normalizeIdForSearch';
+import { isEncounterActive } from '@/utils/isEncounterActive';
+import { inferLateralityFromText } from '@/utils/inferLateralityFromText';
+import { parseScannedPayload } from '@/utils/parseScannedPayload';
+import { playScanBeep } from '@/utils/playScanBeep';
+import { mockInterfaceEngineService } from '@/services/interfaceEngine/mockInterfaceEngineService';
+import { buildOrderCreationPayload } from '@/services/interfaceEngine/buildOrderCreationPayload';
+import { applyGrossingRefinement, markGrossingRefinementFailed } from '@/utils/applyGrossingRefinement';
+import { PatientIdStatusDot } from '@/components/Common/PatientIdStatusDot';
+import { dateFormatHint } from '@/utils/formatDate';
 import { specimenDeficiencyService } from '@/services';
 import { priorityService } from '@/services';
 import type { PriorityLevel } from '@/services';
@@ -85,6 +103,7 @@ import { useDirtyState } from '@/contexts/DirtyStateContext';
 import { getHospitalIdForOrganisation, getOrganisationDisplayName, getOrganisationByHospitalId, resolveMpiScopeEnterpriseId } from '@/services/organisation/organisationService';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { mockEncounterService } from '@/services/encounters/mockEncounterService';
+import type { Encounter } from '@/services/encounters/IEncounterService';
 import { mockCaseRegistryService } from '@/services/caseRegistry/mockCaseRegistryService';
 import { PATIENT_ID_BY_JURISDICTION } from '@/types/systemConfig';
 import { SpecimenDictionaryPicker } from '@/components/SpecimenPicker/SpecimenDictionaryPicker';
@@ -113,7 +132,15 @@ interface SpecimenDraft {
    * auto-detected dictionary mismatch, which gets resolved in the same
    * sitting it's found.
    */
-  manualDeficiency?: { deficiencyTypeId: string; comment: string };
+  /** Real fix, per direct follow-up: "You can have one Deficiency, but
+   *  in the real world you may have multiple." Confirmed directly: the
+   *  underlying storage (services/deficiencies/ — SpecimenDeficiency,
+   *  getBySpecimenId returning an array, raise() creating an
+   *  independent record each time) already fully supported multiple
+   *  deficiencies per specimen — this form's own draft state was the
+   *  actual, narrowly-scoped gap, holding a single optional object
+   *  that a second report would silently overwrite. Now a real array. */
+  manualDeficiencies: { deficiencyTypeId: string; comment: string }[];
   /** Set only when this specimen came from "Import from Order" — the
    *  Specimen Category that resolveOrder() matched it to (crosswalk or
    *  auto-created), shown as an informational note. Not sent anywhere on
@@ -182,6 +209,29 @@ interface SpecimenDraft {
   containerType: string;
   anatomicSite: string;
   laterality: string;
+  /** Real feature, per direct follow-up: "I would like to include the
+   *  AI badge, confidence on fields being suggested." True only when
+   *  the current laterality value came from
+   *  inferLateralityFromText.ts — never a real AI/LLM confidence
+   *  score, a deterministic keyword match, so it's honestly labeled
+   *  "Suggested," never given a fabricated percentage. Cleared the
+   *  moment the accessioner edits the field by hand, matching the
+   *  Synoptic report's own AI badges' "overridden" behavior. */
+  lateralityInferred: boolean;
+
+  /**
+   * Real feature, per direct follow-up: "Accessioning isn't wired to
+   * the foreign-ID collision check... I would assume that support for
+   * Foreign ID is complete." Confirmed directly it wasn't — this is
+   * the real, missing piece: accessioning is exactly where a
+   * received, foreign-labeled specimen (the original "cytology fluid"
+   * case this whole feature traces back to) first gets entered, and
+   * SpecimenDraft had no externalId/externalIdSource fields at all
+   * until now. Same real shape as Specimen.externalId/externalIdSource
+   * — propagated onto the real record at submit time.
+   */
+  externalId: string;
+  externalIdSource: string;
 }
 
 
@@ -285,61 +335,11 @@ const Icd10Picker: React.FC<{
   );
 };
 
-function generateDefaultBlocks(
-  entry: SpecimenEntry | undefined,
-  specimenId: string,
-  specimenLabelStyle?: 'alpha-specimen' | 'numeric-specimen',
-  stainTypes: StainType[] = [],
-  protocols: Protocol[] = []
-): HistologyBlock[] {
-  const stainName = (stainTypeId: string) => stainTypes.find(s => s.id === stainTypeId)?.name ?? stainTypeId;
-  // Resolved from the standalone Protocol dictionary via protocolId —
-  // no longer an embedded object on the specimen entry itself. See
-  // that field's own doc comment (services/specimenDictionary/specimenTypes.ts) for
-  // why: the same protocol record can be mapped from multiple
-  // unrelated specimen types, updated once, cascading to all of them.
-  const protocol = entry?.protocolId ? protocols.find(p => p.id === entry.protocolId) : undefined;
-
-  if (protocol?.pathways?.length) {
-    return protocol.pathways.map((pathway, pathwayIndex) => {
-      const blockLabel = getBlockLabel(pathwayIndex, specimenLabelStyle);
-      const sortedTasks = [...pathway.tasks].sort((a, b) => a.stepOrder - b.stepOrder);
-      const stains: HistologyBlock['stains'] = [];
-      sortedTasks.forEach((task, taskIdx) => {
-        task.stainTypeIds.forEach((stainTypeId, stainIdx) => {
-          stains.push({
-            id: `${specimenId}-BLOCK-${blockLabel}-STAIN-${taskIdx}-${stainIdx}`,
-            stainName: stainName(stainTypeId),
-            status: 'Pending Cut',
-          });
-        });
-      });
-      return {
-        id: `${specimenId}-BLOCK-${blockLabel}`,
-        label: blockLabel,
-        status: 'Pending',
-        stains,
-        sourcePathwayName: pathway.pathwayName,
-        fixativeType: pathway.fixativeType,
-        processingFormat: pathway.processingFormat,
-        requiresDecal: pathway.requiresDecal,
-      };
-    });
-  }
-
-  const stainNames = entry?.defaultStains?.length ? entry.defaultStains : ['H&E'];
-  const blockLabel = getBlockLabel(0, specimenLabelStyle);
-  return [{
-    id: `${specimenId}-BLOCK-${blockLabel}`,
-    label: blockLabel,
-    status: 'Pending',
-    stains: stainNames.map((name, i) => ({
-      id: `${specimenId}-BLOCK-${blockLabel}-STAIN-${i}`,
-      stainName: name,
-      status: 'Pending Cut',
-    })),
-  }];
-}
+// generateDefaultMaterial — the pathway-driven block/decant generation
+// this accessioning flow uses at specimen-creation time — now lives in
+// utils/generateDefaultMaterial.ts, extracted out of this file so it's
+// directly, independently testable (see that module's own header for
+// the full reasoning). Imported below.
 
 function emptySpecimen(label: string): SpecimenDraft {
   return {
@@ -348,7 +348,9 @@ function emptySpecimen(label: string): SpecimenDraft {
     // receivedAt defaults to "now" — the one moment the accessioner is
     // actually present for. Formatted for a datetime-local input.
     receivedAt: new Date().toISOString().slice(0, 16),
-    containerType: '', anatomicSite: '', laterality: '',
+    containerType: '', anatomicSite: '', laterality: '', lateralityInferred: false,
+    manualDeficiencies: [],
+    externalId: '', externalIdSource: '',
   };
 }
 
@@ -360,6 +362,45 @@ const AccessionPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { config } = useSystemConfig();
+  // Real fix, per direct follow-up: "Does the DOB take into account
+  // locality? UK vs. US." — it didn't; the omnibox's DOB search and
+  // placeholder both hardcoded US-style mm/dd/yyyy. This app already
+  // has a real, established per-facility jurisdiction concept
+  // (Facility.jurisdiction — see IFacilityService.ts's own doc
+  // comment) that drives exactly this elsewhere (patient ID format,
+  // terminology, date locale). The omnibox runs before a facility is
+  // necessarily selected at all — often the search IS how the
+  // accessioner finds/confirms the facility in the first place — so
+  // this uses config.jurisdiction, the same system-level fallback
+  // Facility.jurisdiction's own doc comment names for exactly this
+  // "no facility resolved yet" situation, rather than reading
+  // selectedClient (which is both frequently empty at search time and
+  // defined later in this file, so referencing it here would hit a
+  // real TS2448 block-scope ordering error).
+  //
+  // searchDobFormat is the explicit 'MM/DD/YYYY' | 'DD/MM/YYYY' hint
+  // itself — passed directly to isoDateForSearch. Deliberately not a
+  // BCP-47 locale string fed through toLocaleDateString the way
+  // formatDate.ts's own display formatting works: confirmed live that
+  // real ICU locale data disagrees with this app's own
+  // JURISDICTION_LOCALE table for at least 'en-CA' (formats as ISO
+  // yyyy-mm-dd via toLocaleDateString, not the dd/mm/yyyy
+  // JURISDICTION_LOCALE.CA declares) — see isoDateForSearch.ts's own
+  // header comment for the full story. Building the string directly
+  // from this app's own explicit format hint sidesteps that risk
+  // entirely for search-matching, where correctness matters more than
+  // for display.
+  //
+  // dateFormatHint() itself is typed to return a bare `string` (a
+  // pre-existing, shared utility other code already depends on — not
+  // narrowed here to avoid any ripple effect on those other callers).
+  // Narrowed explicitly at this one call site instead: real,
+  // confirmed safe given JURISDICTION_LOCALE's own table (this
+  // function's only real source of values, plus its own 'MM/DD/YYYY'
+  // fallback) never produces anything outside this exact union.
+  const searchJurisdiction = config.jurisdiction;
+  const searchDobFormat = dateFormatHint(searchJurisdiction) as 'MM/DD/YYYY' | 'DD/MM/YYYY';
+  const searchDobFormatHint = searchDobFormat.toLowerCase();
   const { pushCrumb } = useBreadcrumb();
   useEffect(() => { pushCrumb('Accession', '/accession'); }, [pushCrumb]);
 
@@ -400,6 +441,22 @@ const AccessionPage: React.FC = () => {
   const [sex, setSex] = useState<'M' | 'F' | 'U'>('F');
   const [mrn, setMrn] = useState('');
   const [encounterNumber, setEncounterNumber] = useState('');
+  // Real feature, per direct, detailed specification: "Encounter
+  // Selector & Auto-Fill." linkedEncounter is the real Encounter this
+  // case's form fields were populated from — kept even after the
+  // fields themselves are edited, so the confirmation badge/unlink
+  // control below has something real to point at and clear.
+  // encounterCandidates holds every real, currently-active encounter
+  // for the selected patient when there's more than one (the real
+  // "Encounter Selection Dropdown" case) — empty otherwise.
+  // encounterLookupState distinguishes "haven't looked yet," "actively
+  // fetching" (the spec's own <300ms target — real, not decorative:
+  // the UI needs to know whether to show a brief loading state), and
+  // "looked, found nothing real to offer."
+  const [linkedEncounter, setLinkedEncounter] = useState<Encounter | null>(null);
+  const [encounterCandidates, setEncounterCandidates] = useState<Encounter[]>([]);
+  const [encounterLookupState, setEncounterLookupState] = useState<'idle' | 'loading' | 'done'>('idle');
+
   // Real feature, per direct confirmation, building Phase B of the
   // "Interface Exception & Case-Binding Module": a real, explicit way
   // to mark a new accession as a temporary/downtime placeholder
@@ -424,6 +481,16 @@ const AccessionPage: React.FC = () => {
   // hardware endpoint (see ModeAInterfaceService.resolveModeAOrgContext).
   // Single-site organisations get no selector at all — nothing to choose.
   const originOrganisation = useMemo(() => getOrganisationByHospitalId(originHospitalId), [originHospitalId]);
+  // Real feature, per direct specification: the new "Order Lookup &
+  // Patient Verification" modal needs a real MPI scope to search
+  // against the moment it opens — before the accessioner has
+  // necessarily selected a client/facility on the form at all. Same,
+  // real computation the submit handler already does further down
+  // (resolveMpiScopeEnterpriseId(originOrganisation) — see that call
+  // site's own comment for the full "MPI, not EMPI" reasoning), just
+  // available upfront here instead of only deep inside the submit
+  // path, since search needs to work before submission, not after.
+  const mpiScopeOrgId = useMemo(() => resolveMpiScopeEnterpriseId(originOrganisation), [originOrganisation]);
   // Real fix: was `originOrganisation?.sites ?? []` - a fresh array
   // reference every render whenever sites is undefined, which ESLint
   // flagged as making the effect below unstable. Wrapped in useMemo,
@@ -451,7 +518,7 @@ const AccessionPage: React.FC = () => {
   const [deficiencyTypes, setDeficiencyTypes] = useState<DeficiencyType[]>([]);
   const [deficiencyModalOpenForIdx, setDeficiencyModalOpenForIdx] = useState<number | null>(null);
   const [caseDeficiencyModalOpen, setCaseDeficiencyModalOpen] = useState(false);
-  const [caseManualDeficiency, setCaseManualDeficiency] = useState<{ deficiencyTypeId: string; comment: string } | undefined>(undefined);
+  const [caseManualDeficiencies, setCaseManualDeficiencies] = useState<{ deficiencyTypeId: string; comment: string }[]>([]);
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [allIcd10Codes, setAllIcd10Codes] = useState<Icd10Code[]>([]);
@@ -466,6 +533,32 @@ const AccessionPage: React.FC = () => {
     deficiencyTypeService.getAll().then(res => { if (res.ok) setDeficiencyTypes(res.data); });
   }, []);
   const [requestingProvider, setRequestingProvider] = useState('');
+  // Real, per PS-81 (Jira) — reuses the exact, already-proven "search
+  // staff, pick a real match, fall back to free text" picker pattern
+  // first built and user-tested in AmendmentModal.tsx (see that
+  // file's own "FR feedback #3" / "per feedback" comments), rather
+  // than inventing structured name-part fields or leaving this a
+  // plain free-text input. When a real physician is picked,
+  // selectedProvider carries the full, real record directly — no
+  // resolveProviderName call is needed at submission, since there's
+  // no ambiguity left once a real record is chosen. Falls back to the
+  // existing resolveProviderName(string, ...) path, unchanged, when
+  // no real match exists (a genuinely new/outside physician).
+  const [providerQuery, setProviderQuery] = useState('');
+  const [filteredProviders, setFilteredProviders] = useState<Physician[]>([]);
+  const [showProviderDropdown, setShowProviderDropdown] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<Physician | undefined>(undefined);
+
+  useEffect(() => {
+    if (!showProviderDropdown) return;
+    const handle = setTimeout(() => {
+      physicianService.search(providerQuery).then(res => {
+        if (res.ok) setFilteredProviders(res.data);
+      }).catch(() => setFilteredProviders([]));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [providerQuery, showProviderDropdown]);
+
   const [clientId, setClientId] = useState('');
   // Real feature, per direct confirmation: "add the Client and
   // Location as fields to be seen in the accession page." Facility-
@@ -531,7 +624,44 @@ const AccessionPage: React.FC = () => {
     setSpecimens(prev => prev.map((s, i) => (i === idx ? { ...s, comments: [...s.comments, newComment] } : s)));
   };
   const updateSpecimenField = <K extends keyof SpecimenDraft>(idx: number, field: K, value: SpecimenDraft[K]) => {
-    setSpecimens(prev => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
+    setSpecimens(prev => prev.map((s, i) => {
+      if (i !== idx) return s;
+      // Real feature, per direct follow-up: once the accessioner
+      // manually edits laterality, it's no longer a "suggestion" —
+      // clear the badge, matching the Synoptic report's own AI badges'
+      // real "overridden" behavior (never show a stale suggestion
+      // badge next to a value the user just typed themselves).
+      const clearsSuggestion = field === 'laterality' && s.lateralityInferred;
+      return { ...s, [field]: value, ...(clearsSuggestion ? { lateralityInferred: false } : {}) };
+    }));
+  };
+
+  // Real feature, per direct follow-up: "Accessioning isn't wired to
+  // the foreign-ID collision check." Same real, on-blur pattern as
+  // SpecimenEditModal.tsx/BlockStainEditorModal.tsx's own identical
+  // fields — checked keyed by draft index (idx), not a real record id,
+  // since a draft specimen genuinely has none yet; nothing to exclude
+  // via findForeignIdCollision's own excludeRecordId, since this can
+  // never collide with "itself" the way editing an existing record can.
+  const [specimenForeignIdCollisions, setSpecimenForeignIdCollisions] = useState<Record<number, ForeignIdCollision | WithinDraftForeignIdCollision | null>>({});
+
+  const checkSpecimenForeignIdCollision = async (idx: number) => {
+    const s = specimens[idx];
+    if (!s.externalId.trim() || !s.externalIdSource.trim()) {
+      setSpecimenForeignIdCollisions(prev => ({ ...prev, [idx]: null }));
+      return;
+    }
+    // Real fix, per direct reminder: "no business logic in the UI
+    // code." The within-draft collision check itself now lives in
+    // utils/foreignIdCollision.ts — this component only calls it and
+    // handles the UI-level result.
+    const withinDraftMatch = findWithinDraftForeignIdCollision(specimens, idx);
+    if (withinDraftMatch) {
+      setSpecimenForeignIdCollisions(prev => ({ ...prev, [idx]: withinDraftMatch }));
+      return;
+    }
+    const result = await findForeignIdCollision(s.externalIdSource, s.externalId, undefined);
+    setSpecimenForeignIdCollisions(prev => ({ ...prev, [idx]: result }));
   };
 
   // Applying a dictionary entry pre-fills Description from the entry
@@ -582,27 +712,19 @@ const AccessionPage: React.FC = () => {
   const [sourceOrderId, setSourceOrderId] = useState<string | null>(null);
   const [orderSearch, setOrderSearch] = useState('');
 
-  // Consumes ScannerProvider's global PATHSCRIBE_SCAN event — the scan-vs-
-  // typing detection (HID burst timing) is already handled there, this
-  // just reacts to it. A scanned order-number label won't match
-  // ScannerProvider's accession or MRN patterns (those are case/patient
-  // identifiers, a different format), so it comes through as
-  // type: 'unknown' — the provider fires the event either way and takes
-  // no further action itself for that type, which is exactly the gap this
-  // fills. Also switches to the Case & Patient tab, since that's the only
-  // tab the order picker renders on — a scan should work regardless of
-  // which tab happens to be open when it comes in, not just the one where
-  // the field is visible.
-  useEffect(() => {
-    const onScan = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { raw: string; type: string } | undefined;
-      if (!detail || detail.type !== 'unknown') return; // accession/MRN scans are handled by ScannerProvider itself
-      setTab('case');
-      setOrderSearch(detail.raw);
-    };
-    window.addEventListener('PATHSCRIBE_SCAN', onScan);
-    return () => window.removeEventListener('PATHSCRIBE_SCAN', onScan);
-  }, []);
+  // Real feature, per direct, detailed specification: "Barcode Listener &
+  // Form Auto-Ingestion." An earlier, simpler version of this listener
+  // lived here — it only dumped a scan's raw text into orderSearch (this
+  // page's own inline "Import From Order" box) for that box's plain
+  // substring search to maybe pick up. Removed: the real
+  // handleScannedPayload listener below fully supersedes it — real GS1/
+  // delimited/plain parsing, exact-match resolution (not loose substring
+  // matching), direct form auto-fill for a genuinely new external
+  // requisition, and a proper fallback modal — and keeping both produced
+  // real, confusing UX: the old one would still dump an unparsed raw GS1
+  // string into the inline box, which then honestly (but misleadingly)
+  // reported "No pending orders match" directly beside a form the new
+  // listener had already correctly, successfully populated.
 
   // ── Action Registry (voice commands + keyboard shortcuts) ──────────────────
   // This page previously had zero integration with the Action Registry —
@@ -664,13 +786,135 @@ const AccessionPage: React.FC = () => {
     // default would be unusable. A minimum of 2 characters avoids
     // firing a near-full-list match on a single keystroke.
     if (q.length < 2) return [];
+    const qIdNormalized = normalizeIdForSearch(q);
     return pendingOrders.filter(o =>
       o.externalOrderNumber.toLowerCase().includes(q) ||
       `${o.patient.firstName} ${o.patient.lastName}`.toLowerCase().includes(q) ||
-      (o.patient.mrn ?? '').toLowerCase().includes(q) ||
-      o.externalAssigningAuthority.toLowerCase().includes(q)
+      // Real fix, per direct follow-up: "Scotland and Ireland have
+      // different formats for their NHS number, would we do the same
+      // approach there?" Not the same mechanism as the DOB fix below —
+      // NHS Number/CHI Number/H&C Number/PPS Number aren't different
+      // interpretations of the same value the way a date's day/month
+      // order is; they're structurally different national ID schemes,
+      // and a given patient has exactly one real ID under exactly one
+      // real scheme. What genuinely is comparable: formatting, not
+      // interpretation. NHS Number's own conventional display groups
+      // digits with spaces ("999 999 9999"), and this app's own
+      // PATIENT_ID_BY_JURISDICTION validation pattern for it already
+      // treats spaces and dashes as optional, interchangeable
+      // separators — so a stored value without them shouldn't fail to
+      // match an accessioner typing the number the way it's
+      // conventionally printed, or vice versa. Safe unlike date
+      // reinterpretation: stripping spaces/dashes can only recover a
+      // real match formatting hid, never introduce a false one — see
+      // normalizeIdForSearch.ts's own header comment for the full
+      // reasoning.
+      normalizeIdForSearch(o.patient.mrn).includes(qIdNormalized) ||
+      o.externalAssigningAuthority.toLowerCase().includes(q) ||
+      // Real fix, per direct follow-up: "if you don't have a case, how
+      // do you know the client?" — correctly caught that config.jurisdiction
+      // is a single, system-wide guess, and this search runs precisely
+      // when the client isn't known yet (finding it is often the point).
+      // A lab that only ever deals with one jurisdiction never notices;
+      // one that receives orders from both a US and a UK client through
+      // the same instance could have the system's single default be
+      // wrong for whichever client isn't it — silently hiding or
+      // matching the wrong patient in exactly the feature meant to
+      // prevent that.
+      //
+      // Real fix: don't guess which interpretation to use for MATCHING
+      // at all — check both. patient.dateOfBirth is compared against
+      // the query formatted as MM/DD/YYYY *and* as DD/MM/YYYY;
+      // whichever the accessioner actually typed, it matches. If a
+      // date-shaped query happens to be a genuine, real exact match
+      // under both interpretations for two different real patients
+      // (e.g. one born 3 April, another genuinely born 4 March, same
+      // year), that's real, existing ambiguity — the existing ">1 exact
+      // match" trigger surfaces it to the lookup modal for a human to
+      // resolve, same as any other genuine ambiguity this feature
+      // already handles, rather than the system silently guessing.
+      // searchDobFormat itself is now display-only (placeholder text,
+      // grid column headers) — no longer load-bearing for correctness.
+      //
+      // Real, later extension, per direct follow-up naming S. Korea
+      // specifically: dobIncludesQuery also checks year-first formats
+      // (dash and dot separated) — see isoDateForSearch.ts's own header
+      // comment for why day/month permutation alone doesn't cover a
+      // genuinely different, year-first convention.
+      dobIncludesQuery(o.patient.dateOfBirth, q)
     );
   }, [pendingOrders, orderSearch]);
+
+  // Real feature, per direct specification: "0 exact matches" is the
+  // trigger condition distinct from "no matches at all" — a search
+  // returning several loose, partial matches but nothing that's
+  // actually the record being looked for still counts as needing the
+  // richer lookup modal, not just quietly sitting with an inline list
+  // that has no clearly-right answer in it. An exact match is the
+  // trimmed query equaling — not just containing — the order number,
+  // MRN (space/dash-normalized — see filteredOrders' own comment
+  // above), full patient name, or formatted DOB of a real result
+  // (checked under every supported date format — see filteredOrders'
+  // own comment above for why none is assumed).
+  const isExactOrderMatch = useCallback((o: IncomingOrder, q: string): boolean => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return false;
+    return (
+      o.externalOrderNumber.toLowerCase() === needle ||
+      normalizeIdForSearch(o.patient.mrn) === normalizeIdForSearch(needle) ||
+      `${o.patient.firstName} ${o.patient.lastName}`.toLowerCase() === needle ||
+      dobExactlyMatches(o.patient.dateOfBirth, needle)
+    );
+  }, []);
+
+  // Real feature, per direct specification: "Order Lookup & Patient
+  // Verification" modal — real ambiguity (too many candidates to
+  // scan inline) and real absence (nothing confidently right in what
+  // did come back) both route here rather than leaving the accessioner
+  // stuck with an inline list that's either overwhelming or silently
+  // unhelpful. `orderLookupInitialQuery` seeds the modal's own search
+  // box with whatever was already typed here — including empty, for
+  // the explicit "Advanced Search" link, which always opens regardless
+  // of the omnibox's current contents.
+  const [orderLookupModalOpen, setOrderLookupModalOpen] = useState(false);
+  const [orderLookupInitialQuery, setOrderLookupInitialQuery] = useState('');
+
+  const openOrderLookupModal = useCallback((initialQuery: string) => {
+    setOrderLookupInitialQuery(initialQuery);
+    setOrderLookupModalOpen(true);
+  }, []);
+
+  // Shared by both the Enter key and the search-icon click — same
+  // real trigger condition either way, per the direct specification:
+  // more than 3 matches (too many to scan in the small inline list),
+  // or zero exact matches among whatever partial matches did come back
+  // (nothing confidently right in what's showing). 1–3 matches with at
+  // least one exact hit stays exactly as it already worked — the
+  // existing inline list is genuinely sufficient there, and opening a
+  // modal on top of an already-clear answer would be a net cost, not
+  // a real safety or scale improvement.
+  const runOrderSearchTrigger = useCallback(() => {
+    const q = orderSearch.trim();
+    // Same minimum-length floor the inline list itself already uses —
+    // a single accidental keystroke plus Enter shouldn't pop open a
+    // full modal.
+    if (q.length < 2) return;
+    const hasExactMatch = filteredOrders.some(o => isExactOrderMatch(o, q));
+    if (filteredOrders.length > 3 || !hasExactMatch) {
+      openOrderLookupModal(q);
+    }
+  }, [orderSearch, filteredOrders, isExactOrderMatch, openOrderLookupModal]);
+
+  const handleOrderSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runOrderSearchTrigger();
+    }
+  }, [runOrderSearchTrigger]);
+
+  const handleOrderSearchIconClick = useCallback(() => {
+    runOrderSearchTrigger();
+  }, [runOrderSearchTrigger]);
 
   // True if the accessioner has already typed something meaningful into
   // the form — used to decide whether picking an order needs a warning
@@ -735,25 +979,47 @@ const AccessionPage: React.FC = () => {
       setMrn(order.patient.mrn ?? '');
       setEncounterNumber(order.encounterNumber ?? '');
       setPriority(order.priority ?? 'Routine');
-      setRequestingProvider(order.requestingProvider);
+      setRequestingProvider(order.requestingProvider.rawName);
+      // Real, per PS-81 (Jira): order is already-resolved (from
+      // resolveOrder()) at this point — when requestingProviderPhysicianId
+      // is real and populated, fetch that EXACT matched Physician
+      // record directly, rather than re-searching by name (which could
+      // theoretically surface a different, ambiguous match). Real,
+      // honest fallback: undefined when resolution didn't find a real
+      // match — the field just shows the raw text, same as before.
+      setSelectedProvider(undefined);
+      if (order.requestingProviderPhysicianId) {
+        physicianService.getById(order.requestingProviderPhysicianId).then(res => {
+          if (res.ok) setSelectedProvider(res.data);
+        }).catch(() => {});
+      }
       setClinicalIndication(order.clinicalIndication ?? '');
       setIcd10Codes(order.icd10Codes ?? []);
       if (order.clientId) setClientId(order.clientId);
 
       // Real feature, per direct confirmation: "I assume that the
       // location will download from the select patient encounter,
-      // once the order or patient is selected." Location doesn't live
-      // directly on the order (unlike clientId above) — it lives on
-      // the real, separate Encounter record a prior inbound PV1
-      // resolved against, linked here via order.encounterNumber (a
-      // real, pre-existing field). Genuinely no-op when the order
-      // carries no encounterNumber, or when that encounter never had
-      // a real PV1-3 to resolve — never fabricated.
+      // once the order or patient is selected." Real feature, per
+      // direct, detailed specification: "Encounter Selector &
+      // Auto-Fill" — extends what was previously a location-only
+      // lookup to the same full applyEncounterToForm (Facility,
+      // Location, Provider) the known-patient-selection path below
+      // uses, and applies the same real Safety Safeguards (Section
+      // "Strict Matching & Active Status Constraints" — see
+      // isEncounterActive's own doc comment) rather than
+      // unconditionally trusting order.encounterNumber's target: an
+      // order referencing a genuinely stale/discharged/historical
+      // encounter must not silently populate today's form with
+      // outdated facility/location/provider data. No dropdown needed
+      // here specifically — order.encounterNumber already names one
+      // specific real encounter, never an ambiguous set to choose
+      // among the way a bare patient selection can be.
       if (order.encounterNumber) {
         const orgId = user?.organisationId ?? originHospitalId;
         const encounterRes = await mockEncounterService.getByEncounterNumber(orgId, order.encounterNumber);
-        if (encounterRes.ok && encounterRes.data?.locationId) {
-          setLocationId(encounterRes.data.locationId);
+        if (encounterRes.ok && encounterRes.data && isEncounterActive(encounterRes.data, Date.now())) {
+          applyEncounterToForm(encounterRes.data);
+          toast.success(`Auto-filled from Encounter #${encounterRes.data.encounterNumber}${encounterRes.data.ward ? ` (${encounterRes.data.ward})` : ''}`);
         }
       }
 
@@ -783,10 +1049,25 @@ const AccessionPage: React.FC = () => {
             || (e.normalizedLabel ?? '').trim().toLowerCase() === sp.description.trim().toLowerCase()
         );
         if (!exactMatch) unresolvedCount++;
+        // Real fix, per direct report: laterality was never populated
+        // from the order at all, even when the description clearly
+        // implied it ("Left forearm skin excision..."). Inferred from
+        // the real, original order text (before any dictionary
+        // normalization) — see inferLateralityFromText.ts's own header
+        // for the deliberate safety rule (never guesses when the text
+        // implies more than one side). Fully editable afterward, same
+        // as every other imported field — this is a convenience
+        // default, not a locked value. lateralityInferred tracks
+        // whether a real, non-empty value was actually inferred (not
+        // just "was this field imported") — feeds the new "Suggested"
+        // badge, per direct follow-up.
+        const inferredLaterality = inferLateralityFromText(sp.description);
         return {
           ...emptySpecimen(getSpecimenLabel(i, importedClientStyle)),
           dictionaryEntryId: exactMatch?.id ?? '',
           description: exactMatch ? (exactMatch.normalizedLabel || exactMatch.name) : sp.description,
+          laterality: inferredLaterality,
+          lateralityInferred: inferredLaterality !== '',
           resolvedCategoryName: sp.specimenCategoryId ? catNameById.get(sp.specimenCategoryId) : undefined,
           categoryWasAutoCreated: sp.categoryWasAutoCreated,
           dictionaryEntryWasAutoCreated: sp.dictionaryEntryWasAutoCreated,
@@ -830,6 +1111,298 @@ const AccessionPage: React.FC = () => {
     setPendingImportOrderId(null);
     void doImportOrder(orderId);
   }
+
+  // isEncounterActive extracted to src/utils/isEncounterActive.ts — see
+  // that file's own header comment for the full safety reasoning
+  // (real, unit-tested there rather than living untested here).
+
+
+  // Real feature, per direct specification's own Auto-Fill Data
+  // Mapping table — with one real, deliberate deviation: the table
+  // also lists Clinical Indication (encounter.clinicalNotes/
+  // orderReason) and ICD-10 Diagnosis Codes (encounter.diagnosisCodes)
+  // as encounter-sourced fields. Neither exists on the real Encounter
+  // type (services/encounters/IEncounterService.ts) — confirmed
+  // directly, not an oversight to fix by inventing new fields. A real
+  // Encounter models PV1 (visit/ADT) data — facility, location,
+  // attending provider, class, status; clinical indication and
+  // diagnosis codes are real OBR/DG1 (order-level) concepts, and this
+  // app already, correctly, sources both from the order itself
+  // (order.clinicalIndication/order.icd10Codes in doImportOrder,
+  // above) rather than the encounter. Left genuinely alone here,
+  // rather than silently populated from a field that doesn't
+  // represent what the spec's table assumed it would. Patient
+  // Demographics (the table's other encounter-sourced row) needs no
+  // new code either — both real trigger points below (order import,
+  // known-patient selection) already populate demographics before
+  // this function ever runs.
+  //
+  // clientId resolution: Encounter.facility is a real, raw string
+  // (the sending facility/PV1 data as the inbound message actually
+  // said it — see that field's own doc comment), not a resolved
+  // Client/Facility id the way order.clientId already is. Matched
+  // here against the same real assigningAuthority/name fields
+  // doImportOrder's own client resolution already trusts, rather than
+  // assuming Encounter.facility happens to already be a valid id.
+  function applyEncounterToForm(encounter: Encounter) {
+    setLinkedEncounter(encounter);
+    const matchedClient = clients.find(
+      c => c.assigningAuthority === encounter.facility || c.name === encounter.facility
+    );
+    if (matchedClient) setClientId(matchedClient.id);
+    if (encounter.locationId) setLocationId(encounter.locationId);
+    if (encounter.attendingProvider) setRequestingProvider(encounter.attendingProvider);
+
+    // Real feature, per direct, detailed correction: DG1 is its own,
+    // dedicated segment, and Encounter.diagnoses (added specifically
+    // to close that real gap — see src/services/encounters/
+    // IEncounterService.ts's own doc comment) now genuinely can carry
+    // real ICD-10 data. Still deliberately NOT the same concept as
+    // Clinical Indication (a free-text reason for a specific specimen/
+    // order — DG1-3.2 describes the diagnosis CODE itself, not why a
+    // specimen was collected) or as order.icd10Codes (a more specific,
+    // order-level real source this app already, correctly, sources
+    // the form's ICD-10 field from). Purely additive: only fills the
+    // form's ICD-10 field when it's genuinely still empty — an
+    // encounter's own admission-time diagnosis should never silently
+    // overwrite a more specific, already-present, order-sourced code.
+    if (encounter.diagnoses && encounter.diagnoses.length > 0 && icd10Codes.length === 0) {
+      setIcd10Codes(encounter.diagnoses.map(dx => ({ code: dx.code, description: dx.description ?? dx.code })));
+    }
+  }
+
+  // Real feature, per direct specification: "Contextual Trigger" +
+  // "Auto-Selection (Single Active Encounter)" + "Dropdown Selection
+  // (Multiple Active Encounters)." The real orchestrator both trigger
+  // points below (handleSelectExistingPatient, doImportOrder) call
+  // once a real patientId is known. Genuinely two different outcomes,
+  // not three — a real 0-candidates case and a real 1-candidate case
+  // both need no dropdown, so they're handled together; only a real
+  // 2-or-more-candidates case shows one.
+  async function lookupActiveEncountersForPatient(patientId: string, patientLabel: string) {
+    setEncounterLookupState('loading');
+    setEncounterCandidates([]);
+    const res = await mockEncounterService.listForPatient(patientId);
+    const now = Date.now();
+    const active = res.ok ? res.data.filter(e => isEncounterActive(e, now)) : [];
+    setEncounterLookupState('done');
+    if (active.length === 0) {
+      return;
+    }
+    if (active.length === 1) {
+      applyEncounterToForm(active[0]);
+      toast.success(`Auto-filled from Encounter #${active[0].encounterNumber}${active[0].ward ? ` (${active[0].ward})` : ''}`);
+      return;
+    }
+    // Real feature, per direct specification: "Dropdown Selection
+    // (Multiple Active Encounters)" — genuinely doesn't auto-apply
+    // any of them; the accessioner picks via the selector rendered
+    // below the omnibox (see encounterCandidates' own render site).
+    setEncounterCandidates(active);
+    toast.warning(`${active.length} active encounters found for ${patientLabel} — select the correct one below.`);
+  }
+
+  // Real feature, per direct specification: "Change / Unlink
+  // Encounter" — clears the real link (so the confirmation badge/
+  // dropdown both stop showing it as selected) without touching
+  // whatever Facility/Location/Provider values are already sitting in
+  // the form; the accessioner may have already started editing them,
+  // and unlinking shouldn't blank out real, already-entered data.
+  function handleUnlinkEncounter() {
+    setLinkedEncounter(null);
+    setEncounterCandidates([]);
+  }
+
+  // Real feature, per direct specification: "Re-selection Behavior" —
+  // dynamically overwrites the previously-populated encounter fields
+  // rather than prompting first; the dropdown selection is itself
+  // already a deliberate, explicit accessioner action (unlike, say,
+  // doImportOrder's own re-import case, which can silently discard
+  // unrelated, unsaved manual edits and genuinely needs a confirm
+  // step first).
+  function handleSelectEncounterFromDropdown(encounter: Encounter | null) {
+    if (encounter) {
+      applyEncounterToForm(encounter);
+    } else {
+      // "Create without encounter link (Manual Entry)."
+      setLinkedEncounter(null);
+    }
+    setEncounterCandidates([]);
+  }
+
+  // Real feature, per direct, detailed specification: "Barcode Listener &
+  // Form Auto-Ingestion" — "4. Error/Ambiguity Handling." Real, tolerant
+  // conversion for the delimited payload's own DOB field: this app's own
+  // <input type="date"> needs real ISO (yyyy-mm-dd); a real scanned label
+  // could carry either that or the real, common HL7-style YYYYMMDD. Genuinely
+  // returns undefined (never a fabricated date) for anything else.
+  function parseScannedDob(raw: string): string | undefined {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length !== 8) return undefined;
+    const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    return Number.isNaN(new Date(iso).getTime()) ? undefined : iso;
+  }
+
+  // Real feature, per direct, detailed specification: "Barcode Listener &
+  // Form Auto-Ingestion" — the real orchestrator tying together "2. Parser
+  // Logic," "3. Form Auto-Populate & Visual Feedback," and "4. Error/
+  // Ambiguity Handling." Genuinely reuses this page's own, already-built
+  // real infrastructure rather than duplicating it: handleImportOrder (the
+  // spec's "Auto-fill complete record" for a real, matched Accession/
+  // Order #), openOrderLookupModal (the spec's own "Open Search Fallback
+  // Modal with the scanned string pre-populated"), and isExactOrderMatch
+  // (the same real, exact-match discipline the omnibox search already
+  // established — never a loose, ambiguous substring match for a scan,
+  // which should resolve confidently or not at all).
+  async function handleScannedPayload(raw: string) {
+    // Real, preserved behavior from the earlier, simpler listener this
+    // one supersedes: every field a scan can populate lives on the Case
+    // & Patient tab, not Specimens — a scan should work regardless of
+    // which tab happens to be open when it comes in, not just leave its
+    // result invisible on a tab the accessioner isn't currently viewing.
+    setTab('case');
+    const parsed = parseScannedPayload(raw);
+
+    // GS1 — real AI(21) SERIAL is this format's own "Serial/Accession"
+    // mapping (see parseScannedPayload.ts's own header comment for why
+    // AI(21), not a fabricated "MRN" AI that GS1 doesn't actually define).
+    if (parsed.type === 'gs1') {
+      const candidate = parsed.serial ?? parsed.additionalId;
+      const match = candidate ? pendingOrders.find(o => isExactOrderMatch(o, candidate)) : undefined;
+      if (match) {
+        toast.success(`✓ Scanned Specimen Label: ${match.externalOrderNumber} (${match.patient.firstName} ${match.patient.lastName})`);
+        playScanBeep();
+        await handleImportOrder(match.id);
+        return;
+      }
+      openOrderLookupModal(candidate ?? raw);
+      return;
+    }
+
+    // Delimited — real [FamilyName, GivenName, MRN, DOB, Accession].
+    if (parsed.type === 'delimited') {
+      const match = parsed.accession ? pendingOrders.find(o => isExactOrderMatch(o, parsed.accession!)) : undefined;
+      if (match) {
+        toast.success(`✓ Scanned Specimen Label: ${match.externalOrderNumber} (${match.patient.firstName} ${match.patient.lastName})`);
+        playScanBeep();
+        await handleImportOrder(match.id);
+        return;
+      }
+      // Real feature, per direct specification: "If the scanned barcode
+      // is a new external requisition # → Auto-fill metadata from
+      // payload and create new draft accession." This app's own form
+      // already IS the draft accession the moment any field is
+      // populated — there's no separate real "create" action needed;
+      // populating it directly here is that real effect.
+      const hasUsableData = parsed.familyName || parsed.givenName || parsed.mrn || parsed.dob;
+      if (hasUsableData) {
+        if (parsed.givenName) setGivenNames(parsed.givenName);
+        if (parsed.familyName) setFamilyNames(parsed.familyName);
+        if (parsed.mrn) setMrn(parsed.mrn);
+        const dobIso = parsed.dob ? parseScannedDob(parsed.dob) : undefined;
+        if (dobIso) setDob(dobIso);
+        const label = [parsed.givenName, parsed.familyName].filter(Boolean).join(' ') || parsed.mrn || 'new patient';
+        toast.success(`✓ Scanned Specimen Label: ${parsed.accession ?? raw} (${label})`);
+        playScanBeep();
+        return;
+      }
+      openOrderLookupModal(raw);
+      return;
+    }
+
+    // Plain alphanumeric — real, exact query search across [Accession #,
+    // Requisition #, Order #, MRN], per the spec's own fallback.
+    const plainMatch = pendingOrders.find(o => isExactOrderMatch(o, parsed.value));
+    if (plainMatch) {
+      toast.success(`✓ Scanned Specimen Label: ${plainMatch.externalOrderNumber} (${plainMatch.patient.firstName} ${plainMatch.patient.lastName})`);
+      playScanBeep();
+      await handleImportOrder(plainMatch.id);
+      return;
+    }
+    // Real feature, per direct specification: "If scan fails to match →
+    // Open Search Fallback Modal with the scanned string pre-populated
+    // for manual resolution." Reuses the exact same modal/state this
+    // page's own omnibox search already opens on ambiguity — a scan
+    // that can't resolve confidently gets the identical, real fallback
+    // a typed search would.
+    openOrderLookupModal(parsed.value);
+  }
+
+  // Real feature, per direct, detailed specification: "1. Global / Smart
+  // Focus Listener... If the user scans a label while focus is in the main
+  // search bar, capture the input." The real, global keystroke-burst
+  // detection already exists and works (ScannerProvider.tsx) — this page
+  // doesn't duplicate that; it listens for the same real PATHSCRIBE_SCAN
+  // event that provider already dispatches on every successful scan
+  // anywhere in the app, and only acts on it while this page is mounted.
+  // ScannerProvider.tsx's own auto-navigation is suppressed specifically
+  // on this route (see that file's own comment) so this handler is the
+  // real, sole consumer of a scan while accessioning is in progress.
+  //
+  // Real bug found and fixed while verifying this live: the listener
+  // below is registered once (an empty dependency array — genuinely
+  // correct, since re-adding/removing a global window listener on every
+  // render would be real, unnecessary churn for a feature this
+  // frequently exercised, unlike the narrower addSpecimen case this
+  // file's own earlier effect accepts staleness for). But
+  // handleScannedPayload itself is a plain, unmemoized function that
+  // closes over pendingOrders/openOrderLookupModal/etc. fresh on every
+  // render — calling the ORIGINAL closure captured at mount time meant
+  // a scan matched against whatever pendingOrders looked like before it
+  // had even finished its own async load, every single time, not just
+  // once. `handleScannedPayloadRef` is kept current every render
+  // (assigned directly during render, a real, standard React pattern
+  // for exactly this "keep a stable, addressable handle on the latest
+  // closure" need) so the one, stable listener below always invokes
+  // today's real, current logic.
+  const handleScannedPayloadRef = useRef(handleScannedPayload);
+  handleScannedPayloadRef.current = handleScannedPayload;
+
+  useEffect(() => {
+    function onScan(e: Event) {
+      const detail = (e as CustomEvent<{ raw: string }>).detail;
+      if (!detail?.raw) return;
+      void handleScannedPayloadRef.current(detail.raw);
+    }
+    window.addEventListener('PATHSCRIBE_SCAN', onScan);
+    return () => window.removeEventListener('PATHSCRIBE_SCAN', onScan);
+  }, []);
+
+  // Real feature, per direct specification: the "Order Lookup & Patient
+  // Verification" modal's second real path — an existing, already-known
+  // patient found via the real Master Patient Index (searchPatients()),
+  // genuinely distinct from importing a pending LIS order. There may be
+  // no pending order at all (a walk-in, a manually-accessioned specimen
+  // for a patient this lab has already seen before) — this just confirms
+  // identity and pre-fills demographics, without touching anything
+  // order-specific (specimens, clinical indication, client, priority)
+  // the way doImportOrder does, since none of that exists for a bare
+  // patient-index match. MasterPatientRecord genuinely has no `sex`
+  // field (confirmed directly against IPatientIndexService.ts) — left
+  // untouched here rather than guessed at or defaulted.
+  //
+  // Real feature, per direct, detailed specification: "Encounter
+  // Selector & Auto-Fill" — "Contextual Trigger... Upon selecting a
+  // patient (via Order Import, MRN search, or manual patient query)."
+  // A known-patient selection from the lookup modal already has a
+  // real, resolved MPI patientId (patient.id — this record already
+  // exists) — no separate resolution step needed the way a fresh
+  // manual entry would (see this function's own real limitation, noted
+  // in the Encounter service's consumer section of this file).
+  function handleSelectExistingPatient(patient: MasterPatientRecord) {
+    setNamePrefix('');
+    setGivenNames(patient.firstName);
+    setFamilyNames(patient.lastName);
+    setPreferredName('');
+    setNameSuffix('');
+    setDob(patient.dateOfBirth ?? '');
+    setMrn(patient.mrn ?? '');
+    toast.success(`Loaded ${patient.firstName} ${patient.lastName} from the patient index — verify details and continue.`);
+    void lookupActiveEncountersForPatient(patient.id, `${patient.firstName} ${patient.lastName}`);
+  }
+
+
 
   // ── Validation ───────────────────────────────────────────────────────────
   const caseInfoValid = givenNames.trim() && familyNames.trim() && dob && clientId && requestingProvider.trim();
@@ -935,6 +1508,16 @@ const AccessionPage: React.FC = () => {
 
   // ── Submit ───────────────────────────────────────────────────────────────
   const [lastResult, setLastResult] = useState<{ assignments: GrossingTemplateAssignment[]; warnings: string[]; specimenBlocks: { specimenId: string; label: string; blocks: HistologyBlock[] }[] } | null>(null);
+  // Real feature, per direct follow-up on the label-printing
+  // architecture scope. Deliberately separate from lastResult, which
+  // is only set once the background Grossing Template refinement
+  // completes (several real seconds after submit, since it's a real
+  // AI call) — label printing needs none of that; the real Case,
+  // patient, and specimen data it prints from is already fully
+  // available the instant caseRouter.createCase() succeeds. Gating the
+  // print action on lastResult would make the user wait on an AI call
+  // that has nothing to do with what's printed.
+  const [justAccessionedCase, setJustAccessionedCase] = useState<{ caseData: Case; specimens: Specimen[] } | null>(null);
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -944,6 +1527,42 @@ const AccessionPage: React.FC = () => {
     try {
       const caseId = await generateNextCaseId();
       const nowIso = new Date().toISOString();
+
+      // Real fix, per direct follow-up: "will the User have to wait 6
+      // seconds? That seems wrong since everything should be 1 second
+      // or less." Confirmed directly, not guessed: the real delay
+      // wasn't the intraop lookup itself (a fast, in-memory/
+      // localStorage check) — it was evaluateGrossingTemplateAssignment
+      // below, which makes a real, genuine AI/LLM network call
+      // (services/aiIntegration/aiProviderService.ts's own callAi(),
+      // a real `fetch()`, not a mock or an artificial delay). That
+      // call is real, necessary latency for a real feature, not a bug
+      // to remove — but the intraop lookup was needlessly sequenced
+      // strictly AFTER it finished, when the two are genuinely
+      // independent: this lookup only needs form state already
+      // available right here (patientName/mrn/surgeon) plus the real
+      // caseId, already generated above — nothing it needs depends on
+      // what the AI call returns. Kicked off here, in parallel with
+      // the AI call and everything else below, rather than waiting for
+      // all of that to finish first. Resolved (not started fresh)
+      // after the real Case genuinely exists, further down — a match
+      // found here is never surfaced to the UI before
+      // caseRouter.createCase() has actually succeeded, so there's no
+      // real risk of offering to merge into a Case that doesn't exist
+      // yet.
+      const intraopMatchPromise = intraoperativeService.findMatchesForNewCase({
+        patientName: `${familyNames.trim()}, ${givenNames.trim()}`,
+        mrn: mrn.trim(),
+        surgeon: requestingProvider.trim(),
+        accessionedAt: nowIso,
+      });
+      // Defensive, separate reaction attached now — same fire-and-forget
+      // discipline as the interfaceEngine dispatch below. Genuinely
+      // independent of the real .then() attached later: if handleSubmit
+      // exits early (a real error elsewhere) before that later .then()
+      // ever runs, this still guarantees the promise's own rejection is
+      // handled rather than surfacing as an unhandled rejection.
+      intraopMatchPromise.catch(console.error);
 
       // The human-facing accession number — org-scoped, mask-driven,
       // completely separate from caseId (which stays the stable internal
@@ -968,7 +1587,7 @@ const AccessionPage: React.FC = () => {
       const configRes = await mockCaseRegistryService.getConfig(registryOrgId);
       const registryConfig = configRes.ok ? configRes.data : null;
 
-      const specimenRecords = specimens.map(s => {
+      const specimenRecords = await Promise.all(specimens.map(async s => {
         const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
         return {
           id: `${caseId}-SP-${s.label}`,
@@ -999,77 +1618,46 @@ const AccessionPage: React.FC = () => {
             processedAtIsEstimated: s.processedAtIsEstimated || undefined,
           } : undefined,
           container: s.containerType.trim() ? { type: s.containerType.trim() } : undefined,
+          externalId: s.externalId.trim() || undefined,
+          externalIdSource: s.externalIdSource.trim() || undefined,
           specimenFlags: [],
-          blocks: generateDefaultBlocks(entry, `${caseId}-SP-${s.label}`, selectedClient?.specimenLabelStyle, stainTypes, protocols),
+          ...(await generateDefaultMaterial(entry, `${caseId}-SP-${s.label}`, selectedClient?.specimenLabelStyle, stainTypes, protocols, fullAccession, s.label, priority)),
           // kept alongside the record (not part of Specimen's own shape)
           // purely to feed evaluateGrossingTemplateAssignment below —
           // stripped before the record is cast into the Case
           _entry: entry,
         };
-      });
+      }));
 
-      // ── Resolve candidate Grossing Templates (S0-IN-06): published,
-      // isDiagnostic === false — the inverse of Stage 1's filter. Dynamic
-      // import mirrors handleGrossComplete's own pattern in
-      // SynopticReportPage.tsx.
-      const templateModule = await import('@/services/templates/templateService');
-      const allTemplates = await templateModule.listTemplates('published');
-      const availableTemplates = allTemplates
-        .filter(t => t.isDiagnostic === false)
-        .map(t => ({ id: t.id, name: t.name, category: t.category }));
-
-      // S0-CF-12 admin UI now exists (Config → System → Grossing Route
-      // Overrides) — evaluateGrossingTemplateAssignment's own consuming
-      // logic was already real and correct; this was the only missing
-      // piece. Only active overrides apply; mapped down to the simple
-      // {clientId, specimenType, grossingTemplateId} shape the
-      // evaluation function already expects, rather than that
-      // function's contract changing to match the richer admin record.
-      const overridesRes = await grossingRoutingOverrideService.getAll();
-      const routingOverrides = (overridesRes.ok ? overridesRes.data : [])
-        .filter(o => o.active)
-        .map(o => ({ clientId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
-
-      const evalResult = await evaluateGrossingTemplateAssignment({
-        specimens: specimenRecords.map(sp => ({
-          specimenId: sp.id,
-          specimenLabel: sp.label,
-          specimenDesc: sp.description,
-          // Structured fields from the Specimen Dictionary, when a
-          // specimen was picked from it — S0-CF-01–03's "structured
-          // specimen data" flowing into routing for the first time.
-          specimenType: sp._entry?.type,
-          bodySite: sp._entry?.site,
-          laterality: sp._entry?.laterality,
-        })),
-        clinicalIndication: clinicalIndication.trim() || undefined,
-        caseContext: { clientId },
-        availableTemplates,
-        routingOverrides,
-      });
-
-      setLastResult({
-        assignments: evalResult.assignments,
-        warnings: evalResult.warnings,
-        specimenBlocks: specimenRecords.map(sp => ({ specimenId: sp.id, label: sp.label, blocks: sp.blocks })),
-      });
+      // Real fix, per direct follow-up: "The AI call can happen in the
+      // background... not necessarily going to serialize the accession
+      // event with Grossing immediately." Confirmed directly: the
+      // ~6-second wait traced back to evaluateGrossingTemplateAssignment
+      // making a real AI/LLM network call — genuine, necessary latency
+      // for a real feature, but there's no real reason a Case needs to
+      // sit unsaved and un-shown while it runs. Every specimen gets the
+      // SAME real, already-established fallback template
+      // (evaluateGrossingTemplateAssignment's own default for a
+      // specimen it can't confidently route) immediately — a
+      // genuinely usable, gross-able Case exists the instant this
+      // function returns, not a placeholder. The real AI call, the
+      // template/override lookups it needs, and the refinement of any
+      // specimen the AI can route more specifically now happen in
+      // refineGrossingTemplatesInBackground() below, kicked off after
+      // real Case creation succeeds — see that function's own header
+      // comment for the full design, including why it never clobbers
+      // a specimen someone has already started grossing.
+      const grossingReports: GrossingReportInstance[] = specimenRecords.map(sp => ({
+        instanceId: `${sp.id}_grossing_${Math.random().toString(36).slice(2, 10)}`,
+        specimenId: sp.id,
+        templateId: 'grossing_standard_tissue',
+        templateName: 'Standard Tissue Grossing (Gold Standard) — Route A',
+        status: 'draft',
+        answers: {},
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }));
       setDirty(false); // genuinely persisted now — nothing left to lose by navigating away
-
-      const assignmentBySpecimenId = new Map(evalResult.assignments.map(a => [a.specimenId, a]));
-
-      const grossingReports: GrossingReportInstance[] = specimenRecords.map(sp => {
-        const assignment = assignmentBySpecimenId.get(sp.id);
-        return {
-          instanceId: `${sp.id}_grossing_${Math.random().toString(36).slice(2, 10)}`,
-          specimenId: sp.id,
-          templateId: assignment?.templateId ?? 'grossing_standard_tissue',
-          templateName: assignment?.templateName ?? 'Standard Tissue Grossing (Gold Standard) — Route A',
-          status: 'draft',
-          answers: {},
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        };
-      });
 
       // Real MPI resolution — replaces the previous `OPAT-${caseId}` id,
       // which was derived from the CASE, not the person: the same
@@ -1090,7 +1678,13 @@ const AccessionPage: React.FC = () => {
       // tenant" identifier already resolved below for Case itself -
       // reused here instead of computing a second, differently-scoped
       // value for the same real concept.
-      const mpiOrgId = resolveMpiScopeEnterpriseId(originOrganisation);
+      //
+      // Real, small consolidation: this used to recompute
+      // resolveMpiScopeEnterpriseId(originOrganisation) locally here —
+      // now reuses the same, shared mpiScopeOrgId the new "Order
+      // Lookup & Patient Verification" modal also needs, computed
+      // once, upfront, near originOrganisation's own definition.
+      const mpiOrgId = mpiScopeOrgId;
       const mpiResult = await mockPatientIndexService.resolveOrCreatePatient({
         organisationId: mpiOrgId,
         // Real fix, closing the loop on the earlier scoping fix: this
@@ -1200,17 +1794,185 @@ const AccessionPage: React.FC = () => {
       };
 
       await caseRouter.createCase(newCase);
+      // Real feature, per direct follow-up on the label-printing scope
+      // — set immediately, not gated on the background AI refinement
+      // below; see this state's own declaration for why.
+      setJustAccessionedCase({ caseData: newCase, specimens: newCase.specimens ?? [] });
 
-      // ROOT FIX — requestingProvider was pure free text with nothing
-      // resolving it against the physician directory (findOrCreateByNpi
-      // existed but had no NPI to work with at intake; nothing called it
-      // anyway). Mirrors the same auto-create-pending posture already
-      // used for Client/SpecimenCategory: never blocks case creation,
-      // just ensures a directory record exists (Unverified) so this
-      // provider shows up for future notification lookups instead of
-      // silently falling through the cracks like "Dr. Lisa Wong" did.
-      if (requestingProvider.trim()) {
-        physicianService.findOrCreateByName(requestingProvider.trim(), clientId).catch(console.error);
+      // Real feature, per direct follow-up: "The AI call can happen in
+      // the background... not necessarily going to serialize the
+      // accession event with Grossing immediately." Genuinely
+      // fire-and-forget from the accessioner's point of view — not
+      // awaited, does not delay setTab/navigation below at all.
+      //
+      // Nested here (rather than a top-level component function) so it
+      // naturally closes over specimenRecords/clinicalIndication/
+      // clientId/caseId — this app's own established
+      // interface/mock/firestore service layer already has real
+      // caseRouter.getCase/updateCase methods; nothing new needed there.
+      //
+      // Two real safety properties, both load-bearing:
+      // 1. Re-fetches the case's REAL, current state right before
+      //    patching it — never trusts the in-memory `newCase` snapshot
+      //    from creation time, since real time has genuinely passed by
+      //    the time the AI call resolves.
+      // 2. Only refines a specimen's template if its grossing report is
+      //    still genuinely pristine (status 'draft', zero real answers)
+      //    — never silently swaps the template out from under someone
+      //    who has already opened this case and started grossing a
+      //    specimen with the default. A specimen already touched keeps
+      //    whatever it has, even if the AI would have routed it
+      //    differently.
+      async function refineGrossingTemplatesInBackground() {
+        try {
+          const templateModule = await import('@/services/templates/templateService');
+          const allTemplates = await templateModule.listTemplates('published');
+          const availableTemplates = allTemplates
+            .filter(t => t.isDiagnostic === false)
+            .map(t => ({ id: t.id, name: t.name, category: t.category }));
+
+          const overridesRes = await grossingRoutingOverrideService.getAll();
+          const routingOverrides = (overridesRes.ok ? overridesRes.data : [])
+            .filter(o => o.active)
+            .map(o => ({ clientId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
+
+          const evalResult = await evaluateGrossingTemplateAssignment({
+            specimens: specimenRecords.map(sp => ({
+              specimenId: sp.id,
+              specimenLabel: sp.label,
+              specimenDesc: sp.description,
+              specimenType: sp._entry?.type,
+              bodySite: sp._entry?.site,
+              laterality: sp._entry?.laterality,
+            })),
+            clinicalIndication: clinicalIndication.trim() || undefined,
+            caseContext: { clientId },
+            availableTemplates,
+            routingOverrides,
+          });
+
+          const latestCase = await caseRouter.getCase(caseId);
+          if (!latestCase) return; // genuinely gone — nothing real left to refine
+
+          // Real feature, per direct follow-up: "Do we capture failed
+          // template association? That might be a good quality
+          // measure." Every specimen's real routing outcome — a
+          // confident AI decision, a low-confidence fallback, a Pass
+          // G0 override, or (in the catch block below) a genuine AI
+          // failure — is now persisted to the real Case, not just
+          // shown transiently. See applyGrossingRefinement.ts's own
+          // header comment and Case.ts's own
+          // GrossingReportInstance.templateAssignmentOutcome for the
+          // full design.
+          const { reports: refinedReports, anyTemplateChanged, anyDataChanged } = applyGrossingRefinement(
+            latestCase.grossingReports ?? [],
+            evalResult.assignments,
+          );
+
+          if (anyDataChanged) {
+            await caseRouter.updateCase(caseId, { grossingReports: refinedReports });
+          }
+          if (anyTemplateChanged) {
+            const lowConfidenceCount = evalResult.assignments.filter(a => a.belowThreshold).length;
+            toast.success(
+              lowConfidenceCount > 0
+                ? `Case ${caseId}: Grossing Templates refined — ${lowConfidenceCount} of ${evalResult.assignments.length} specimen(s) fell back to the default.`
+                : `Case ${caseId}: Grossing Templates refined based on specimen details.`
+            );
+          }
+
+          // Best-effort UI update — only visible if the accessioner is
+          // still on this page; a safe no-op in React 18 if they've
+          // since navigated away (the refinement above already
+          // persisted to the real Case regardless).
+          setLastResult({
+            assignments: evalResult.assignments,
+            warnings: evalResult.warnings,
+            specimenBlocks: specimenRecords.map(sp => ({ specimenId: sp.id, label: sp.label, blocks: sp.blocks })),
+          });
+        } catch (e) {
+          // Real feature, per direct follow-up: a genuine AI/network
+          // failure is itself a real, distinct quality signal — worth
+          // persisting to the Case, not just this console log.
+          // Specimens keep their safe, immediate default template
+          // either way; only the quality-outcome metadata records that
+          // a real evaluation was attempted and genuinely failed.
+          console.error('Background Grossing Template refinement failed:', e);
+          try {
+            const latestCase = await caseRouter.getCase(caseId);
+            if (latestCase?.grossingReports?.length) {
+              const failedReports = markGrossingRefinementFailed(
+                latestCase.grossingReports,
+                e instanceof Error ? e.message : String(e),
+              );
+              await caseRouter.updateCase(caseId, { grossingReports: failedReports });
+            }
+          } catch (persistErr) {
+            console.error('Also failed to persist the Grossing Template refinement failure itself:', persistErr);
+          }
+        }
+      }
+      refineGrossingTemplatesInBackground();
+
+      // Real feature, per direct follow-up: "did we want to implement the
+      // [trigger for the] outbound Order Request message to the engine?"
+      // Category E (PathScribe_Interface_Specification_v1.1.docx, §7) —
+      // fires only for a genuine "scratch" case: no real, matching
+      // pre-existing order was ever imported (sourceOrderId stays null for
+      // manual entry — see this file's own README, the earlier fix for
+      // issue #1). A case that DID come from a real, imported order has
+      // nothing new to announce here; the receiving system already knows
+      // about that order, since it's the one that sent it. Genuinely
+      // fire-and-forget from the accessioner's own point of view — a real
+      // failure here must never block or roll back a real, already-created
+      // Case; see mockInterfaceEngineService.ts's own header comment for
+      // why "delivered" only means "the mock recorded it," not "a real
+      // downstream system received it" — there is no real backend yet.
+      if (!sourceOrderId) {
+        const orderCreationPayload = buildOrderCreationPayload(newCase, mpiResult.outcome, nowIso);
+        mockInterfaceEngineService.postOrderCreated(orderCreationPayload).catch(console.error);
+      }
+
+      // Real, per PS-81 (Jira) — completes the ROOT FIX above. That
+      // fix already resolved/auto-created a real Physician directory
+      // record, but discarded the result — orderingPhysicianId (this
+      // Case's own real, stable link to that record, already relied
+      // on by TemplateRoutingService's Pass 0b and
+      // contextBuilder.ts's own real fallback,
+      // orderingPhysicianId ?? requestingProvider) was never actually
+      // set on any real, live-accessioned case. newCase is already
+      // persisted (caseRouter.createCase above) by this point, so this
+      // is a real, explicit follow-up update, not part of the
+      // original create — same fail-open posture: a resolution
+      // failure here must never roll back the already-created case.
+      // Spreads the existing newCase.order fields explicitly —
+      // updateCase's own real merge is shallow at the top level, so a
+      // naive { order: { orderingPhysicianId } } would silently wipe
+      // priority/clientId/requestingProvider/etc. instead of adding to
+      // them.
+      //
+      // Real, per PS-81's own picker follow-up: when the accessioner
+      // actually picked a real physician from the dropdown,
+      // selectedProvider already IS that exact, real, unambiguous
+      // record — using its id directly skips resolveProviderName's own
+      // free-text matching entirely, since there's no ambiguity left
+      // to resolve. Only falls back to string-based resolution when
+      // the field holds free text the user typed without ever
+      // selecting a real match (a genuinely new/outside physician).
+      if (selectedProvider) {
+        caseRouter.updateCase(newCase.id, {
+          order: { ...newCase.order, orderingPhysicianId: selectedProvider.id },
+        }).catch(console.error);
+      } else if (requestingProvider.trim()) {
+        resolveProviderName(requestingProvider.trim(), 'requesting', clientId)
+          .then(resolved => {
+            if (resolved.ok && resolved.data) {
+              return caseRouter.updateCase(newCase.id, {
+                order: { ...newCase.order, orderingPhysicianId: resolved.data.physician.id },
+              });
+            }
+          })
+          .catch(console.error);
       }
 
       // Write a permanent record for any specimen that had a
@@ -1245,57 +2007,67 @@ const AccessionPage: React.FC = () => {
       // necessarily have the resolution in hand on the spot, so this
       // uses raise() alone, not raiseAndResolve(). Tracked to resolution
       // from the dedicated Deficiencies work queue, independent of this
-      // case's own lifecycle.
-      await Promise.all(specimens.map((s, i) => {
-        if (!s.manualDeficiency) return Promise.resolve();
-        return specimenDeficiencyService.raise({
+      // case's own lifecycle. Real fix, per direct follow-up: a
+      // specimen can genuinely have more than one real issue at once
+      // (e.g. both "Container Damaged" and "Insufficient Volume") —
+      // raises every entry in the real array, not just a single one.
+      await Promise.all(specimens.flatMap((s, i) =>
+        s.manualDeficiencies.map(def => specimenDeficiencyService.raise({
           caseId,
           specimenId: specimenRecords[i].id,
           specimenLabel: s.label,
-          deficiencyTypeId: s.manualDeficiency.deficiencyTypeId,
-          comment: s.manualDeficiency.comment || undefined,
+          deficiencyTypeId: def.deficiencyTypeId,
+          comment: def.comment || undefined,
           raisedBy: user?.id ?? 'unknown',
-        });
-      }));
+        }))
+      ));
 
-      // Case-level manual deficiency — genuinely no specimenId/
+      // Case-level manual deficiencies — genuinely no specimenId/
       // specimenLabel, unlike every other raise() call in this file.
       // Not every real issue is tied to one specimen; forcing a
       // specimen choice for something like a missing requisition
       // (which covers the whole order, not one particular specimen)
       // was always a small fiction — see specimenId's own doc comment
-      // on the SpecimenDeficiency type for the full reasoning.
-      if (caseManualDeficiency) {
-        await specimenDeficiencyService.raise({
-          caseId,
-          deficiencyTypeId: caseManualDeficiency.deficiencyTypeId,
-          comment: caseManualDeficiency.comment || undefined,
-          raisedBy: user?.id ?? 'unknown',
-        });
-      }
+      // on the SpecimenDeficiency type for the full reasoning. Same
+      // real fix as above — a real array, not a single slot.
+      await Promise.all(caseManualDeficiencies.map(def => specimenDeficiencyService.raise({
+        caseId,
+        deficiencyTypeId: def.deficiencyTypeId,
+        comment: def.comment || undefined,
+        raisedBy: user?.id ?? 'unknown',
+      })));
 
       if (sourceOrderId) {
         await orderIntakeService.markOrderLinked(sourceOrderId, caseId);
         loadPendingOrders(); // remove it from the pending list now that it's linked
       }
 
-      const lowConfidenceCount = evalResult.assignments.filter(a => a.belowThreshold).length;
-      toast.success(
-        lowConfidenceCount > 0
-          ? `Case ${caseId} accessioned — ${lowConfidenceCount} of ${specimens.length} specimen(s) fell back to the default Grossing Template (see below).`
-          : `Case ${caseId} accessioned with ${specimens.length} Grossing Template assignment(s).`
-      );
+      // Real fix, per direct follow-up: the real, per-specimen
+      // confidence/fallback outcome isn't known yet at this point
+      // anymore — evaluateGrossingTemplateAssignment now runs in the
+      // background (see refineGrossingTemplatesInBackground() below).
+      // Every specimen already has a real, immediately-usable template
+      // (the same fallback the AI itself would use for one it can't
+      // confidently route) — this toast says so honestly, without
+      // claiming a specific AI outcome that hasn't happened yet. A
+      // separate, later toast reports the real refinement outcome once
+      // it completes.
+      toast.success(`Case ${caseId} accessioned with ${specimens.length} specimen(s). Refining Grossing Template assignments…`);
 
       // Closes the loop described in the original Intraop spec — "when
       // the formal order finally arrives from the LIS, PathScribe
       // should look for a match." This is that moment. Non-blocking:
-      // if nothing matches, accession finishes exactly as it always did.
-      intraoperativeService.findMatchesForNewCase({
-        patientName: `${familyNames.trim()}, ${givenNames.trim()}`,
-        mrn: mrn.trim(),
-        surgeon: requestingProvider.trim(),
-        accessionedAt: new Date().toISOString(),
-      }).then(res => {
+      // if nothing matches, accession finishes exactly as it always
+      // did. Real fix, per direct follow-up on the 6-second wait: this
+      // used to START the lookup here, strictly after the slow AI
+      // grossing-template call above had already finished — resolving
+      // the SAME promise kicked off early, right after caseId was
+      // generated, instead. The genuinely independent latency of this
+      // lookup now overlaps with the AI call's own latency rather than
+      // adding to it. Only resolved here, after caseRouter.createCase()
+      // has actually succeeded — a match found earlier is never
+      // surfaced to the UI before the real Case genuinely exists.
+      intraopMatchPromise.then(res => {
         if (res.ok && res.data.length > 0) setIntraopMatch({ caseId, match: res.data[0] });
       });
 
@@ -1311,12 +2083,34 @@ const AccessionPage: React.FC = () => {
   function resetForm() {
     setNamePrefix(''); setGivenNames(''); setFamilyNames(''); setPreferredName(''); setNameSuffix('');
     setDob(''); setSex('F'); setMrn('');
-    setPriority('Routine'); setRequestingProvider(''); setClientId(''); setClinicalIndication(''); setIcd10Codes([]); setCaseComments([]); setAssignedTo(''); setCaseManualDeficiency(undefined);
+    setPriority('Routine'); setRequestingProvider(''); setClientId(''); setClinicalIndication(''); setIcd10Codes([]); setCaseComments([]); setAssignedTo(''); setCaseManualDeficiencies([]);
     setSpecimens([emptySpecimen('A')]);
     setLastResult(null);
+    setJustAccessionedCase(null);
     setSourceOrderId(null); setOrderSearch(''); setImportWarnings([]);
     loadPendingOrders();
     setTab('case');
+  }
+
+  // Real feature, per direct follow-up on the label-printing
+  // architecture scope. Real, user-triggered action, deliberately not
+  // automatic on every accession — printing consumes real physical
+  // label stock, and window.open() called from an async callback with
+  // no direct user gesture is commonly popup-blocked; a real click
+  // here is both the right UX and the thing that keeps the print
+  // window from being silently blocked.
+  async function handlePrintLabels() {
+    if (!justAccessionedCase) return;
+    const { caseData, specimens: printSpecimens } = justAccessionedCase;
+    const { printRequisitionLabel, printAllContainerLabels } = await import('@/utils/labels/printRequisitionAndContainerLabels');
+
+    // Real, honest limitation: two different physical label sizes in
+    // one browser print job would need two different @page rules,
+    // which isn't reliably controllable across browsers from a single
+    // print() call — printed as two separate jobs instead, each with
+    // its own correct, real @page size.
+    printRequisitionLabel(caseData);
+    await printAllContainerLabels(caseData, printSpecimens);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -1340,20 +2134,59 @@ const AccessionPage: React.FC = () => {
 
         {tab === 'case' && (
           <div className="ps-card-dark ps-accession-card">
+            {/* Real fix, per direct report: "This assumes an order
+                exists, but it may not... we should update the onscreen
+                title perhaps?" Confirmed directly this section was
+                already, genuinely optional — sourceOrderId stays null
+                for a manual entry, submission works fine without it,
+                and there's no separate "Order" entity created either
+                way; the Case itself IS the record whether its fields
+                came from an import or were typed by hand. The gap was
+                real but purely in the label: "Import from Order,"
+                prominently at the very top of the form with no
+                qualifier, could reasonably read as a required first
+                step rather than a convenience — this section is only
+                hidden entirely when there are ZERO pending orders
+                system-wide (see the guard above), so a walk-in
+                patient with no order of their own still sees this
+                section front and center, since OTHER patients' orders
+                exist. "— Optional" added to the label itself, plus a
+                direct, explicit hint that skipping straight to manual
+                entry below is a fully valid path. */}
             {pendingOrders.length > 0 && (
               <div className="ps-accession-import-row">
-                <label className="ps-label">Import from Order ({pendingOrders.length} pending)</label>
+                <label className="ps-label">Import from Order ({pendingOrders.length} pending) — Optional</label>
+                <p className="ps-accession-import-hint">
+                  No matching order? Skip this and enter the case details directly below.
+                </p>
                 <div className="ps-accession-order-picker">
                   <div className="ps-accession-order-picker-search-wrap">
-                    <input type="text" placeholder="Search by order #, patient name, MRN, or client code…"
+                    <input type="text" placeholder={`Search by Order #, MRN, Patient Name, DOB (${searchDobFormatHint}), or Client Code…`}
                       value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
+                      onKeyDown={handleOrderSearchKeyDown}
                       className="ps-accession-order-picker-search" disabled={importing} />
+                    <button
+                      type="button"
+                      className="ps-accession-order-search-icon-btn"
+                      onClick={handleOrderSearchIconClick}
+                      disabled={importing}
+                      title="Search"
+                      aria-label="Search"
+                    >
+                      🔍
+                    </button>
+                    <button
+                      type="button"
+                      className="ps-accession-advanced-search-link"
+                      onClick={() => openOrderLookupModal(orderSearch)}
+                      disabled={importing}
+                    >
+                      Advanced Search
+                    </button>
                   </div>
-                  <div className="ps-accession-order-picker-list">
-                    {orderSearch.trim().length < 2 ? (
+                  <div className="ps-accession-order-picker-list" data-phi="accession">{orderSearch.trim().length < 2 ? (
                       <div className="ps-accession-order-picker-empty">
-                        {orderSearch.trim().length === 1 ? 'Keep typing…' : 'Type at least 2 characters to search pending orders.'}
-                      </div>
+                        {orderSearch.trim().length === 1 ? 'Keep typing…' : 'Type at least 2 characters to search pending orders.'}</div>
                     ) : filteredOrders.length === 0 ? (
                       <div className="ps-accession-order-picker-empty">No pending orders match.</div>
                     ) : filteredOrders.map(o => (
@@ -1377,6 +2210,47 @@ const AccessionPage: React.FC = () => {
                 )}
               </div>
             )}
+            {/* Real fix, per direct UI/UX request: moved here from a
+                grid cell between Patient ID and Priority, further down
+                this same form. Establishes a real, top-to-bottom
+                logical flow an accessioner actually follows in a real
+                clinical workflow — "is this a normal patient or a
+                downtime/placeholder case" is a decision made BEFORE
+                entering a real name, not a system-level footnote
+                sitting among (and interrupting) pure demographic
+                fields (Given Name, Family Name, DOB, Sex) that belong
+                grouped cleanly together. Promoted from the previous,
+                deliberately de-emphasized inline-text treatment
+                (`ps-accession-checkbox-row`, still used for the
+                checkbox row itself, unchanged) to a real, bordered
+                banner container — reusing this same page's own
+                existing `ps-accession-warnings` visual pattern (the
+                Import from Order warnings block above) rather than
+                inventing a second, different "banner" look, since
+                that's exactly the established, amber warning-banner
+                treatment already used elsewhere on this identical
+                page. */}
+            <div className="ps-accession-downtime-banner">
+              <label className="ps-accession-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={isDowntimeAccession}
+                  onChange={e => { setIsDowntimeAccession(e.target.checked); if (!e.target.checked) setDowntimeReasonCode(''); }}
+                />
+                This is a temporary/downtime placeholder identity (e.g. unidentified trauma patient, registration system outage)
+              </label>
+              {isDowntimeAccession && (
+                <div className="ps-accession-downtime-reason">
+                  <label className="ps-label" htmlFor="accession-downtime-reason">Downtime Reason</label>
+                  <select id="accession-downtime-reason" className="ps-input-dark" value={downtimeReasonCode} onChange={e => setDowntimeReasonCode(e.target.value)}>
+                    <option value="">Select a reason…</option>
+                    {BREAK_GLASS_REASON_CODES.map(r => (
+                      <option key={r.code} value={r.code}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             <div className="ps-accession-grid">
               <div>
                 <label className="ps-label">Given Name(s)</label>
@@ -1423,39 +2297,31 @@ const AccessionPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="ps-label">Patient ID (optional)</label>
+                <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Patient ID (optional)
+                  {/* Real feature, per direct specification: "UI Status
+                      Indicator Component" — only shown once a real
+                      facility is selected, since the jurisdiction (and
+                      therefore which validator/format applies) is only
+                      genuinely known at that point; patientIdStandard's
+                      own 'US' default before then is a guess, not a real
+                      context worth surfacing a status for yet. No real
+                      HL7 status code is available at manual-entry time
+                      (that only ever arrives via an imported/resolved
+                      order — see OrderLookupModal.tsx's own future
+                      extension point for wiring that through once real
+                      ADT parsing surfaces it), so GB_EW correctly shows
+                      Amber/"Unverified" rather than Green here — see
+                      patientIdStatus.ts's own comment on that exact,
+                      honest distinction. */}
+                  {selectedClient && (
+                    <PatientIdStatusDot jurisdiction={selectedClient.jurisdiction} rawId={mrn} />
+                  )}
+                </label>
                 <input className="ps-input-dark" value={mrn} onChange={e => setMrn(e.target.value)}
                   placeholder={selectedClient
                     ? `${patientIdStandard.label} format, e.g. ${patientIdStandard.example} — auto-generated if blank`
                     : 'Select a Submitting Facility first, or leave blank to auto-generate'} />
-              </div>
-              {/* Real feature, per direct confirmation, building Phase
-                  B of the "Interface Exception & Case-Binding Module."
-                  Deliberately a rare, secondary toggle — genuine
-                  downtime/emergency accessions are the exception, not
-                  the default, so this stays visually de-emphasized
-                  rather than living among the primary identity
-                  fields above. */}
-              <div>
-                <label className="ps-accession-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={isDowntimeAccession}
-                    onChange={e => { setIsDowntimeAccession(e.target.checked); if (!e.target.checked) setDowntimeReasonCode(''); }}
-                  />
-                  This is a temporary/downtime placeholder identity (e.g. unidentified trauma patient, registration system outage)
-                </label>
-                {isDowntimeAccession && (
-                  <div className="ps-accession-downtime-reason">
-                    <label className="ps-label" htmlFor="accession-downtime-reason">Downtime Reason</label>
-                    <select id="accession-downtime-reason" className="ps-input-dark" value={downtimeReasonCode} onChange={e => setDowntimeReasonCode(e.target.value)}>
-                      <option value="">Select a reason…</option>
-                      {BREAK_GLASS_REASON_CODES.map(r => (
-                        <option key={r.code} value={r.code}>{r.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
               <div>
                 <label className="ps-label" htmlFor="accession-priority">Priority</label>
@@ -1463,6 +2329,68 @@ const AccessionPage: React.FC = () => {
                   {priorityLevels.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </div>
+              {/* Real feature, per direct, detailed specification:
+                  "Encounter Selector & Auto-Fill." Positioned
+                  "directly above the facility/provider fields" per
+                  the spec's own instruction — genuinely two different
+                  real states, never both at once: a single real
+                  active encounter already applied (the confirmation
+                  badge + unlink control), or more than one real
+                  active encounter found, awaiting a real accessioner
+                  choice (the selector). Spans the full 3-column grid
+                  width via the same ps-accession-field--full class
+                  the rest of this page's own full-width rows already
+                  use, rather than a new, one-off spanning rule. */}
+              {encounterLookupState === 'loading' && (
+                <div className="ps-accession-field--full">
+                  <div className="ps-encounter-loading">Checking for active encounters…</div>
+                </div>
+              )}
+              {linkedEncounter && (
+                <div className="ps-accession-field--full">
+                  <div className="ps-encounter-badge">
+                    <span className="ps-encounter-badge-icon">✓</span>
+                    <span className="ps-encounter-badge-text">
+                      Auto-filled from Encounter #{linkedEncounter.encounterNumber}
+                      {linkedEncounter.ward ? ` (${linkedEncounter.ward})` : linkedEncounter.department ? ` (${linkedEncounter.department})` : ''}
+                    </span>
+                    <button type="button" className="ps-encounter-badge-unlink" onClick={handleUnlinkEncounter}>
+                      Change / Unlink Encounter
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!linkedEncounter && encounterCandidates.length > 0 && (
+                <div className="ps-accession-field--full">
+                  <label className="ps-label" htmlFor="accession-encounter-selector">
+                    Select Encounter ({encounterCandidates.length} active)
+                  </label>
+                  <select
+                    id="accession-encounter-selector"
+                    className="ps-input-dark"
+                    defaultValue=""
+                    onChange={e => {
+                      const chosen = e.target.value
+                        ? encounterCandidates.find(enc => enc.id === e.target.value) ?? null
+                        : null;
+                      handleSelectEncounterFromDropdown(chosen);
+                    }}
+                  >
+                    <option value="" disabled>Choose the correct encounter…</option>
+                    {encounterCandidates.map(enc => (
+                      <option key={enc.id} value={enc.id}>
+                        #{enc.encounterNumber} — {enc.encounterClass}
+                        {enc.admitTime ? ` — ${new Date(enc.admitTime).toLocaleString()}` : ''}
+                        {enc.facility ? ` — ${enc.facility}` : ''}
+                        {[enc.ward, enc.room, enc.bed].filter(Boolean).length > 0 ? ` (${[enc.ward, enc.room, enc.bed].filter(Boolean).join('/')})` : ''}
+                        {enc.attendingProvider ? ` — ${enc.attendingProvider}` : ''}
+                      </option>
+                    ))}
+                    <option value="">Create without encounter link (Manual Entry)</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="ps-label" htmlFor="accession-client">Submitting Facility</label>
                 <select id="accession-client" className="ps-input-dark" value={clientId} onChange={e => setClientId(e.target.value)}>
@@ -1505,9 +2433,72 @@ const AccessionPage: React.FC = () => {
                   </select>
                 </div>
               )}
-              <div>
+              <div className="ps-conf-form-field ps-amendment-physician-picker">
                 <label className="ps-label">Requesting Provider</label>
-                <input className="ps-input-dark" value={requestingProvider} onChange={e => setRequestingProvider(e.target.value)} placeholder="Dr. Jane Smith" />
+                <input
+                  className="ps-amendment-physician-search"
+                  value={requestingProvider || providerQuery}
+                  onChange={e => { setProviderQuery(e.target.value); setRequestingProvider(''); setSelectedProvider(undefined); setShowProviderDropdown(true); }}
+                  onFocus={e => {
+                    if (requestingProvider) { setProviderQuery(requestingProvider); setRequestingProvider(''); }
+                    setShowProviderDropdown(true);
+                    e.target.select();
+                  }}
+                  onBlur={() => setTimeout(() => setShowProviderDropdown(false), 150)}
+                  placeholder="Search staff, or type a name…"
+                />
+                {showProviderDropdown && filteredProviders.length > 0 && (
+                  <div className="ps-amendment-physician-dropdown">
+                    {filteredProviders.map(p => {
+                      const fullName = `${p.givenNames} ${p.familyNames}`;
+                      const rows = contactRowsFor(p);
+                      return (
+                        <div
+                          key={p.id}
+                          className="ps-amendment-physician-option"
+                          onMouseDown={() => { setRequestingProvider(fullName); setSelectedProvider(p); setProviderQuery(''); setShowProviderDropdown(false); }}
+                        >
+                          <span className={`ps-amendment-physician-avatar ${avatarColorClass(fullName)}`}>
+                            {initials(p.givenNames, p.familyNames)}
+                          </span>
+                          <span className="ps-amendment-physician-info">
+                            <span className="ps-amendment-physician-name">
+                              {fullName}
+                              {p.status === 'Unverified' && <span className="ps-amendment-physician-unverified"> · unverified</span>}
+                            </span>
+                            <span className="ps-amendment-physician-specialty">{p.specialty}</span>
+                            {rows.length > 0 && (
+                              <span className="ps-amendment-physician-contact">
+                                {rows.map((c, i) => (
+                                  <span key={i} className={c.isPreferred ? 'ps-amendment-physician-contact-preferred' : undefined}>
+                                    {c.icon} {c.value}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {!showProviderDropdown && selectedProvider && (
+                  <div className="ps-amendment-physician-selected-card">
+                    <span className={`ps-amendment-physician-avatar ${avatarColorClass(requestingProvider)}`}>
+                      {initials(selectedProvider.givenNames, selectedProvider.familyNames)}
+                    </span>
+                    <span className="ps-amendment-physician-info">
+                      <span className="ps-amendment-physician-specialty">{selectedProvider.specialty}</span>
+                      <span className="ps-amendment-physician-contact">
+                        {contactRowsFor(selectedProvider).map((c, i) => (
+                          <span key={i} className={c.isPreferred ? 'ps-amendment-physician-contact-preferred' : undefined}>
+                            {c.icon} {c.value}
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="ps-label" htmlFor="accession-assigned-to">Assign to Pathologist (optional)</label>
@@ -1537,13 +2528,15 @@ const AccessionPage: React.FC = () => {
                 </button>
               </div>
               <div className="ps-accession-field--full">
-                <label className="ps-label">Case-Level Deficiency (optional)</label>
+                <label className="ps-label">Case-Level Deficiencies (optional)</label>
                 <button type="button"
-                  className={`ps-accession-specimen-trigger${!caseManualDeficiency ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
+                  className={`ps-accession-specimen-trigger${caseManualDeficiencies.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
                   onClick={() => setCaseDeficiencyModalOpen(true)}>
-                  {!caseManualDeficiency
+                  {caseManualDeficiencies.length === 0
                     ? '⚠ Flag something wrong with the whole case, not a specific specimen — e.g. missing requisition paperwork'
-                    : `⚠ ${deficiencyTypes.find(t => t.id === caseManualDeficiency.deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`}
+                    : caseManualDeficiencies.length === 1
+                      ? `⚠ ${deficiencyTypes.find(t => t.id === caseManualDeficiencies[0].deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`
+                      : `⚠ ${caseManualDeficiencies.length} deficiencies reported — click to manage`}
                 </button>
               </div>
             </div>
@@ -1606,13 +2599,15 @@ const AccessionPage: React.FC = () => {
                     </div>
 
                     <div className="ps-accession-specimen-field--wide">
-                      <label className="ps-label">Deficiency (optional)</label>
+                      <label className="ps-label">Deficiencies (optional)</label>
                       <button type="button"
-                        className={`ps-accession-specimen-trigger${!s.manualDeficiency ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
+                        className={`ps-accession-specimen-trigger${s.manualDeficiencies.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
                         onClick={() => setDeficiencyModalOpenForIdx(idx)}>
-                        {!s.manualDeficiency
+                        {s.manualDeficiencies.length === 0
                           ? '⚠ Flag a problem with this specimen — container damage, insufficient volume, etc.'
-                          : `⚠ ${deficiencyTypes.find(t => t.id === s.manualDeficiency!.deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`}
+                          : s.manualDeficiencies.length === 1
+                            ? `⚠ ${deficiencyTypes.find(t => t.id === s.manualDeficiencies[0].deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`
+                            : `⚠ ${s.manualDeficiencies.length} deficiencies reported — click to manage`}
                       </button>
                     </div>
 
@@ -1624,7 +2619,32 @@ const AccessionPage: React.FC = () => {
                           placeholder="e.g. Breast" />
                       </div>
                       <div>
-                        <label className="ps-label">Laterality</label>
+                        <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          Laterality
+                          {/* Real feature, per direct follow-up: "I would
+                              like to include the AI badge, confidence on
+                              fields being suggested." Deliberately no
+                              percentage — inferLateralityFromText.ts is a
+                              real, deterministic keyword match, not an
+                              AI/LLM confidence score, so a fabricated
+                              number would misrepresent what actually
+                              produced this value. Same visual language as
+                              the Synoptic report's own AI badges (small,
+                              rounded, colored), honestly labeled instead. */}
+                          {s.lateralityInferred && (
+                            <span
+                              title={`Inferred from the order's specimen description: "${s.description}"`}
+                              style={{
+                                fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 8,
+                                background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)',
+                                color: '#34d399', cursor: 'default',
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              <span style={{ fontSize: 10 }}>💡</span> Suggested from order
+                            </span>
+                          )}
+                        </label>
                         <select className="ps-input-dark" value={s.laterality}
                           onChange={e => updateSpecimenField(idx, 'laterality', e.target.value)}>
                           <option value="">— not specified —</option>
@@ -1680,6 +2700,43 @@ const AccessionPage: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Real feature, per direct follow-up: "Accessioning
+                        isn't wired to the foreign-ID collision check."
+                        The real "cytology fluid" case this whole
+                        feature traces back to — a received specimen
+                        already carrying an outside lab's own
+                        identifier, entered here at the moment it's
+                        first accessioned, never re-labeled. Same real
+                        pattern as SpecimenEditModal.tsx/
+                        BlockStainEditorModal.tsx's own identical
+                        fields elsewhere in this app. */}
+                    <div className="ps-accession-specimen-row-3col">
+                      <div>
+                        <label className="ps-label">Foreign ID Source (optional)</label>
+                        <input className="ps-input-dark" value={s.externalIdSource}
+                          onChange={e => updateSpecimenField(idx, 'externalIdSource', e.target.value)}
+                          onBlur={() => checkSpecimenForeignIdCollision(idx)}
+                          placeholder="e.g. Outside Cytology Lab" />
+                      </div>
+                      <div>
+                        <label className="ps-label">Foreign ID (optional)</label>
+                        <input className="ps-input-dark" value={s.externalId}
+                          onChange={e => updateSpecimenField(idx, 'externalId', e.target.value)}
+                          onBlur={() => checkSpecimenForeignIdCollision(idx)}
+                          placeholder="e.g. the id already assigned by that lab" />
+                      </div>
+                    </div>
+                    {specimenForeignIdCollisions[idx] && (
+                      <div className="ps-accession-specimen-field--wide ps-foreign-id-collision-warning">
+                        <div className="ps-foreign-id-collision-warning-text">
+                          {('withinDraft' in specimenForeignIdCollisions[idx]!)
+                            ? <>⚠ Specimen {(specimenForeignIdCollisions[idx] as { otherLabel: string }).otherLabel} on this same accession already uses this foreign ID — double-check before continuing.</>
+                            : <>⚠ This foreign ID is already linked to {(specimenForeignIdCollisions[idx] as ForeignIdCollision).recordLabel} on case {(specimenForeignIdCollisions[idx] as ForeignIdCollision).caseAccession} — double-check before continuing.</>
+                          }
+                        </div>
+                      </div>
+                    )}
+
                     {s.resolvedCategoryName && (
                       <div className={`ps-accession-assignment-meta ${s.categoryWasAutoCreated ? 'ps-accession-assignment-meta--warn' : ''}`}>
                         Category: {s.resolvedCategoryName}{s.categoryWasAutoCreated ? ' (new — pending admin review)' : ''}
@@ -1723,16 +2780,10 @@ const AccessionPage: React.FC = () => {
                 context="specimen"
                 specimenLabel={specimens[deficiencyModalOpenForIdx].label}
                 deficiencyTypes={deficiencyTypes}
-                existing={specimens[deficiencyModalOpenForIdx].manualDeficiency}
-                onSave={(deficiencyTypeId, comment) => {
+                existing={specimens[deficiencyModalOpenForIdx].manualDeficiencies}
+                onSave={(deficiencies) => {
                   setSpecimens(prev => prev.map((s, i) =>
-                    i === deficiencyModalOpenForIdx ? { ...s, manualDeficiency: { deficiencyTypeId, comment } } : s
-                  ));
-                  setDeficiencyModalOpenForIdx(null);
-                }}
-                onRemove={() => {
-                  setSpecimens(prev => prev.map((s, i) =>
-                    i === deficiencyModalOpenForIdx ? { ...s, manualDeficiency: undefined } : s
+                    i === deficiencyModalOpenForIdx ? { ...s, manualDeficiencies: deficiencies } : s
                   ));
                   setDeficiencyModalOpenForIdx(null);
                 }}
@@ -1765,6 +2816,16 @@ const AccessionPage: React.FC = () => {
               </button>
             </div>
             </>}
+
+            {justAccessionedCase && (
+              <div className="ps-card-dark ps-accession-card">
+                <h3>Labels</h3>
+                <p className="ps-accession-print-hint">
+                  1 requisition label + {justAccessionedCase.specimens.length} container label(s) for {justAccessionedCase.caseData.accession.fullAccession}.
+                </p>
+                <button className="ps-btn-secondary" onClick={handlePrintLabels}>🖨️ Print Labels</button>
+              </div>
+            )}
 
             {lastResult && (
               <div className="ps-card-dark ps-accession-card">
@@ -1838,13 +2899,9 @@ const AccessionPage: React.FC = () => {
         <ReportDeficiencyModal
           context="case"
           deficiencyTypes={deficiencyTypes}
-          existing={caseManualDeficiency}
-          onSave={(deficiencyTypeId, comment) => {
-            setCaseManualDeficiency({ deficiencyTypeId, comment });
-            setCaseDeficiencyModalOpen(false);
-          }}
-          onRemove={() => {
-            setCaseManualDeficiency(undefined);
+          existing={caseManualDeficiencies}
+          onSave={(deficiencies) => {
+            setCaseManualDeficiencies(deficiencies);
             setCaseDeficiencyModalOpen(false);
           }}
           onClose={() => setCaseDeficiencyModalOpen(false)}
@@ -1869,6 +2926,24 @@ const AccessionPage: React.FC = () => {
           onDismiss={() => setIntraopMatch(null)}
         />
       )}
+
+      <OrderLookupModal
+        isOpen={orderLookupModalOpen}
+        initialQuery={orderLookupInitialQuery}
+        pendingOrders={pendingOrders}
+        organisationId={mpiScopeOrgId}
+        searchDobFormat={searchDobFormat}
+        dobFormatHint={searchDobFormatHint}
+        onSelectOrder={orderId => {
+          setOrderLookupModalOpen(false);
+          handleImportOrder(orderId);
+        }}
+        onSelectPatient={patient => {
+          setOrderLookupModalOpen(false);
+          handleSelectExistingPatient(patient);
+        }}
+        onClose={() => setOrderLookupModalOpen(false)}
+      />
 
       <ConfirmModal
         show={!!pendingImportOrderId}

@@ -56,4 +56,4 @@ Thumbs.db
 
 
 audit-results.txt
-audit-unwired-features.cjs
+scripts/audit-unwired-features.cjs

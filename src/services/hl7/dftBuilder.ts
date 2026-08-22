@@ -20,6 +20,23 @@
 // PRE-INTEGRATION SCAFFOLDING. Nothing calls this yet - no real
 // MLLP/HTTP transport exists to actually send it. Real, carefully-
 // researched engineering ready for when transport is.
+//
+// KNOWN, DISCLOSED STALENESS (Charge Capture work, not yet reconciled
+// here): this function still reads specimen.coding.cpt/
+// block.coding.cpt directly as if those arrays hold final, real CPT
+// code strings. As of the Charge Capture build
+// (services/billing/resolveServiceCharge.ts,
+// types/billing/ServiceChargeRecord.ts), that's no longer true going
+// forward - those fields hold internal billingCode labels
+// ('IHC-FIRST', not '88342'), and the real, resolved CPT/RVU/modifier
+// values now live on a case's own ServiceChargeRecord[] instead,
+// resolved once at finalization and never re-resolved later (see that
+// file's own header for why). This function needs a real rewire to
+// pull cptCode/modifier/quantity from ServiceChargeRecord before it's
+// safe to actually wire up transport - deliberately NOT done as part
+// of this same change, since this file has zero real callers today and
+// the two changes are cleanly separable; flagged here so whoever wires
+// up real transport later finds this note before finding a silent bug.
 // ─────────────────────────────────────────────────────────────
 
 import type { Case } from '@/types/case/Case';

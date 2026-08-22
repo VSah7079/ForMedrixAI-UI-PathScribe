@@ -29,6 +29,13 @@ interface BottomActionBarProps {
    *  is a separate, dedicated entry point reusing the same underlying
    *  PDF generation, not a duplicate implementation. */
   onPrint?: () => void;
+  /** Real feature, per direct follow-up: "Move Manage Reprints...
+   *  Bottom-Right Action Cluster... it keeps all case-level actions in
+   *  one predictable location... removes the visual orphaning of the
+   *  current Manage Reports button." Was tab-specific (Material tab
+   *  only, inside MaterialTreePanel.tsx); now global and always
+   *  available here, alongside Save Draft/Finalize. */
+  onOpenReprints?: () => void;
   
   onDelegate?: () => void;
   onHistory?: () => void;
@@ -130,6 +137,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onSignOut,
   onRequestAmendment,
   onPrint,
+  onOpenReprints,
   
   onDelegate,
   onHistory,
@@ -282,6 +290,24 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       </div>
 
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+        {/* Real feature, per direct follow-up: "Move Manage Reprints...
+            Bottom-Right Action Cluster... Place Manage Reports as the
+            leftmost button in the bottom-right cluster." Placed
+            outside every case-state branch below (pool/finalized/
+            grossing/normal) rather than inside any single one of
+            them — the original button (MaterialTreePanel.tsx, before
+            this move) was available unconditionally whenever a case
+            was open; case state deciding whether a lost/damaged label
+            can be reprinted would have been a real, unintended
+            regression, not a UI cleanup. */}
+        {onOpenReprints && (
+          <>
+            <ActionButton onClick={onOpenReprints} variant="outline" color="#94a3b8" title="Manage reprints — requisition, container, cassette, and slide labels">
+              🖨️ Manage Reprints
+            </ActionButton>
+            <Divider />
+          </>
+        )}
         {/* Pool case — show Claim button only */}
         {isPool && (
           <ActionButton onClick={() => setClaimOpen(true)} variant="solid" color="#6366f1" hoverColor="#4f46e5">

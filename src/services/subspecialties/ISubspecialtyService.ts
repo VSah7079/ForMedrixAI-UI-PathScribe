@@ -12,6 +12,14 @@ export interface Subspecialty {
   isWorkgroupEnabled: boolean;
   active: boolean;             // replaces status for consistency with UI
   status: 'Active' | 'Inactive';
+  // Real feature, per direct product decision: the automatic fallback
+  // pool (casePoolAssignmentService.ts's own config.fallbackPoolId,
+  // 'general') needs a real, visible record here so an admin can see
+  // it exists and understand its purpose — but it isn't a normal,
+  // admin-created pool, and shouldn't be editable, deactivatable, or
+  // deletable the way one is. True only for that one, real, seeded
+  // entry; absent (not merely false) on every ordinary subspecialty.
+  isSystemManaged?: boolean;
 }
 
 export interface ISubspecialtyService {

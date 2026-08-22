@@ -10,6 +10,7 @@
 import { SpecimenFlag } from "./SpecimenFlag";
 import { CaseComment } from "./CaseComment";
 import type { CasePriority } from "@/services/cases/ICaseService";
+import type { MaterialLocation } from "./Material";
 
 export interface SpecimenCollection {
   collectedAt?: string;
@@ -49,7 +50,24 @@ export interface SpecimenContainer {
 // same reasoning as CasePriority: these are settled clinical vocabularies,
 // not something that benefits from being database-driven.
 
-export type BlockStatus = 'Pending' | 'Grossed' | 'Embedded' | 'Exhausted' | 'Cancelled';
+/**
+ * Real feature, per direct follow-up building a full exception-states
+ * matrix for the grossing bench: "Lost or damaged blocks need
+ * immediate high-visibility visual warnings... Adding these clear
+ * states across your block models gives histology complete
+ * visibility." Confirmed directly this type's own header comment
+ * ("no full exception-status lifecycle... cut here for time") meant
+ * exactly what it said — neither state existed anywhere before this.
+ * Real, additive extension to the actual data model, not just new UI
+ * badges layered on top of nothing: 'Lost' means the physical
+ * cassette can't be located in storage (microtome cutting is
+ * impossible until found); 'Damaged' means the paraffin itself is
+ * compromised (cracked/melted) and needs re-embedding before any
+ * recut is possible — genuinely different physical situations with
+ * genuinely different real consequences for what a tech can still do
+ * with the block, not two labels for the same thing.
+ */
+export type BlockStatus = 'Pending' | 'Grossed' | 'Embedded' | 'Exhausted' | 'Cancelled' | 'Lost' | 'Damaged';
 export type StainOrderStatus =
   | 'Pending Cut' | 'Cut & Placed' | 'Staining' | 'Coverslipped'
   | 'Ready for Review' | 'Recut Requested' | 'QC Failed' | 'Cancelled';
@@ -89,9 +107,54 @@ export interface StainOrder {
    */
   stainName: string;
   status: StainOrderStatus;
+  /**
+   * Real feature, per direct follow-up on the Hybrid Request-Driven
+   * Workflow spec: "Optimistic / 'Pending' State... render it
+   * immediately in the Material tree with a clear visual badge."
+   * Undefined means this stain was never itself a PathScribe-
+   * initiated outbound request (e.g. it arrived with the case from
+   * the LIS originally) — only ever set on a stain added via the
+   * request-to-LIS flow, and only for as long as that request is in
+   * flight or was refused. 'rejected' is kept, not cleared, per the
+   * spec's own "flag the item with a clear alert" instruction — a
+   * refused order stays visible with its real outcome, it doesn't
+   * silently vanish.
+   */
+  lisRequestStatus?: 'pending' | 'confirmed' | 'rejected';
   /** A whole-slide scan of this specific stain order, if one exists.
    *  See Material.ts's DigitalAsset — left empty everywhere for now. */
   digitalAssets?: import('./Material').DigitalAsset[];
+  /** Real feature, per direct follow-up: "Is there any reason to
+   *  block Material location and tracking on PS-49?" See
+   *  MaterialLocation's own doc comment (Material.ts) for the full
+   *  shape. Real fix, per direct follow-up with a concrete mockup in
+   *  hand: full, real history now (every event kept), not a single
+   *  overwritten cache. */
+  locationHistory?: MaterialLocation[];
+  /**
+   * Real feature, per direct follow-up's own concrete example:
+   * "Aliquot A1-1A... Tissue Scraping" / "...RNA Lysate" — molecular/
+   * genetic material derived FROM this specific slide. See Material.ts's
+   * own Aliquot type for the full reasoning.
+   */
+  aliquots?: import('./Material').Aliquot[];
+  /**
+   * Real feature, per direct follow-up on unique material
+   * identification. The PathScribe half of "both, linked" — a real,
+   * stored, human-readable id (slideIdentifier() from
+   * types/labels/LabelData.ts, e.g. "S26-4403-A1-L2"), computed once
+   * at real slide/stain creation and stored here, matching
+   * HistologyBlock.displayId's own shape exactly. Optional for the
+   * same reason — see utils/materialDisplayId.ts's
+   * resolveSlideDisplayId for the real, computed fallback for older
+   * records.
+   */
+  displayId?: string;
+  /** The other half of "both, linked" — see HistologyBlock.externalId's
+   *  own doc comment for the full reasoning; identical shape here. */
+  externalId?: string;
+  /** Free text naming whatever real system assigned externalId. */
+  externalIdSource?: string;
   /**
    * Real feature, per direct confirmation: "Order Restain... Captures
    * reason (e.g., 'Weak stain', 'Artifact', 'Pathologist request').
@@ -109,6 +172,26 @@ export interface StainOrder {
   restainOrderedBy?: string;
   restainOrderedAt?: string;
   restainOfSlideId?: string;
+  /** Real feature, per direct follow-up: "stainer rack batch ID...
+   *  live directly on the Slide record." Same real meaning as
+   *  MatrixBlock.currentBatchId (types/case/MatrixBlock.ts) — which
+   *  real Batch (services/batches/) this slide is currently checked
+   *  into, if any. Undefined otherwise — most slides, most of the
+   *  time, aren't actively inside a real staining batch run. */
+  currentBatchId?: string;
+  /** Real feature, per direct follow-up: "As the user scans each
+   *  specimen container it gets updated to disposed and comes off the
+   *  list." A real, durable, permanent fact about this specific
+   *  physical item — deliberately a separate, additive field, not a
+   *  new StainOrderStatus value (changing that enum risks silently
+   *  breaking exhaustive status-switch logic elsewhere in this app;
+   *  this field is purely additive and safe). Once set, this item is
+   *  permanently excluded from computeDisposalQueue
+   *  (services/retentionPolicy/computeDisposalQueue.ts) — never
+   *  cleared, matching the same "never silently reversible" posture
+   *  as every other real disposal record in this app. */
+  disposedAt?: string;
+  disposedBy?: string;
 }
 
 export interface HistologyBlock {
@@ -117,6 +200,16 @@ export interface HistologyBlock {
   label: string;
   status: BlockStatus;
   stains: StainOrder[];
+  /**
+   * Real feature, per direct follow-up on the Hybrid Request-Driven
+   * Workflow spec: "Optimistic / 'Pending' State... render it
+   * immediately in the Material tree with a clear visual badge." Same
+   * real meaning as StainOrder.lisRequestStatus (see that field's own
+   * doc comment) — undefined for a block that was never itself a
+   * PathScribe-initiated recut/block request (e.g. it came with the
+   * case from the LIS at accessioning).
+   */
+  lisRequestStatus?: 'pending' | 'confirmed' | 'rejected';
   /** Real fix, Phase 1 of specimen/block-level CPT association:
    *  ancillary CPT codes (special stains, IHC) are tied to the specific
    *  block they were performed on, not the specimen as a whole - a
@@ -152,6 +245,68 @@ export interface HistologyBlock {
    * is affected.
    */
   priority?: CasePriority;
+  /**
+   * Real feature, per direct follow-up: "Subtext: Display the QC
+   * status or timestamp ('Reported missing 8/14')" and "Block missing
+   * from archive · QC Incident #1042." Free-text context for a Lost
+   * or Damaged block specifically — deliberately one shared field
+   * rather than separate ones per exception type, since what it needs
+   * to say genuinely differs by situation (an incident number for a
+   * lost block, a repair note for a damaged one) and a single real
+   * pathologist/histotech-facing note covers both without forcing an
+   * artificial split. Undefined for a block with no active exception.
+   */
+  exceptionNote?: string;
+  /** When the exception (Lost/Damaged) was reported — real, separate
+   *  from any other date on this case, since a block can be reported
+   *  lost well after it was originally grossed/embedded. */
+  exceptionReportedAt?: string;
+  /**
+   * Real feature, per direct follow-up: "Is there any reason to block
+   * Material location and tracking on PS-49?" See MaterialLocation's
+   * own doc comment (types/case/Material.ts) for the full reasoning —
+   * a real, received cache, never something PathScribe decides for
+   * itself. Real fix, per direct follow-up with a concrete mockup in
+   * hand: full, real history now (every event kept), not a single
+   * overwritten cache.
+   */
+  locationHistory?: MaterialLocation[];
+  /**
+   * Real feature, per direct follow-up on unique material
+   * identification: "the ID should at least be understandable to a
+   * human... I'm not sure if we should generate this id or expect it
+   * from the LIS, or both and link them?" This is the "both, linked"
+   * answer's PathScribe half — a real, stored, human-readable id
+   * (cassetteIdentifier() from types/labels/LabelData.ts, e.g.
+   * "S26-4403-A1"), computed once at real block creation and stored
+   * here, matching Specimen.displayId's own established shape and
+   * naming exactly rather than inventing a second convention.
+   * Previously this same string was only ever computed on demand for
+   * printing, never actually stored on the record — real,
+   * confirmed inconsistency with Specimen.displayId, fixed here.
+   * Optional for the same real reason Specimen.displayId is: older
+   * blocks created before this existed don't have one — see
+   * utils/materialDisplayId.ts's resolveBlockDisplayId for the real,
+   * computed fallback.
+   */
+  displayId?: string;
+  /**
+   * The other half of "both, linked" — whatever real id a real,
+   * external LIS/middleware assigns to this physical cassette, once
+   * that integration exists. Deliberately a real, separate field
+   * from displayId, not a value PathScribe would ever overwrite its
+   * own id with — the two can genuinely disagree (a barcode printed
+   * by Cerebro's own CEREBRO-ID hardware need not match PathScribe's
+   * own deterministic string), and keeping both, explicitly linked,
+   * is safer than forcing one to win. Undefined until a real,
+   * field-verified vendor integration actually populates it (see
+   * PS-49) — no real caller sets this yet, on purpose.
+   */
+  externalId?: string;
+  /** Free text naming whatever real system assigned externalId —
+   *  same vendor-agnostic shape as MaterialLocation.source and
+   *  BlockExceptionEventPayload.sourceSystem, not a closed enum. */
+  externalIdSource?: string;
   /** A block-face photo of this specific block, if one exists. See
    *  Material.ts's DigitalAsset — left empty everywhere for now. */
   digitalAssets?: import('./Material').DigitalAsset[];
@@ -204,6 +359,56 @@ export interface HistologyBlock {
   cancelReason?: string;
   cancelledBy?: string;
   cancelledAt?: string;
+  /** Real feature, per direct follow-up: "As the user scans each
+   *  specimen container it gets updated to disposed and comes off the
+   *  list." Same real, additive, never-cleared field as
+   *  StainOrder.disposedAt's own doc comment — see that field for the
+   *  full reasoning. */
+  disposedAt?: string;
+  disposedBy?: string;
+  /** Real feature, per direct follow-up: "pieces (or tissue fragments)
+   *  represent the individual physical fragments of a specimen placed
+   *  into a cassette... recorded explicitly in the gross description
+   *  and mapped to the cassette/matrix block record." Real, genuine
+   *  QA value across the real pipeline: embedding checks this count
+   *  against what's actually visible before processing continues,
+   *  microtomy checks it against the ribbon, sign-out checks it
+   *  against the slide — a real, load-bearing number, not a cosmetic
+   *  one. Same real shape as MatrixBlock's own identical fields
+   *  (types/case/MatrixBlock.ts) — intentionally identical so
+   *  QA/embedding/microtomy tooling can treat an ordinary block and a
+   *  matrix block the same way wherever the real distinction doesn't
+   *  matter. */
+  pieceCount?: number;
+  pieceDescription?: string;
+  /** Real feature, per direct follow-up: "The embedding technician
+   *  relies on the recorded piece count to verify that 100% of the
+   *  grossed tissue made it through processing into the paraffin
+   *  block. If a cassette is logged with 4 pieces at grossing but
+   *  only 3 are visible at embedding, an immediate Tissue Discrepancy
+   *  QA Flag is raised before sectioning." Set once, at the real
+   *  moment a block transitions to 'Embedded' (see
+   *  BlockStainEditorModal.tsx's own status-change handler) — the
+   *  real, observed count, independent of pieceCount above (the
+   *  count recorded at grossing). A real discrepancy is simply these
+   *  two, real numbers disagreeing — MaterialTreePanel.tsx renders
+   *  that comparison directly rather than a separately-tracked
+   *  boolean flag that could drift from the two real counts it's
+   *  supposedly summarizing. */
+  pieceCountAtEmbedding?: number;
+  /** Real, honest tracking of whether every real, grossed piece
+   *  actually made it into this physical cassette, or whether some
+   *  remain in wet storage — see pieceCount's own doc comment for the
+   *  full reasoning. */
+  isEntirelySubmitted?: boolean;
+  /** Real feature, per direct follow-up describing the real grossing-
+   *  station workflow: cassette media attributes resolved via
+   *  evaluateCassetteRouting.ts (resolveBlockCassetteColor.ts) — same
+   *  real shape and reasoning as Decant.cassetteColorId/
+   *  cassetteColorOverridden (types/case/Material.ts), for an
+   *  ordinary tissue block's own real cassette. */
+  cassetteColorId?: string;
+  cassetteColorOverridden?: boolean;
 }
 
 /**
@@ -252,6 +457,15 @@ export interface Specimen {
    *  older seed specimens don't have one and fall back to id/label in
    *  any UI that reads this field. */
   displayId?: string;
+  /** Real, architectural fix, per direct follow-up: "Each Specimen
+   *  maintains a lightweight pointer... for relational lookup without
+   *  duplicating physical status properties." References
+   *  Case.matrixBlocks[].id — a specimen with any tissue in a real,
+   *  shared cassette holds the real matrix block's own id here, never
+   *  a competing copy of its status/location. Most specimens have no
+   *  shared tissue at all and this stays undefined, exactly as it
+   *  always has. */
+  matrixBlockIds?: string[];
   /** Collection metadata (FHIR Specimen.collection) */
   collection?: SpecimenCollection;
   /** Processing metadata (fixative, processing steps) */
@@ -292,6 +506,25 @@ export interface Specimen {
    * this field existed.
    */
   specimenDictionaryEntryId?: string;
+  /** Real feature, per direct follow-up: "Is there any reason to
+   *  block Material location and tracking on PS-49?" See
+   *  MaterialLocation's own doc comment (Material.ts) for the full
+   *  shape. Real fix, per direct follow-up with a concrete mockup in
+   *  hand: full, real history now (every event kept), not a single
+   *  overwritten cache. */
+  locationHistory?: MaterialLocation[];
+  /**
+   * Real feature, per direct follow-up on unique material
+   * identification: "I'm not sure if we should generate this id or
+   * expect it from the LIS, or both and link them?" Specimen already
+   * has the PathScribe half (displayId, above) — this is the other
+   * half of "both, linked": whatever real id an external LIS/
+   * middleware assigns, once that integration exists. Same real
+   * shape and reasoning as HistologyBlock.externalId/
+   * externalIdSource — see that field's own doc comment.
+   */
+  externalId?: string;
+  externalIdSource?: string;
   /**
    * Histology blocks generated for this specimen — minimal model built
    * for a same-week end-to-end demo (Accession → Grossing Template →
@@ -326,6 +559,18 @@ export interface Specimen {
    * Updated to 'sync_sent' / 'sync_rejected' by the LIS write-back service.
    */
   lisStatus?: SpecimenLisStatus;
+  /** Real feature, per direct follow-up: "does disposal queue include
+   *  container id so specimens can be disposed?" Same real shape as
+   *  HistologyBlock.disposedAt/disposedBy — a specimen's own wet
+   *  tissue, held in its own real, printed container
+   *  (barcodePayloadForContainer — types/labels/LabelData.ts), is a
+   *  real, separately disposable object with its own retention clock
+   *  (RetentionPolicy.ts's own 'wet_tissue' RetainableMaterialType —
+   *  real, seeded governing-body windows already existed for this;
+   *  the real, missing piece was the queue/scan-dispose wiring, not
+   *  the retention math itself). */
+  disposedAt?: string;
+  disposedBy?: string;
   /** Audit metadata */
   createdAt?: string;
   updatedAt?: string;

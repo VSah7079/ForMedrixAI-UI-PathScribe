@@ -36,7 +36,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSystemConfig } from './SystemConfigContext';
 import { useAuth } from './AuthContext';
 import { IDENTIFIER_FORMAT_LIBRARY } from '../types/systemConfig';
@@ -45,7 +45,7 @@ import { IDENTIFIER_FORMAT_LIBRARY } from '../types/systemConfig';
 
 type ScanType = 'accession' | 'mrn' | 'unknown';
 
-interface ScanEvent {
+export interface ScanEvent {
   raw:      string;
   type:     ScanType;
   matchedAccession?: string;
@@ -74,6 +74,7 @@ const MIN_SCAN_LENGTH = 5;
 
 export const ScannerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate      = useNavigate();
+  const location       = useLocation();
   const { config }    = useSystemConfig();
   const { user }      = useAuth();
   const bufferRef     = useRef<string>('');
@@ -118,6 +119,20 @@ export const ScannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Fire custom event so components can react (e.g. flash the search bar)
     window.dispatchEvent(new CustomEvent('PATHSCRIBE_SCAN', { detail: scanEvent }));
 
+    // Real feature, per direct, detailed specification: "Barcode Listener &
+    // Form Auto-Ingestion." The Accession page has its own, real
+    // PATHSCRIBE_SCAN listener (AccessionPage.tsx) that resolves a scan
+    // against pending orders/patient records and auto-fills the case form
+    // directly — a genuinely different, more specific real outcome than
+    // this provider's own generic "navigate to an existing case" default.
+    // Auto-navigating away here first would fight that: an accessioner
+    // scanning a NEW specimen label whose payload happens to also match a
+    // configured accession-number pattern would be yanked off the very
+    // page they're using to create the case. The event above still
+    // dispatches unconditionally — this only suppresses the navigation
+    // side effect specifically, on this one real, known-conflicting route.
+    if (location.pathname.startsWith('/accession')) return;
+
     // Navigate based on scan type
     if (type === 'accession' && matchedAccession) {
       navigate(`/case/${matchedAccession}/synoptic`);
@@ -125,7 +140,7 @@ export const ScannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // MRN: could navigate to worklist filtered by MRN — placeholder for now
     // if (type === 'mrn') navigate(`/worklist?mrn=${cleaned}`);
 
-  }, [getEnabledPatterns, navigate]);
+  }, [getEnabledPatterns, navigate, location.pathname]);
 
   useEffect(() => {
     // Only activate when user is authenticated

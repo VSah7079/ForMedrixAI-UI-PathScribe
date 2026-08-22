@@ -1019,7 +1019,16 @@ const BRONWYN_CASES: Case[] = [
 
 // ─── Pool cases — unassigned, visible to all users ───────────
 // 1 STAT (urgent) + 2 Routine
-
+//
+// Real fix, per direct report: every case below previously had
+// status: 'pool' with no poolId/poolName at all, which fell through
+// buildPoolGroupRows' own generic 'Pool' fallback label in the
+// worklist — an unnamed bucket with no real, visible connection to
+// the real "General Pathology" system pool built for exactly this
+// purpose (see mockSubspecialtyService.ts's own 'general' entry).
+// These cases represent exactly what that pool exists for — real work
+// that hasn't matched a specific subspecialty — so they're now tagged
+// with its real id/name rather than falling back to an unlabeled one.
 const POOL_CASES: Case[] = [
 
   // O26-0012: Cervical cone biopsy — STAT urgent pool case
@@ -1027,6 +1036,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0012', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0012', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0012' },
     originHospitalId: 'HOSP-001', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-012', mrn: '500001', firstName: 'Alicia', lastName: 'Fernandez', dateOfBirth: isoYearsAgo(34, 5, 17), sex: 'F' },
     specimens: [
       { id: 'O26-0012-SP-A', label: 'A', description: 'Cervical cone biopsy (LLETZ)',          receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
@@ -1056,6 +1066,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0013', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0013', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0013' },
     originHospitalId: 'HOSP-001', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-013', mrn: '500002', firstName: 'Harold', lastName: 'Briggs', dateOfBirth: isoYearsAgo(71, 1, 30), sex: 'M' },
     specimens: [
       { id: 'O26-0013-SP-A', label: 'A', description: 'Skin excision — left forearm, 2.5 cm ellipse', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'comp-braf-0013', name: 'BRAF V600E', lisCode: 'BRAFM', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0013-SP-A' }] },
@@ -1084,6 +1095,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0014', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0014', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0014' },
     originHospitalId: 'HOSP-002', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-014', mrn: '500003', firstName: 'Yvonne', lastName: 'Castellano', dateOfBirth: isoYearsAgo(52, 8, 11), sex: 'F' },
     specimens: [
       { id: 'O26-0014-SP-A', label: 'A', description: 'Right breast core needle biopsy — 12 o\'clock', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'comp-erh2-0014', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0014-SP-A' }] },
@@ -1112,6 +1124,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0015', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0015', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0015' },
     originHospitalId: 'HOSP-001', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-015', mrn: '500004', firstName: 'Daniel', lastName: 'Okafor', dateOfBirth: isoYearsAgo(58, 2, 9), sex: 'M' },
     specimens: [
       { id: 'O26-0015-SP-A', label: 'A', description: 'Liver core biopsy — right lobe, ultrasound-guided', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [],
@@ -1145,6 +1158,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0016', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0016', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0016' },
     originHospitalId: 'HOSP-002', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-016', mrn: '500005', firstName: 'Margaret', lastName: 'Whitfield', dateOfBirth: isoYearsAgo(67, 11, 23), sex: 'F' },
     specimens: [
       { id: 'O26-0016-SP-A', label: 'A', description: 'Subtotal gastrectomy', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [{ id: 'comp-her2f-0016', name: 'HER2 FISH', lisCode: 'HER2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0016-SP-A' }] },
@@ -1178,6 +1192,7 @@ const POOL_CASES: Case[] = [
     id: 'O26-0017', reportingMode: 'orchestrator',
     accession: { accessionNumber: 'O0017', accessionPrefix: 'O', accessionYear: 2026, fullAccession: 'O26-0017' },
     originHospitalId: 'HOSP-003', status: 'pool' as any,
+    poolId: 'general', poolName: 'General Pathology',
     patient: { id: 'OPAT-017', mrn: '500006', firstName: 'Patricia', lastName: 'Dunmore', dateOfBirth: isoYearsAgo(45, 4, 30), sex: 'F' },
     specimens: [
       { id: 'O26-0017-SP-A', label: 'A', description: 'Left thigh mass, wide local excision', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
@@ -1906,6 +1921,21 @@ export const mockOrchestratorCaseService: ICaseService = {
   // Filter by assigned user — pool cases visible to all
   async listCasesForUser(userId: string): Promise<Case[]> {
     await delay();
+    // Real bug fix, confirmed live: CaseSearchBar.tsx calls
+    // listCasesForUser('all') with the explicit intent "returns every
+    // case regardless of assignment... the search bar is a clinical
+    // lookup tool, not a worklist filter" (see that file's own
+    // comment). The LIS-side mockCaseService.listCasesForUser already
+    // special-cases 'all'/'current'/empty userId to mean exactly
+    // that — this side never did, so it silently applied the normal
+    // assigned-to-me-or-pool filter even for 'all', making any
+    // Orchestration case not literally assigned to a user named "all"
+    // invisible to the search bar specifically (every other access
+    // path to the same case — direct URL, worklist, case list for a
+    // real userId — worked correctly throughout, since only this one
+    // caller ever passed the literal string 'all'). Matches the
+    // LIS-side special case exactly, so both sources now behave the
+    // same way for the same input.
     if (!userId || userId === 'all' || userId === 'current') return CASES;
     return CASES.filter(c =>
       c.order?.assignedTo === userId ||

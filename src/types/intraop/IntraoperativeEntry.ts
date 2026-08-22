@@ -32,6 +32,46 @@ export type MilestoneType =
 
 export type SkipReason = 'fibrotic_scant' | 'direct_to_frozen' | 'other';
 
+/** Real, new type, per direct guidance — resolves a real, confirmed gap
+ *  (Jira PS-82): milestones[] tracks WORKFLOW SEQUENCE (when a step
+ *  happened, was it skipped, why) — it was never meant to be, and
+ *  never reliably could be, a real COUNT of what was actually
+ *  produced. A single 'frozen_section_cut' milestone tap represents
+ *  the workflow step happening at all, not how many physical blocks
+ *  were frozen, and a specimen can genuinely have BOTH touch preps AND
+ *  frozen blocks, which the old single-tap-per-milestone-type model
+ *  had no way to represent as distinct, countable, separately-
+ *  identified outputs at all. */
+export type PreparationType =
+  | 'frozen_block'
+  | 'touch_prep'
+  | 'squash_prep'
+  | 'cytology_fluid'
+  | 'gross_only';
+
+/** Real, itemized record of one specific preparation actually
+ *  produced at the bench — e.g. one real frozen block, one real touch
+ *  prep slide. This, not milestones[], is the real source
+ *  suggestFrozenSectionCptCodes() (services/billing/frozenSectionBilling.ts)
+ *  counts from — see that file's own header for the full reasoning,
+ *  and PreparationOutput[] on IntraopSpecimen below for where these
+ *  live per specimen. */
+export interface PreparationOutput {
+  id: string;
+  type: PreparationType;
+  /** Real, human-readable identifier for this specific output, e.g.
+   *  "FS-A1" for a frozen block or "FS-TP1" for a touch prep slide on
+   *  specimen A — matches the real example given directly ("Specimen A
+   *  → 1 Touch Prep Slide (FS-TP1) + 1 Frozen Block (FS-A1)").
+   *  Auto-generated from the specimen's own label plus a real,
+   *  per-type sequence counter (mockIntraoperativeService.ts's own
+   *  addPreparationOutput) — never left to free-text entry, so two
+   *  outputs of the same type on the same specimen can never
+   *  collide. */
+  identifier: string;
+  timestamp: string;
+}
+
 /** Discrete, comparable category — the actual point of this over free
  *  text: two short diagnoses can't reliably self-compare for
  *  discordance, but two categories from the same small set can. 'deferred'
@@ -118,6 +158,19 @@ export interface IntraopSpecimen {
    *  setFrozenSectionDiagnosis (mockIntraoperativeService.ts) - the real
    *  moment the diagnosis is actually rendered. */
   frozenDiagnosisRenderedAt?: string;
+  /** Real, itemized record of what was actually produced at the bench
+   *  for this specimen, per direct guidance — separate from
+   *  milestones[] above (workflow-sequence tracking only). A single
+   *  specimen can genuinely have multiple, different preparation
+   *  outputs — e.g. one touch prep slide AND two frozen blocks — each
+   *  with its own real identifier. This is the real source
+   *  suggestFrozenSectionCptCodes() counts frozen blocks from
+   *  (services/billing/frozenSectionBilling.ts) — resolves PS-82's
+   *  real, confirmed gap (counting milestones.length was never
+   *  reliable). Genuinely empty for a specimen where nothing has been
+   *  logged yet, or for legacy sessions created before this field
+   *  existed. */
+  preparations: PreparationOutput[];
 }
 
 export interface IntraoperativeEntry {

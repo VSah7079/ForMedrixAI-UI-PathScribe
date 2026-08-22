@@ -63,7 +63,7 @@ import { lisAmendmentNoticeService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { VersionHistoryEntry, FieldOverride } from '../modals/AmendmentModal';
 import type { NotificationMethod } from '@/types/reports/AmendmentRecord';
-import type { Case, SynopticReportInstance, ProtocolChange, AiFieldSuggestion } from '@/types/case/Case';
+import type { Case, SynopticReportInstance, ProtocolChange, AiFieldSuggestion, GrossingReportInstance } from '@/types/case/Case';
 import type { CaseStatus } from '@/types/case/CaseStatus';
 import type { MutableRefObject } from 'react';
 import type { SigningUser, SetConcurrencyConflict, SendSynopticReportToLisFn, GenerateReportPdfSnapshotFn } from './sharedHookTypes';
@@ -257,6 +257,36 @@ export function useAmendmentWorkflow({
     setShowProtoReview(true);
   }, []);
 
+  // Real feature, per direct follow-up: "there is kind of a workflow that
+  // allows the Gross to be dictated and on submission, the AI reads the
+  // Text, and updates the template... Not sure if there is bearing here."
+  // Real bearing, confirmed — see evaluateGrossingTemplateFit's own header
+  // comment (mockCaseService.ts) and useGrossingCompletion.ts's own real
+  // call site for the full design. Deliberately separate, parallel state
+  // from the Synoptic review above — a single Gross Complete can propose
+  // real changes to BOTH the Grossing Template (this) and the diagnostic
+  // Synoptic Template (above) independently; conflating them into one
+  // review would either force the pathologist through irrelevant
+  // Synoptic rows to reach a real Grossing change or vice versa.
+  const [showGrossingProtoReview, setShowGrossingProtoReview] = useState(false);
+  const [grossingProtoChanges, setGrossingProtoChanges] = useState<ProtocolChange[]>([]);
+  // Real, deliberate capture — NOT re-derived from caseData.diagnostic.
+  // grossDescription at commit time, since Gross Complete's own real
+  // patch (useGrossingCompletion.ts) never actually writes that field;
+  // the dictated text this evaluation used only ever existed locally,
+  // synchronously, at the point of evaluation. Captured here so
+  // handleGrossingProtoCommit below uses the exact same text a
+  // pathologist could still be reviewing minutes later, not a
+  // potentially-stale or entirely absent re-read.
+  const [grossingProtoDictatedText, setGrossingProtoDictatedText] = useState('');
+
+  const handleGrossingProtocolChangesDetected = useCallback((changes: ProtocolChange[], dictatedText: string) => {
+    if (!changes.length) return;
+    setGrossingProtoChanges(changes);
+    setGrossingProtoDictatedText(dictatedText);
+    setShowGrossingProtoReview(true);
+  }, []);
+
   const handleProtoCommit = useCallback(async (acceptedIds: string[]) => {
     setShowProtoReview(false);
     // FIELD NAMES CONFIRMED against ProtocolChangeModal.tsx's real ProtocolChange
@@ -373,6 +403,106 @@ export function useAmendmentWorkflow({
       }
     }
   }, [protoChanges, caseData, log, knownVersionRef, setCaseData, setConcurrencyConflict]);
+
+  // Real feature, per direct follow-up: "there is kind of a workflow that
+  // allows the Gross to be dictated and on submission, the AI reads the
+  // Text, and updates the template... Not sure if there is bearing here."
+  // Mirrors handleProtoCommit directly above, with two real differences:
+  // (1) operates on grossingReports, not synopticReports; (2) instead of
+  // regenerating suggestions from the case's diagnostic text
+  // (generateAiSuggestionsForReport), reuses the SAME real, already-built
+  // dictation-reading capability the Gross Complete workflow itself
+  // already has (generateGrossingFieldSuggestionsFromDictation) — the
+  // real answer to "can it just read the narrative and apply that to the
+  // new template so you don't really lose any information": yes,
+  // targeted at the newly-accepted template's own fields, using the
+  // exact same dictated text the evaluation itself was based on
+  // (grossingProtoDictatedText, captured at evaluation time — see that
+  // state's own comment for why it's not re-derived here).
+  const handleGrossingProtoCommit = useCallback(async (acceptedIds: string[]) => {
+    setShowGrossingProtoReview(false);
+    if (acceptedIds.length === 0 || !caseData) return;
+
+    const accepted = grossingProtoChanges.filter(c => acceptedIds.includes(c.id));
+    const nowIso = new Date().toISOString();
+
+    const matchesExisting = (change: ProtocolChange, g: GrossingReportInstance) =>
+      change.currentInstanceId
+        ? g.instanceId === change.currentInstanceId
+        : g.specimenId === change.specimenId && g.templateId === change.currentTemplateId;
+
+    let reports = [...(caseData.grossingReports ?? [])];
+
+    for (const change of accepted) {
+      // evaluateGrossingTemplateFit only ever proposes 'replace' — a
+      // Grossing Template always has one pre-assigned at accession (see
+      // evaluateGrossingTemplateAssignment's own real fallback default),
+      // so there's no real 'add'/'remove' concept here the way a
+      // diagnostic Synoptic can genuinely have zero assigned.
+      if ((change.action ?? 'replace') !== 'replace' || !change.proposedTemplateId) continue;
+
+      let newFieldSuggestions: Record<string, AiFieldSuggestion> = {};
+      try {
+        const templateModule = await import('@/services/templates/templateService');
+        const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services/cases/mockCaseService');
+        const detail = await templateModule.getTemplate(change.proposedTemplateId);
+        const allFields = detail.template.sections.flatMap(s => s.fields);
+        const targetReport = reports.find(g => matchesExisting(change, g));
+        if (targetReport && grossingProtoDictatedText.trim()) {
+          const bySpecimen = await generateGrossingFieldSuggestionsFromDictation(
+            grossingProtoDictatedText,
+            [{ specimenId: change.specimenId, specimenLabel: change.specimenLabel, specimenDesc: change.specimenDesc, fields: allFields }],
+            caseData.order?.clientId,
+          );
+          newFieldSuggestions = bySpecimen[change.specimenId] ?? {};
+        }
+      } catch (e) {
+        // Non-blocking, same real posture as the original Gross Complete
+        // dictation pass — the template still switches below even if
+        // re-deriving fresh suggestions for it fails; a PA can fill the
+        // new template in by hand exactly as if this feature didn't
+        // exist.
+        console.error('[PathScribe] Re-deriving Grossing field suggestions for the newly-accepted template failed:', e);
+      }
+
+      reports = reports.map(g => {
+        if (!matchesExisting(change, g)) return g;
+        return {
+          ...g,
+          templateId:   change.proposedTemplateId ?? g.templateId,
+          templateName: change.proposedTemplateName ?? g.templateName,
+          updatedAt:    nowIso,
+          // Real, load-bearing safety property — same reasoning as
+          // handleProtoCommit's own Synoptic 'replace' handling: the old
+          // answers are keyed to the OLD template's field IDs, which the
+          // new template isn't guaranteed to share; carrying them
+          // forward silently risks misattributing a value to the wrong
+          // field. Cleared, not carried over — the real information
+          // itself isn't lost, though, since it's re-derived just above
+          // from the same dictated narrative, targeted at the new
+          // template's own real fields, still pathologist-confirmed per
+          // field before anything commits as a real answer.
+          answers:      {},
+          aiSuggestions: newFieldSuggestions,
+        };
+      });
+    }
+
+    const patch = { grossingReports: reports };
+    try {
+      await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData({ ...caseData, ...patch } as typeof caseData);
+      log('grossing_template_change_committed', {
+        caseId: caseData.id,
+        acceptedCount: acceptedIds.length,
+        totalProposed: grossingProtoChanges.length,
+      });
+    } catch (e) {
+      if (handleConcurrencyConflict(e, setConcurrencyConflict)) return;
+      console.error(e);
+    }
+  }, [grossingProtoChanges, grossingProtoDictatedText, caseData, log, knownVersionRef, setCaseData, setConcurrencyConflict]);
 
   const [amendmentDraftId, setAmendmentDraftId] = useState<string | null>(null);
   const [amendmentSequenceNumber, setAmendmentSequenceNumber] = useState(1);
@@ -601,6 +731,10 @@ export function useAmendmentWorkflow({
     protoChanges,
     handleProtocolChangesDetected,
     handleProtoCommit,
+    showGrossingProtoReview, setShowGrossingProtoReview,
+    grossingProtoChanges,
+    handleGrossingProtocolChangesDetected,
+    handleGrossingProtoCommit,
     amendmentDraftId, setAmendmentDraftId,
     amendmentSequenceNumber,
     amendmentSubmitError, setAmendmentSubmitError,

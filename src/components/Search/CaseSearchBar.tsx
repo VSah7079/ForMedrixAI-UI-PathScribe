@@ -452,10 +452,8 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
             >
               {/* Grid row matching column headers: Accession | Patient | DOB·Sex | Priority | Status | Client */}
               <div className="ps-casebar-dropdown__grid">
-                <span className="ps-casebar-dropdown__accession">
-                  {highlight(hit.accession, caseNumber)}
-                </span>
-                <span className="ps-casebar-dropdown__patient">{hit.patientName}</span>
+                <span className="ps-casebar-dropdown__accession" data-phi="accession">{highlight(hit.accession, caseNumber)}</span>
+                <span className="ps-casebar-dropdown__patient" data-phi="name">{hit.patientName}</span>
                 <span className="ps-casebar-dropdown__dob">{hit.dob} · {hit.sex}</span>
                 <span className={`ps-casebar-dropdown__priority${hit.priority === 'STAT' ? ' ps-casebar-dropdown__priority--stat' : ''}`}>
                   {hit.priority !== '—' ? hit.priority : ''}

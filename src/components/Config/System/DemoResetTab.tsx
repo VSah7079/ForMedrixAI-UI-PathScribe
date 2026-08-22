@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
+import { IS_MOCK_BACKEND } from '@/services/index';
 
 // ─── Reset utilities ──────────────────────────────────────────────────────────
 
@@ -34,6 +35,18 @@ const VERSIONED_KEYS = [
   'pathscribe_messages_version',
   'pathscribe_mock_cases_version',
   'pathscribe_flags_version',
+  // Real fix, per direct follow-up: "make sure the demo reset is
+  // covering everything." Found via a full, systematic audit of
+  // every real localStorage key literal used anywhere in src/ (both
+  // via mockStorage.ts's storageGet/storageSet — already covered by
+  // the MOCK_PREFIX sweep below, regardless of this list — and every
+  // raw localStorage.getItem/setItem call with its own, independent
+  // key), cross-referenced against this file's own reset lists.
+  // pathscribe_orders_seed_version is this app's own, newest example
+  // of the exact failure mode this audit was looking for: a real key
+  // added alongside a real feature, genuinely missed here until
+  // checked directly.
+  'pathscribe_orders_seed_version',
 ];
 
 const SETTINGS_KEYS = [
@@ -51,7 +64,10 @@ const SETTINGS_KEYS = [
   // survived a "Demo Reset". Deliberately NOT included:
   // pathscribe_audit_logs / pathscribe_error_logs (shouldn't reset with
   // demo data -- an audit trail and error log surviving a demo reset is
-  // the correct behavior, not a gap).
+  // the correct behavior, not a gap). Same real reasoning, found and
+  // deliberately excluded during the later, full audit below:
+  // ps_ai_audit_log_v1 (a genuine AI-decision audit trail, not demo
+  // state).
   'pathscribe_roles',
   'pathscribe_users',
   'pathscribe_clients',
@@ -68,6 +84,54 @@ const SETTINGS_KEYS = [
   'pathscribe_grossing_routing_overrides',
   'pathscribe_incoming_orders',
   'pathscribe_management_reviews',
+
+  // ── Real fix, per direct follow-up: "make sure the demo reset is
+  //    covering everything." Every key below was found via the same
+  //    full, systematic audit as VERSIONED_KEYS's own new entry —
+  //    real, live, mutable app/admin/demo state with no existing
+  //    reset coverage at all until now. Grouped by real feature area
+  //    for readability, not because the reset logic treats them any
+  //    differently — remove() runs the exact same way for all of
+  //    them. ──
+  // AI config/learning
+  'pathscribe_ai_org_config', 'pathscribe_ai_user_config',
+  'pathscribe_narrative_signals_v2', 'pathscribe_template_suggestion_signals_v1',
+  'ps_ai_behavior_config_v1', 'ps_dictation_corrections',
+  // Scan station selection/prompt state — real, per-device demo state
+  // (which physical bench a tester is "at" right now), not a genuine
+  // user preference worth surviving a reset.
+  'pathscribe_current_scan_station_id', 'pathscribe_scan_station_prompted',
+  // MPI (Master Patient Index) demo records
+  'pathscribe_mpi_identifiers', 'pathscribe_mpi_links', 'pathscribe_mpi_records',
+  // Template/case routing config
+  'pathscribe_routing_rules_v1', 'pathscribe_routing_config', 'pathscribe_routing_rules',
+  'ps_registry_overrides_v1', 'ps_case_registries_v1', 'ps_case_number_series_v1',
+  // Validation studies, research feed
+  'pathscribe_validation_studies_v1',
+  'pathscribe_pubmed_ticker_backoff', 'pathscribe_pubmed_ticker_cache', 'pathscribe_research_feed_config', 'pathscribe_research_feed_health',
+  // Org-level config toggles/settings
+  'pathscribe_orchestrator_mode', 'pathscribe_idle_timeout_minutes',
+  'pathscribe_release_buffer_org_config',
+  'pathscribe_org_document_style_footer', 'pathscribe_org_document_style_header', 'pathscribe_org_document_style_body',
+  'pathscribe_governing_bodies', 'pathscribe_tat_entries_v2', 'pathscribe_retention_policy',
+  'pathscribe_external_resources', 'pathscribe_encounters',
+  // Real feature, per direct follow-up: dispatched-event log for the
+  // Interface Engine STUB (no real engine wired yet, per that
+  // module's own header) — simulated dispatch history, not a genuine
+  // compliance audit trail, so it resets like any other demo data.
+  'pathscribe_interface_engine_dispatched_events',
+  'pathscribe_ai_feedback',
+  // Action registry, claims, delegation
+  'ps_action_registry', 'ps_claims_v1', 'ps_delegations_v1', 'ps_enhancement_config_v1', 'ps_editor_store_v1',
+  // Biometric demo credentials/policy/session — same real "clears
+  // like SESSION_KEY" reasoning, not real production auth data.
+  'ps_biometric_credentials', 'ps_biometric_policy', 'ps_biometric_session', 'ps_biometric_wizard_dismissed',
+  'pathscribe_own_session_id',
+  // Real, system-wide config (jurisdiction and related settings —
+  // RetentionPolicy.ts's own getCurrentJurisdiction()) and a second,
+  // separate current-user cache (Config/AI/index.tsx) distinct from
+  // the real SESSION_KEY this file already clears below.
+  'pathscribe_system_config_v2', 'pathscribe_current_user',
 ];
 
 const CASE_KEYS = [
@@ -91,7 +155,18 @@ const FLAG_KEYS = [
 
 const STATE_KEYS = [
   'pathscribe_ped_requested',
+  'pathscribe_orch_requested',
   'ps_learned_triggers',
+  // Real fix, per direct follow-up: "make sure the demo reset is
+  // covering everything." Minor, UI-level preference/state keys —
+  // included anyway for a genuinely clean, predictable baseline
+  // (per direct follow-up's own "returns everything to a test ready
+  // position"), not because any one of these is high-stakes on its
+  // own.
+  'pathscribe-tab-width', 'pathscribe_header_compact_manual', 'pathscribe_voice_accent',
+  'pathscribe:desktopViewOverride', 'ps_sidebar_collapsed', 'ps_preview_margins', 'ps_preview_page_size',
+  'pathscribe:savedSearches', 'pathscribe:lastSearch', 'ps_post_signout_pref',
+  'pathscribe_show_superseded_notice', 'pathscribe_footpedal_bindings', 'ps_voice_ai_available',
 ];
 
 // Hospital → user mapping (mirrors mockCaseService USER_HOSPITAL_MAP)
@@ -118,6 +193,17 @@ function getCurrentUserId(): string | null {
 
 /** Full reset — clears all mock data for all users */
 function executeFullReset(): string[] {
+  // Real, critical, defense-in-depth safety check — per direct
+  // follow-up: "The system cannot ever delete/reset a customer's
+  // actual database entries." Never trust the UI's own disabled-button
+  // state alone (a real, separate future entry point — a dev console
+  // call, a different, unguarded UI surface — could bypass that);
+  // this function itself refuses outright the moment this app is ever
+  // cut over to a real, production backend. See services/index.ts's
+  // own IS_MOCK_BACKEND doc comment for the full reasoning.
+  if (!IS_MOCK_BACKEND) {
+    throw new Error('Demo Reset is disabled — this app is connected to a real, non-mock backend. Refusing to risk deleting real customer data.');
+  }
   const cleared: string[] = [];
   const remove = (k: string) => {
     if (localStorage.getItem(k) !== null) {
@@ -143,6 +229,18 @@ function executeFullReset(): string[] {
     .filter(k => k.startsWith(ACTIVE_SESSION_KEY_PREFIX))
     .forEach(k => { localStorage.removeItem(k); cleared.push(k); });
 
+  // Real fix, per direct follow-up: "make sure the demo reset is
+  // covering everything." Same real reasoning as the
+  // ACTIVE_SESSION_KEY_PREFIX sweep immediately above — these two
+  // real key families are built per-case/per-report at runtime
+  // (ps_rpart_ — Report Part Builder's own per-part draft storage;
+  // ps_orch_sections_ — Orchestrator draft sections, keyed by real
+  // caseId), never a single, fixed key name a literal list could
+  // ever fully enumerate.
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('ps_rpart_') || k.startsWith('ps_orch_sections_'))
+    .forEach(k => { localStorage.removeItem(k); cleared.push(k); });
+
   sessionStorage.clear();
   return cleared;
 }
@@ -153,6 +251,11 @@ function executeFullReset(): string[] {
  * Other users' work is preserved.
  */
 function executeUserReset(userId: string): string[] {
+  // Same real, critical, defense-in-depth guard as executeFullReset —
+  // see that function's own comment for the full reasoning.
+  if (!IS_MOCK_BACKEND) {
+    throw new Error('Demo Reset is disabled — this app is connected to a real, non-mock backend. Refusing to risk deleting real customer data.');
+  }
   const cleared: string[] = [];
   const hospitalId = HOSPITAL_MAP[userId];
 
@@ -277,6 +380,29 @@ const DemoResetTab: React.FC = () => {
   );
 
   // ── Done state ────────────────────────────────────────────────────────────
+  // ── Real, critical safety gate — per direct follow-up: "The system
+  //    cannot ever delete/reset a customer's actual database
+  //    entries." Takes precedence over every other UI state in this
+  //    component, including an in-progress confirmation dialog — if
+  //    this app is ever connected to a real, non-mock backend, no
+  //    path through this component should ever reach a destructive
+  //    action. See services/index.ts's own IS_MOCK_BACKEND doc
+  //    comment for the full reasoning. ──
+  if (!IS_MOCK_BACKEND) {
+    return (
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+        <div className="ps-reset-disabled">
+          <div className="ps-reset-disabled__title">⛔ Demo Reset is disabled</div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
+            This app is connected to a real, non-mock backend. Demo Reset only ever operates on
+            ForMedrixAI's own local verification/validation test data — it refuses to run at all
+            once real customer data could exist, rather than risk deleting it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (uiState === 'done' && result) {
     return (
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>

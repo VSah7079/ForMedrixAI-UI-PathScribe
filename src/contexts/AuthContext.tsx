@@ -39,6 +39,12 @@ export interface User {
    *  localStorage — the mock services aren't React components and can't
    *  use this context, so they read the same persisted session object. */
   organisationId?: string;
+  /** Real fallback-chain field, per direct follow-up: "Fallback to
+   *  User Profile: If no device-level ID exists, pull the logged-in
+   *  user's default_station_id." Resolved from StaffUser at login,
+   *  same as the fields above — see StaffUser.defaultScanStationId's
+   *  own doc comment (IUserService.ts) for the full reasoning. */
+  defaultScanStationId?: string;
 }
 
 interface AuthContextType {
@@ -53,7 +59,7 @@ interface AuthContextType {
   /** clearDrafts defaults to true (explicit logout) — the idle-timeout-
    *  triggered call in ProtectedRoute.tsx must pass false, per the
    *  Inactivity Timeout & Draft Recovery spec's Timeout Preservation
-   *  rule (see PRIORITY_FIXES.md). Same rule applies to a session-
+   *  rule. Same rule applies to a session-
    *  supersede-triggered logout — also false, for the same reason.
    */
   logout: (clearDrafts?: boolean) => void;
@@ -95,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     middleName?: string;
     lastName?: string;
     organisationId?: string;
+    defaultScanStationId?: string;
   }> => {
     try {
       const { userService } = await import('../services');
@@ -112,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             middleName:       staffUser.middleName ?? undefined,
             lastName:         staffUser.lastName ?? undefined,
             organisationId:   staffUser.organisationId ?? undefined,
+            defaultScanStationId: staffUser.defaultScanStationId ?? undefined,
           };
         }
       }

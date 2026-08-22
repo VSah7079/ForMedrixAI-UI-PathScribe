@@ -44,7 +44,7 @@ export default function Home() {
     { title: 'Configuration', description: 'System settings and AI preferences', route: '/configuration', color: '#F59E0B', image: '/config.webp' },
     { title: 'Search', description: 'Search completed and in-progress cases', route: '/search', color: '#8B5CF6', image: '/search.webp' },
     { title: 'Audit', description: 'Review System Activities, Audit Trail, and Quality Assurance', route: '/audit', color: '#EF4444', image: '/logs.webp' },
-    { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/deficiencies', color: '#F97316', image: '/deficiencies.webp' },
+    { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/quality-assurance', color: '#F97316', image: '/deficiencies.webp' },
     { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#0EA5E9', image: '/worklist.webp' },
 
     // ⭐ New tile
@@ -54,6 +54,15 @@ export default function Home() {
       route: '/contribution',
       color: '#0EA5E9',
       image: '/my_contributions.webp'
+    },
+
+    // ⭐ New tile
+    {
+      title: 'Batch Management',
+      description: 'Track cassettes and slides through processing nodes via container barcodes',
+      route: '/batch-management',
+      color: '#6366F1',
+      image: '/batch_management.webp'
     }
   ];
 

@@ -15,6 +15,8 @@
 // are imported (type-only) from there to avoid duplicating the shape.
 // ─────────────────────────────────────────────────────────────
 
+import type { ProtocolChange } from '@/types/case/Case';
+
 /** One specimen's worth of input for evaluateGrossingTemplateAssignment. */
 export interface GrossingEvaluationSpecimen {
   specimenId: string;
@@ -100,5 +102,61 @@ export interface GrossingEvaluationResult {
   assignments: GrossingTemplateAssignment[];
   /** Non-fatal issues — same never-hard-fail pattern as
    *  SynopticEvaluationResult / TemplateRoutingService / contextBuilder. */
+  warnings: string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Real feature, per direct follow-up: "there is kind of a workflow that
+// allows the Gross to be dictated and on submission, the AI reads the
+// Text, and updates the template." Confirmed directly: that workflow
+// (generateGrossingFieldSuggestionsFromDictation, mockCaseService.ts)
+// already exists and already re-populates whatever template's fields it's
+// given from the case's real, dictated Gross text — the missing piece
+// wasn't the "narrative -> fields" capability, it's a real trigger to
+// RE-EVALUATE which Grossing Template best fits now that real dictated
+// text exists, which the accession-time-only evaluateGrossingTemplateAssignment
+// never does. Mirrors SynopticEvaluationInput/Result and
+// evaluateSynopticAssignment's own, already-proven "Stage 1" pattern
+// exactly — this is that same real pattern, one stage earlier in the
+// pipeline (Grossing, not the diagnostic Synoptic).
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface GrossingFitEvaluationSpecimen {
+  specimenId: string;
+  specimenLabel: string;
+  specimenDesc: string;
+  /** The Grossing template currently assigned to this specimen, if any —
+   *  absent only for a genuinely new specimen with no assignment yet,
+   *  which shouldn't occur in practice at this stage but is handled
+   *  honestly either way. */
+  currentGrossingTemplate?: { instanceId: string; templateId: string; templateName: string };
+}
+
+export interface GrossingFitEvaluationInput {
+  /** The case's real, dictated Gross Description — the same
+   *  case-level narrative generateGrossingFieldSuggestionsFromDictation
+   *  itself already reads from. This is deliberately the only real text
+   *  input; unlike Stage 1 Synoptic evaluation, a Grossing Route decision
+   *  turns on gross findings specifically, not microscopic/ancillary
+   *  text that doesn't exist yet at Gross Complete time. */
+  dictatedGrossText: string;
+  specimens: GrossingFitEvaluationSpecimen[];
+  /** Same real grounding requirement as every other evaluation function
+   *  here — candidate Grossing Template IDs the AI may choose from.
+   *  Caller resolves via templateService.listTemplates('published')
+   *  filtered to isDiagnostic === false, same as
+   *  evaluateGrossingTemplateAssignment's own callers already do. */
+  availableTemplates: Array<{ id: string; name: string; category: string }>;
+  clientId?: string;
+}
+
+export interface GrossingFitEvaluationResult {
+  /** Reuses the SAME real ProtocolChange type Synoptic Stage 1 already
+   *  uses and ProtocolChangeModal.tsx already renders — confirmed
+   *  directly that its shape is genuinely generic (specimenId/action/
+   *  templateId/templateName/reason/confidence, nothing Synoptic-specific
+   *  baked in), so a real, working review UI comes for free rather than
+   *  needing a parallel modal built from scratch. */
+  changes: ProtocolChange[];
   warnings: string[];
 }

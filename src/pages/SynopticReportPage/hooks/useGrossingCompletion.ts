@@ -54,6 +54,13 @@ interface UseGrossingCompletionParams {
   setConcurrencyConflict: SetConcurrencyConflict;
   grossingSnapshotRef: MutableRefObject<Map<string, string>>;
   handleProtocolChangesDetected: (changes: ProtocolChange[]) => void;
+  // Real feature, per direct follow-up: "there is kind of a workflow
+  // that allows the Gross to be dictated and on submission, the AI
+  // reads the Text, and updates the template... Not sure if there is
+  // bearing here." Real bearing — see this hook's own real call site
+  // below and evaluateGrossingTemplateFit's own header comment
+  // (mockCaseService.ts) for the full design.
+  handleGrossingProtocolChangesDetected: (changes: ProtocolChange[], dictatedText: string) => void;
   /** Real fix, per direct report: "I added some gross text, but the
    *  system is not allowing me to mark gross complete. Gives the no
    *  gross information has been entered." A PA who dictates the
@@ -71,6 +78,7 @@ interface UseGrossingCompletionParams {
 export function useGrossingCompletion({
   caseData, setCaseData, showToast, log, knownVersionRef,
   setConcurrencyConflict, grossingSnapshotRef, handleProtocolChangesDetected,
+  handleGrossingProtocolChangesDetected,
   orchSections,
 }: UseGrossingCompletionParams) {
   const [isEvaluatingSynopticFit, setIsEvaluatingSynopticFit] = useState(false);
@@ -335,6 +343,73 @@ export function useGrossingCompletion({
             showToast('No synoptic assignment changes proposed');
           }
 
+          // Real feature, per direct follow-up: "there is kind of a
+          // workflow that allows the Gross to be dictated and on
+          // submission, the AI reads the Text, and updates the
+          // template... Not sure if there is bearing here." Real
+          // bearing, confirmed directly: evaluates whether each
+          // specimen's CURRENTLY-ASSIGNED Grossing Template still fits,
+          // now that real dictated text exists — accession-time
+          // evaluateGrossingTemplateAssignment only ever had a specimen
+          // description + clinical indication to go on, a much thinner
+          // signal. Runs BEFORE the existing dictation-to-fields pass
+          // below, and any specimen with a proposed change is excluded
+          // from that pass — no reason to populate fields against a
+          // template that's about to be replaced, only to throw that
+          // work away once the pathologist accepts the new one (which
+          // re-derives fresh suggestions for the new template itself,
+          // from the same dictated text — see handleGrossingProtoCommit,
+          // useAmendmentWorkflow.ts).
+          const { stripHtml } = await import('@/services/narrativeSignals/deidentification');
+          const perSpecimenGrossSectionsForFit = grossSections.filter(s => s.specimenId && s.text?.trim());
+          const combinedDictatedGrossText = perSpecimenGrossSectionsForFit.length > 0
+            ? perSpecimenGrossSectionsForFit.map(s => {
+                const sp = (caseData.specimens ?? []).find(sp => sp.id === s.specimenId);
+                return `SPECIMEN ${sp?.label ?? s.specimenId}: ${stripHtml(s.text)}`;
+              }).join('\n\n')
+            : (caseWideGrossSection ? stripHtml(caseWideGrossSection.text) : '');
+
+          let specimensWithProposedGrossingChange = new Set<string>();
+          if (grossAiEnabled && combinedDictatedGrossText.trim()) {
+            try {
+              const { evaluateGrossingTemplateFit } = await import('@/services/cases/mockCaseService');
+              const grossingAvailableTemplates = allTemplates
+                .filter(t => t.isDiagnostic === false)
+                .map(t => ({ id: t.id, name: t.name, category: t.category }));
+
+              const grossingFitResult = await evaluateGrossingTemplateFit({
+                dictatedGrossText: combinedDictatedGrossText,
+                specimens: (caseData.specimens ?? []).map(sp => {
+                  const currentReport = grossingReports.find(g => g.specimenId === sp.id);
+                  return {
+                    specimenId: sp.id,
+                    specimenLabel: sp.label,
+                    specimenDesc: sp.description,
+                    currentGrossingTemplate: currentReport
+                      ? { instanceId: currentReport.instanceId, templateId: currentReport.templateId, templateName: currentReport.templateName }
+                      : undefined,
+                  };
+                }),
+                availableTemplates: grossingAvailableTemplates,
+                clientId: caseData.order?.clientId,
+              });
+              if (grossingFitResult.warnings.length) {
+                console.warn('[PathScribe] Grossing template fit evaluation warnings:', grossingFitResult.warnings);
+              }
+              if (grossingFitResult.changes.length > 0) {
+                specimensWithProposedGrossingChange = new Set(grossingFitResult.changes.map(c => c.specimenId));
+                handleGrossingProtocolChangesDetected(grossingFitResult.changes, combinedDictatedGrossText);
+              }
+            } catch (e) {
+              // Non-blocking — Gross Complete has already fully
+              // succeeded by this point; the existing dictation-to-
+              // fields pass below still runs normally against every
+              // specimen's current template, same as if this feature
+              // didn't exist at all.
+              console.error('[PathScribe] Grossing template fit evaluation failed:', e);
+            }
+          }
+
           // Real feature, per direct request: "Once I select Gross
           // complete that should also trigger the AI to fill in the
           // Gross synoptic form for each specimen." Only meaningful
@@ -343,11 +418,16 @@ export function useGrossingCompletion({
           // already exist, there's nothing to back-fill, same as
           // there'd be nothing to suggest for a field the pathologist
           // already typed an answer into by hand.
-          const perSpecimenGrossSections = grossSections.filter(s => s.specimenId && s.text?.trim());
-          if (hasDictatedGrossText || perSpecimenGrossSections.length > 0) {
+          const perSpecimenGrossSections = grossSections
+            .filter(s => s.specimenId && s.text?.trim())
+            // Real exclusion, per the fit-evaluation step just above —
+            // see this block's own header comment.
+            .filter(s => !specimensWithProposedGrossingChange.has(s.specimenId!));
+          if ((hasDictatedGrossText || perSpecimenGrossSections.length > 0) && (caseData.specimens ?? []).some(sp => !specimensWithProposedGrossingChange.has(sp.id))) {
             try {
               const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services/cases/mockCaseService');
-              const { stripHtml } = await import('@/services/narrativeSignals/deidentification');
+              // stripHtml already imported and in scope from the
+              // fit-evaluation block above.
 
               let suggestionsBySpecimen: Record<string, Record<string, any>> = {};
 
@@ -384,6 +464,9 @@ export function useGrossingCompletion({
                 const plainDictatedText = stripHtml(caseWideGrossSection.text);
                 const dictationSpecimens = (caseData.specimens ?? [])
                   .filter(sp => grossingFieldsBySpecimen.has(sp.id))
+                  // Real exclusion, per the fit-evaluation step above —
+                  // see that block's own header comment.
+                  .filter(sp => !specimensWithProposedGrossingChange.has(sp.id))
                   .map(sp => ({
                     specimenId: sp.id,
                     specimenLabel: sp.label,

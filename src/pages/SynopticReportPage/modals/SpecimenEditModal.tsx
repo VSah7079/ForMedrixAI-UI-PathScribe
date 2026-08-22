@@ -21,6 +21,8 @@ import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDic
 import { containerTypeService } from '@/services';
 import type { ContainerType, ContainerCategory } from '@/services/containerTypes/IContainerTypeService';
 import type { Specimen, SpecimenLisStatus } from '@/types/case/Specimen';
+import { findForeignIdCollision } from '@/utils/foreignIdCollision';
+import type { ForeignIdCollision } from '@/utils/foreignIdCollision';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -64,6 +66,24 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
   const [dictSearch,  setDictSearch]  = useState('');
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Real feature, per direct follow-up: "Specimen/Decant-level foreign
+  // ID... the actual cytology fluid case." Same real, on-blur
+  // collision check as BlockStainEditorModal.tsx's own identical
+  // fields — see that file's own comment for the full reasoning on
+  // why this checks on blur, not every keystroke.
+  const [externalId,       setExternalId]       = useState(specimen?.externalId       ?? '');
+  const [externalIdSource, setExternalIdSource] = useState(specimen?.externalIdSource ?? '');
+  const [foreignIdCollision, setForeignIdCollision] = useState<ForeignIdCollision | null>(null);
+
+  const checkForeignIdCollision = async () => {
+    if (!externalId.trim() || !externalIdSource.trim()) {
+      setForeignIdCollision(null);
+      return;
+    }
+    const result = await findForeignIdCollision(externalIdSource, externalId, specimen?.id);
+    setForeignIdCollision(result);
+  };
 
   // ── ESC to close ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -150,6 +170,8 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
       container:   container.trim() ? { type: container.trim() } : specimen?.container,
       snomedTypeCode: snomedCode.trim() || undefined,
       snomedSiteCode: siteCode.trim()   || undefined,
+      externalId:       externalId.trim()       || undefined,
+      externalIdSource: externalIdSource.trim() || undefined,
       createdAt:   specimen?.createdAt ?? new Date().toISOString(),
       updatedAt:   new Date().toISOString(),
     };
@@ -340,6 +362,42 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 />
               </div>
             </div>
+
+            {/* Real feature, per direct follow-up: "Specimen/Decant-level
+                foreign ID... the actual cytology fluid case." Same real
+                pattern as BlockStainEditorModal.tsx's own identical
+                fields — a specimen (e.g. a fluid/cytology specimen)
+                that arrives already carrying a foreign, outside lab's
+                own identifier gets linked here, never re-labeled. */}
+            <div className="ps-specedit-row-2col">
+              <div className="ps-specedit-field-group">
+                <label className="ps-specedit-label">Foreign ID Source</label>
+                <input
+                  className="ps-specedit-input"
+                  value={externalIdSource}
+                  onChange={e => setExternalIdSource(e.target.value)}
+                  onBlur={checkForeignIdCollision}
+                  placeholder="e.g. Outside Cytology Lab"
+                />
+              </div>
+              <div className="ps-specedit-field-group">
+                <label className="ps-specedit-label">Foreign ID</label>
+                <input
+                  className="ps-specedit-input"
+                  value={externalId}
+                  onChange={e => setExternalId(e.target.value)}
+                  onBlur={checkForeignIdCollision}
+                  placeholder="e.g. the id already assigned by that lab"
+                />
+              </div>
+            </div>
+            {foreignIdCollision && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)' }}>
+                <div style={{ fontSize: 12, color: '#f87171', fontWeight: 600 }}>
+                  ⚠ This foreign ID is already linked to {foreignIdCollision.recordLabel} on case {foreignIdCollision.caseAccession} — double-check before continuing.
+                </div>
+              </div>
+            )}
 
           </div>
         </div>

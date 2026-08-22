@@ -36,20 +36,26 @@ export interface StainType {
   antibodyClone?: string;
   vendor?: string;
   /**
-   * Real fix, per direct guidance: real coders (via the lab's own AMA
-   * license) can set a real, specific CPT code for THIS stain type -
-   * e.g. a particular antibody that's billed differently than the
-   * generic IHC first/additional rule, or a real multiplex antibody
-   * panel (e.g. "PIN-4" combining p63/AMACR/CK on one slide, billed as
-   * 88344, not as three separate 88342/88341 charges). Each specific
-   * antibody or panel is already its own distinct StainType record
-   * (this dictionary's whole point), so this is real, per-record
-   * granularity, not a blunt, one-size-fits-all IHC rule. Optional and
-   * additive - entries without one keep using the generic, honest
-   * suggestBlockAncillaryCptCodes rule (services/billing/codeMapTable.ts)
-   * unchanged. This app never fabricates the mapping itself.
+   * Real fix, per direct guidance (Charge Capture work): PathScribe does
+   * not store raw CPT codes on StainType — CPT codes/RVUs/payer rules/
+   * country rules all change over time and vary by jurisdiction, and the
+   * Billing Dictionary (services/billing — see BillingDictionaryEntry)
+   * is the one authoritative source of that data, not this catalog.
+   * What a StainType genuinely needs to express is narrower: "this stain
+   * has its own special billing behavior, distinct from the generic
+   * IHC first/additional rule." References a BillingDictionaryEntry.billingCode
+   * (e.g. 'PIN4-PANEL'), never a bare CPT string directly — a real
+   * multiplex panel (e.g. "PIN-4", three antibodies on one slide,
+   * billed 88344 as its own thing, not as three separate IHC stains
+   * under the generic rule) is the real case this exists for, but it's
+   * general: any stain whose own dictionary-configured billing code
+   * should win over the generic per-specimen IHC counting sequence in
+   * suggestAncillaryCodesForStains (services/billing/codeMapTable.ts).
+   * Renamed from the old defaultCptCode (which stored a raw CPT string
+   * directly) for exactly the reason above — not a coexisting field,
+   * a straight replacement; every real call site updated accordingly.
    */
-  defaultCptCode?: string;
+  defaultBillingCode?: string;
   /** Rough turnaround estimate — informational only, not a hard TAT rule
    *  (that's TATConfigSection's job, a separate, already-built system;
    *  this is just a per-stain default hint shown at order time). */

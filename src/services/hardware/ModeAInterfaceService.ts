@@ -22,6 +22,7 @@ import type { Specimen, HistologyBlock } from '@/types/case/Specimen';
 import type { HL7MessageContext } from '../hl7/types';
 import { buildOrmO01ForBlock } from '../hl7/ormBuilder';
 import { vantageAdapter } from '../hl7/adapters/vantageAdapter';
+import { cerebroAdapter } from '../hl7/adapters/cerebroAdapter';
 import { identityAdapter } from '../hl7/adapters/identityAdapter';
 import type { IHL7VendorAdapter } from '../hl7/adapters/IHL7VendorAdapter';
 import type { ModeAOrderPayload } from '@/types/events/ModeAOrderPayload';
@@ -64,6 +65,7 @@ export function resolveModeAOrgContext(caseData: Pick<Case, 'originHospitalId' |
  *  yet a real vendor integration. */
 const ADAPTERS: Record<string, IHL7VendorAdapter> = {
   vantage: vantageAdapter,
+  cerebro: cerebroAdapter,
   identity: identityAdapter,
 };
 

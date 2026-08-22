@@ -1,6 +1,6 @@
 // src/hooks/useIdleTimeout.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 1 of the Inactivity Timeout & Draft Recovery spec (see PRIORITY_FIXES.md).
+// Phase 1 of the Inactivity Timeout & Draft Recovery spec.
 // Tracks real user activity (mouse, keyboard, scroll, touch) and exposes when
 // a warning should show and when the session should actually expire.
 //

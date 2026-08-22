@@ -60,7 +60,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
   describe('sendMaterialOrderToLis', () => {
     it('resolves { ok: true } after the simulated round-trip delay — real fix depends on this actually awaiting, not resolving instantly', async () => {
       const { result } = renderHook(() => useLisIntegration({
-        caseData: makeTestCase(), signingUser: testSigningUser, showToast: vi.fn(),
+        caseData: makeTestCase(), setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
       }));
 
       const promise = result.current.sendMaterialOrderToLis({ kind: 'stain', specimenId: 'SP-1', label: 'H&E' });
@@ -72,7 +72,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
   describe('sendSynopticReportToLis', () => {
     it('dispatches PATHSCRIBE_LIS_SYNC_REQUIRED for a "corrected" payload — the real trigger a downstream LIS-sync listener depends on', async () => {
       const { result } = renderHook(() => useLisIntegration({
-        caseData: makeTestCase(), signingUser: testSigningUser, showToast: vi.fn(),
+        caseData: makeTestCase(), setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
       }));
 
       const listener = vi.fn();
@@ -90,7 +90,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
 
     it('does NOT dispatch PATHSCRIBE_LIS_SYNC_REQUIRED for a "new_instance" (addendum) payload — only real corrections need a downstream re-sync', async () => {
       const { result } = renderHook(() => useLisIntegration({
-        caseData: makeTestCase(), signingUser: testSigningUser, showToast: vi.fn(),
+        caseData: makeTestCase(), setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
       }));
 
       const listener = vi.fn();
@@ -111,7 +111,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
     it('shows a toast naming the stain when the LIS does not acknowledge the order', async () => {
       const showToast = vi.fn();
       const { result } = renderHook(() => useLisIntegration({
-        caseData: makeTestCase(), signingUser: testSigningUser, showToast,
+        caseData: makeTestCase(), setCaseData: vi.fn(), signingUser: testSigningUser, showToast,
       }));
 
       // sendMaterialOrderToLis always simulates success internally — to
@@ -155,7 +155,7 @@ describe('useLisIntegration — pendingLisNotice restore-on-load', () => {
     const { useLisIntegration: freshHook } = await import('../useLisIntegration');
 
     const { result } = renderHook(() => freshHook({
-      caseData: makeTestCase(), signingUser: testSigningUser, showToast: vi.fn(),
+      caseData: makeTestCase(), setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
     }));
 
     await waitFor(() => {
@@ -174,7 +174,7 @@ describe('useLisIntegration — integration tests (real mock services, unmocked)
     const testCase = makeTestCase({ id: `INTEG-TEST-${Date.now()}` });
 
     const { result } = renderHook(() => useLisIntegration({
-      caseData: testCase, signingUser: testSigningUser, showToast: vi.fn(),
+      caseData: testCase, setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
     }));
 
     await act(async () => {
@@ -202,7 +202,7 @@ describe('useLisIntegration — openCopilotReportView', () => {
     });
 
     const { result } = renderHook(() => useLisIntegration({
-      caseData: caseWithReports, signingUser: testSigningUser, showToast: vi.fn(),
+      caseData: caseWithReports, setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
     }));
 
     await act(async () => { await result.current.openCopilotReportView(); });
@@ -220,7 +220,7 @@ describe('useLisIntegration — openCopilotReportView', () => {
       synopticReports: [{ instanceId: 'SR-1', specimenId: 'SP-ORPHANED', templateId: 'generic_test_basic', templateName: 'T', answers: {} }] as any,
     });
     const { result } = renderHook(() => useLisIntegration({
-      caseData: caseWithReports, signingUser: testSigningUser, showToast: vi.fn(),
+      caseData: caseWithReports, setCaseData: vi.fn(), signingUser: testSigningUser, showToast: vi.fn(),
     }));
 
     await act(async () => { await result.current.openCopilotReportView(); });

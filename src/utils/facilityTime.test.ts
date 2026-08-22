@@ -127,7 +127,7 @@ describe('getFacilityDateParts — real, honest fallback for a genuinely invalid
   });
 });
 
-describe('getTrailingFacilityMonths — real fix: replaces the identical, duplicated d.setMonth(d.getMonth() - i) pattern found in DeficienciesPage.tsx and three QA tabs', () => {
+describe('getTrailingFacilityMonths — real fix: replaces the identical, duplicated d.setMonth(d.getMonth() - i) pattern found in QualityAssurancePage.tsx and three QA tabs', () => {
   it('returns the real, correct trailing months ending on the real, current facility month', () => {
     const months = getTrailingFacilityMonths(3, 'America/Phoenix', new Date('2026-06-15T19:00:00.000Z'));
     expect(months.map(m => ({ year: m.year, month: m.month }))).toEqual([

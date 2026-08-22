@@ -356,9 +356,7 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isSelected ? 'rgba(8,145,178,0.12)' : 'transparent'; }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 13, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#e2e8f0' : '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.name}
-                      </span>
+                      <span style={{ fontSize: 13, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#e2e8f0' : '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-phi="name">{p.name}</span>
                       <SourceBadge source={p.source} />
                       {(() => {
                         const match = suggestionForTemplate(p.id);

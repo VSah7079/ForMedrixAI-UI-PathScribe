@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import '../../pathscribe.css';
-import { internalNoteService, INTERNAL_NOTE_TYPE_LABELS } from '../../services';
+import { internalNoteService, INTERNAL_NOTE_TYPE_LABELS, informalReviewService } from '../../services';
 import type { InternalNote, InternalNoteType, InternalNoteVisibility } from '../../services';
 import { useVoice, reportDictationCorrection } from '../../contexts/VoiceProvider';
 import ConfirmModal from '../Common/ConfirmModal';
@@ -118,6 +118,22 @@ const InternalNotesDrawer: React.FC<Props> = ({
     });
     if (result.ok) {
       setNotes(prev => [result.data, ...prev]);
+      // Real feature, per direct follow-up: "when those cases are
+      // selected it opens to that intermediate page where they can
+      // publish their review." An informal_review note IS the act of
+      // publishing — if there's a real, pending InformalReviewRequest
+      // for this case where the current user is the actual, intended
+      // reviewer, mark it published, linking the real note just
+      // created. Never guesses/force-matches — a note added with no
+      // matching real request (e.g. someone just leaving a note on
+      // their own case) correctly does nothing here.
+      if (noteType === 'informal_review') {
+        informalReviewService.getForCase(accession).then(reqRes => {
+          if (!reqRes.ok) return;
+          const match = reqRes.data.find(r => r.status === 'pending' && r.toUserId === userId);
+          if (match) informalReviewService.publish(match.id, result.data.id).catch(() => {});
+        }).catch(() => {});
+      }
       setNoteBody('');
       setNoteType('informal_review');
       setNoteVisibility('shared');
@@ -230,9 +246,7 @@ const InternalNotesDrawer: React.FC<Props> = ({
             <div style={{ fontSize: '11px', fontWeight: 700, color: '#0891B2', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
               internal notes
             </div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.02em' }}>
-              {accession}
-            </div>
+            <div style={{ fontSize: '20px', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.02em' }} data-phi="accession">{accession}</div>
           </div>
           <button
             onClick={onClose}

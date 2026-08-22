@@ -118,4 +118,90 @@ describe('mockEncounterService — real fix: the second genuinely missing piece 
     expect(stale.data.applied).toBe(false);
     expect(stale.data.encounter.status).toBe('Discharged'); // unchanged - the stale event never landed
   });
+
+  // Real feature, per direct, detailed correction: DG1 is its own,
+  // dedicated segment, legitimately riding with A01/A04/A05 (creation,
+  // via resolveOrCreateEncounter's own diagnoses param) and A08
+  // (update, via this real, narrow updateDiagnoses method).
+  it('resolveOrCreateEncounter records real diagnoses supplied at creation', async () => {
+    const created = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: 'ORG-A', patientId: 'MPI-3', encounterNumber: 'FIN-DX-001', encounterClass: 'Inpatient',
+      diagnoses: [{ code: 'E11.9', description: 'Type 2 diabetes mellitus without complications', codingSystem: 'I10', diagnosisType: 'A' }],
+    });
+    if (!created.ok) throw new Error('setup failed');
+    expect(created.data.diagnoses).toEqual([
+      { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications', codingSystem: 'I10', diagnosisType: 'A' },
+    ]);
+  });
+
+  it('a real encounter created with no diagnoses genuinely has none — undefined, not an empty array fabricated by the service', async () => {
+    const created = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: 'ORG-A', patientId: 'MPI-3', encounterNumber: 'FIN-DX-002', encounterClass: 'Inpatient',
+    });
+    if (!created.ok) throw new Error('setup failed');
+    expect(created.data.diagnoses).toBeUndefined();
+  });
+
+  it('updateDiagnoses applies a real, later diagnosis update (e.g. an A08 correcting/adding to an A01\'s own DG1)', async () => {
+    const created = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: 'ORG-A', patientId: 'MPI-4', encounterNumber: 'FIN-DX-003', encounterClass: 'Inpatient',
+      diagnoses: [{ code: 'E11.9', codingSystem: 'I10', diagnosisType: 'A' }],
+      eventTimestamp: '2026-06-01T08:00:00.000Z',
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    const updated = await mockEncounterService.updateDiagnoses(
+      created.data.id,
+      [{ code: 'E11.9', codingSystem: 'I10', diagnosisType: 'F' }, { code: 'I10', codingSystem: 'I10', diagnosisType: 'W' }],
+      '2026-06-01T09:00:00.000Z'
+    );
+    if (!updated.ok) throw new Error('update failed');
+    expect(updated.data.applied).toBe(true);
+    expect(updated.data.encounter.diagnoses).toEqual([
+      { code: 'E11.9', codingSystem: 'I10', diagnosisType: 'F' },
+      { code: 'I10', codingSystem: 'I10', diagnosisType: 'W' },
+    ]);
+  });
+
+  it('updateDiagnoses replaces the full list rather than merging — real DG1 sets are sent complete, not as an incremental diff', async () => {
+    const created = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: 'ORG-A', patientId: 'MPI-5', encounterNumber: 'FIN-DX-004', encounterClass: 'Inpatient',
+      diagnoses: [{ code: 'E11.9', codingSystem: 'I10' }, { code: 'I10', codingSystem: 'I10' }],
+      eventTimestamp: '2026-06-01T08:00:00.000Z',
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    // A later A08 carries only ONE real diagnosis now — the real,
+    // complete replacement (not a merge that would incorrectly keep
+    // the old second diagnosis around).
+    const updated = await mockEncounterService.updateDiagnoses(
+      created.data.id,
+      [{ code: 'J45.909', codingSystem: 'I10' }],
+      '2026-06-01T09:00:00.000Z'
+    );
+    if (!updated.ok) throw new Error('update failed');
+    expect(updated.data.encounter.diagnoses).toEqual([{ code: 'J45.909', codingSystem: 'I10' }]);
+  });
+
+  it('updateDiagnoses on a real, nonexistent encounter id fails honestly rather than silently succeeding', async () => {
+    const result = await mockEncounterService.updateDiagnoses('ENC-does-not-exist', [{ code: 'E11.9' }], '2026-01-01T00:00:00.000Z');
+    expect(result.ok).toBe(false);
+  });
+
+  it('updateDiagnoses honestly rejects a genuinely stale/out-of-order event, never silently applying it over newer state — same real discipline as updateStatus', async () => {
+    const created = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: 'ORG-A', patientId: 'MPI-6', encounterNumber: 'FIN-DX-005', encounterClass: 'Inpatient',
+      diagnoses: [{ code: 'E11.9', codingSystem: 'I10' }],
+      eventTimestamp: '2026-06-01T08:00:00.000Z',
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    await mockEncounterService.updateDiagnoses(created.data.id, [{ code: 'I10', codingSystem: 'I10' }], '2026-06-01T10:00:00.000Z');
+
+    // A real, genuinely older event arrives late.
+    const stale = await mockEncounterService.updateDiagnoses(created.data.id, [{ code: 'J45.909', codingSystem: 'I10' }], '2026-06-01T09:00:00.000Z');
+    if (!stale.ok) throw new Error('update failed');
+    expect(stale.data.applied).toBe(false);
+    expect(stale.data.encounter.diagnoses).toEqual([{ code: 'I10', codingSystem: 'I10' }]); // unchanged
+  });
 });

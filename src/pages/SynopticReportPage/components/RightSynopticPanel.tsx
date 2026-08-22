@@ -22,7 +22,16 @@ import { matchSourceText } from '@/utils/sourceTextMatching';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 type VisCond = EditorField['visibleWhen'];
 
-function isVisible(cond: VisCond | undefined, ans: Record<string, string | string[]>): boolean {
+/**
+ * Exported per direct need: the new Microscopic finalize gate
+ * (useSignOutWorkflow.ts) needs the exact same real "is this required
+ * field currently visible" logic validateRequired() below already
+ * uses, to correctly compute per-specimen synoptic completeness
+ * outside this component. Reused, not re-implemented — a second copy
+ * would be a real, silent drift risk the moment one changes without
+ * the other.
+ */
+export function isVisible(cond: VisCond | undefined, ans: Record<string, string | string[]>): boolean {
   if (!cond) return true;
   const v = ans[cond.fieldId];
   if (!v) return false;
@@ -324,6 +333,29 @@ const TemplatePicker: React.FC<{ templates: TemplateOption[]; specimenDescriptio
   const suggested = templates.filter(t => t.category && haystack.includes(t.category.toLowerCase()));
   const suggestedIds = new Set(suggested.map(t => t.id));
   const rest = templates.filter(t => !suggestedIds.has(t.id));
+
+  // Real feature, per direct product decision: a pathologist shouldn't
+  // have to click the one template already most likely correct just to
+  // get started — that's a click this list existing at all was
+  // supposed to save, not add back. Auto-attaches the strongest
+  // suggestion the moment one exists, landing the pathologist directly
+  // on a populated report instead of an empty picker screen. The
+  // escape hatch is the existing, real delete-and-re-add flow already
+  // available on any attached synoptic report — deliberately not a
+  // second, parallel "are you sure" mechanism, since the whole point
+  // was fewer clicks, not the same number moved to a different place.
+  // Guarded with a ref, not just an effect dependency, so a later
+  // re-render (e.g. the suggestion list itself changing) can't
+  // re-trigger a second auto-attach on top of a report the pathologist
+  // may have already started editing or deliberately replaced.
+  const autoAttachedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoAttachedRef.current) return;
+    if (suggested.length === 0) return;
+    autoAttachedRef.current = true;
+    onSelect(suggested[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggested.length > 0]);
 
   const renderTemplateButton = (t: TemplateOption) => (
     <button
@@ -760,7 +792,6 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
           fieldLabel: `This synoptic is assigned to ${inst.assignedToName ?? inst.assignedTo} — they must finalise it`,
         }];
       }
-      if (inst?.status === 'deferred') return [];
       const missing: MissingRequiredField[] = [];
       templateDetail.template.sections.forEach((sec: any) => {
         if (!isVisible(sec.visibleWhen, answers)) return;
@@ -875,7 +906,26 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       try {
         const approved = await listTemplatesCached('published');
         if (cancelled) return;
-        setAvailableTemplates(approved.map((p: any) => ({ id: p.id, name: p.name, source: p.source, version: p.version, category: p.category })));
+        // Real fix, per direct report: "I selected one of the other
+        // templates and it did not return the synoptic report
+        // structure." Traced to getTemplate()'s own fallback — a
+        // registry entry with no matching editorStore content
+        // silently resolves to an empty sections: [] template,
+        // regardless of what the registry's own `fields` count claims.
+        // Confirmed this is exactly the shape of the two 'TEST'-category
+        // registry entries ('Generic Synoptic Test Form -- Basic'/
+        // '-- Complex') — registered for browsing/admin purposes per
+        // protocolShared.tsx's own comment ("non-clinical test
+        // templates"), never given real content, never meant to be
+        // selectable by a pathologist reporting on a real case.
+        // Filtered here, not fixed by inventing fake content for them —
+        // a live-tested, empty template would still be worth catching
+        // for any future 'TEST'-category entry, not just these two.
+        setAvailableTemplates(
+          approved
+            .filter((p: any) => p.category !== 'TEST')
+            .map((p: any) => ({ id: p.id, name: p.name, source: p.source, version: p.version, category: p.category }))
+        );
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
@@ -996,8 +1046,7 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       });
 
       // Persist so the regenerated suggestions AND newly-filled answers
-      // survive navigation/reload, same mechanism the deferred-toggle
-      // button below uses.
+      // survive navigation/reload.
       const idx = getActiveReports(caseData).findIndex(r => r.instanceId === activeReportInstanceId);
       if (idx >= 0) {
         const reports = [...getActiveReports(caseData)];
@@ -1219,7 +1268,20 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
               sourceNotFound={activeFieldId === f.id && !!highlightNotFound}
               isPulsing={pulsingFieldId === f.id}
               fieldRef={el => { fieldRefs.current[f.id] = el; }}
-              aiAttempted={Object.keys(aiSuggestions).length > 0}
+              // Real fix, per direct report: "AI badges on an empty
+              // Grossing Template doesn't make sense, only when we
+              // are in Gross Dictation mode is it relevant."
+              // Confirmed directly: this was checking whether AI had
+              // run ANYWHERE in the whole form (Object.keys(
+              // aiSuggestions).length > 0), not whether it had run
+              // for THIS section's own fields — so as soon as AI
+              // touched even one field in a completely different
+              // section, every still-empty field here would
+              // incorrectly show "AI: not found", even before real
+              // Gross dictation had ever started. Scoped to this
+              // section's own fields — the same real bug would have
+              // affected Micro/Diagnosis too, not just Gross.
+              aiAttempted={sec.fields.some((sf: EditorField) => sf.id in aiSuggestions)}
               onLabelClick={() => {
                 setActiveFieldId(f.id);
                 onHighlight?.(sug?.source ?? null);
@@ -1279,32 +1341,6 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
                 {isRegenerating ? '⚡ Generating…' : '⚡ Orchestrator'}
               </button>
             )}
-            {/* Deferred toggle */}
-            {(() => {
-              const inst = getActiveReports(caseData).find(r => r.instanceId === activeReportInstanceId) as any;
-              const isDeferred = inst?.status === 'deferred';
-              return (
-                <button
-                  title={isDeferred ? 'Marked as deferred — click to unmark' : 'Mark this synoptic as deferred (ancillary results pending)'}
-                  onClick={() => {
-                    if (!caseData || !activeReportInstanceId) return;
-                    const idx = getActiveReports(caseData).findIndex(r => r.instanceId === activeReportInstanceId);
-                    if (idx < 0) return;
-                    const reports = [...getActiveReports(caseData)];
-                    reports[idx] = { ...reports[idx], status: isDeferred ? 'draft' : 'deferred' } as any;
-                    onCaseUpdate?.({ ...caseData, [activeReportsKey]: reports } as any);
-                  }}
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20,
-                    background: isDeferred ? 'rgba(245,158,11,0.15)' : 'rgba(100,116,139,0.08)',
-                    border: `1px solid ${isDeferred ? 'rgba(245,158,11,0.4)' : 'rgba(100,116,139,0.2)'}`,
-                    color: isDeferred ? '#fbbf24' : '#64748b', cursor: 'pointer',
-                  }}
-                >
-                  {isDeferred ? '⏳ Deferred' : '⏳ Mark Deferred'}
-                </button>
-              );
-            })()}
             {/* Progress badge */}
             <span style={progressBadgeStyle}>
               <span>{reqAnswered}/{reqTotal} req · {answered}/{total} total</span>

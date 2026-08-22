@@ -26,6 +26,8 @@ import { useLogout } from '../../hooks/useLogout';
 import { messageService } from '../../services';
 import { useMessaging } from '../../contexts/MessagingContext';
 import NavBar, { SystemInfoModal } from '../NavBar/NavBar';
+import ScanStationPrompt from '../ScanStationPrompt';
+import StationSwitchGuardModal from '../StationSwitchGuardModal';
 import { useBreadcrumb } from '../../contexts/BreadcrumbContext';
 import { useDirtyState } from '../../contexts/DirtyStateContext';
 import '../../pathscribe.css';
@@ -1208,6 +1210,21 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
         />
       )}
 
+      {/* Real fix, per direct follow-up: "the Current station...
+          should be identified at login." Mounted unconditionally
+          (not gated by hideNav) — a tech landing directly on a
+          clinical route (NavBar hidden there) still needs this real,
+          one-time prompt exactly the same as anyone landing on the
+          main app shell. */}
+      <ScanStationPrompt />
+      {/* Real feature, per direct follow-up: "MVP Station-Switching
+          via Barcode Label... interrupts standard barcode
+          processing, and triggers a station switch event." Mounted
+          unconditionally, same as ScanStationPrompt — a station
+          barcode scan must work regardless of which page is active,
+          NavBar hidden or not. */}
+      <StationSwitchGuardModal />
+
       {/* Breadcrumb bar — dynamic */}
       {!hideNav && crumbs.length > 1 && (
         <div className="ps-crumb-bar">
@@ -1317,7 +1334,21 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                           <span className="ps-msg-thread-subject">{currentMsg.subject}</span>
                         )}
                         {currentMsg.caseNumber && (
-                          <button className="ps-msg-case-link" onClick={() => { setPortalOpen(false); sessionStorage.setItem('ps_reopen_messages', '1'); navigate(`/case/${currentMsg.caseNumber}/synoptic`); }}>
+                          <button className="ps-msg-case-link" onClick={() => {
+                            setPortalOpen(false);
+                            sessionStorage.setItem('ps_reopen_messages', '1');
+                            // Real fix, per direct follow-up: "I assume
+                            // we will launch the Internal Notes Drawer
+                            // when the case gets selected from the
+                            // worklist or the message." Also finally,
+                            // genuinely sets fromMessages - previously
+                            // FullReportPage.tsx read this flag but
+                            // nothing ever actually set it (confirmed
+                            // directly), so its own "Back" handling for
+                            // messages was real code with no real path
+                            // reaching it. Now it does.
+                            navigate(`/report/${currentMsg.caseNumber}`, { state: { fromMessages: true, openInternalNotes: true } });
+                          }}>
                             Case {currentMsg.caseNumber}
                             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                           </button>

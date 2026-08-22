@@ -58,4 +58,39 @@ describe('canUserClaimPoolCase — real fix: claim-time enforcement was complete
     const result = await canUserClaimPoolCase(created.data.id, 'member-1');
     expect(result.allowed).toBe(true);
   });
+
+  // Real, critical bug found during a direct product review: every real,
+  // seeded pool case's own poolId field ('GI-UK', 'URO-UK', 'GYN-MPA')
+  // never matches any real Subspecialty record's own id ('gi', 'uro',
+  // 'gyn') — only poolName ever did. The original single-key getById()
+  // lookup silently found nothing for every real pool case in the app,
+  // meaning membership enforcement never actually blocked anyone,
+  // regardless of isWorkgroupEnabled. These reproduce that exact real
+  // shape directly, not a synthetic id match.
+  it('real bug this closes: blocks a non-member when only poolName matches the real Subspecialty record, even though the given poolId matches nothing', async () => {
+    const created = await mockSubspecialtyService.add({
+      name: 'GI Pool Name Match Test', isWorkgroup: true, isWorkgroupEnabled: true,
+      active: true, status: 'Active', userIds: ['member-1'],
+    } as any);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    // 'GI-UK' deliberately matches no real Subspecialty id or name —
+    // the exact real shape a seeded case's own poolId carries.
+    const result = await canUserClaimPoolCase('GI-UK', 'not-a-member', created.data.name);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('GI Pool Name Match Test');
+  });
+
+  it('real bug this closes: a genuine member is still allowed through the same poolName-only match path', async () => {
+    const created = await mockSubspecialtyService.add({
+      name: 'GI Pool Name Match Test 2', isWorkgroup: true, isWorkgroupEnabled: true,
+      active: true, status: 'Active', userIds: ['member-1'],
+    } as any);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const result = await canUserClaimPoolCase('GI-UK', 'member-1', created.data.name);
+    expect(result.allowed).toBe(true);
+  });
 });

@@ -77,6 +77,8 @@ function baseParams(overrides: Partial<Parameters<typeof useSignOutWorkflow>[0]>
     synopticPanelRef: { current: { validateRequired: vi.fn().mockReturnValue([]), getUncertainRequiredFields: vi.fn().mockReturnValue([]), getBlockingUnverifiedFields: vi.fn().mockReturnValue([]), sweepAndGetFinalState: vi.fn().mockReturnValue({ verificationSummary: {} }) } } as any,
     setAlertFieldId: vi.fn(),
     safeSetLeftTab: vi.fn(),
+    setActiveSpecimenId: vi.fn(),
+    setActiveReportType: vi.fn(),
     setAmendmentMode: vi.fn(),
     setShowAmendmentModal: vi.fn(),
     setShowFinalizeModal: vi.fn(),
@@ -303,18 +305,25 @@ describe('useSignOutWorkflow — finalizeCase', () => {
     expect(setFixativeGateSpecimens).not.toHaveBeenCalled();
   });
 
-  it('on real success, sets status finalized, marks excluded instances deferred (not dropped), logs the event, and returns true', async () => {
+  it('on real success, sets status finalized, leaves every synoptic report status genuinely untouched — no more excluded-instances-become-deferred marking', async () => {
     const setCaseData = vi.fn();
     const log = vi.fn();
     const caseData = makeTestCase({
       synopticReports: [
-        { instanceId: 'SR-1', answers: {} },
-        { instanceId: 'SR-EXCLUDED', answers: {} },
+        { instanceId: 'SR-1', answers: {}, status: 'draft' },
+        { instanceId: 'SR-2', answers: {}, status: 'draft' },
       ] as any,
     });
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, setCaseData, log })));
 
-    const succeeded = await act(async () => result.current.finalizeCase(['SR-EXCLUDED']));
+    // Real fix, per direct product decision: "Deferred" is gone —
+    // synoptic reports must all have their required fields completed
+    // before finalize. finalizeCase's own excludedInstanceIds
+    // parameter is now inert plumbing (kept only so the unrelated
+    // fixative-gate resume flow doesn't need a deeper refactor) — it
+    // must never mark anything 'deferred', a status that no longer
+    // exists at all.
+    const succeeded = await act(async () => result.current.finalizeCase(['SR-2']));
 
     expect(succeeded).toBe(true);
     const patch = setCaseData.mock.calls[0][0];
@@ -322,13 +331,8 @@ describe('useSignOutWorkflow — finalizeCase', () => {
     // Buffer — the default test fixture carries no STAT priority, so the
     // buffer genuinely applies; this real, non-finalized intermediate
     // status is exactly the new, correct behavior, not a regression.
-    // This test's own real point (exclusion handling) is unaffected —
-    // asserted below regardless of buffer state.
     expect(patch.status).toBe('pending-release');
     expect(patch.finalizedAt).toBeDefined();
-    expect(patch.synopticReports.find((r: any) => r.instanceId === 'SR-EXCLUDED').status).toBe('deferred');
-    expect(patch.synopticReports.find((r: any) => r.instanceId === 'SR-1').status).not.toBe('deferred');
-    expect(log).toHaveBeenCalledWith('case_finalized', expect.objectContaining({ excludedCount: 1 }));
   });
 
   it('on a real ConcurrencyConflictError, surfaces the modal with blockOverride true and returns false — highest-stakes write in the file', async () => {
@@ -345,6 +349,39 @@ describe('useSignOutWorkflow — finalizeCase', () => {
 });
 
 describe('useSignOutWorkflow — handleRequestFinalize', () => {
+  it('blocks finalize outright when the case has an active hold — checked before every other gate, per direct follow-up: "putting a case on Hold at the case level makes sense if there is something truly wrong"', async () => {
+    const showToast = vi.fn();
+    const caseData = makeTestCase({
+      caseHolds: [{
+        id: 'casehold-1', reason: 'quality_issue', note: 'Block 2 fragmented on sectioning.',
+        setAt: '2026-01-01T00:00:00.000Z', setByUserId: 'u1', setByUserName: 'Test User', active: true,
+      }] as any,
+    });
+    const synopticPanelRef = { current: { validateRequired: vi.fn().mockReturnValue([]), getBlockingUnverifiedFields: vi.fn().mockReturnValue([]) } } as any;
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, synopticPanelRef, showToast })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Block 2 fragmented on sectioning'));
+    expect(result.current.showPreFinalise).toBe(false);
+  });
+
+  it('does NOT block finalize when the case has only a released (inactive) hold', async () => {
+    const caseData = makeTestCase({
+      caseHolds: [{
+        id: 'casehold-1', reason: 'quality_issue', note: 'Resolved already.',
+        setAt: '2026-01-01T00:00:00.000Z', setByUserId: 'u1', setByUserName: 'Test User', active: false,
+        releasedAt: '2026-01-02T00:00:00.000Z', releasedByUserId: 'u1', releasedByUserName: 'Test User',
+        releaseNote: 'Re-cut received.',
+      }] as any,
+    });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+
+    expect(result.current.showPreFinalise).toBe(true);
+  });
+
   it('shows the missing-fields warning and does NOT proceed to pre-finalisation when required fields are incomplete', async () => {
     const missing = [{ fieldId: 'f1', fieldLabel: 'Field 1' }];
     const synopticPanelRef = { current: { validateRequired: vi.fn().mockReturnValue(missing), getUncertainRequiredFields: vi.fn().mockReturnValue([]) } } as any;
@@ -396,23 +433,6 @@ describe('useSignOutWorkflow — handlePreFinalConfirm / handleFinalizeConfirm s
     expect(releasePendingAmendmentOrAddendum).toHaveBeenCalledTimes(1);
   });
 
-  it('handleFinalizeConfirm takes the deferred-synoptic-completion path (opens an amendment draft, does NOT re-finalize) when the case is already finalized and the active report is deferred', async () => {
-    const openAmendmentDraft = vi.fn().mockResolvedValue(undefined);
-    const { caseRouter } = await import('@/services/cases/CaseRouter');
-    const caseData = makeTestCase({
-      status: 'finalized',
-      synopticReports: [{ instanceId: 'SR-1', status: 'deferred', templateName: 'Ancillary Panel', answers: { f1: 'completed value' } }] as any,
-    });
-    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, openAmendmentDraft, isOrchestrationMode: false })));
-
-    act(() => { result.current.handleFinalizeConfirm(); });
-    await act(async () => { await Promise.resolve(); });
-
-    expect(openAmendmentDraft).toHaveBeenCalledWith('amendment');
-    expect(caseRouter.updateCase).not.toHaveBeenCalled(); // no re-finalize write happened
-    expect(result.current.deferredAmendmentContext).not.toBeNull();
-  });
-
   it('handleFinalizeConfirm takes the genuine first-time-finalize path when the case is not already finalized', async () => {
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     const caseData = makeTestCase({ status: 'in-progress' } as any);
@@ -424,10 +444,7 @@ describe('useSignOutWorkflow — handlePreFinalConfirm / handleFinalizeConfirm s
     // Real feature, per direct specification: Post-Sign-Out Release
     // Buffer — the default test fixture carries no STAT priority, so
     // this real, first-time-finalize path genuinely lands on
-    // 'pending-release', not 'finalized' — this test's own real point
-    // (which path was taken) is still verified: a real write happened
-    // at all, which the deferred-synoptic-completion path (the OTHER
-    // test in this describe block) never triggers.
+    // 'pending-release', not 'finalized' — a real write happened.
     expect(caseRouter.updateCase).toHaveBeenCalledWith('TEST-CASE-SIGNOUT', expect.objectContaining({ status: 'pending-release' }), expect.anything());
   });
 });

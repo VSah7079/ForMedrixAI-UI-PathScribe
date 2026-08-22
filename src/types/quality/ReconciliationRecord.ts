@@ -19,6 +19,24 @@
 // two categories from the same small set can. The pathologist confirms
 // Delta/Severity/Root Cause themselves; none of that is inferred or
 // auto-graded.
+//
+// Real, confirmed guardrail, checked directly against the real,
+// itemized PreparationOutput[] model added to IntraopSpecimen
+// (types/intraop/IntraoperativeEntry.ts, resolves PS-82 — a single
+// specimen can genuinely have multiple, separately-identified
+// preparations, e.g. one touch prep AND several frozen blocks): this
+// record is keyed by caseId/specimenId, real, per-specimen, and was
+// ALREADY that way before PreparationOutput existed — frozenCategory
+// here is a single, discrete category tied to one specimen's own
+// frozen-section diagnosis, never a block count or a preparation
+// count, and DiscordanceReconciliationModal.tsx (the one real place
+// this gets created) confirms this end to end: it takes specimenId/
+// frozenCategory as real, given props, never derives or requires a
+// block-for-block match against the final read. Frozen/final linkage
+// stays correctly scoped at the specimen/consultation level regardless
+// of how many real preparations (touch preps, multiple frozen blocks)
+// a specimen ends up with — nothing here needs to change, or should
+// change, as that model evolves further.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { FrozenCategory } from '../intraop/IntraoperativeEntry';
 

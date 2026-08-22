@@ -98,22 +98,32 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
     setBusy(false);
     setConfirming(false);
     if (rebindResult.rebound) {
-      setResult({ ok: true, message: `Rebound successfully — ${rebindResult.casesRepointed ?? 0} case(s) repointed: ${(rebindResult.caseIds ?? []).join(', ') || 'none'}.` });
+      setResult({ ok: true, message: `Mapped successfully — ${rebindResult.casesRepointed ?? 0} case(s) repointed: ${(rebindResult.caseIds ?? []).join(', ') || 'none'}.` });
       onRebound();
     } else {
-      setResult({ ok: false, message: rebindResult.reason ?? 'Break-Glass rebind failed for an unknown reason.' });
+      setResult({ ok: false, message: rebindResult.reason ?? 'Map Patient failed for an unknown reason.' });
     }
   };
 
+  // Real, per direct feedback: this modal used ps-modal-overlay/
+  // ps-iexc-modal (a real but rare, minority pattern — only 4-5 uses
+  // total across the app) instead of the real, dominant standard
+  // (ps-overlay/ps-modal-dark, confirmed 174/47 uses respectively) —
+  // fixed to match. "Break-Glass Rebind" renamed to "Map Patient"
+  // throughout every real, user-facing string (title, trigger button,
+  // confirm button, result messages) — the underlying
+  // breakGlassRebind() service call and its own real restrictions are
+  // unchanged; only what a user actually reads was confusing, not the
+  // real mechanism itself.
   return (
-    <div className="ps-modal-overlay" onClick={onClose}>
-      <div className="ps-iexc-modal" onClick={e => e.stopPropagation()}>
-        <div className="ps-modal-header">
-          <h2 className="ps-modal-title">⚡ Break-Glass Rebind — Restricted</h2>
-          <button onClick={onClose} className="ps-modal-close">&#x2715;</button>
+    <div className="ps-overlay" onClick={onClose}>
+      <div className="ps-modal-dark" style={{ width: 'min(600px, 92vw)' }} onClick={e => e.stopPropagation()}>
+        <div className="ps-modal-dark-header">
+          <span className="ps-modal-dark-title">🔗 Map Patient — Restricted</span>
+          <button onClick={onClose} className="ps-research-close">&#x2715;</button>
         </div>
 
-        <div className="ps-iexc-modal-body">
+        <div className="ps-modal-dark-body">
           <div className="ps-iexc-reason-banner">
             Attach a real Case created under a temporary/downtime placeholder identity to the real, confirmed EHR patient. This is a rare, restricted, fully audited action — the placeholder record will be retired, not kept active.
           </div>
@@ -185,7 +195,7 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
                       rows={3}
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
-                      placeholder='e.g. "Rebound Doe_1234 to MRN 987654 per HIM Ticket #4091"'
+                      placeholder='e.g. "Mapped Doe_1234 to MRN 987654 per HIM Ticket #4091"'
                       disabled={busy}
                     />
                     {notes.length > 0 && !notesValid && (
@@ -198,7 +208,7 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
           )}
         </div>
 
-        <div className="ps-modal-footer">
+        <div className="ps-modal-dark-footer">
           {result ? (
             <button onClick={onClose} className="ps-conf-btn-primary">Close</button>
           ) : confirming ? (
@@ -206,7 +216,7 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
               <span className="ps-iexc-no-cases">Confirm: this will retire the downtime record and repoint its case(s). This cannot be undone from this modal.</span>
               <button onClick={() => setConfirming(false)} disabled={busy} className="ps-conf-btn-secondary">Back</button>
               <button onClick={handleConfirm} disabled={busy} className="ps-conf-btn-primary">
-                {busy ? 'Rebinding…' : 'Confirm Break-Glass Rebind'}
+                {busy ? 'Mapping…' : 'Confirm Map Patient'}
               </button>
             </>
           ) : (

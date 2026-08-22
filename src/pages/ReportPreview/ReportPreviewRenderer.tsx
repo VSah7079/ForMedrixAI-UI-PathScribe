@@ -595,7 +595,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
       {/* ── Patient / case header ─────────────────────────────────────── */}
       <div className="rp-case-header">
         <div className="rp-case-header-top">
-          <div className="rp-accession">{accession}</div>
+          <div className="rp-accession" data-phi="accession">{accession}</div>
           {priority && (
             <span className={`rp-priority${priority === 'STAT' ? ' rp-priority--stat' : ''}`}>
               {priority}
@@ -604,7 +604,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
         </div>
         <div className="rp-patient-grid">
           {patient   && <><span className="rp-field-key">Patient</span>    <span className="rp-field-val">{patient}</span></>}
-          {mrn       && <><span className="rp-field-key">MRN</span>        <span className="rp-field-val">{mrn}</span></>}
+          {mrn       && <><span className="rp-field-key">MRN</span>        <span className="rp-field-val" data-phi="mrn">{mrn}</span></>}
           {dob       && <><span className="rp-field-key">Date of Birth</span><span className="rp-field-val">{dob}{sex ? ` · ${sex}` : ''}</span></>}
           {referring && <><span className="rp-field-key">Referring</span>  <span className="rp-field-val">{referring}</span></>}
           {clinician && <><span className="rp-field-key">Clinician</span>  <span className="rp-field-val">{clinician}</span></>}

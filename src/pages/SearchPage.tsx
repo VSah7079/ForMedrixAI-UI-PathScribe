@@ -160,9 +160,17 @@ interface UserStub { id: string; name: string; client: string; }
 // non-existent 'pending' value — folded into 'pending-review', which already
 // covers it. Also adds the three new Orchestration statuses: 'accessioned',
 // 'gross-complete', 'intraoperative-complete'.
+//
+// 'pending-release' added later, per direct specification — Post-Sign-Out
+// Release Buffer. Found missing during a pre-push audit: this list is a
+// real, single source of truth for search filtering, and a brand-new
+// CaseStatus value built while focused on SynopticReportPage.tsx's own
+// display components is exactly the kind of thing that's easy to miss
+// here unless specifically checked for.
 const CASE_STATUS_OPTIONS = [
   'draft','accessioned','gross-complete','in-progress','intraoperative-complete',
   'pending-review','pathologist-review','finalizing','finalized','pool','pending-countersign',
+  'pending-release',
 ] as const;
 
 // Label + accent color per status — kept in one place instead of inline so the
@@ -185,6 +193,11 @@ const STATUS_PILL_META: Record<typeof CASE_STATUS_OPTIONS[number], { label: stri
   // Countersign" filter tile checks this exact status, fixed earlier
   // in this same audit). Color matches that tile's own existing violet.
   'pending-countersign':       { label: 'Awaiting Countersign', color: '#a78bfa' },
+  // Real feature, per direct specification: Post-Sign-Out Release
+  // Buffer. Color matches HeaderBar.tsx's own dedicated teal for this
+  // exact status, for the same cross-page visual-consistency reasoning
+  // as the comment above.
+  'pending-release':           { label: 'Pending Release',   color: '#1C8DE3' },
 };
 const PRIORITY_OPTIONS    = ['Routine','Rush','STAT'] as const;
 
