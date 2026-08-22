@@ -5,7 +5,7 @@
 
 import {
   collection, doc,
-  getDocs, getDoc,
+  getDocs, getDoc, setDoc,
   addDoc, updateDoc, deleteDoc,
   query, where, orderBy,
   serverTimestamp,
@@ -77,13 +77,36 @@ export const firestoreDelegationTypeService: IDelegationTypeService = {
     try {
       const snap = await getDocs(query(collection(db, COL), orderBy('sortOrder', 'desc')));
       const maxOrder = snap.empty ? 0 : (snap.docs[0].data().sortOrder ?? 0);
-      const ref = await addDoc(collection(db, COL), {
-        ...dt,
+      // Real fix, same root cause as mockDelegationTypeService.ts: the
+      // caller's real, validated id — what the admin actually saw and
+      // could edit on screen — used to be silently discarded in favor
+      // of an auto-generated key. Fixed properly for Firestore
+      // specifically using the same setDoc(doc(db, COL, explicitId))
+      // pattern already established in caseRegistryService.ts, not
+      // just changed what add() returns — using addDoc's own
+      // auto-generated key while returning a different id back to the
+      // caller would create a real, silent mismatch: a later
+      // getById(id) for that same id would fail to find the document.
+      // Falls back to addDoc's auto-generated key only when no id is
+      // given. Not live-tested (no real backend active yet — this
+      // file's own header confirms it's a stub pending cutover; see
+      // PS-72 Appendix B item 6) — fixed for correctness and
+      // consistency with the mock implementation, which IS tested.
+      const { id: providedId, ...rest } = dt;
+      const payload = {
+        ...rest,
         isSystem:  false,
         sortOrder: maxOrder + 1,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (providedId) {
+        const ref = doc(db, COL, providedId);
+        await setDoc(ref, payload);
+        const created = await getDoc(ref);
+        return ok(fromDoc(created.id, created.data()!));
+      }
+      const ref = await addDoc(collection(db, COL), payload);
       const created = await getDoc(ref);
       return ok(fromDoc(created.id, created.data()!));
     } catch (e: any) {

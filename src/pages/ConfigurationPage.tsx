@@ -25,6 +25,7 @@ import DemoResetTab    from '../components/Config/System/DemoResetTab';
 import ReportTemplatesSection    from '../components/TemplateBuilder/ReportTemplatesSection';
 import ValidationStudiesSection from '../components/ValidationStudies/ValidationStudiesSection';
 import ConfigSearchBar from '../components/Config/Search/ConfigSearchBar';
+import { resetConfigScroll } from '../utils/resetConfigScroll';
 import '../pathscribe.css';
 
 // ── Admin permission check ────────────────────────────────────────────────────
@@ -71,7 +72,18 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
 
 function getTabFromSearch(search: string): TabId {
   const t = new URLSearchParams(search).get('tab') as TabId | null;
-  return t && (VALID_TABS as readonly string[]).includes(t) ? t : 'ai';
+  // Real fix, per direct report: "The Config page opens up on the 2nd
+  // tab. I would say it should either open on the first tab or the
+  // System Tab." Defaulted to 'ai' (Config's own 2nd tab) purely
+  // because it happened to be first in VALID_TABS after Action
+  // Registry — never a deliberate landing-page choice. 'system' now,
+  // since that's genuinely where most real, active admin work in this
+  // app lives (Scan Stations, Cassette Routing Rules, Cassette
+  // Colors, Protocols, and everything else built under it this
+  // session) — a plain /configuration visit should land where an
+  // admin actually needs to be most often, not wherever the tab list
+  // happened to order things.
+  return t && (VALID_TABS as readonly string[]).includes(t) ? t : 'system';
 }
 
 const ConfigurationPage: React.FC = () => {
@@ -129,6 +141,12 @@ const ConfigurationPage: React.FC = () => {
   const handleTabChange = (tabId: TabId) => {
     navigate(`/configuration?tab=${tabId}`);
     log('navigate_tab', { tabId });
+    // Real fix, per direct report: switching tabs used to leave
+    // scroll position wherever it was on the previous tab, hiding
+    // the new tab's own add button and column headers until manually
+    // scrolled up. See utils/resetConfigScroll.ts's own header for
+    // why this needs a direct container lookup rather than a prop.
+    resetConfigScroll();
   };
 
   const renderActiveTab = () => {
