@@ -12,18 +12,28 @@ import { mockCassetteRoutingRuleService } from '../../../services/cassetteRoutin
 import { mockProtocolService } from '../../../services/protocols/mockProtocolService';
 import { mockScanStationService } from '../../../services/scanStations/mockScanStationService';
 import { mockFacilityService } from '../../../services/facilities/mockFacilityService';
+import { mockCassetteColorService } from '../../../services/cassetteColors/mockCassetteColorService';
 import type { CassetteRoutingRule, CassetteRuleOrderPriority } from '../../../services/cassetteRouting/ICassetteRoutingRuleService';
 import type { Protocol } from '../../../services/protocols/IProtocolService';
 import type { ScanStation } from '../../../services/scanStations/IScanStationService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
+import type { CassetteColorDefinition } from '../../../services/cassetteColors/ICassetteColorService';
 
 const PRIORITY_OPTIONS: CassetteRuleOrderPriority[] = ['Routine', 'Rush', 'STAT'];
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 type Draft = Omit<CassetteRoutingRule, 'id' | 'createdAt' | 'updatedAt'>;
 
+// Real, per direct fix: CassetteRoutingRule.colorId (a real reference
+// into the real color dictionary, services/cassetteColors/) replaced
+// the old free-text cassetteColor — this component's own Draft/UI
+// never got updated to match at the time, which is the real, direct
+// cause of every real TS error reported on this file. Fixed here:
+// colorId throughout, and a real dropdown sourced from the actual
+// color dictionary instead of a free-text input a rule could
+// misspell independently of the real, defined color set.
 const emptyDraft: Draft = {
-  name: '', description: '', conditions: {}, cassetteColor: '', printTemplateKey: '',
+  name: '', description: '', conditions: {}, colorId: '', printTemplateKey: '',
   priorityWeight: 10, active: true,
 };
 
@@ -33,11 +43,12 @@ interface RuleModalProps {
   protocols: Protocol[];
   stations: ScanStation[];
   facilities: Facility[];
+  colors: CassetteColorDefinition[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, facilities, onSave, onClose }) => {
+const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, facilities, colors, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(rule ? { ...rule } : emptyDraft);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
 
@@ -53,7 +64,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
   const validate = () => {
     const e: typeof errors = {};
     if (!draft.name.trim()) e.name = 'Required';
-    if (!draft.cassetteColor.trim()) e.cassetteColor = 'Required — the whole point of this rule is what color it routes to';
+    if (!draft.colorId.trim()) e.colorId = 'Required — the whole point of this rule is what color it routes to';
     if (!Number.isFinite(draft.priorityWeight)) e.priorityWeight = 'Required — determines which rule wins when more than one matches';
     return e;
   };
@@ -129,10 +140,19 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
           <div className="ps-conf-section-divider">Output</div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Cassette Color <span className="ps-conf-required">*</span></label>
-            <input className={`ps-conf-input ${errors.cassetteColor ? 'ps-conf-input--error' : ''}`}
-              value={draft.cassetteColor} onChange={e => set('cassetteColor', e.target.value)} placeholder="e.g. Blue, Pink, Red, White" />
-            {errors.cassetteColor && <span className="ps-conf-error-text">{errors.cassetteColor}</span>}
+            <label className="ps-conf-label" htmlFor="rule-color">Cassette Color <span className="ps-conf-required">*</span></label>
+            <select id="rule-color" className={`ps-conf-select ${errors.colorId ? 'ps-conf-input--error' : ''}`}
+              value={draft.colorId} onChange={e => set('colorId', e.target.value)}>
+              <option value="">— Select a color —</option>
+              {colors.map(c => <option key={c.id} value={c.id}>{c.displayName}{!c.active ? ' (inactive)' : ''}</option>)}
+            </select>
+            {draft.colorId && colors.find(c => c.id === draft.colorId) && (
+              <span className="ps-conf-field-hint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: colors.find(c => c.id === draft.colorId)!.hexCode, border: '1px solid rgba(255,255,255,0.2)' }} />
+                {colors.find(c => c.id === draft.colorId)!.key}
+              </span>
+            )}
+            {errors.colorId && <span className="ps-conf-error-text">{errors.colorId}</span>}
           </div>
 
           <div className="ps-conf-form-field">
@@ -184,6 +204,7 @@ const CassetteRoutingRulesSection: React.FC = () => {
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stations, setStations]   = useState<ScanStation[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [colors, setColors] = useState<CassetteColorDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState<{ mode: 'add' | 'edit'; rule?: CassetteRoutingRule } | null>(null);
 
@@ -193,11 +214,13 @@ const CassetteRoutingRulesSection: React.FC = () => {
       mockProtocolService.getAll(),
       mockScanStationService.getAll(),
       mockFacilityService.getAll(),
-    ]).then(([r, p, s, f]) => {
+      mockCassetteColorService.getAll(),
+    ]).then(([r, p, s, f, c]) => {
       if (r.ok) setRules(r.data);
       if (p.ok) setProtocols(p.data);
       if (s.ok) setStations(s.data);
       if (f.ok) setFacilities(f.data);
+      if (c.ok) setColors(c.data);
       setLoading(false);
     });
   }, []);
@@ -205,6 +228,7 @@ const CassetteRoutingRulesSection: React.FC = () => {
   const protocolName = (id?: string) => protocols.find(p => p.id === id)?.name ?? '—';
   const stationName = (id?: string) => stations.find(s => s.id === id)?.name ?? '—';
   const facilityName = (id?: string) => facilities.find(f => f.id === id)?.name ?? '—';
+  const colorFor = (id: string) => colors.find(c => c.id === id);
 
   const conditionsSummary = (rule: CassetteRoutingRule): string => {
     const parts: string[] = [];
@@ -270,7 +294,14 @@ const CassetteRoutingRulesSection: React.FC = () => {
                     {rule.description && <div className="ps-conf-field-hint">{rule.description}</div>}
                   </td>
                   <td className="ps-conf-td" style={{ fontSize: 12, color: '#94a3b8' }}>{conditionsSummary(rule)}</td>
-                  <td className="ps-conf-td">{rule.cassetteColor}</td>
+                  <td className="ps-conf-td">
+                    {colorFor(rule.colorId) ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: colorFor(rule.colorId)!.hexCode, border: '1px solid rgba(255,255,255,0.2)' }} />
+                        {colorFor(rule.colorId)!.displayName}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${rule.active ? 'ps-conf-status-dot--active' : ''}`} />
@@ -296,7 +327,7 @@ const CassetteRoutingRulesSection: React.FC = () => {
       {modal && (
         <RuleModal
           mode={modal.mode} rule={modal.rule}
-          protocols={protocols} stations={stations} facilities={facilities}
+          protocols={protocols} stations={stations} facilities={facilities} colors={colors}
           onSave={handleSave} onClose={() => setModal(null)}
         />
       )}

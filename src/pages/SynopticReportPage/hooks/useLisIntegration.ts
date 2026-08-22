@@ -244,7 +244,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
       note: 'Paraffin cracked · Requires re-embedding',
       reportedAt: new Date().toISOString(),
       reportedBy: 'LIS-MIDDLEWARE-SIM',
-      sourceSystem: 'LIS Middleware (simulated)',
+      sourceSystem: 'OTHER',
     });
 
     if (result.outcome === 'applied') {

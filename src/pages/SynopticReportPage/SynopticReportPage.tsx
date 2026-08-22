@@ -2183,7 +2183,6 @@ const SynopticReportPage: React.FC = () => {
 
   const microscopicEntry = useMicroscopicEntry({
     caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast,
-    handleProtocolChangesDetected,
   });
 
   // Previously an anonymous inline closure on SequencerPanel's onSave JSX
@@ -3988,7 +3987,6 @@ const SynopticReportPage: React.FC = () => {
           onReprintCassette={(specimenLabel, blockLabel) => printCassetteForBlock?.(specimenLabel, blockLabel)}
           onReprintSlide={printSlideForStain}
           batchPrintBlocked={batchPrintBlocked ?? false}
-          isOrchestrationMode={!!isOrchestrationMode}
         />
       )}
 

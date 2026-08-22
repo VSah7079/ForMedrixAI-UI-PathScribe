@@ -1783,7 +1783,6 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       pedBlockedCase.clientId
                         ? `/configuration?tab=integrations&section=clients&client=${pedBlockedCase.clientId}`
                         : '/configuration?tab=integrations&section=clients',
-                      { type: 'pediatric', caseId: pedBlockedCase.id, clientId: pedBlockedCase.clientId },
                     );
                     markPedRequested(pedBlockedCase.id);
                     reloadInbox();
@@ -1862,7 +1861,6 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       `Orchestration Access Request — ${(user as any).name}`,
                       `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-client list.)`,
                       '/configuration?tab=system&section=staff',
-                      { type: 'orchestration', caseId: orchBlockedCase.id },
                     );
                     markOrchRequested(orchBlockedCase.id);
                     reloadInbox();
