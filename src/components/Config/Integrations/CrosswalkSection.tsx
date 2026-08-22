@@ -14,14 +14,17 @@
 // tell system-learned entries apart from admin-confirmed ones.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../../../pathscribe.css';
-import { orderIntakeService, facilityService, specimenDictionaryService } from '@/services';
+import { orderIntakeService, facilityService, specimenDictionaryService, interfaceExceptionService } from '@/services';
 import type { SpecimenCodeCrosswalkEntry } from '@/services/orderIntake/IOrderIntakeService';
 import type { Facility as Client } from '@/services/facilities/IFacilityService';
 import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
 import { SearchableCombobox } from '@/components/Common/SearchableCombobox';
+import { findDuplicate } from '@/utils/validateUnique';
 
 const CrosswalkSection: React.FC = () => {
+  const navigate = useNavigate();
   const [entries, setEntries] = useState<SpecimenCodeCrosswalkEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [dictionary, setDictionary] = useState<SpecimenEntry[]>([]);
@@ -33,16 +36,26 @@ const CrosswalkSection: React.FC = () => {
   const [newDictionaryEntryId, setNewDictionaryEntryId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Real, new — per direct guidance on the Order Types & Inbound Rules
+  // banner: a real, precise count of PENDING unmapped_order_code
+  // InterfaceExceptions specifically (services/interfaceExceptions/) —
+  // deliberately distinct from pendingCount below (self-learned
+  // crosswalk entries that already exist in this table). An unmapped
+  // stub means the crosswalk had NO entry at all, even after
+  // self-learning — a real, different, upstream signal.
+  const [pendingUnmappedStubCount, setPendingUnmappedStubCount] = useState(0);
 
   const refresh = () => {
     Promise.all([
       orderIntakeService.listCrosswalkEntries(),
       facilityService.getAll(),
       specimenDictionaryService.getAll(),
-    ]).then(([xwalkRes, clientsRes, dictRes]) => {
+      interfaceExceptionService.getPending(),
+    ]).then(([xwalkRes, clientsRes, dictRes, exceptionsRes]) => {
       if (xwalkRes.ok) setEntries(xwalkRes.data);
       if (clientsRes.ok) setClients(clientsRes.data);
       if (dictRes.ok) setDictionary(dictRes.data);
+      if (exceptionsRes.ok) setPendingUnmappedStubCount(exceptionsRes.data.filter(e => e.eventType === 'unmapped_order_code').length);
       setLoading(false);
     });
   };
@@ -56,6 +69,20 @@ const CrosswalkSection: React.FC = () => {
     setError(null);
     if (!newClientId || !newExternalCode.trim() || !newDictionaryEntryId) {
       setError('Client, external code, and specimen type are all required.');
+      return;
+    }
+    // Real, confirmed risk this closes: mockOrderIntakeService.ts's own
+    // resolveOrder() does a case-insensitive .find() on exactly this
+    // clientId + externalCode combination when matching an incoming
+    // specimen — .find() silently returns whichever colliding entry
+    // happens to come first, which can mis-map a real specimen to the
+    // wrong dictionary entry. Checked here, before save, not left to a
+    // silent, ambiguous collision at real order-intake time. Same code
+    // string is fine across two DIFFERENT clients — only the exact
+    // combination needs to be unique.
+    const collision = findDuplicate(entries, { clientId: newClientId, externalCode: newExternalCode.trim() }, ['clientId', 'externalCode']);
+    if (collision) {
+      setError(`${clientName(newClientId)} already maps external code "${newExternalCode.trim()}" to ${entryName(collision.dictionaryEntryId)}.`);
       return;
     }
     setSaving(true);
@@ -95,13 +122,42 @@ const CrosswalkSection: React.FC = () => {
         <button className="ps-conf-btn-primary" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
       </div>
 
+      {/* Real, new — per direct guidance: a real, prominent, actionable
+          callout for pending unmapped_order_code InterfaceExceptions
+          specifically (services/interfaceExceptions/) — a real,
+          upstream signal distinct from pendingCount below (self-learned
+          entries that already exist in THIS table). An unmapped stub
+          means the crosswalk had no entry at all, even after
+          self-learning. Deep-links into the real, independent
+          Interface Log tab (?tab=interfaces), extended with a real
+          ?search= term that its own filter already matches against
+          eventType — no new filtering mechanism needed, confirmed
+          directly before building this. Real, per the later Interface
+          Log redesign: interfaces is now its own real top-level tab,
+          not a pill within Error Log — this link was updated to match;
+          the old ?tab=errors&pill=interfaces scheme still works too
+          (AuditLogPage.tsx keeps real backward compat for it). */}
+      {pendingUnmappedStubCount > 0 && (
+        <div className="ps-conf-callout-banner">
+          <span className="ps-conf-callout-banner-text">
+            ⚠ <strong>Pending Review:</strong> {pendingUnmappedStubCount} inbound order code{pendingUnmappedStubCount === 1 ? '' : 's'} received without a real dictionary match.
+          </span>
+          <button
+            className="ps-conf-callout-banner-link"
+            onClick={() => navigate('/audit?tab=interfaces&search=unmapped_order_code')}
+          >
+            View Unmapped Stubs in Audit Queue →
+          </button>
+        </div>
+      )}
+
       {pendingCount > 0 && (
-        <div className="ps-conf-section-subtitle" style={{ color: '#f59e0b', fontWeight: 600, margin: '12px 0' }}>
+        <div className="ps-conf-section-subtitle ps-xwalk-pending-banner">
           ⚠ {pendingCount} entr{pendingCount === 1 ? 'y was' : 'ies were'} auto-learned from an unrecognized order code — review for accuracy below.
         </div>
       )}
 
-      <div className="ps-conf-table-wrap" style={{ marginTop: '16px' }}>
+      <div className="ps-conf-table-wrap ps-xwalk-table-wrap">
         <table className="ps-conf-table">
           <thead>
             <tr>
@@ -122,8 +178,8 @@ const CrosswalkSection: React.FC = () => {
                 <td className="ps-conf-td">{entryName(e.dictionaryEntryId)}</td>
                 <td className="ps-conf-td">
                   {e.createdBy === 'system'
-                    ? <span style={{ color: '#f59e0b', fontWeight: 600 }}>Auto-learned — pending review</span>
-                    : <span style={{ color: '#94a3b8' }}>Admin-confirmed</span>}
+                    ? <span className="ps-xwalk-source-pending">Auto-learned — pending review</span>
+                    : <span className="ps-xwalk-source-confirmed">Admin-confirmed</span>}
                 </td>
               </tr>
             ))}
@@ -132,22 +188,22 @@ const CrosswalkSection: React.FC = () => {
       </div>
 
       {showAdd && (
-        <div style={{ marginTop: '20px', padding: '16px', borderRadius: '10px', border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.06)' }}>
-          <div style={{ fontWeight: 700, marginBottom: '10px' }}>Add a mapping</div>
-          {error && <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '10px' }}>{error}</div>}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', fontSize: '12px', gap: '4px' }}>
+        <div className="ps-xwalk-add-panel">
+          <div className="ps-xwalk-add-panel-title">Add a mapping</div>
+          {error && <div className="ps-conf-form-error">{error}</div>}
+          <div className="ps-xwalk-form-row">
+            <label className="ps-xwalk-form-field">
               Client
               <select className="ps-conf-select" value={newClientId} onChange={e => setNewClientId(e.target.value)}>
                 <option value="">Select a facility…</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', fontSize: '12px', gap: '4px' }}>
+            <label className="ps-xwalk-form-field">
               External code
               <input className="ps-conf-input" value={newExternalCode} onChange={e => setNewExternalCode(e.target.value)} placeholder="e.g. TISSUE-01" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', fontSize: '12px', gap: '4px', minWidth: '260px' }}>
+            <label className="ps-xwalk-form-field ps-xwalk-form-field--wide">
               Resolves to specimen type
               <SearchableCombobox
                 value={newDictionaryEntryId}
@@ -163,7 +219,7 @@ const CrosswalkSection: React.FC = () => {
               />
             </label>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="ps-xwalk-form-actions">
             <button className="ps-conf-btn-primary" disabled={saving} onClick={handleAdd}>{saving ? 'Saving…' : 'Save Mapping'}</button>
             <button className="ps-conf-btn-row" onClick={() => { setShowAdd(false); setError(null); }}>Cancel</button>
           </div>

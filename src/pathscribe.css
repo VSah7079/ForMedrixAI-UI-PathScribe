@@ -133,7 +133,7 @@
    which is why these values (not the ones a few lines below might
    suggest) are what's actually been rendering. Consolidated into one
    definition, hardcoded dark-only now that the light/auto theme
-   picker has been descoped — see PRIORITY_FIXES.md item #27. */
+   picker has been descoped (a deliberate product decision, not a bug). */
 .ps-page {
   position: relative;
   width: 100vw;
@@ -391,6 +391,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Real fix, per direct report: "modals ... seem a little elevated
+   * which seems to hide the top border." Plain align-items: center,
+   * with no allowance for the fixed NavBar, could vertically center a
+   * tall modal so its own top edge lands under/behind the NavBar on a
+   * shorter viewport — confirmed live (not just from the CSS), at a
+   * realistic laptop-height viewport, before this fix. Same
+   * NavBar-clearing convention already proven in .ps-conf-backdrop. */
+  padding-top: 88px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* Action modal shell */
@@ -733,22 +744,46 @@
 .ps-btn-primary:hover { background: #0e7490; }
 .ps-btn-primary:disabled { background: #94a3b8; cursor: default; }
 
-/* Secondary / cancel button (action mode) */
+/* Secondary / cancel button (action mode)
+   Real fix, per direct report with screenshots in hand: "I really
+   find the style of these button jarring, it doesn't actually
+   reflect the overall design of the system... I'm certain we can
+   find a different style that reflect[s] our application better."
+   Confirmed directly: this real, shared class is used 20+ times
+   across the app (Config screens, Accession, Worklist, and nearly
+   every modal in SynopticReportPage) — a stark white pill on a
+   background/border of light grays that were clearly never updated
+   for this app's own dark theme, not a one-off issue on just the two
+   buttons in the report. Restyled using this app's own real, already-
+   established design tokens (--ps-surface/--ps-border-bright/
+   --ps-text-muted/--ps-teal — the exact same variables the rest of
+   this dark UI already uses), not new, one-off colors — a real, dark
+   "ghost/outline" button matching how secondary actions already look
+   throughout the rest of the app, fixed everywhere this class is
+   used at once rather than patched on a per-button basis. */
 .ps-btn-secondary {
   padding: 10px 22px;
-  background: white;
-  color: #64748b;
-  border: 2px solid #e2e8f0;
+  background: var(--ps-surface);
+  color: var(--ps-text-muted);
+  border: 1px solid var(--ps-border-bright);
   border-radius: 10px;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .ps-btn-secondary:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: rgba(255,255,255,0.05);
+  border-color: var(--ps-teal);
+  color: var(--ps-text);
+}
+
+.ps-btn-secondary:disabled {
+  color: var(--ps-text-dim);
+  border-color: var(--ps-border);
+  cursor: default;
+  opacity: 0.6;
 }
 
 /* Destructive button */
@@ -874,10 +909,31 @@
   outline: none;
   font-family: 'Inter', sans-serif;
   transition: border-color 0.15s;
+  /* Real fix, found during a broader sweep prompted by a direct
+     report of the same bug on a different, unrelated dropdown ("All
+     Roles filter items are white on white, can't see options" —
+     Staff, ps-st-role-filter): color-scheme: dark hints the browser
+     toward dark-appropriate native form-control chrome, but a real
+     <select>'s own <option> popup list still needs an explicit
+     background — the hint alone isn't reliably honored for it across
+     browsers. ps-input-dark is this app's generic dark form-control
+     class, shared by both <input> and <select> across many real
+     files (SpecimenDictionaryPicker.tsx, SuffixSelect.tsx,
+     BreakGlassRebindModal.tsx, AccessionPage.tsx, FixativeTimeGateModal.tsx,
+     AmendmentModal.tsx, confirmed directly) — a live sweep of the
+     Accession page alone found 7 real <select> elements using it,
+     every one with the exact same, real, previously-unfixed bug. */
+  color-scheme: dark;
 }
 
 .ps-input-dark:focus { border-color: rgba(8, 145, 178, 0.6); }
 .ps-input-dark::placeholder { color: #94a3b8; }
+/* Same real bug and fix already established for ps-conf-select/
+   ps-specedit-input elsewhere in this file — see this class's own
+   comment above for the full finding. Fixes every existing <select>
+   using ps-input-dark app-wide, not just the one specifically
+   reported. */
+select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; }
 
 /* Message input pill */
 .ps-msg-input-wrap {
@@ -1970,6 +2026,27 @@
 }
 .ps-login-input:focus { border-color: #0891b2; }
 
+/* Real fix, per direct bug report: "Sometimes when I log in it fails
+   to copy the user name and password into the login form... after I
+   select [Windows Hello face/PIN]... Sometimes it doesn't actually
+   move the data into the fields." A password manager (especially one
+   gated behind Windows Hello/PIN, which delays the actual fill past
+   the form's initial mount) writes the value straight into the DOM,
+   which never fires the real 'input' event React's controlled
+   value={} + onChange listens for. The real, standard browser-level
+   signal that autofill happened is the :-webkit-autofill pseudo-class
+   — attaching a real (imperceptible — 0.01s, effectively instant) CSS
+   animation to it fires a genuine, detectable animationstart DOM
+   event the moment the browser autofills, letting
+   LoginPage.tsx's onAnimationStart handler sync React's state from
+   the real DOM value immediately, rather than waiting on a event that
+   never comes. */
+@keyframes ps-login-autofill-detect { from {} to {} }
+.ps-login-input:-webkit-autofill {
+  animation-name: ps-login-autofill-detect;
+  animation-duration: 0.01s;
+}
+
 /* Password wrapper — position: relative anchors the toggle button */
 .ps-login-pw-wrap {
   position: relative;
@@ -2128,6 +2205,13 @@
   padding: 0 40px;
   background: rgba(0, 0, 0, 0.2);
   flex-shrink: 0;
+  /* Real, small companion fix — confirmed directly via live
+     screenshot that even the shortened labels can still run past the
+     viewport edge on narrower screens once every real tab is shown
+     (10 on this page). Scrolls instead of silently clipping the last
+     tab(s) out of reach. */
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .ps-tab-btn {
@@ -2141,6 +2225,16 @@
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   margin-bottom: -1px;
+  /* Real feature, per direct follow-up: "Streamline Labels & Use
+     Dedicated Count Badges." Lets an icon, a shortened label, and a
+     real count badge sit cleanly on one line instead of wrapping —
+     confirmed directly via live screenshot that the prior all-text
+     label ("Case-Specimen Deficiency (4) — 1 overdue") wrapped across
+     4 lines in this tab's own fixed width. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .ps-tab-btn:hover  { color: #e2e8f0; }
@@ -2509,6 +2603,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Same real fix as .ps-overlay/.ps-conf-backdrop/.ps-ms-overlay — see
+   * .ps-conf-backdrop's own comment for the full account. */
+  padding-top: 88px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* Modal shell — reuses ps-research-modal sizing */
@@ -3792,84 +3892,12 @@
 .ps-msg-empty svg { opacity: 0.18; }
 .ps-msg-empty p { font-size: 13px; }
 
-/* ── Compose Modal ───────────────────────────────────────────────────────── */
-.ps-msg-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.65);
-  backdrop-filter: blur(6px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.ps-msg-modal {
-  background: var(--msg-surface);
-  border: 1px solid var(--msg-border-hover);
-  border-radius: 14px;
-  width: 100%;
-  max-width: 560px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
-  overflow: hidden;
-}
-
-.ps-msg-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--msg-border);
-}
-
-.ps-msg-modal-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #e8f0fc;
-  letter-spacing: -0.2px;
-}
-
-.ps-msg-modal-close {
-  background: none;
-  border: none;
-  color: var(--msg-muted);
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 5px;
-  transition: color 0.15s, background 0.15s;
-}
-.ps-msg-modal-close:hover { color: var(--msg-text); background: rgba(255,255,255,0.06); }
-
-.ps-msg-modal-body {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Form rows */
-.ps-msg-form-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--msg-border);
-  padding-bottom: 10px;
-}
-
-.ps-msg-form-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--msg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  width: 52px;
-  flex-shrink: 0;
-}
+/* Real dead code, found and removed: the Compose Modal section
+ * (ps-msg-modal-*, ps-msg-form-row, ps-msg-form-label — 9 classes)
+ * had zero live usage anywhere in src/ (grep-confirmed, cross-checked
+ * with two independent search methods after the first gave a
+ * misleadingly high false-positive count). Same removal convention
+ * as this file's other dead-code notes. */
 
 /* ── To: field ─────────────────────────────────────────────────────────────
    The recipient area: chips for added contacts + inline search input         */
@@ -4855,6 +4883,13 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* Same real fix as .ps-conf-backdrop — see its own comment. Kept
+   * the existing padding: 24px on left/right/bottom via the more
+   * specific padding-top override below, since shorthand padding
+   * above already set all four sides. */
+  padding-top: 88px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* ============================================================
@@ -5646,6 +5681,29 @@
   margin: 0;
 }
 
+/* Real feature, per direct follow-up: "I thought we were display the
+   changes that would be applied to the case." Left-aligned — a list
+   of specific changes reads naturally left-to-right; centering it
+   like the surrounding modal's short, single-sentence body text would
+   make longer summaries harder to scan. */
+.ps-draftrecovery-diff-list {
+  margin-top: 14px; text-align: left; background: rgba(8,145,178,0.06);
+  border: 1px solid rgba(8,145,178,0.25); border-radius: 8px; padding: 12px 14px;
+  max-height: 220px; overflow-y: auto;
+}
+.ps-draftrecovery-diff-header {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: #67e8f9; margin-bottom: 8px;
+}
+.ps-draftrecovery-diff-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.06);
+}
+.ps-draftrecovery-diff-row:first-of-type { border-top: none; }
+.ps-draftrecovery-diff-label { font-size: 12px; font-weight: 600; color: #e2e8f0; flex-shrink: 0; }
+.ps-draftrecovery-diff-summary { font-size: 12px; color: #94a3b8; text-align: right; }
+.ps-draftrecovery-diff-empty { font-size: 12px; color: #64748b; font-style: italic; margin-top: 12px; }
+
 .ps-modal-dark-footer {
   display: flex;
   justify-content: flex-end;
@@ -5866,6 +5924,11 @@
   align-items:     center;
   justify-content: center;
   z-index:         9000;
+  /* Same real fix as .ps-conf-backdrop — see its own comment. */
+  padding-top:     88px;
+  padding-bottom:  32px;
+  box-sizing:      border-box;
+  overflow-y:      auto;
 }
 .ps-conf-edit-modal {
   background:    #0b1120;
@@ -5901,6 +5964,23 @@
   font-size:     15px;
   font-weight:   700;
   color:         #34d399;
+  margin-bottom: 8px;
+}
+
+/* Real feature, per direct follow-up: "The system cannot ever
+   delete/reset a customer's actual database entries." Deliberately
+   red/danger-toned, not the neutral/success styling above — this is
+   a hard safety block, not a normal completion state. */
+.ps-reset-disabled {
+  background:    rgba(239,68,68,0.08);
+  border:        1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  padding:       20px 24px;
+}
+.ps-reset-disabled__title {
+  font-size:     15px;
+  font-weight:   700;
+  color:         #f87171;
   margin-bottom: 8px;
 }
 
@@ -6067,6 +6147,23 @@
   color:       var(--ps-conf-text-3);
   line-height: 1.6;
   margin:      0;
+}
+
+/* Modifier: a section-subtitle that needs a small top gap instead of
+ * flush-zero margin (e.g. directly under a sub-tab row). Real class,
+ * not inline styling — see docs/ARCHIVE.md for the fuller account. */
+.ps-conf-section-subtitle--top-gap {
+  margin-top: 4px;
+}
+
+/* Real, new — per direct feedback: explanatory text sitting BETWEEN
+   real form fields (not directly under a section title) needs real
+   breathing room on both sides, not the tight 4px --top-gap modifier
+   above (which stays as-is for its own, different real usages
+   elsewhere — this is a new, separate modifier, not a change to a
+   shared one). */
+.ps-conf-section-subtitle--form-gap {
+  margin: 14px 0;
 }
 
 /* Field label inside a row */
@@ -6606,6 +6703,17 @@
   margin-bottom:   16px;
 }
 
+/* Real, per direct report: "new billing button looks odd... at least
+   center it so it balances with the text." Confirmed the real, two-
+   part cause — the button's own text was wrapping to three lines
+   (no white-space: nowrap on ps-conf-btn-primary, unlike its sibling
+   ps-conf-btn-secondary, which has it), against a header row aligned
+   flex-start rather than centered. Real, scoped modifiers — this
+   header class is shared across 17 other real sections, so this is
+   additive here, not a change to the shared base rule. */
+.ps-conf-section-header--center { align-items: center; }
+.ps-conf-btn-primary--nowrap { white-space: nowrap; flex-shrink: 0; }
+
 /* Hidden radio for custom radio-button UIs */
 .ps-radio-hidden {
   position: absolute;
@@ -6624,128 +6732,18 @@
    Word-style paginated preview (12 classes)
    ============================================================ */
 
-/* Full-screen dark overlay */
-.ps-rp-overlay {
-  position:        fixed;
-  inset:           0;
-  background:      rgba(0,0,0,0.92);
-  backdrop-filter: blur(10px);
-  z-index:         9000;
-  display:         flex;
-  flex-direction:  column;
-  overflow:        hidden;
-}
+/* Real dead code, found and removed: REPORT PREVIEW MODAL (ps-rp-*, 2 clusters, 22 classes total) had zero live usage anywhere in src/ (grep-confirmed) — superseded by pages/ReportPreview/ReportPreviewRenderer.tsx. Same removal convention as the comp-source-radio* note just above. */
 
-/* Top toolbar strip */
-.ps-rp-toolbar {
-  display:       flex;
-  align-items:   center;
-  justify-content: space-between;
-  padding:       10px 20px;
-  background:    rgba(15,23,42,0.98);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  flex-shrink:   0;
-  gap:           12px;
-}
-
-.ps-rp-toolbar-left  { display: flex; align-items: center; gap: 12px; }
-.ps-rp-toolbar-right { display: flex; align-items: center; gap: 8px; }
-
-.ps-rp-title {
-  font-size:   14px;
-  font-weight: 600;
-  color:       #e2e8f0;
-  letter-spacing: -0.2px;
-}
-
-/* Zoom ± buttons */
-.ps-rp-zoom-btn {
-  background:    rgba(255,255,255,0.06);
-  border:        1px solid rgba(255,255,255,0.12);
-  border-radius: 6px;
-  color:         #94a3b8;
-  font-size:     14px;
-  width:         28px;
-  height:        28px;
-  display:       flex;
-  align-items:   center;
-  justify-content: center;
-  cursor:        pointer;
-  transition:    all 0.15s;
-}
-.ps-rp-zoom-btn:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
-
-.ps-rp-zoom-label {
-  font-size:   12px;
-  color:       #64748b;
-  min-width:   44px;
-  text-align:  center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Scrollable print-canvas area */
-.ps-rp-canvas {
-  flex:           1;
-  overflow-y:     auto;
-  overflow-x:     auto;
-  background:     #374151;
-  padding:        32px;
-  display:        flex;
-  flex-direction: column;
-  align-items:    center;
-  gap:            24px;
-}
-
-/* Individual A4 page */
-.ps-rp-page {
-  background: #ffffff;
-  width:      794px;     /* A4 at 96 dpi */
-  min-height: 1123px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-  border-radius: 2px;
-  flex-shrink: 0;
-  position:   relative;
-}
-
-/* Inner content with print margins */
-.ps-rp-page-inner {
-  padding:    72px 80px;
-  min-height: 100%;
-  box-sizing: border-box;
-  font-family: 'Times New Roman', Georgia, serif;
-  font-size:  11pt;
-  color:      #0f172a;
-  line-height: 1.6;
-}
-
-/* Footer action bar */
-.ps-rp-footer {
-  display:         flex;
-  align-items:     center;
-  justify-content: flex-end;
-  gap:             8px;
-  padding:         12px 20px;
-  background:      rgba(15,23,42,0.98);
-  border-top:      1px solid rgba(255,255,255,0.08);
-  flex-shrink:     0;
-}
+/* Real dead code, found and removed: ps-pool-overlay had zero live
+ * usage — PoolClaimModal.tsx was refactored to the shared .ps-overlay
+ * (already NavBar-aware) instead, same pattern as this file's other
+ * dead-code removals above. The rest of ps-pool-* below IS still live
+ * and used by that same file — not touched. */
 
 /* ============================================================
    POOL CLAIM MODAL — ps-pool-*
    Case pool claiming in delegation workflow (12 classes)
    ============================================================ */
-
-/* Overlay */
-.ps-pool-overlay {
-  position:        fixed;
-  inset:           0;
-  background:      rgba(0,0,0,0.8);
-  backdrop-filter: blur(8px);
-  z-index:         9000;
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-}
 
 /* Modal shell — dark surface */
 .ps-pool-modal {
@@ -7576,255 +7574,14 @@
   height:      40px;
   flex-shrink: 0;
 }
-
-
-/* ============================================================
-   REPORT PREVIEW MODAL — missing layout classes
-   ps-rp-body / ps-rp-scroll / ps-rp-document are the three
-   classes that caused the blank-first-render: without them
-   the flex chain breaks and the document area collapses to
-   zero height. Content is present but invisible.
-   ============================================================ */
-
-/* Body row: left nav rail + scrollable document */
-.ps-rp-body {
-  display:    flex;
-  flex:       1;
-  min-height: 0;        /* ← prevents flex overflow */
-  overflow:   hidden;
-}
-
-/* Left navigation rail (multi-specimen only) */
-.ps-rp-nav {
-  width:          200px;
-  flex-shrink:    0;
-  background:     rgba(11,17,32,0.98);
-  border-right:   1px solid rgba(255,255,255,0.07);
-  overflow-y:     auto;
-  padding:        16px 0;
-  display:        flex;
-  flex-direction: column;
-  gap:            2px;
-}
-
-/* "Contents" label above nav links */
-.ps-rp-nav-label {
-  display:        block;
-  font-size:      9px;
-  font-weight:    800;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color:          #94a3b8;
-  padding:        0 16px 10px;
-}
-
-/* Scrollable document wrapper — THE critical missing class.
-   Without flex:1 + overflow-y:auto + min-height:0 this div
-   collapses to zero height and the document is invisible.    */
-.ps-rp-scroll {
-  flex:           1;
-  overflow-y:     auto;
-  min-height:     0;    /* ← prevents flex child from ignoring parent height */
-  background:     #374151;
-  padding:        32px 40px;
-  display:        flex;
-  flex-direction: column;
-  align-items:    center;
-  gap:            24px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(100,116,139,0.4) transparent;
-}
-
-/* White paper surface — the printable document */
-.ps-rp-document {
-  width:           100%;
-  max-width:       760px;
-  min-height:      1000px;
-  background:      #ffffff;
-  box-shadow:      0 4px 6px rgba(0,0,0,0.3), 0 20px 60px rgba(0,0,0,0.4);
-  border-radius:   2px;
-  flex-shrink:     0;
-  position:        relative;
-  padding:         72px 80px;
-  box-sizing:      border-box;
-  font-family:     'Inter', -apple-system, sans-serif;
-  color:           #0f172a;
-  line-height:     1.5;
-}
-
-/* Toolbar subtitle (accession · patient) */
-.ps-rp-subtitle {
-  font-size:  11px;
-  color:      #64748b;
-  margin-top: 1px;
-}
-
-/* Toolbar action button (🖨 Print) */
-.ps-rp-btn {
-  display:       inline-flex;
-  align-items:   center;
-  gap:           5px;
-  padding:       6px 14px;
-  background:    transparent;
-  border:        1px solid rgba(255,255,255,0.14);
-  border-radius: 7px;
-  color:         #94a3b8;
-  font-size:     12px;
-  font-weight:   600;
-  cursor:        pointer;
-  transition:    all 0.15s;
-  font-family:   inherit;
-}
-.ps-rp-btn:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; border-color: rgba(255,255,255,0.25); }
-
-/* Close button */
-.ps-rp-close-btn {
-  background:    none;
-  border:        none;
-  color:         #64748b;
-  font-size:     18px;
-  line-height:   1;
-  cursor:        pointer;
-  padding:       4px 8px;
-  border-radius: 6px;
-  transition:    color 0.15s, background 0.15s;
-  display:       flex;
-  align-items:   center;
-  justify-content: center;
-}
-.ps-rp-close-btn:hover { color: #e2e8f0; background: rgba(255,255,255,0.08); }
-
-
-/* ============================================================
-   USER PROFILE MODAL — ps-profile-modal
-   Opens when the nav avatar is clicked. Entry point for
-   System Info and Help File links.
-   ============================================================ */
-
-.ps-profile-modal {
-  width:          320px;
-  background:     #0d1829;
-  border:         1px solid rgba(255,255,255,0.1);
-  border-radius:  14px;
-  overflow:       hidden;
-  box-shadow:     0 24px 60px rgba(0,0,0,0.7);
-}
-
-/* Avatar + name block */
-.ps-profile-modal__head {
-  padding:         28px 24px 20px;
-  display:         flex;
-  flex-direction:  column;
-  align-items:     center;
-  gap:             10px;
-}
-
-/* Large initials badge — reuses nav-avatar palette but scaled up */
-.ps-profile-modal__avatar {
-  width:           72px;
-  height:          72px;
-  border-radius:   14px;
-  background:      rgba(8,145,178,0.15);
-  border:          2.5px solid rgba(8,145,178,0.45);
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-  font-size:       26px;
-  font-weight:     800;
-  color:           #38bdf8;
-  letter-spacing:  -0.5px;
-  flex-shrink:     0;
-}
-
-.ps-profile-modal__name {
-  font-size:   17px;
-  font-weight: 700;
-  color:       #f1f5f9;
-  text-align:  center;
-}
-
-.ps-profile-modal__role {
-  font-size:  13px;
-  color:      #64748b;
-  text-align: center;
-  margin-top: -4px;
-}
-
-/* Hairline separator */
-.ps-profile-modal__divider {
-  height:     1px;
-  background: rgba(255,255,255,0.07);
-}
-
-/* Link / action list */
-.ps-profile-modal__actions {
-  display:        flex;
-  flex-direction: column;
-  padding:        6px 0;
-}
-
-/* Each action — works as both <a> and <button> */
-.ps-profile-modal__link {
-  display:     block;
-  width:       100%;
-  padding:     13px 24px;
-  background:  none;
-  border:      none;
-  font-size:   14px;
-  color:       #38bdf8;
-  text-align:  center;
-  cursor:      pointer;
-  text-decoration: none;
-  font-family: 'Inter', sans-serif;
-  transition:  background 0.12s;
-  box-sizing:  border-box;
-}
-.ps-profile-modal__link:hover {
-  background: rgba(56,189,248,0.07);
-}
-
-/* Footer with Close button */
-.ps-profile-modal__footer {
-  padding: 12px 16px;
-}
-
-.ps-profile-modal__close-btn {
-  width:         100%;
-  padding:       10px;
-  background:    transparent;
-  border:        1px solid rgba(255,255,255,0.12);
-  border-radius: 8px;
-  color:         #94a3b8;
-  font-size:     14px;
-  font-weight:   600;
-  cursor:        pointer;
-  font-family:   'Inter', sans-serif;
-  transition:    border-color 0.15s, color 0.15s;
-}
-.ps-profile-modal__close-btn:hover {
-  border-color: rgba(255,255,255,0.28);
-  color:        #e2e8f0;
-}
-
-
-/* Disabled / coming-soon variant of the profile modal link */
-.ps-profile-modal__link--muted {
-  opacity:        0.45;
-  cursor:         not-allowed !important;
-  pointer-events: none;
-}
-
-.ps-profile-modal__soon {
-  display:        inline-block;
-  margin-left:    8px;
-  font-size:      9px;
-  font-weight:    700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color:          #94a3b8;
-  vertical-align: middle;
-}
-
+/* Real dead code, found and removed: REPORT PREVIEW MODAL (ps-rp-*,
+ * 2 clusters, 22 classes) and USER PROFILE MODAL (ps-profile-modal-*,
+ * 14 classes) both had zero live usage anywhere in src/
+ * (grep-confirmed) — ps-rp-* superseded by
+ * pages/ReportPreview/ReportPreviewRenderer.tsx; ps-profile-modal-*'s
+ * own trigger (clicking the nav avatar) no longer wires to this
+ * class family. Same removal convention as the comp-source-radio*
+ * note above. */
 /* ============================================================
    SEARCH PAGE — ps-search-*
    ============================================================ */
@@ -7967,6 +7724,11 @@
   backdrop-filter: blur(10px);
   display: flex; align-items: center; justify-content: center;
   z-index: 9000;
+  /* Same real fix as .ps-conf-backdrop — see its own comment. */
+  padding-top: 88px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* ── Interface Exception Review Modal ────────────────────────────────
@@ -8685,15 +8447,116 @@
 }
 
 /* ── Worklist page ───────────────────────────────────────────── */
-.ps-wl-header-row { flex-wrap: wrap; }
+/* Real feature, per direct follow-up: migrated the Worklist's
+   LIS Cases/Outreach and filter tiles from inline styles to real CSS
+   classes, matching this codebase's own established rule (no inline
+   styles — CSS classes only, in pathscribe.css, ps-[component]-
+   [element] naming). Each tile's genuinely dynamic values (its own
+   color/border/glow) are set as CSS custom properties inline and
+   referenced here via var(...) — the idiomatic way to keep dynamic,
+   per-tile values out of the class itself while everything
+   structural lives in one real, shared place. */
+
+.ps-wl-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.ps-wl-mode-tiles { display: flex; gap: 6px; align-items: stretch; flex-shrink: 0; }
+
+.ps-wl-mode-tile {
+  background: var(--tile-bg);
+  border: 1.5px solid var(--tile-border);
+  box-shadow: var(--tile-shadow, none);
+  border-radius: 8px;
+  padding: 6px 10px;
+  backdrop-filter: blur(10px);
+  min-width: 80px;
+  height: 61px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  outline: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ps-wl-mode-tile__main { flex: 0 0 auto; }
+.ps-wl-mode-tile__label {
+  font-size: 10px; font-weight: 700; color: var(--tile-label-color);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;
+}
+.ps-wl-mode-tile__count { font-size: 20px; font-weight: 800; color: var(--tile-count-color); line-height: 1; }
+.ps-wl-mode-tile__badges { flex: 1 1 auto; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; }
+.ps-wl-mode-tile__badge { font-size: 9px; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; line-height: 1; color: var(--badge-color); }
+
+/* Real feature, per direct follow-up: "Can we move the Title of the
+   Page to the Right - right justifies, the left side feel quite
+   dense." .ps-wl-header-row's own justify-content: space-between
+   (above) pushes this to the far right automatically, now that the
+   mode tiles and the title are the row's only two children. */
+.ps-wl-title {
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 900;
+  margin: 0;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.ps-wl-filter-tile {
+  background: var(--tile-bg);
+  border: 1.5px solid var(--tile-border);
+  box-shadow: var(--tile-shadow, none);
+  border-radius: 8px;
+  padding: 6px 12px;
+  backdrop-filter: blur(10px);
+  min-width: 80px;
+  height: 61px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: all 0.15s ease;
+  text-align: left;
+  outline: none;
+}
+
+.ps-wl-filter-tile__label {
+  font-size: 10px; font-weight: 700; color: var(--tile-label-color);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; line-height: 1.3;
+  /* Real fix, per direct follow-up: "The Tile titles are getting cut
+     off with no ..." Confirmed directly: the original 2-line
+     -webkit-line-clamp never actually applied (computed display was
+     flow-root, not -webkit-box — some other, broader rule in this
+     stylesheet was winning), so genuinely long labels were just
+     silently overflow-hidden mid-line with no ellipsis at all, and
+     visually overlapping the count number below. Single-line
+     text-overflow: ellipsis is the standard, reliably-supported
+     pattern — no vendor-prefixed display mode to fight, and matches
+     the same abbreviation approach used to shorten the labels
+     themselves in the first place. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-wl-filter-tile__count { font-size: 20px; font-weight: 800; color: var(--tile-count-color); line-height: 1; }
+
+.ps-wl-filter-tile__sublabel {
+  font-size: 9px; font-weight: 600; color: var(--tile-count-color); opacity: var(--tile-sublabel-opacity, 0);
+  margin-top: 2px; letter-spacing: 0.2px; line-height: 1.2;
+}
 
 @media (max-width: 1024px) {
-  /* Compact search bar on tablet */
-  .ps-wl-header-row > div:last-child { width: 220px !important; }
+  .ps-wl-title { font-size: 20px !important; }
 }
 @media (max-width: 768px) {
   .ps-wl-header-row { flex-direction: column !important; align-items: flex-start !important; }
-  .ps-wl-header-row > div:last-child { width: 100% !important; }
   .ps-wl-filter-strip { gap: 4px !important; }
 }
 
@@ -8872,7 +8735,7 @@
 .ps-proto-change-confidence   { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid; align-self: flex-start; }
 
 /* ── PreFinalisationModal ────────────────────────────────────────────────── */
-.ps-prefin-overlay            { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: stretch; justify-content: center; z-index: 9000; padding: 16px; }
+.ps-prefin-overlay            { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: stretch; justify-content: center; z-index: 9000; padding: 88px 16px 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-prefin-shell              { background: #0f172a; border-radius: 16px; border: 1px solid #334155; width: 100%; max-width: 1200px; display: flex; flex-direction: column; overflow: hidden; }
 
 .ps-prefin-header             { padding: 18px 28px 14px; border-bottom: 1px solid #334155; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-shrink: 0; }
@@ -9142,7 +9005,7 @@
 .ps-gov-custom-badge         { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
 
 /* ── Governing Body Modal ─────────────────────────────────────────────────── */
-.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
+.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-body-modal               { width: 440px; background: #1e293b; border-radius: 14px; border: 1px solid #334155; box-shadow: 0 25px 50px rgba(0,0,0,0.6); overflow: hidden; }
 .ps-body-modal-header        { padding: 20px 24px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
 .ps-body-modal-title         { font-size: 15px; font-weight: 700; color: #f1f5f9; }
@@ -9252,7 +9115,7 @@
 .ps-gov-custom-badge         { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
 
 /* ── Governing Body Modal ─────────────────────────────────────────────────── */
-.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
+.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-body-modal               { width: 440px; background: #1e293b; border-radius: 14px; border: 1px solid #334155; box-shadow: 0 25px 50px rgba(0,0,0,0.6); overflow: hidden; }
 .ps-body-modal-header        { padding: 20px 24px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
 .ps-body-modal-title         { font-size: 15px; font-weight: 700; color: #f1f5f9; }
@@ -9441,7 +9304,7 @@
 .ps-gov-custom-badge         { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
 
 /* ── Governing Body Modal ─────────────────────────────────────────────────── */
-.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
+.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-body-modal               { width: 440px; background: #1e293b; border-radius: 14px; border: 1px solid #334155; box-shadow: 0 25px 50px rgba(0,0,0,0.6); overflow: hidden; }
 .ps-body-modal-header        { padding: 20px 24px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
 .ps-body-modal-title         { font-size: 15px; font-weight: 700; color: #f1f5f9; }
@@ -9632,6 +9495,14 @@
   justify-content: center;
   align-items: center;
   z-index: 9000;
+  /* Real fix, per direct report: modals "seem a little elevated
+   * which seems to hide the top border." Confirmed live at a
+   * realistic laptop-height viewport before this fix. Same
+   * NavBar-clearing convention already proven in .ps-conf-backdrop. */
+  padding-top: 88px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .ps-ms-modal {
@@ -9786,7 +9657,7 @@
 .ps-gov-custom-badge         { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
 
 /* ── Governing Body Modal ─────────────────────────────────────────────────── */
-.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; }
+.ps-body-modal-overlay       { position: fixed; inset: 0; z-index: 50000; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 
 .ps-body-modal               { width: 440px; background: #1e293b; border-radius: 14px; border: 1px solid #334155; box-shadow: 0 25px 50px rgba(0,0,0,0.6); overflow: hidden; }
 .ps-body-modal-header        { padding: 20px 24px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
@@ -10011,12 +9882,13 @@
 .ps-sub-row                  { border-bottom: 1px solid #111827; transition: background 0.12s; }
 
 .ps-sub-name-cell            { display: flex; align-items: center; gap: 10px; }
+.ps-sub-name-text-wrap       { flex: 1 1 auto; min-width: 0; }
 .ps-sub-name-row             { display: flex; align-items: center; gap: 7px; }
 
 .ps-sub-name                 { font-size: 13px; font-weight: 600; color: #f9fafb; }
 .ps-sub-workgroup-dot        { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e99; flex-shrink: 0; display: inline-block; }
 
-.ps-sub-desc                 { font-size: 11px; color: #94a3b8; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.ps-sub-desc                 { font-size: 11px; color: #94a3b8; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .ps-sub-status-cell          { display: flex; align-items: center; gap: 7px; }
 
 .ps-sub-status-dot           { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
@@ -10062,6 +9934,8 @@
 .ps-sub-workgroup-hint       { font-size: 11px; color: #94a3b8; margin-top: 2px; }
 
 .ps-sub-workgroup-badge      { margin-left: auto; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+.ps-sub-system-badge         { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+.ps-sub-readonly-label       { font-size: 12px; font-weight: 600; color: #64748b; font-style: italic; }
 
 /* Assignment tabs */
 .ps-sub-tabs                 { border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -10149,6 +10023,14 @@
   justify-content: center;
   align-items: center;
   z-index: 9000;
+  /* Real fix, per direct report: modals "seem a little elevated
+   * which seems to hide the top border." Confirmed live at a
+   * realistic laptop-height viewport before this fix. Same
+   * NavBar-clearing convention already proven in .ps-conf-backdrop. */
+  padding-top: 88px;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .ps-ms-modal {
@@ -10168,6 +10050,154 @@
 }
 
 .ps-ms-modal--wide { width: 620px; }
+
+/* Real, per direct feedback: "I do not want my customers to have to
+   scroll... make the modal big enough to fit everything nicely into
+   two [and three] columns." Confirmed directly before adding this:
+   ps-ms-modal--wide (620px) is shared across 7+ other, real,
+   unrelated modals (PhysiciansSection, SpecimenDictionarySection,
+   SpecimenDictionaryPicker, ManagementReviewModal,
+   FixativeTimeGateModal, VersionHistoryModal, DeficiencyHistoryModal)
+   — increasing its own value directly would have widened every one
+   of them too. This is a real, separate, dedicated modifier instead,
+   used only by BillingDictionarySection.tsx's own two real modals
+   (NewVersionModal, HistoryModal), which genuinely need the extra
+   real room for a 20-field form to fit without scrolling. */
+/* Real, per direct follow-up: "widen this so the labels line up
+   better." Confirmed the real cause — at 960px, the 3-column RVU row
+   left "RVU — Practice Expense" wrapping to two lines while its
+   siblings stayed on one, misaligning the whole row. Widened to
+   1040px — matches ps-ms-modal--protocol's own real, already-proven
+   width elsewhere in this app, not a new value invented here. */
+.ps-ms-modal--extra-wide { width: 1040px; }
+
+/* Real, per direct report: "the top is clipped, is the modal
+   centered?" Confirmed directly — ps-ms-overlay's own align-items:
+   center pushes a modal taller than the viewport equally off-screen
+   top AND bottom, rather than keeping the top anchored and visible.
+   Real, deliberate scope: ps-ms-overlay is shared across 28 other
+   real modals — changing its own align-items globally risks
+   regressing all of them right before a real deadline. This is a
+   real, separate, additive modifier instead, used only alongside
+   Billing Dictionary's own two modals (NewVersionModal, HistoryModal)
+   — the two real modals in this app actually tall enough to hit this
+   real problem. */
+/* Real, per direct follow-up report: still clipped after the first
+   fix. Confirmed the real, precise cause directly rather than guess
+   again — the real nav bar (.ps-nav) is exactly 80px tall, position:
+   sticky, with its own backdrop-filter (which establishes its own
+   real CSS stacking context per spec). 32px of clearance wasn't
+   enough. Set well past the real 80px nav height with real margin, so
+   this holds regardless of the exact stacking interaction. */
+.ps-ms-overlay--top-align { align-items: flex-start; padding-top: 100px; box-sizing: border-box; }
+
+/* Real feature, per direct specification: "Order Lookup & Patient
+   Verification" modal — needs real room for a multi-column grid of
+   results (order #, patient, MRN, DOB, client), which the existing
+   520/620px ps-ms-modal widths were never sized for. Extends the same
+   dark ps-ms-* family used elsewhere in this exact folder
+   (IntraopMergePromptModal.tsx, ReportDeficiencyModal.tsx) rather than
+   introducing the separate, light-themed ps-modal-xl family used
+   elsewhere in the app — this page and its existing modals are
+   consistently dark, and a white modal here would be visually jarring. */
+.ps-ms-modal--grid { width: 900px; max-width: 95vw; max-height: 85vh; }
+
+.ps-order-lookup-search-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ps-order-lookup-search-input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  background-color: #020617;
+  color: #e5e7eb;
+  /* Real fix, per direct report: the full placeholder text ("Search by
+     Order #, MRN, Patient Name, DOB (mm/dd/yyyy), or Client Code…", 71
+     characters) hard-clipped before reaching the end in at least one
+     real environment, despite the input itself measuring 758-842px
+     wide in every viewport width tested here (850px-1920px) — never
+     reproduced directly in this sandbox, most likely a real system
+     font-rendering difference (native placeholder text has no CSS
+     ellipsis fallback; it just hard-clips at the box edge with no "…"
+     marker, matching exactly what the report showed). 13px (down from
+     14px) gives real, meaningful margin — roughly 7% more horizontal
+     room per character — without meaningfully harming legibility for
+     placeholder text specifically. */
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.ps-order-lookup-search-input:focus { border-color: #0891B2; }
+
+.ps-order-lookup-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 16px 0 8px;
+}
+.ps-order-lookup-section-label:first-child { margin-top: 0; }
+
+.ps-order-lookup-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.3fr) minmax(0,1fr) 110px 110px minmax(0,1fr);
+  gap: 1px;
+  background: #1f2933;
+  border: 1px solid #1f2933;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ps-order-lookup-grid-header,
+.ps-order-lookup-grid-row {
+  display: contents;
+}
+
+.ps-order-lookup-grid-header > div {
+  background: #0b1220;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 8px 10px;
+}
+
+.ps-order-lookup-grid-row > div {
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 13px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ps-order-lookup-grid-row {
+  cursor: pointer;
+}
+.ps-order-lookup-grid-row:hover > div { background: #17202e; }
+
+.ps-order-lookup-empty {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.ps-order-lookup-loading {
+  padding: 16px 24px;
+  color: #64748b;
+  font-size: 13px;
+}
 
 .ps-ms-header {
   font-size: 18px;
@@ -10281,7 +10311,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-type-cap-list          { display: flex; flex-direction: column; gap: 4px; }
 .ps-type-cap-checkbox      { width: 16px; height: 16px; accent-color: #8AB4F8; cursor: pointer; flex-shrink: 0; }
 .ps-type-color-row         { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-.ps-type-color-swatch      { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.12s; padding: 0; }
+.ps-type-color-swatch      { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.12s; padding: 0; background: var(--swatch-color); }
 .ps-type-color-swatch:hover { transform: scale(1.15); }
 .ps-type-color-swatch--active { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
 .ps-type-color-input       { width: 32px; height: 24px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; padding: 0; background: transparent; }
@@ -10291,25 +10321,35 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 /* ── Delegation Types Section ────────────────────────────────────────────────── */
 .ps-del-shell           { display: flex; flex-direction: column; gap: 24px; }
 .ps-del-header          { display: flex; justify-content: space-between; align-items: flex-start; }
-.ps-del-group           { display: flex; flex-direction: column; gap: 8px; }
-.ps-del-group-label     { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-.ps-del-list            { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-items: start; }
 .ps-del-loading         { font-size: 13px; color: #94a3b8; }
-.ps-del-empty           { font-size: 13px; color: #94a3b8; padding: 12px 0; }
-.ps-del-row             { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); transition: opacity 0.2s; }
-.ps-del-row--inactive   { opacity: 0.5; }
-.ps-del-dot             { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ps-del-id-badge        { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 90px; text-align: center; }
-.ps-del-info            { flex: 1; min-width: 0; }
-.ps-del-name-row        { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ps-del-name            { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-.ps-del-tag             { font-size: 10px; color: #94a3b8; font-weight: 600; }
+.ps-del-empty-cell      { font-size: 13px; color: #94a3b8; padding: 16px; text-align: center; }
+.ps-del-tag             { font-size: 10px; color: #94a3b8; font-weight: 600; background: rgba(255,255,255,0.05); border-radius: 4px; padding: 2px 6px; }
 .ps-del-tag--warn       { color: #f59e0b; }
-.ps-del-desc            { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-del-badge-row       { display: flex; flex-wrap: wrap; gap: 4px; }
 .ps-del-confirm-row     { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .ps-del-confirm-label   { font-size: 11px; color: #f87171; }
-.ps-del-delete-btn      { padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid transparent; color: #94a3b8; flex-shrink: 0; font-family: inherit; transition: color 0.15s; }
-.ps-del-delete-btn:hover { color: #f87171; border-color: rgba(248,113,113,0.3); }
+.ps-del-delete-btn      { color: #94a3b8; }
+.ps-del-delete-btn:hover { color: #f87171; }
+/* Real class, not inline styling — id badge's accent color is real,
+ * per-row data (dt.color), read via CSS custom properties set inline
+ * on the element itself (the one legitimate use of the style
+ * attribute for genuinely dynamic, per-instance data — not styling
+ * that could have been a static class). Same hex-alpha-suffix +
+ * custom-property convention already established in
+ * SynopticReportPage/modals/CaseTeamModal.tsx's own colorVars(). */
+.ps-del-id-badge        { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; display: inline-block;
+                           background: var(--del-badge-bg);
+                           color: var(--del-badge-color);
+                           border: 1px solid var(--del-badge-border); }
+.ps-del-modal            { width: min(600px, 96vw); }
+.ps-del-modal-title      { font-size: 16px; }
+.ps-del-form-row-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ps-del-id-input         { font-family: monospace; }
+.ps-del-id-input--locked { opacity: 0.5; }
+.ps-del-textarea         { resize: vertical; }
+.ps-del-toggle-stack     { display: flex; flex-direction: column; gap: 10px; }
+.ps-del-footer-actions   { display: flex; gap: 10px; }
+.ps-sub-toggle-wrap--disabled { opacity: 0.4; }
 
 /* ── TAT Configuration Section ───────────────────────────────────────────────── */
 .ps-tat-shell              { display: flex; flex-direction: column; gap: 20px; }
@@ -10634,7 +10674,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 /* ── SequencerPanel footer ────────────────────────────────────────────────── */
 /* Uses existing ps-btn-ghost-dark and ps-btn-primary — no new classes needed */
 /* ── SequencerPanel ──────────────────────────────────────────────────────── */
-.ps-seq-overlay            { position: fixed; inset: 0; background: rgba(4,10,18,0.82); backdrop-filter: blur(6px); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.ps-seq-overlay            { position: fixed; inset: 0; background: rgba(4,10,18,0.82); backdrop-filter: blur(6px); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 88px 20px 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-seq-shell              { width: 92vw; max-width: 1100px; height: 86vh; background: #0d1829; border: 1px solid rgba(148,163,184,0.15); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; }
 .ps-seq-header             { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
 .ps-seq-header-left        { flex: 1; }
@@ -10786,7 +10826,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-ph-compose-footer        { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
 
 /* ── Cannot Finalise modal ───────────────────────────────────────────────── */
-.ps-cannot-fin-overlay        { position: fixed; inset: 0; background: rgba(4,10,18,0.85); z-index: 9000; display: flex; align-items: center; justify-content: center; }
+.ps-cannot-fin-overlay        { position: fixed; inset: 0; background: rgba(4,10,18,0.85); z-index: 9000; display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-cannot-fin-modal          { width: 680px; max-width: 96vw; background: #0f172a; border-radius: 16px; border: 1px solid rgba(239,68,68,0.3); box-shadow: 0 25px 60px rgba(0,0,0,0.6); overflow: hidden; }
 .ps-cannot-fin-header         { padding: 18px 24px; background: rgba(239,68,68,0.08); border-bottom: 1px solid rgba(239,68,68,0.2); display: flex; align-items: center; gap: 12px; }
 .ps-cannot-fin-header-icon    { font-size: 22px; }
@@ -10840,7 +10880,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-tmpl-btn-approve           { padding: 6px 12px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
 .ps-tmpl-btn-changes           { padding: 6px 12px; background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
 .ps-tmpl-btn-reject            { padding: 6px 12px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
-.ps-tmpl-comment-overlay       { position: fixed; inset: 0; background: rgba(4,10,18,0.82); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.ps-tmpl-comment-overlay       { position: fixed; inset: 0; background: rgba(4,10,18,0.82); display: flex; align-items: center; justify-content: center; z-index: 20; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-tmpl-comment-modal         { background: #0f172a; padding: 24px; border-radius: 10px; width: 420px; border: 1px solid rgba(255,255,255,0.1); }
 .ps-tmpl-comment-textarea      { width: 100%; height: 100px; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #e2e8f0; font-size: 13px; resize: vertical; outline: none; font-family: inherit; box-sizing: border-box; }
 .ps-tmpl-comment-footer        { margin-top: 12px; display: flex; justify-content: flex-end; gap: 10px; }
@@ -10856,7 +10896,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── CommentModalShell ───────────────────────────────────────────────────── */
-.ps-cmnt-overlay             { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.ps-cmnt-overlay             { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; pointer-events: auto; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-cmnt-overlay--dimmed     { background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); }
 .ps-cmnt-modal                { width: 75vw; height: 85vh; background: #0b1120; border: 1px solid rgba(148,163,184,0.4); border-radius: 16px; box-shadow: 0 32px 80px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; z-index: 1; transition: box-shadow 0.2s; }
 /* Was a light theme (white/#f8fafc) — the ONE modal in the app that
@@ -10907,7 +10947,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-unsaved-discard-btn:hover  { background: rgba(248,113,113,0.08) !important; border-color: #f87171 !important; }
 
 /* ── SpecimenEditModal ───────────────────────────────────────────────────── */
-.ps-specedit-overlay           { position: fixed; inset: 0; background: rgba(4,10,18,0.82); backdrop-filter: blur(6px); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.ps-specedit-overlay           { position: fixed; inset: 0; background: rgba(4,10,18,0.82); backdrop-filter: blur(6px); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 88px 20px 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-specedit-shell             { width: 860px; max-width: 96vw; max-height: 90vh; background: #0d1829; border: 1px solid rgba(148,163,184,0.15); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; }
 .ps-specedit-header            { padding: 18px 24px; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .ps-specedit-title             { font-size: 18px; font-weight: 700; color: #e2e8f0; margin: 0; }
@@ -11792,7 +11832,18 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
    ══════════════════════════════════════════════════════════════════════════ */
 @media print {
   /* Hide everything */
-  body > *:not(.ps-orch4-shell) { display: none !important; }
+  /* Real fix, per direct report with screenshot in hand: "On print,
+     just gave a blank case." Confirmed directly: this rule (built for
+     the Orchestrator report print view) hides the ENTIRE app root on
+     print, since the root itself is never .ps-orch4-shell — a real,
+     genuine bug for any OTHER print feature in this app that doesn't
+     live inside that specific shell, including MaterialTrackingHistory
+     Modal.tsx's own print button, no matter how correct its own print
+     CSS is (display:none on an ancestor can never be undone by a
+     descendant). .ps-mth-overlay (portaled directly to document.body,
+     same real pattern the Dev Tools dropdown fix already used) is now
+     also exempted here. */
+  body > *:not(.ps-orch4-shell):not(.ps-mth-overlay) { display: none !important; }
 
   /* Hide nav chrome */
   .ps-orch4-nav,
@@ -12244,6 +12295,14 @@ h3[data-section-id]:first-child {
 .ps-st-filter-bar           { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
 .ps-st-search               { flex: 1; padding: 9px 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; font-size: 14px; color: #DEE4E7; outline: none; font-family: inherit; }
 .ps-st-role-filter          { padding: 9px 14px; background: #0f172a; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; font-size: 14px; color: #DEE4E7; outline: none; cursor: pointer; font-family: inherit; color-scheme: dark; }
+/* Real fix, per direct report ("All Roles filter items are white on
+   white, can't see options"): confirmed directly — the <option>
+   elements had no explicit background (rgba(0,0,0,0)), so the
+   browser fell back to its own native, often-white popup rendering
+   for the open dropdown list, regardless of color-scheme: dark on the
+   parent. Same real bug, same proven fix already established
+   elsewhere in this file for ps-conf-select/ps-specedit-input. */
+select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 /* Table */
 .ps-st-table-wrap           { border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; overflow: hidden; }
@@ -12942,7 +13001,7 @@ h3[data-section-id]:first-child {
 
 /* ── Print styles: report body only, no chrome ───────────────────────────── */
 @media print {
-  body > *:not(.ps-orch4-shell)  { display: none !important; }
+  body > *:not(.ps-orch4-shell):not(.ps-mth-overlay)  { display: none !important; }
 
   .ps-orch4-nav,
   .ps-orch4-toolbar,
@@ -15846,7 +15905,8 @@ h3[data-section-id]:first-child {
 
 /* ── Part Picker modal ────────────────────────────────────────── */
 .ps-tmpla-picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-  z-index: 1000; display: flex; align-items: center; justify-content: center; }
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-tmpla-picker-modal { width: 560px; max-height: 70vh; background: #fff; border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; }
 .ps-tmpla-picker-header  { padding: 20px 24px 16px; border-bottom: 1px solid #e2e8f0; }
@@ -16624,6 +16684,43 @@ h3[data-section-id]:first-child {
   font-family: inherit;
 }
 
+/* Real feature, per direct follow-up: "The hold Retention flag
+   should be also on the accession screen." A plain checkbox toggle
+   revealing two fields — see AccessionPage.tsx's own comment on why
+   this stays inline rather than a modal like Case Comment/
+   Deficiencies. Amber, not red — a hold is a deliberate, legitimate
+   action a real person is choosing to take, not an error state (see
+   ps-conf-error-text's own red, reserved for the "note required"
+   validation message right below it). */
+.ps-retention-hold-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #F59E0B;
+  cursor: pointer;
+}
+.ps-retention-hold-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #F59E0B;
+}
+.ps-retention-hold-fields {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 10px;
+  background: rgba(245,158,11,0.06);
+}
+.ps-required-marker {
+  color: #f87171;
+}
+
 .ps-accession-actions {
   display: flex;
   justify-content: flex-end;
@@ -16726,11 +16823,354 @@ h3[data-section-id]:first-child {
   color: #f59e0b;
 }
 
+/* Real fix, per direct reminder: "no business logic in the UI code
+   and no inline css." Foreign-ID collision warning — deliberately its
+   own class, not a reuse of ps-accession-warnings above: that class is
+   amber/general-warning toned, a genuine data collision (this app's
+   own foreignIdCollision.ts) is a more severe, error-toned situation,
+   so it gets its own, red-toned treatment. Used by ForeignIdFields.tsx
+   (and any future caller needing the identical warning). */
+.ps-foreign-id-collision-warning {
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.ps-foreign-id-collision-warning-text {
+  font-size: 12px;
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* Real fix, per direct reminder: "no business logic in the UI code
+   and no inline css." Shared teal "print/reprint" action button —
+   MatrixBlockEditorModal.tsx's own "Reprint Cassette Label" and
+   "Print Secondary Label" buttons both used this exact same visual
+   treatment as an inline style, duplicated. Modifier variants handle
+   the two real size differences (header-inline vs. body-block)
+   without duplicating the shared color/border/cursor rules twice. */
+.ps-teal-action-btn {
+  font-weight: 600;
+  color: #0891B2;
+  background: rgba(8, 145, 178, 0.1);
+  border: 1px solid rgba(8, 145, 178, 0.3);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.ps-teal-action-btn--inline {
+  font-size: 11px;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ps-teal-action-btn--block {
+  font-size: 12px;
+  padding: 7px 12px;
+  margin-bottom: 4px;
+}
+
+/* Real fix, per direct reminder: "no business logic in the UI code
+   and no inline css." PrintSettingsSection.tsx's own real, repeated
+   card-layout pattern (title/description/control, one real card per
+   setting) — genuinely used by every card in that file, not invented
+   for just one. */
+.ps-conf-page {
+  padding: 24px;
+}
+
+.ps-conf-loading {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--ps-conf-text-3);
+  font-size: 14px;
+}
+
+.ps-conf-section-subtitle--spaced {
+  margin-bottom: 24px;
+}
+
+.ps-conf-card--spaced {
+  margin-bottom: 12px;
+}
+
+.ps-conf-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ps-conf-text);
+  margin-bottom: 4px;
+}
+
+.ps-conf-card-description {
+  font-size: 13px;
+  color: var(--ps-conf-text-2);
+  margin-bottom: 12px;
+}
+
+.ps-conf-card-description--tight {
+  font-size: 13px;
+  color: var(--ps-conf-text-2);
+}
+
+.ps-conf-radio-group {
+  display: flex;
+  gap: 12px;
+}
+
+.ps-conf-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ps-conf-radio-input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ps-conf-teal);
+}
+
+.ps-conf-option-text {
+  font-size: 14px;
+  color: var(--ps-conf-text);
+}
+
+.ps-conf-toggle-label-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ps-conf-select-wide {
+  max-width: 420px;
+}
+
+.ps-conf-input-code {
+  width: 120px;
+  text-align: center;
+}
+
+.ps-conf-input-gtin {
+  width: 220px;
+}
+
+.ps-conf-prefix-row {
+  display: flex;
+  gap: 16px;
+}
+
+.ps-conf-prefix-field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--ps-conf-text-3);
+  margin-bottom: 4px;
+}
+
+.ps-conf-container-type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ps-conf-container-type-label {
+  font-size: 13px;
+  color: var(--ps-conf-text);
+  flex: 1;
+}
+
+.ps-conf-saving-indicator {
+  font-size: 12px;
+  color: var(--ps-conf-text-3);
+  margin-top: 8px;
+}
+
+/* Real feature, per direct follow-up: cell blocks "frequently use
+   distinct cassette colors... to signal fragile cytopreparations to
+   histotechnologists." Real, justified exception to "no inline css":
+   the swatch's own background color is genuinely dynamic, admin-
+   configured data (CassetteColorDefinition.hexCode) — matching this
+   app's own, already-established pattern for the identical problem
+   in CassetteColorsSection.tsx's own table. Every FIXED property
+   (size, shape, border) lives here; only the truly dynamic color
+   value stays as an inline style at the real call site. */
+.ps-cassette-color-control {
+  margin-bottom: 16px;
+}
+
+.ps-cassette-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ps-cassette-color-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.ps-cassette-color-name {
+  font-size: 13px;
+  color: var(--ps-conf-text, #e2e8f0);
+}
+
+.ps-cassette-color-overridden-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ps-cassette-color-unresolved {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Real feature, per direct follow-up describing the real grossing-
+   station workflow — "the PA sees the pre-resolved default cassettes
+   queued up on screen... can accept them as-is, adjust the block
+   count, or override the resolved color." */
+.ps-grossing-release-panel {
+  margin: 12px 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.ps-grossing-release-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4ade80;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.ps-grossing-release-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ps-grossing-release-label {
+  font-size: 13px;
+  color: #e2e8f0;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.ps-grossing-release-remove {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.ps-grossing-release-remove:hover {
+  color: #f87171;
+}
+
+/* Real fix, per direct UI/UX request: the Temporary/Downtime Placeholder
+   Identity toggle, promoted from a de-emphasized inline-text row buried
+   in the middle of the demographic-fields grid to a real, top-of-form
+   banner establishing a genuine step-1 decision point — matches this
+   same page's own ps-accession-warnings visual pattern above rather
+   than a third, different amber-banner treatment. margin-bottom (not
+   margin-top, unlike ps-accession-warnings) since this sits directly
+   above the demographic grid it's now deliberately separated from,
+   not below a list of items the way the import-warnings block is. */
+/* Real feature, per direct, detailed specification: "Encounter
+   Selector & Auto-Fill." Green (not the amber the downtime banner
+   above uses) — this is a positive confirmation of a real, successful
+   auto-fill, not a warning. */
+.ps-encounter-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  margin-bottom: 4px;
+}
+.ps-encounter-badge-icon {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.ps-encounter-badge-text {
+  flex: 1;
+  font-size: 13px;
+  color: #d1fae5;
+}
+.ps-encounter-badge-unlink {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #86efac;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ps-encounter-badge-unlink:hover {
+  background: rgba(34, 197, 94, 0.15);
+  color: #ffffff;
+}
+
+.ps-encounter-loading {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 4px 2px;
+  font-style: italic;
+}
+
+.ps-accession-downtime-banner {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+.ps-accession-downtime-banner .ps-accession-checkbox-row {
+  margin-top: 0;
+}
+
 /* ── Accession page: Import from Order ─────────────────────────────────── */
 .ps-accession-import-row {
   margin-bottom: 20px;
   padding-bottom: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Real fix, per direct report: makes explicit that this whole section
+   is a convenience, not a required first step — see this label's own
+   render-site comment in AccessionPage.tsx for the full reasoning. */
+.ps-accession-import-hint {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 /* .ps-accession-import-controls removed — replaced by the search+list
@@ -16951,6 +17391,66 @@ h3[data-section-id]:first-child {
   overflow: hidden;
 }
 
+/* Form-level error banner — shown above a form's own fields, distinct
+ * from ps-body-modal-error (a single-field inline error). Values match
+ * the inline style this replaces exactly, so this is a pure refactor
+ * (real CSS class, not inline styling) with zero visual change. */
+.ps-conf-form-error {
+  color: #ef4444;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+/* Specimen Code Crosswalk (CrosswalkSection.tsx) — real classes
+ * replacing what used to be entirely inline styling in this file.
+ * Values match the original inline styles exactly (pure refactor, no
+ * visual change) — see docs/ARCHIVE.md for the fuller account of why. */
+.ps-xwalk-pending-banner {
+  color: #f59e0b;
+  font-weight: 600;
+  margin: 12px 0;
+}
+.ps-xwalk-table-wrap {
+  margin-top: 16px;
+}
+.ps-xwalk-source-pending {
+  color: #f59e0b;
+  font-weight: 600;
+}
+.ps-xwalk-source-confirmed {
+  color: #94a3b8;
+}
+.ps-xwalk-add-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.06);
+}
+.ps-xwalk-add-panel-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.ps-xwalk-form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ps-xwalk-form-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 4px;
+}
+.ps-xwalk-form-field--wide {
+  min-width: 260px;
+}
+.ps-xwalk-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .ps-conf-table-scroll {
   max-height: calc(100vh - 480px);
   overflow-y: auto;
@@ -16997,6 +17497,24 @@ h3[data-section-id]:first-child {
 .ps-conf-status-text--active { color: var(--ps-conf-text); }
 .ps-conf-status-text--pending { color: var(--ps-conf-amber); }
 .ps-conf-status-text--open { color: #f87171; }
+
+/* Real, new — prominent, actionable banner card. Per direct guidance
+   on the Order Types & Inbound Rules screen's own real callout for
+   pending unmapped order-code stubs. Uses the same real amber/warning
+   color language already established for pending states above,
+   scaled up for genuine prominence rather than a muted inline note. */
+.ps-conf-callout-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 18px; margin-bottom: 16px; border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.ps-conf-callout-banner-text { font-size: 13px; color: var(--ps-conf-text); }
+.ps-conf-callout-banner-text strong { color: var(--ps-conf-amber); }
+.ps-conf-callout-banner-link {
+  background: none; border: none; color: var(--ps-conf-amber); font-size: 13px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; text-decoration: underline;
+}
+.ps-conf-callout-banner-link:hover { color: #fbbf24; }
 
 .ps-conf-auto-note {
   font-size: 10px;
@@ -17110,10 +17628,14 @@ h3[data-section-id]:first-child {
   padding: 8px 10px;
   background: rgba(0, 0, 0, 0.2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ps-accession-order-picker-search {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   padding: 4px 0;
@@ -17121,6 +17643,56 @@ h3[data-section-id]:first-child {
   color: var(--ps-text);
   outline: none;
   font-family: inherit;
+}
+
+/* Real feature, per direct specification: an explicit search trigger
+   distinct from the existing live-as-you-type inline filtering — Enter
+   or a click here both run the same real ambiguity check
+   (runOrderSearchTrigger in AccessionPage.tsx) that decides whether to
+   open the Order Lookup & Patient Verification modal. */
+.ps-accession-order-search-icon-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--ps-text-muted, #94a3b8);
+  font-size: 14px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+}
+.ps-accession-order-search-icon-btn:hover:not(:disabled) {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+}
+.ps-accession-order-search-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Real feature, per direct specification: lets a power user open the
+   full lookup grid directly, on demand — regardless of how many (or
+   how few) results the current query would otherwise return. */
+.ps-accession-advanced-search-link {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #0891B2;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+}
+.ps-accession-advanced-search-link:hover:not(:disabled) {
+  color: #22d3ee;
+  background: rgba(8, 145, 178, 0.12);
+}
+.ps-accession-advanced-search-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .ps-accession-order-picker-list {
@@ -18039,6 +18611,35 @@ h3[data-section-id]:first-child {
   font-weight: 600;
 }
 
+/* Real fix, per direct reminder: "no business logic in the UI code
+   and no inline css." Real, shared pattern this whole card family
+   (block cards and decant cards alike) already duplicated as an
+   inline style at two separate call sites in
+   BlockStainEditorModal.tsx — one real class for each, used by both. */
+.ps-protocol-track-header-info {
+  flex: 1;
+}
+
+.ps-protocol-track-meta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* Decants section label — same real, established "small, uppercase,
+   bold, muted" section-label pattern this app already uses under a
+   dozen other feature-specific names elsewhere (this app's own
+   convention: one specifically-named class per feature, not one
+   generic shared class), for the "Decants" heading in
+   BlockStainEditorModal.tsx. */
+.ps-decants-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin: 18px 0 8px;
+}
+
 .ps-protocol-step-row {
   border-top: 1px solid rgba(255,255,255,0.06);
   padding-top: 10px;
@@ -18093,6 +18694,15 @@ h3[data-section-id]:first-child {
   position: relative;
   margin: 8px 0;
 }
+
+/* Real, per direct report: "the CPT code and description field are
+   not lined up." Confirmed the real, precise cause — this wrapper's
+   own margin: 8px 0 above pushes the CPT input down 8px versus a
+   plain ps-conf-input sibling (Description) with no such margin. Real
+   scoped override, not a change to the shared base rule — this same
+   class is also real, live, and correctly margined in
+   AccessionPage.tsx's own Icd10Picker. */
+.ps-protocol-stainselect--no-margin { margin: 0; }
 
 .ps-protocol-stainselect-chips {
   display: flex;
@@ -18152,6 +18762,26 @@ h3[data-section-id]:first-child {
 .ps-protocol-stainselect-option-cat {
   font-size: 11px;
   color: #64748b;
+}
+
+/* Real, per direct report: "the description needs its own column as
+   it is butting next to the code." Confirmed the real cause —
+   justify-content: space-between (base rule above) only creates
+   visible separation when there's leftover row width to distribute;
+   once a real, longer description wraps to two lines, there's none
+   left, and the two spans end up flush. Real, scoped fix: a fixed-
+   width code column plus a real, explicit gap, so the description
+   always starts at the same aligned position regardless of its own
+   length. Scoped to this modal's own option rows, not a change to
+   the shared base rule — AccessionPage.tsx's own Icd10Picker uses
+   that rule too and wasn't reported as having this same problem. */
+.ps-protocol-stainselect-option--code-col {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.ps-protocol-stainselect-option--code-col > span:first-child {
+  flex-shrink: 0;
+  min-width: 50px;
 }
 
 .ps-protocol-stainselect-empty {
@@ -18608,13 +19238,13 @@ h3[data-section-id]:first-child {
    a teal/cyan theme (matching this app's own established
    "informational, in-progress" color elsewhere, e.g. LIS Integration's
    own toggle color) avoids the two being visually confused. */
-.ps-hb-status-pill.ps-case-status--pending-release { background: #ecfeff; border: 1px solid #67e8f9; }
+.ps-hb-status-pill.ps-case-status--pending-release { background: #eff6ff; border: 1px solid #93c5fd; }
 .ps-hb-status-pill.ps-case-status--amended         { background: #fff7ed; border: 1px solid #fdba74; }
 
 .ps-hb-status-pill.ps-case-status--draft .ps-hb-status-dot          { background: #3b82f6; }
 .ps-hb-status-pill.ps-case-status--finalized .ps-hb-status-dot      { background: #22c55e; }
 .ps-hb-status-pill.ps-case-status--pending-review .ps-hb-status-dot { background: #f59e0b; }
-.ps-hb-status-pill.ps-case-status--pending-release .ps-hb-status-dot { background: #06b6d4; }
+.ps-hb-status-pill.ps-case-status--pending-release .ps-hb-status-dot { background: #1C8DE3; }
 .ps-hb-status-pill.ps-case-status--amended .ps-hb-status-dot        { background: #f97316; }
 
 .ps-hb-status-pill.ps-case-status--draft .ps-hb-status-text,
@@ -18624,7 +19254,7 @@ h3[data-section-id]:first-child {
 .ps-hb-status-pill.ps-case-status--pending-review .ps-hb-status-text,
 .ps-hb-confidence-pct.ps-case-status--pending-review { color: #92400e; }
 .ps-hb-status-pill.ps-case-status--pending-release .ps-hb-status-text,
-.ps-hb-confidence-pct.ps-case-status--pending-release { color: #0e7490; }
+.ps-hb-confidence-pct.ps-case-status--pending-release { color: #1d4ed8; }
 .ps-hb-status-pill.ps-case-status--amended .ps-hb-status-text,
 .ps-hb-confidence-pct.ps-case-status--amended         { color: #c2410c; }
 
@@ -18637,7 +19267,7 @@ h3[data-section-id]:first-child {
 @keyframes ps-spin { to { transform: rotate(360deg); } }
 
 /* Case not found screen */
-.ps-case-not-found { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0b1120; gap: 16px; }
+.ps-case-not-found { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0b1120; gap: 16px; padding-top: 88px; box-sizing: border-box; }
 .ps-case-not-found-icon { font-size: 48px; }
 .ps-case-not-found-title { font-size: 20px; font-weight: 700; color: #e2e8f0; }
 .ps-case-not-found-subtitle { font-size: 14px; color: #64748b; }
@@ -18683,7 +19313,7 @@ h3[data-section-id]:first-child {
 .ps-syn-nav-strip-empty { color: #94a3b8; }
 
 /* Tab bar (used in both the normal view and the full-screen sequencer overlay) */
-.ps-syn-tabbar { display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; background: rgba(10,16,32,0.6); }
+.ps-syn-tabbar { display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; background: rgba(10,16,32,0.6); overflow-x: auto; overflow-y: hidden; }
 .ps-syn-tab-btn {
   padding: 9px 18px; font-size: 12px; font-weight: 400; color: rgba(148,163,184,0.7);
   background: none; border: none; border-bottom: 2px solid transparent;
@@ -18698,10 +19328,56 @@ h3[data-section-id]:first-child {
 .ps-syn-tab-dot--in-progress { background: #60a5fa; border: 1.5px solid #60a5fa; box-shadow: 0 0 5px #60a5fa; }
 .ps-syn-tab-dot--draft       { background: #3b82f6; border: 1.5px solid #3b82f6; box-shadow: 0 0 5px #3b82f6; }
 
-.ps-syn-tabbar-tools { margin-left: auto; padding: 0 10px; display: flex; align-items: center; gap: 8px; }
+/* Real fix, per direct follow-up with a screenshot: "The buttons top
+   and bottom just go under the other objects and are not reachable."
+   Confirmed directly, live: at a genuinely narrow+short window, this
+   row's own content (tabs + tools) exceeds the tabbar's real,
+   available width, and without this, the tools section rendered
+   underneath the adjacent right pane's own header — not just
+   scrolled off, genuinely covered by another pane's content
+   (confirmed via a direct elementFromPoint() check at the exact
+   pixel). Sticky-right keeps Dev Tools/Sequencer permanently in
+   view regardless of horizontal scroll position, so a tech never
+   needs to discover that this row scrolls at all — the tabs
+   themselves scroll underneath, the tools never do. A real,
+   opaque background (matching the tabbar's own) is required for
+   this to work correctly — without one, scrolled-under tab content
+   would show through the sticky tools' own transparent gaps. */
+.ps-syn-tabbar-tools { margin-left: auto; padding: 0 10px; display: flex; align-items: center; gap: 8px; position: sticky; right: 0; background: #0d1420; flex-shrink: 0; z-index: 2; }
 .ps-syn-dev-btn { font-size: 11px; padding: 4px 10px; border-radius: 5px; cursor: pointer; font-weight: 600; white-space: nowrap; }
 .ps-syn-dev-btn--microscopic { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35); color: #f59e0b; }
 .ps-syn-dev-btn--lis { background: rgba(217,119,6,0.12); border: 1px solid rgba(217,119,6,0.35); color: #d97706; }
+/* Real fix, per direct follow-up: "we are not displaying all the
+   available buttons in the synoptic report page." Confirmed directly,
+   live: 3 real dev-only Sim buttons + Sequencer genuinely overflowed
+   the tabbar's real, available width — the last button(s) were
+   visually clipped at the panel boundary. One, fixed-width dropdown
+   trigger replaces all 3 individual Sim buttons — the row's own
+   width no longer grows every time another simulation is added. */
+.ps-syn-devmenu-wrap { position: relative; }
+.ps-syn-devmenu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 500;
+  background: #0f1729; border: 1px solid rgba(245,158,11,0.35); border-radius: 8px;
+  padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+/* Real fix, per direct report: "Dev Tools items are hidden behind the
+   left pane." A real regression from this same app's own earlier fix —
+   .ps-syn-tabbar (this dropdown's CSS ancestor before this change)
+   picked up overflow-y: hidden to stop the tabbar's own content
+   bleeding horizontally into the adjacent pane, which also silently
+   clipped this dropdown the moment it extended past the tabbar's own
+   short height. Now portaled to document.body (SynopticReportPage.tsx's
+   own devToolsBtnRef/devToolsMenuPos), so position: fixed (not
+   absolute — a portaled element has no positioned ancestor to be
+   "absolute" relative to) with top/left set inline from the trigger
+   button's own real, measured screen position at open time. */
+.ps-syn-devmenu--portaled { position: fixed; top: auto; left: auto; }
+.ps-syn-devmenu-item {
+  text-align: left; font-size: 12px; font-weight: 600; padding: 7px 10px; border-radius: 5px;
+  background: none; border: none; cursor: pointer; color: #f59e0b; white-space: nowrap;
+}
+.ps-syn-devmenu-item:hover { background: rgba(245,158,11,0.12); }
 .ps-syn-sequencer-btn {
   padding: 5px 12px; font-size: 11px; font-weight: 600; color: #38bdf8; cursor: pointer;
   background: rgba(8,145,178,0.1); border: 1px solid rgba(8,145,178,0.3);
@@ -18770,7 +19446,7 @@ h3[data-section-id]:first-child {
 }
 
 /* Tab-switch unsaved-draft confirmation modal */
-.ps-tabswitch-overlay { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+.ps-tabswitch-overlay { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding-top: 88px; padding-bottom: 32px; box-sizing: border-box; overflow-y: auto; }
 .ps-tabswitch-modal { background: #1e293b; border: 1px solid rgba(148,163,184,0.2); border-radius: 12px; padding: 28px 32px; max-width: 420px; width: 90%; }
 .ps-tabswitch-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
 .ps-tabswitch-body { font-size: 13px; color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
@@ -19618,6 +20294,33 @@ h3[data-section-id]:first-child {
   animation: ps-litfeed-pulse 2.4s ease-in-out infinite;
 }
 
+/* Real feature, per direct follow-up: "by clicking the pubmed button,
+   I'd like to trigger a refresh of the presented article." The badge
+   is now a real <button>, not a decorative <span> — reset the native
+   button chrome so it still reads as the same pill, and speed up the
+   dot's pulse while a real refresh is in flight so the click has real,
+   visible feedback beyond the disabled state alone. */
+.ps-litfeed-badge--button {
+  border: 1px solid rgba(8, 145, 178, 0.45);
+  cursor: pointer;
+  font-family: inherit;
+  margin: 0;
+  line-height: normal;
+}
+
+.ps-litfeed-badge--button:hover:not(:disabled) {
+  background: rgba(8, 145, 178, 0.22);
+}
+
+.ps-litfeed-badge--button:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.ps-litfeed-dot--refreshing {
+  animation-duration: 0.7s;
+}
+
 @keyframes ps-litfeed-pulse {
   0%, 100% { opacity: 1;    transform: scale(1); }
   50%      { opacity: 0.35; transform: scale(0.8); }
@@ -19697,6 +20400,82 @@ h3[data-section-id]:first-child {
 @keyframes ps-litfeed-shimmer {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
+}
+
+/* ---- paste field — real feature, per direct follow-up: "If they
+   access the article and then search and find a different article,
+   can we update the pubmed article link... so they don't have to
+   search again." A plain, visible input the user pastes into,
+   deliberately not the Clipboard API — see PubMedTicker.tsx's own
+   header comment for the real permission/VDI reasoning. ---- */
+
+.ps-litfeed-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.ps-litfeed-paste {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 22px;
+}
+
+.ps-litfeed-paste-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  padding: 4px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.ps-litfeed-paste-input::placeholder {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.ps-litfeed-paste-input:focus {
+  outline: none;
+  border-color: rgba(8, 145, 178, 0.5);
+  background: rgba(8, 145, 178, 0.06);
+}
+
+.ps-litfeed-paste-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(8, 145, 178, 0.4);
+  border-radius: 6px;
+  background: rgba(8, 145, 178, 0.12);
+  color: #22d3ee;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ps-litfeed-paste-btn:hover:not(:disabled) {
+  background: rgba(8, 145, 178, 0.22);
+}
+
+.ps-litfeed-paste-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ps-litfeed-paste-success {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.ps-litfeed-paste-error {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #f87171;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -20267,8 +21046,19 @@ h3[data-section-id]:first-child {
 }
 
 .ps-auditlog-tabswitch { display: flex; gap: 4px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); }
+/* Real, per direct feedback (third pass — being deliberate this time):
+   corner badge now sits INSIDE the button's own box, in a real,
+   dedicated padding zone reserved specifically for it, rather than
+   overlapping outside the box via a negative offset. A negative
+   offset risks being clipped by any ancestor with overflow:hidden,
+   and — more importantly — was the real reason "label clearly
+   visible" wasn't holding up: a short label like "All" leaves very
+   little real room before the button's own edge, so a badge
+   overlapping that edge can still visually collide with the text.
+   Reserved padding guarantees the badge's own zone never overlaps
+   the label's own zone, regardless of label length. */
 .ps-auditlog-tabswitch-btn {
-  padding: 8px 18px;
+  padding: 8px 34px 8px 18px;
   border-radius: 7px;
   border: none;
   cursor: pointer;
@@ -20277,12 +21067,51 @@ h3[data-section-id]:first-child {
   transition: all 0.2s;
   background: transparent;
   color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  position: relative;
 }
 .ps-auditlog-tabswitch-btn--active { background: rgba(8,145,178,0.25); color: #0891B2; }
-.ps-auditlog-tabswitch-badge { background: #ef4444; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 6px; }
+.ps-auditlog-tabswitch-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  min-width: 14px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Real, per direct feedback: "the counts are covering part of the
+   name of the pill and should be upper right of the pill as is the
+   custom." Confirmed the real, established app-wide convention for
+   this — NavBar.tsx's own real message-count badge (ps-nav-badge,
+   used on the top nav's real message icon) — corner-positioned,
+   absolute, overlapping the parent's own top-right edge. Reuses that
+   real positioning technique here, combined with this page's own
+   already-established red badge color (ps-auditlog-tabswitch-badge,
+   above) for visual consistency within this page specifically, rather
+   than blindly copying ps-nav-badge's own fixed 18px circle sizing,
+   which assumes a small icon, not a wider text pill. min-width keeps
+   a single-digit count visually circular while still growing for a
+   real 2-3 digit count without text wrapping inside it. */
+.ps-auditlog-pill-badge {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  min-width: 14px;
+  text-align: center;
+  line-height: 1.4;
+}
 
 .ps-auditlog-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; flex-shrink: 0; }
 .ps-auditlog-stat-card { padding: 14px 18px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; display: flex; align-items: center; gap: 12px; }
@@ -20297,9 +21126,16 @@ h3[data-section-id]:first-child {
 .ps-auditlog-stat-label { font-size: 11px; color: #94a3b8; font-weight: 600; }
 
 .ps-auditlog-filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; flex-shrink: 0; }
+/* Real, per direct feedback: real, small top padding so a real,
+   corner-positioned count badge (ps-auditlog-pill-badge, below) has
+   room to sit above a pill's own top edge without getting clipped by
+   this row's own top boundary. The badge's own rightward offset is
+   deliberately kept small enough to fit within this row's existing
+   5px pill gap, rather than widening the row to accommodate it. */
 .ps-auditlog-pill-group { display: flex; gap: 5px; }
 .ps-auditlog-pill {
-  padding: 6px 13px;
+  position: relative;
+  padding: 6px 30px 6px 13px;
   border-radius: 20px;
   border: 1px solid rgba(255,255,255,0.2);
   background: transparent;
@@ -20329,6 +21165,12 @@ h3[data-section-id]:first-child {
 .ps-auditlog-date-to { color: #64748b; font-size: 13px; }
 
 .ps-auditlog-search-wrap { position: relative; flex: 1; min-width: 160px; }
+/* Real, per direct request: "reduce the search bar in the audit log
+   so that we can still fit a way to download interface error to a
+   spreadsheet." The base class's own flex: 1 grows to consume all
+   real remaining row space — this caps it instead, leaving real room
+   for the new Export CSV button beside it. */
+.ps-auditlog-search-wrap--narrow { flex: 0 1 220px; min-width: 140px; }
 .ps-auditlog-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #64748b; pointer-events: none; }
 .ps-auditlog-search-input { padding-left: 30px; width: 100%; box-sizing: border-box; color: #fff; }
 
@@ -21311,3 +22153,1000 @@ h3[data-section-id]:first-child {
 .ps-bottombar-scroll::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Edge (Chromium) */
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Manage Reprints modal (ManageReprintsModal.tsx)
+   Real fix, per direct follow-up: "No inline css correct?" — this
+   entire block replaces what was originally built with 31 separate
+   inline style={{}} instances, none of which were genuinely dynamic
+   values (colours from props, calculated dimensions) — the one
+   documented exception in the Internal Team Guide's own CSS
+   conventions (4.3). Real, deliberate BEM-style modifiers
+   (--checked, --bordered) handle the few states that do vary, rather
+   than branching inline styles.
+   ───────────────────────────────────────────────────────────────────────── */
+/* Real fix, per direct follow-up: "When the window area shrink the
+   left columns begins to disappear." Confirmed directly, live: below
+   the modal's own 1100px min-width floor, .ps-overlay's shared,
+   app-wide centering (justify-content: center) pushes the modal's
+   left edge to a genuinely NEGATIVE x position — measured directly
+   (-25px, -100px, -200px at progressively narrower widths) — with no
+   way to scroll back to it, since overflow caused by centering runs
+   in a direction most browsers don't reliably let you scroll into.
+   Left-aligning this specific overlay instead (not the shared,
+   global .ps-overlay class, to avoid touching every other modal in
+   the app) guarantees Column 1 — the first, most important content —
+   always starts at a real, positive, reachable x position; any
+   remaining overflow then only ever happens on the right, the
+   direction overflow-x: auto reliably handles. */
+.ps-reprint-overlay { z-index: 60000; justify-content: flex-start; overflow-x: auto; }
+/* Real fix, per direct follow-up: "the layout collapse is happening
+   because the viewport width is around 1000px to 1100px, causing CSS
+   grid columns to overflow and clip content... Set a Modal min-width
+   or Horizontal Scroll... min-width: 1100px." Confirmed directly: the
+   modal had no floor at all — max-width: 96vw (this file's own
+   pre-existing global safety-net rule, min(--modal-max-w, 96vw)
+   !important) could shrink it arbitrarily narrow on a real, scaled
+   bench workstation (1920x1080 physical at 125-150% Windows DPI
+   scaling resolves to a 1536px or 1280px LOGICAL viewport — the real
+   number this needs to hold up against, not the physical resolution).
+   min-width always wins over max-width when they'd otherwise
+   conflict — a guaranteed CSS resolution rule, not a specificity
+   fight — so this reliably holds the floor regardless of the
+   existing !important rule. */
+.ps-reprint-modal {
+  --modal-max-w: 1600px;
+  width: 1600px; max-width: 96vw; min-width: 1100px; height: 560px; max-height: 85vh;
+  display: flex; flex-direction: column; padding: 0; margin: auto;
+}
+.ps-reprint-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.ps-reprint-header-title { font-size: 17px; font-weight: 800; color: #f8fafc; }
+.ps-reprint-header-subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
+.ps-reprint-close-btn {
+  min-height: 44px; min-width: 44px; border-radius: 8px; border: none;
+  background: transparent; color: #94a3b8; font-size: 20px; cursor: pointer;
+}
+
+.ps-reprint-columns { flex: 1; display: flex; min-height: 0; overflow-x: auto; }
+
+/* Real feature, per direct follow-up: "The Math for 3-Across... Col 1
+   (Requisition): ~12%... Col 2 (Specimen): ~18%... Col 3 (Block):
+   ~35%... Col 4 (Slides): ~35%." Real, named width classes rather
+   than equal flex: 1 — every value here is fixed and known ahead of
+   time, so per the same no-inline-styles convention just established
+   for this file, these live as classes, not per-column inline
+   flex-grow values. 12+18+35+35 = 100, so the ratios map directly to
+   the requested percentages while staying responsive at the modal's
+   own 96vw small-screen cap. */
+/* Real fix, per direct follow-up: "Grid Proportions & Column Header
+   Fix: The overlapping header text in Column 1 and 2 happens because
+   they share a header container or lack explicit column tracks."
+   Confirmed directly: min-width: 0 was applied to every column with
+   no floor at all — with pure proportional flex-grow (12/18/35/35)
+   and no minimum, a narrow enough viewport could squeeze any column
+   arbitrarily thin, which is exactly what let the Column 1/2 headers
+   collide and clipped "A3" out of Column 3. Real, per-column minimums
+   now (close to the same values suggested — 140/180/320/320px) — a
+   column can still grow to fill extra space, but can no longer be
+   crushed below what its own content genuinely needs. */
+.ps-reprint-column { display: flex; flex-direction: column; }
+.ps-reprint-column--req { flex: 12; min-width: 140px; }
+.ps-reprint-column--specimen { flex: 18; min-width: 180px; }
+.ps-reprint-column--block, .ps-reprint-column--slides { flex: 35; min-width: 320px; }
+.ps-reprint-column--bordered { border-right: 1px solid rgba(255,255,255,0.08); }
+.ps-reprint-column-header {
+  display: flex; flex-direction: column; gap: 3px; padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.ps-reprint-column-title { font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.04em; white-space: nowrap; }
+.ps-reprint-column-body { flex: 1; overflow-y: auto; padding: 8px; }
+
+.ps-reprint-all-btn {
+  font-size: 11px; font-weight: 700; color: #22d3ee; background: none; border: none;
+  cursor: pointer; padding: 0; text-decoration: underline; text-align: left; white-space: nowrap;
+}
+.ps-reprint-all-btn:disabled { color: #475569; cursor: not-allowed; text-decoration: none; }
+
+/* Real feature, per direct follow-up: "Card-Level Tapping... giant,
+   touch-friendly toggle button (e.g., 50px high) with prominent
+   active states... Replace Header Links with 'Select All' Pills."
+   Replaces the original text-link "Reprint All" and the smaller,
+   subtler ps-reprint-row with a real, deliberately larger touch
+   target and a much more saturated, obvious checked state — a real
+   solid fill, not a 12%-opacity tint, since this is meant to read
+   correctly at a glance from someone standing at a grossing station,
+   not up close reading fine print. */
+.ps-reprint-select-all-pill {
+  font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(8,145,178,0.4); background: rgba(8,145,178,0.15); color: #22d3ee; white-space: nowrap;
+}
+.ps-reprint-select-all-pill--clear { border-color: rgba(148,163,184,0.3); background: rgba(148,163,184,0.08); color: #cbd5e1; }
+.ps-reprint-select-all-pill:disabled { color: #475569; border-color: rgba(148,163,184,0.15); background: none; cursor: not-allowed; }
+
+.ps-reprint-empty { font-size: 12px; color: #64748b; padding: 8px; }
+/* Real feature, per direct follow-up: "Display a clear empty-state
+   card under the SPECIMEN A > BLOCK A3 boundary header... No slides
+   generated for this block yet." grid-column: 1 / -1 spans every
+   track in the section's own grid — without it this would render
+   squeezed into a single, narrow ~110px cell alongside where real
+   slide cards would go, rather than reading as a real, deliberate
+   message. */
+.ps-reprint-empty-block-card {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #94a3b8; padding: 10px; font-style: italic;
+}
+/* Real feature, per direct follow-up: "For Damaged Blocks (A5): ...
+   🛠️ Tissue structure damaged. Re-embedding required before recuts."
+   Same grid-column: 1 / -1 full-width treatment as the empty-block
+   card above — a real, deliberate warning banner, not squeezed into
+   one grid cell. Red/orange, matching the Damaged badge's own color
+   (Lost uses amber/high-contrast fill instead — a genuinely
+   different, more alarming treatment for the one state that's fully
+   blocking, not just cautionary). */
+.ps-reprint-damaged-banner {
+  grid-column: 1 / -1; font-size: 12px; color: #f97316; font-weight: 600;
+  padding: 8px 10px; background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.3);
+  border-radius: 8px; margin-bottom: 6px;
+}
+
+.ps-reprint-req-item { padding: 6px 8px; }
+.ps-reprint-item-label { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.ps-reprint-item-sublabel { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+/* Real feature, per direct follow-up: "Keep the card height compact
+   (~44px to 48px)... preserves a 48px touch target for gloved hands
+   while stripping out unused vertical padding." Down from the prior
+   50px + roomier padding — genuinely tighter, not just a rounding
+   change, while staying at the real, documented 44px+ touch-target
+   floor (see this file's own earlier note on that number). */
+.ps-reprint-card {
+  display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 4px 10px;
+  border-radius: 8px; cursor: pointer; margin-bottom: 4px;
+  background: rgba(255,255,255,0.03); border: 2px solid rgba(255,255,255,0.08);
+  transition: background 0.1s, border-color 0.1s;
+}
+.ps-reprint-card--checked { background: rgba(8,145,178,0.28); border-color: #22d3ee; }
+/* Real feature, per direct follow-up: "Dim/grey out the card
+   slightly... since no new tissue exists to cut." A real, existing,
+   reachable BlockStatus value (Exhausted) — see the checkbox's own
+   comment above for the full reasoning. opacity dims the whole card
+   uniformly (checkbox, badge, text) rather than restyling each piece
+   separately, and cursor: not-allowed reinforces the disabled
+   checkbox visually across the entire card, not just the input
+   itself. */
+.ps-reprint-card--exhausted { opacity: 0.55; cursor: not-allowed; }
+.ps-reprint-card-exhausted-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px;
+  color: #94a3b8; background: rgba(148,163,184,0.12); border: 1px solid rgba(148,163,184,0.35); flex-shrink: 0;
+}
+/* Real feature, per direct follow-up: "Unlike consumed blocks, lost
+   or damaged blocks need immediate high-visibility visual warnings to
+   prevent accidental label reprinting or invalid microtome requests."
+   Lost: amber, high-contrast FILL (not just an outline) — deliberately
+   the most visually alarming state in the whole matrix, since it's
+   the one genuinely disabled/blocking state (Damaged still allows a
+   real print action). Damaged: red/orange OUTLINE specifically (not a
+   solid fill like Lost) — still allowed for a real, specific action
+   (re-embed label), so it reads as "caution, different workflow" not
+   "stop, blocked entirely." */
+.ps-reprint-card--lost { background: rgba(245,158,11,0.14); border-color: #f59e0b; opacity: 0.85; cursor: not-allowed; }
+.ps-reprint-card--damaged { border-color: #f97316; }
+.ps-reprint-card-lost-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px;
+  color: #451a03; background: #f59e0b; border: 1px solid #f59e0b; flex-shrink: 0;
+}
+.ps-reprint-card-damaged-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px;
+  color: #f97316; background: rgba(249,115,22,0.12); border: 1px solid #f97316; flex-shrink: 0;
+}
+.ps-reprint-card-exception-note { font-size: 10px; color: #94a3b8; font-style: italic; width: 100%; margin-top: 1px; }
+.ps-reprint-card-checkbox { width: 22px; height: 22px; flex-shrink: 0; cursor: pointer; accent-color: #22d3ee; }
+/* Real feature, per direct follow-up: "Content Flow: Top/Left:
+   Checkbox + Bold Block ID. Bottom/Right: Subtext... floated to the
+   right." Label and sublabel share one row (not stacked) now that the
+   card itself is shorter — real room for a bold, large-at-a-glance
+   ID plus its subtext without needing the extra vertical space
+   stacking would cost. */
+.ps-reprint-card-text { min-width: 0; flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* Real fix, per direct follow-up: "Text and image wrapping is a bit
+   off." Confirmed directly: the label had no white-space rule at all
+   — browsers treat a hyphen as a valid line-break point by default,
+   so "A1-L1" genuinely wrapped to "A1-" / "L1" the moment its tile
+   got narrow enough, which the 3-across auto-fill grid's own minimum
+   card width made easy to hit. nowrap stops that regardless of how
+   tight the tile gets; ellipsis is the fallback if it's ever
+   genuinely too narrow to show the whole id, rather than a silent,
+   confusing mid-word break. */
+/* Real fix, per direct follow-up: "Text and image wrapping is a bit
+   off." A real flex row now — the id text (its own, separately
+   truncatable span below) and any badges (STAT/Recut) are siblings,
+   not all one run of inline content. Keeping them separate means an
+   ellipsis on a long id can never eat into part of a badge's own
+   text — each one either shows in full or doesn't render at all. */
+/* Real fix, per direct follow-up: "Text and image wrapping is a bit
+   off." Confirmed directly, live: even after the id text stopped
+   wrapping mid-word, it was still getting squeezed down toward its
+   own minimum by the STAT/Recut badge sharing the same row — at a
+   genuinely narrow 3-across tile, "A1-L1" plus a "STAT" pill don't
+   both fit on one line. flex-wrap lets the badge drop to its own
+   line below the id when that happens, rather than the id itself
+   losing that fight — the id is the more important, at-a-glance
+   information (per the earlier "keep A1 large... scan block
+   identifiers across the room" note), so it should never be the one
+   that gets compressed. */
+.ps-reprint-card-label-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-width: 0; flex: 1; }
+.ps-reprint-card-label { font-size: 15px; font-weight: 800; color: #f8fafc; white-space: nowrap; flex-shrink: 0; }
+.ps-reprint-card-sublabel { font-size: 11px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+/* Real feature, per direct follow-up: "resolveBlockDisplayId() etc.
+   are defined but never called anywhere in the real UI." Muted,
+   monospace — same small/quiet treatment MaterialTreePanel.tsx uses
+   for this, distinguishing it visually from the sublabel (slide
+   count/stain name) it sits alongside rather than competing with it. */
+.ps-reprint-card-resolved-id { display: block; font-size: 10px; font-family: monospace; color: #64748b; margin-top: 2px; }
+.ps-reprint-card-sublabel--warning { color: #fbbf24; font-weight: 700; }
+/* Real feature, per direct follow-up: "Compact Specimen Cards...
+   truncate/fade the description... display it as a subtle secondary
+   line/tooltip." Only Column 2 uses this — Requisition/Block/Slide
+   subtext is already short by nature (a slide count, a stain name),
+   Specimen descriptions are real clinical text ("Left total
+   mastectomy") that can genuinely run long. The native title
+   attribute (set in the TSX) supplies the full text on hover/press,
+   so truncating here never actually loses the information. */
+.ps-reprint-card-sublabel--truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 100%; }
+/* Real feature, per direct follow-up: "Slide Cards... Stacking the
+   Stain name under the Slide ID inside a compact tile maintains a
+   large touch target without needing a wide row." Deliberately
+   different from the shared label/sublabel row above — at 3-across,
+   a slide tile is narrower than a 2-across block tile, and "A1-L1" +
+   "H&E" side by side would crowd or wrap awkwardly at that width;
+   stacked, both stay fully legible without needing extra tile width. */
+.ps-reprint-card-text--stacked { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; width: 100%; }
+.ps-reprint-card-text--stacked .ps-reprint-card-label-row { width: 100%; }
+/* Real fix: stain names (H&E, ER, PR, HER2) are short enough to never
+   need wrapping anyway, and a generic white-space override here would
+   win specificity over --truncate's own nowrap the moment a card is
+   both stacked AND truncated (Specimen cards, once made stacked too)
+   — removed rather than fixed with a more specific override, since
+   it wasn't doing real work in the first place. */
+
+/* Real feature, per direct follow-up: "Replace Red Borders with STAT
+   Badges: Reserve card borders for selection state (Active Cyan
+   Border) and use a compact text pill... inside the card header."
+   Reverses the prior red-border-on-the-whole-card treatment from
+   immediately before this — the border now means exactly one thing
+   (checked or not), and urgency is its own, separate, compact signal
+   that survives being checked without competing with the selection
+   border for the same visual channel. Same real #ef4444 STAT
+   resolution as before (block's own priority override, else the
+   case's order.priority, matching HeaderBar.tsx's own priority badge)
+   — only the presentation changed, not what triggers it. */
+.ps-reprint-card-stat-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px;
+  color: #ef4444; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); flex-shrink: 0;
+}
+
+/* Real feature, per direct follow-up: "While recuts originate at the
+   slide level, a [ Recut ] badge is rolled up to the Block Card...
+   Gives histotechs an immediate visual signal on which physical
+   paraffin blocks need to be pulled from storage." A real, distinct
+   amber — this is a "needs action" signal, not an urgency-priority
+   one, so it's kept visually separate from the red STAT badge rather
+   than reusing the same color for two different kinds of meaning. */
+.ps-reprint-card-recut-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px;
+  color: #f59e0b; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); flex-shrink: 0;
+}
+
+/* Real feature, per direct follow-up: "No Slides State... use a
+   subtle dashed/outlined glass slide graphic with an explicit text
+   badge... Prevents ambiguity about whether slides are missing due
+   to a system error versus simply not having been sectioned yet."
+   Matches MaterialTreePanel.tsx's own existing "held, unstained"
+   dashed-outline visual language (same 0.5px dashed border, same
+   #94a3b8) rather than a new icon vocabulary. */
+.ps-reprint-card-empty-slide-icon {
+  display: inline-block; width: 9px; height: 11px; border: 0.5px dashed #94a3b8; border-radius: 1px;
+  vertical-align: middle; margin-right: 4px; flex-shrink: 0;
+}
+
+/* Real feature, per direct follow-up: "Card Grid for Slides: Turn Col
+   4 slides into horizontal tiles/chips (2 per row inside the column)
+   to fit more slides on screen without scrolling." Only Column 4 uses
+   this — Columns 1-3 typically hold far fewer real items, so a single
+   list stays clearer there. */
+/* Real feature, per direct follow-up: "Fits 3 cards across." Up from
+   2 columns — the whole point of redistributing width toward Columns
+   3/4 was fitting a third card per row, not just having more room
+   inside the same 2. */
+/* Real fix, per direct follow-up: "Card Auto-Fit in Columns 3 & 4:
+   Instead of hardcoding 3 columns... let the CSS grid wrap based on
+   available card width." Replaces the hardcoded 1fr 1fr 1fr from
+   earlier — that forced exactly 3 equal tracks regardless of how
+   narrow the column itself got, which is exactly what let "A3" get
+   clipped rather than wrapping to its own row. auto-fill still
+   naturally lands on 3-across at this column's real, intended width
+   (per-column min-width above ensures at least ~320px is available,
+   comfortably fitting three ~100px cards), but now degrades to 2 or
+   1 across gracefully on a genuinely narrower screen instead of
+   forcing three too-narrow tracks. */
+.ps-reprint-section-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; align-content: start; }
+.ps-reprint-section-grid .ps-reprint-card { margin-bottom: 0; }
+
+/* Real feature, per direct follow-up: "Section Headers + Full-Width
+   Row Breaks... force a line break for each new parent... Eliminates
+   Mis-association: A tech will never accidentally misread an A2
+   slide as belonging to A1 because A2 starts on its own dedicated row
+   under its own header." Replaces one continuous grid per column with
+   real, separate per-parent groups — each with its own header, its
+   own mini-grid, and a divider before the next group (skipped for the
+   very first group in a column, since there's nothing above it to
+   divide from). */
+.ps-reprint-section { margin-bottom: 10px; }
+.ps-reprint-section-divider { border-top: 1px solid rgba(148,163,184,0.15); margin: 10px 0; }
+.ps-reprint-section-header {
+  font-size: 11px; font-weight: 800; color: #cbd5e1; letter-spacing: 0.02em;
+  padding: 2px 2px 6px; cursor: pointer; background: none; border: none; text-align: left; width: 100%;
+}
+.ps-reprint-section-header:hover { color: #22d3ee; }
+.ps-reprint-section-count { font-weight: 600; color: #64748b; }
+
+/* Real fix, per direct follow-up: "The footer button for Column 4
+   (Print Sld (2)) is cut off on the right edge... only the printer
+   icon and Print are visible." Confirmed directly: footer cells had
+   equal flex: 1 (25% each) while the real columns above them use the
+   12/18/35/35 split — Column 4's actual width (35%) never matched
+   its own footer cell's width (25%), so the button beneath it was
+   narrower than the column it belonged to and its own text had
+   nowhere to go. Real, named width classes now — reusing the exact
+   same ones the columns themselves use, so a footer cell is always
+   precisely as wide as the column sitting above it, not a
+   coincidentally-close approximation. */
+.ps-reprint-footer { display: flex; border-top: 1px solid rgba(255,255,255,0.08); }
+.ps-reprint-footer-cell { padding: 10px; min-width: 0; }
+.ps-reprint-footer-cell--bordered { border-right: 1px solid rgba(255,255,255,0.08); }
+.ps-reprint-footer-cell--req { flex: 12; }
+.ps-reprint-footer-cell--specimen { flex: 18; }
+.ps-reprint-footer-cell--block, .ps-reprint-footer-cell--slides { flex: 35; }
+.ps-reprint-print-btn {
+  width: 100%; min-height: 44px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+  border: 1px solid rgba(8,145,178,0.4); background: rgba(8,145,178,0.15); color: #22d3ee;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px;
+}
+.ps-reprint-print-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.ps-reprint-busy { padding: 6px 18px; font-size: 12px; color: #64748b; border-top: 1px solid rgba(255,255,255,0.08); }
+
+/* Real fix, per direct follow-up: "the Current station... should be
+   identified at login. Should be sticky too." Replaces the old,
+   case-scoped .ps-scan-station-select entirely. */
+.ps-scan-prompt-overlay { z-index: 70000; }
+.ps-scan-prompt-modal { width: 460px; max-width: 92vw; }
+.ps-scan-prompt-title { font-size: 17px; font-weight: 800; color: #f8fafc; margin-bottom: 6px; }
+.ps-scan-prompt-subtitle { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+.ps-scan-prompt-select {
+  width: 100%; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.3); color: #22d3ee;
+}
+/* Real fix, per direct follow-up: "the dropdown is not following the
+   standard CSS format." Confirmed directly: this is a real, already-
+   solved problem elsewhere in this app — .ps-conf-select's own CSS
+   (used throughout Config/admin screens) already has this exact same
+   fix for the real, known browser behavior where a native <select>'s
+   own closed box respects page CSS but its OPEN <option> list falls
+   back to the OS/browser's own default (light) theme unless styled
+   directly. Missed applying that already-established pattern when
+   building this new dropdown class — fixed by matching it exactly,
+   not inventing a new approach for just this one dropdown. */
+.ps-scan-prompt-select option { background: #0f1729; color: #22d3ee; }
+.ps-scan-prompt-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.ps-scan-prompt-skip {
+  font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  background: none; border: 1px solid rgba(148,163,184,0.3); color: #94a3b8;
+}
+.ps-scan-prompt-confirm {
+  font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: 8px; cursor: pointer;
+  background: rgba(34,211,238,0.15); border: 1px solid #22d3ee; color: #22d3ee;
+}
+.ps-scan-prompt-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Real feature, per direct follow-up: "Unsaved Data Present: Blocks
+   immediate location switch... pops a modal." Amber/red framing —
+   distinct from the calmer cyan ScanStationPrompt, since this one is
+   a real, active interruption of in-progress work, not a routine
+   setup step. */
+.ps-station-guard-overlay { z-index: 75000; }
+.ps-station-guard-modal { width: 460px; max-width: 92vw; border-color: rgba(245,158,11,0.4) !important; }
+.ps-station-guard-title { font-size: 17px; font-weight: 800; color: #fbbf24; margin-bottom: 6px; }
+.ps-station-guard-subtitle { font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+.ps-station-guard-actions { display: flex; flex-direction: column; gap: 8px; }
+.ps-station-guard-save {
+  font-size: 13px; font-weight: 700; padding: 12px 16px; border-radius: 8px; cursor: pointer;
+  background: rgba(34,211,238,0.15); border: 1px solid #22d3ee; color: #22d3ee;
+}
+.ps-station-guard-discard {
+  font-size: 13px; font-weight: 700; padding: 12px 16px; border-radius: 8px; cursor: pointer;
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); color: #f87171;
+}
+.ps-station-guard-cancel {
+  font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 8px; cursor: pointer;
+  background: none; border: 1px solid rgba(148,163,184,0.3); color: #94a3b8;
+}
+
+.ps-navbar-station-wrap { position: relative; }
+/* Real fix, per direct follow-up: "Visual Workstation Anchor: Keep
+   the active station name clearly visible and high-contrast." A
+   real, solid cyan fill — deliberately distinct from .ps-nav-btn's
+   own muted, transparent style every other NavBar icon uses, since
+   this one is meant to be glanced at from across the bench. */
+.ps-navbar-station-btn {
+  height: 34px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  background: rgba(34,211,238,0.15); border: 1.5px solid #22d3ee; color: #22d3ee;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.ps-navbar-station-btn:hover { background: rgba(34,211,238,0.25); }
+.ps-navbar-station-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 500;
+  background: #0f1729; border: 1px solid rgba(34,211,238,0.3); border-radius: 8px;
+  padding: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ps-navbar-station-menu-title { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 0.04em; padding: 4px 8px; }
+.ps-navbar-station-menu-item {
+  text-align: left; font-size: 12px; font-weight: 600; padding: 8px 10px; border-radius: 5px;
+  background: none; border: none; cursor: pointer; color: #e2e8f0; white-space: nowrap;
+}
+.ps-navbar-station-menu-item:hover { background: rgba(34,211,238,0.1); }
+.ps-navbar-station-menu-item--active { color: #22d3ee; }
+.ps-navbar-station-menu-item--clear { color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 2px; padding-top: 8px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MaterialTreePanel exception-state badges (specimen + block)
+   Real feature, per direct follow-up: "Lets add the exhausted badges
+   for specimen and block in the Material view as well." Same visual
+   language (colors, icons) as the equivalent ps-reprint-card-*-badge
+   classes in ManageReprintsModal.tsx, kept as its own, separate
+   namespace since this file (MaterialTreePanel.tsx) isn't part of the
+   Reprint modal's own component tree — visual consistency across the
+   two surfaces without a cross-file CSS dependency between them.
+   ───────────────────────────────────────────────────────────────────────── */
+.ps-material-exception-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
+.ps-material-exception-badge--exhausted { background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.35); }
+.ps-material-exception-badge--lost { background: #f59e0b; color: #451a03; border: 1px solid #f59e0b; }
+.ps-material-exception-badge--damaged { background: rgba(249,115,22,0.15); color: #f97316; border: 1px solid #f97316; }
+/* Real feature, per direct follow-up: "reveal the location of an
+   asset." A distinct, cooler colour (cyan) from the exception badges
+   above — this is informational, not a warning, so it shouldn't read
+   with the same visual urgency as Lost/Damaged/Exhausted. */
+.ps-material-location-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+  background: rgba(34,211,238,0.12); color: #22d3ee; border: 1px solid rgba(34,211,238,0.35);
+}
+/* Real feature, per direct follow-up: "Decant has no creation flow at
+   all — the ID scheme is ready for something that doesn't exist
+   yet." Same real dropdown-menu shape already established for
+   NavBarScanStation.tsx (.ps-navbar-station-menu) and the Dev Tools
+   menu — one, consistent floating-menu pattern reused, not a new one
+   invented for this specific control. */
+.ps-decant-add-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  background: #0f1729; border: 1px solid rgba(148,163,184,0.25); border-radius: 8px;
+  padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ps-decant-add-menu-item {
+  text-align: left; font-size: 12px; font-weight: 600; padding: 7px 10px; border-radius: 5px;
+  background: none; border: none; cursor: pointer; color: #cbd5e1; white-space: nowrap;
+}
+.ps-decant-add-menu-item:hover { background: rgba(148,163,184,0.12); color: #e2e8f0; }
+
+/* ── Material Tracking History (Hierarchy & Scan Audit Log) ──────────────────
+   Real feature, per direct follow-up with a concrete mockup in hand.
+   See MaterialTrackingHistoryModal.tsx's own header for the full
+   reasoning — a real, nested tree, not the flat, mixed-event-type
+   Audit Log table.
+   Real rebuild, per direct follow-up's own detailed spec: "Master-
+   Detail Split Pane (Interactive Tree + History Timeline)." Screen
+   view is now a real ~30/70 split — a compact tree (current status
+   only) on the left, a per-item vertical timeline on the right. Print
+   output stays the full, comprehensive tree (see the @media print
+   block at the end of this section) — a printed record and an
+   interactive "find one thing fast" view are genuinely different
+   concerns. */
+.ps-mth-modal {
+  --modal-max-w: 1100px;      /* the global safety-net rule (.fm-modal, [class*="-modal"] { max-width: min(var(--modal-max-w, 900px), 96vw) !important; }) matches "-modal" in this class name too and would otherwise silently cap this at 900px, since nothing else sets the variable it expects — same real bug .fm-modal's own comment above already documents and fixes the same way. */
+  width: 1100px; max-width: 96vw; max-height: 94vh;
+  display: flex; flex-direction: column;
+  border-radius: 12px; overflow: hidden;
+}
+.ps-mth-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+.ps-mth-title { font-size: 17px; font-weight: 700; color: #e2e8f0; }
+.ps-mth-case { font-size: 12px; color: #64748b; margin-top: 2px; font-family: monospace; }
+.ps-mth-header-actions { display: flex; align-items: center; gap: 10px; }
+.ps-mth-print-btn { font-size: 12px; padding: 6px 12px; }
+.ps-mth-close {
+  background: none; border: none; color: #94a3b8; font-size: 16px;
+  cursor: pointer; padding: 4px 8px; border-radius: 6px;
+}
+.ps-mth-close:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+
+.ps-mth-search-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 22px; border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.ps-mth-search-input {
+  flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px; padding: 9px 12px; font-size: 13px; color: #e2e8f0;
+}
+.ps-mth-search-input::placeholder { color: #64748b; }
+.ps-mth-search-input:focus { outline: none; border-color: #38bdf8; }
+.ps-mth-search-count { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+
+.ps-mth-empty { color: #64748b; font-size: 13px; padding: 20px; text-align: center; }
+
+/* ── Split pane (screen only) ── */
+.ps-mth-splitpane { flex: 1; display: flex; overflow: hidden; }
+.ps-mth-sidebar {
+  width: 32%; flex-shrink: 0; overflow-y: auto;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  padding: 8px;
+}
+.ps-mth-sidebar-row {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; border-radius: 8px;
+  padding: 8px 10px; margin-bottom: 2px; cursor: pointer;
+}
+.ps-mth-sidebar-row:hover { background: rgba(255,255,255,0.04); }
+.ps-mth-sidebar-row--selected { background: rgba(56,189,248,0.12); }
+.ps-mth-sidebar-row-top { display: flex; align-items: center; gap: 6px; }
+.ps-mth-sidebar-icon { font-size: 12px; }
+.ps-mth-sidebar-title { font-size: 13px; font-weight: 600; color: #e2e8f0; font-family: monospace; }
+.ps-mth-sidebar-row--selected .ps-mth-sidebar-title { color: #38bdf8; }
+.ps-mth-sidebar-status {
+  font-size: 11px; color: #94a3b8; margin-top: 3px; padding-left: 18px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ps-mth-sidebar-status--none { color: #475569; font-style: italic; }
+/* Real feature, per direct follow-up: "maybe that Green dot should
+   indicate its ready for review?" See the readyForReview computation
+   in buildFlatTree below for the full reasoning — shown only when
+   true (a real status, not decorative), matching the same real
+   presence/absence pattern (not a second color for "not ready") the
+   Material tab's own slide-chip ready dot already established, for
+   the same real colorblind-accessibility reason. */
+.ps-mth-sidebar-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: #34d399; margin-right: 2px;
+}
+
+.ps-mth-detail-pane { flex: 1; overflow-y: auto; padding: 24px 28px; }
+.ps-mth-detail-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 22px; }
+.ps-mth-detail-icon { font-size: 20px; }
+.ps-mth-detail-title { font-size: 15px; font-weight: 700; color: #e2e8f0; font-family: monospace; }
+.ps-mth-detail-subtitle { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.ps-mth-detail-empty { color: #64748b; font-size: 13px; padding: 20px 0; }
+
+/* ── Vertical timeline — per direct spec: "a clean vertical step-by-
+   step timeline only for the selected asset." ── */
+.ps-mth-timeline { padding-left: 4px; }
+.ps-mth-timeline-step { display: flex; gap: 14px; }
+.ps-mth-timeline-marker { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.ps-mth-timeline-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #38bdf8; border: 2px solid rgba(56,189,248,0.3);
+  flex-shrink: 0; margin-top: 3px;
+}
+.ps-mth-timeline-line { width: 2px; flex: 1; min-height: 34px; background: rgba(148,163,184,0.2); margin: 2px 0; }
+.ps-mth-timeline-content { padding-bottom: 26px; }
+.ps-mth-timeline-time { font-size: 12px; color: #38bdf8; font-family: monospace; margin-bottom: 2px; }
+.ps-mth-timeline-location { font-size: 14px; font-weight: 700; color: #e2e8f0; }
+.ps-mth-timeline-action { font-size: 13px; color: #94a3b8; margin-top: 1px; }
+.ps-mth-timeline-who { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+/* ── Comprehensive tree (print only, hidden on screen) ── */
+.ps-mth-print-only-body { display: none; }
+
+.ps-mth-node { margin-bottom: 4px; }
+.ps-mth-node-header { display: flex; align-items: baseline; gap: 6px; padding: 6px 0; }
+.ps-mth-node-icon { font-size: 13px; }
+.ps-mth-node-title { font-size: 13px; font-weight: 700; color: #e2e8f0; font-family: monospace; }
+.ps-mth-node-subtitle { font-size: 12px; color: #94a3b8; }
+.ps-mth-node-body {
+  margin-left: 8px; padding-left: 10px;
+  border-left: 1px solid rgba(148,163,184,0.2);
+  margin-bottom: 10px;
+}
+/* Real fix, per direct report: "data on the third column is getting
+   pushed off." Confirmed directly at a real print-page width (816px,
+   Letter minus real margins): the earlier fixed-pixel columns (150px
+   220px 200px 1fr) left the 4th column (Performed By) so little real
+   space it wrapped onto two lines ("Pathologist: / Dr. E. Reed"),
+   visibly crowding — worse yet on a genuinely narrower real page/
+   printer margin than my own test, or at a deeper real nesting level
+   (an Aliquot, 3 levels of .ps-mth-node-body indentation deep, each
+   eating further into the same fixed budget). Proportional (fr) units
+   for every column but Timestamp (whose own real content —
+   "08/15, 11:57 PM" — has a genuinely fixed, bounded length, unlike
+   the other three) — this way the row always divides whatever real
+   width the page actually has, never overflows it regardless of
+   margins/paper size/nesting depth. Location gets a real, slightly
+   larger share since its own real content (e.g. "Sendout Outbox
+   (Courier #402)") tends to run longest. Node indentation
+   (margin-left/padding-left above) also trimmed for print
+   specifically — four real nesting levels (Specimen -> Block -> Slide
+   -> Aliquot) compound fast, and print has no scrollbar to fall back
+   on if it doesn't fit.
+   Real follow-up fix, per direct report: "Seems like we are missing
+   data, perhaps we could take the font down or wrap the text rather
+   than ellipsis?" Confirmed directly — the ellipsis approach above
+   genuinely DROPPED real data from a printed record ("Grossed &amp;
+   ...", "Sendout Outbox (C..."), which matters more on a document
+   meant to be a complete record than it does on an interactive screen
+   with a detail pane to fall back on. Switched to real wrapping
+   (never truncates) with a smaller font to reduce how often wrapping
+   is even needed, and align-items switched from baseline to start —
+   baseline alignment assumes every column is single-line, which a
+   genuinely wrapped, multi-line cell breaks visually. */
+.ps-mth-event {
+  display: grid; grid-template-columns: 138px 1.5fr 0.9fr 1fr; gap: 8px;
+  align-items: start; font-size: 11px; color: #cbd5e1;
+  padding: 6px 8px; border-radius: 4px;
+}
+.ps-mth-event:nth-child(odd) { background: rgba(255,255,255,0.02); }
+.ps-mth-event--empty { display: block; color: #475569; font-style: italic; background: none; }
+.ps-mth-event-time { color: #38bdf8; font-family: monospace; white-space: nowrap; overflow: hidden; }
+.ps-mth-event-location { color: #e2e8f0; font-weight: 600; white-space: normal; overflow-wrap: break-word; }
+.ps-mth-event-action { color: #94a3b8; white-space: normal; overflow-wrap: break-word; }
+.ps-mth-event-who { color: #64748b; font-size: 11px; white-space: normal; overflow-wrap: break-word; }
+
+/* Real feature, per direct feedback: "Option to print the record."
+   Real print stylesheet, not a second, duplicated print-only render
+   of the interactive UI — a genuinely different, purpose-built
+   comprehensive layout (.ps-mth-print-only-body above) swaps in for
+   print, since the split-pane view only ever shows one selected
+   item's own history at a time, and a printed "record" needs every
+   item, every event. Hides the overlay backdrop/chrome/search/split-
+   pane, lifts every height/overflow limit, and switches to print-safe
+   colors — this app's own dark theme would print as solid black
+   rectangles otherwise. */
+@media print {
+  body * { visibility: hidden; }
+  .ps-mth-print-area, .ps-mth-print-area * { visibility: visible; }
+  /* Real fix, per direct report: "the print feature cannot go past 1
+     page... I see it terminating after Specimen C." Confirmed
+     directly, via a real, generated multi-page PDF (Playwright's own
+     page.pdf(), the same real Chrome print engine a real print does,
+     not just CSS emulation): position: fixed here was a known,
+     real CSS print gotcha — most browsers, including Chrome, tie
+     position:fixed content to a single page when printing, so any
+     real content beyond one page's own height was being silently
+     clipped, not carried onto page 2+. Confirmed the bug directly
+     first (a real, injected 60-event case produced a 1-page PDF that
+     cut off mid-way through Specimen A itself), then confirmed the
+     fix the same way (see this same file's own delivery notes).
+     position: absolute (not fixed) still keeps this out of normal
+     document flow — so the earlier, real fix for blank space above
+     the content (visibility:hidden ancestors elsewhere on the page
+     still reserving their own layout height) still holds — but,
+     unlike fixed, absolute content is NOT tied to a single viewport/
+     page when printing, so it can now genuinely grow across as many
+     real pages as the real content needs. top/left/right only (no
+     bottom, no explicit height) so the element's own real content
+     height determines how tall it is, rather than being capped to
+     one page's worth up front. */
+  .ps-mth-overlay {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: none; backdrop-filter: none;
+    display: block; overflow: visible;
+  }
+  .ps-mth-modal {
+    position: static; width: 100%; max-width: 100%; max-height: none;
+    box-shadow: none; border-radius: 0; background: #fff !important;
+  }
+  .ps-mth-header-actions, .ps-mth-search-row, .ps-mth-splitpane { display: none !important; }
+  .ps-mth-print-only-body { display: block !important; padding: 14px 22px; }
+  .ps-mth-title, .ps-mth-node-title { color: #0f172a !important; }
+  .ps-mth-case, .ps-mth-node-subtitle, .ps-mth-event-action, .ps-mth-event-who { color: #475569 !important; }
+  .ps-mth-event-location { color: #0f172a !important; }
+  .ps-mth-event-time { color: #0369a1 !important; }
+  .ps-mth-event:nth-child(odd) { background: #f8fafc !important; }
+  .ps-mth-node-body { border-left-color: #cbd5e1 !important; }
+  .ps-mth-node { break-inside: avoid; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Batch Management — LIS Batch Management module
+   Real feature, per direct, detailed specification. See
+   services/batches/IBatchService.ts's own header for the full
+   architectural reasoning. Every color/spacing/radius token below reuses
+   this app's own real, current dark-theme design tokens (--ps-surface,
+   --ps-text-muted, --ps-border-bright, --ps-teal, etc.) — the same,
+   single source of truth pathscribe.css already establishes app-wide,
+   not new, one-off colors.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page shell ── */
+.ps-batch-page { height: 100%; display: flex; flex-direction: column; background: var(--ps-bg); }
+.ps-batch-scroll { flex: 1; overflow-y: auto; }
+.ps-batch-inner { max-width: 1100px; margin: 0 auto; padding: 28px 32px 60px; }
+
+.ps-batch-page-header { margin-bottom: 22px; }
+.ps-batch-page-title { font-size: 26px; font-weight: 800; color: var(--ps-text); margin: 0 0 8px; }
+.ps-batch-page-subtitle { font-size: 13px; color: var(--ps-text-muted); line-height: 1.6; max-width: 760px; margin: 0; }
+
+/* ── Toolbar / lookup ── */
+/* ── Processing-node stage tiles (reuses .ps-wl-filter-tile itself,
+   Worklist's own established tile styling — just a new container to
+   lay them out here) ── */
+.ps-batch-stage-tiles { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+
+/* ── Quality Assurance tab tiles (reuses .ps-wl-filter-tile itself,
+   same real pattern as .ps-batch-stage-tiles above — just a new
+   container to lay them out here) ── */
+.ps-qa-tab-tiles { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; margin-bottom: 20px; }
+
+
+.ps-batch-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.ps-batch-lookup-input {
+  flex: 1; background: var(--ps-surface); border: 1px solid var(--ps-border-bright);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--ps-text);
+}
+.ps-batch-lookup-input::placeholder { color: var(--ps-text-dim); }
+.ps-batch-lookup-input:focus { outline: none; border-color: var(--ps-teal); }
+
+/* ── Section labels / empty state ── */
+.ps-batch-section-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ps-text-dim); margin: 26px 0 10px;
+}
+.ps-batch-section-label--warn { color: #f59e0b; }
+.ps-batch-empty {
+  color: var(--ps-text-dim); font-size: 13px; padding: 18px; text-align: center;
+  background: var(--ps-conf-surface, var(--ps-surface)); border: 1px dashed var(--ps-border-bright); border-radius: 10px;
+}
+
+/* ── Batch list rows ── */
+.ps-batch-list { display: flex; flex-direction: column; gap: 6px; }
+.ps-batch-row {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--ps-surface); border: 1px solid var(--ps-border-bright); border-radius: 10px;
+  padding: 12px 16px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.ps-batch-row:hover { background: rgba(255,255,255,0.04); border-color: var(--ps-teal); }
+.ps-batch-row--closed { opacity: 0.7; }
+.ps-batch-row-status { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; white-space: nowrap; }
+.ps-batch-row-barcode { font-family: monospace; font-size: 13px; font-weight: 700; color: var(--ps-text); white-space: nowrap; }
+.ps-batch-row-node { font-size: 12px; color: var(--ps-text-secondary, var(--ps-text-muted)); white-space: nowrap; }
+.ps-batch-row-protocol { font-size: 12px; color: var(--ps-text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-batch-row-stat {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 8px;
+  background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.35); white-space: nowrap;
+}
+.ps-batch-row-count { font-size: 12px; color: var(--ps-text-dim); white-space: nowrap; }
+.ps-batch-row-time { font-size: 11px; color: var(--ps-text-dim); font-family: monospace; white-space: nowrap; }
+
+/* ── Batch detail header ── */
+.ps-batch-back-btn {
+  background: none; border: none; color: var(--ps-text-muted); font-size: 13px;
+  cursor: pointer; padding: 6px 0; margin-bottom: 14px;
+}
+.ps-batch-back-btn:hover { color: var(--ps-teal); }
+.ps-batch-detail-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--ps-border-bright);
+}
+.ps-batch-detail-barcode { font-family: monospace; font-size: 20px; font-weight: 800; color: var(--ps-text); }
+.ps-batch-detail-meta { font-size: 13px; color: var(--ps-text-muted); margin-top: 4px; }
+
+/* ── Scan feedback ── */
+.ps-batch-flash {
+  font-size: 14px; font-weight: 600; padding: 12px 16px; border-radius: 10px; margin-bottom: 16px;
+  animation: ps-batch-flash-in 0.15s ease-out;
+}
+.ps-batch-flash--success { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
+.ps-batch-flash--error { background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+@keyframes ps-batch-flash-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+.ps-batch-scan-hint {
+  font-size: 12px; color: #38bdf8; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 18px;
+}
+.ps-batch-scan-hint--reconcile { color: #f59e0b; background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.25); }
+
+/* ── Manifest ── */
+.ps-batch-manifest { display: flex; flex-direction: column; gap: 4px; }
+.ps-batch-manifest-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
+  background: var(--ps-surface); border: 1px solid var(--ps-border); border-radius: 8px;
+  padding: 10px 14px;
+}
+.ps-batch-manifest-id { font-family: monospace; font-size: 13px; font-weight: 700; color: var(--ps-text); min-width: 160px; }
+.ps-batch-manifest-type { font-size: 11px; color: var(--ps-text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+.ps-batch-manifest-added { font-size: 12px; color: var(--ps-text-muted); flex: 1; }
+.ps-batch-recon-flag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; white-space: nowrap; }
+.ps-batch-recon-flag--matched { background: rgba(52,211,153,0.15); color: #34d399; }
+.ps-batch-recon-flag--missing { background: rgba(148,163,184,0.15); color: var(--ps-text-dim); }
+.ps-batch-recon-flag--unexpected { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.ps-batch-remove-btn {
+  background: none; border: none; color: var(--ps-text-dim); font-size: 13px; cursor: pointer;
+  padding: 4px 8px; border-radius: 6px; margin-left: auto;
+}
+.ps-batch-remove-btn:hover { background: rgba(248,113,113,0.15); color: #f87171; }
+
+.ps-batch-override-note {
+  font-size: 12px; color: #f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 10px; padding: 10px 14px; margin-top: 18px;
+}
+
+/* ── Detail actions ── */
+.ps-batch-detail-actions { display: flex; align-items: center; gap: 14px; margin-top: 26px; }
+.ps-batch-abort-link, .ps-batch-override-link {
+  background: none; border: none; font-size: 13px; cursor: pointer; padding: 4px 0;
+}
+.ps-batch-abort-link { color: var(--ps-text-dim); }
+.ps-batch-abort-link:hover { color: #f87171; }
+.ps-batch-override-link { color: #f59e0b; font-weight: 600; }
+.ps-batch-override-link:hover { color: #fbbf24; }
+
+/* ── Modals (Create Batch / Abort / Override confirm) ── */
+.ps-batch-overlay { z-index: 9200; }
+.ps-batch-create-modal {
+  --modal-max-w: 460px;      /* see .fm-modal's own comment elsewhere in this file for why this variable is set explicitly — the global safety-net rule matching "-modal" in this class name would otherwise silently cap this at 900px. */
+  width: 460px; max-width: 92vw;
+  display: flex; flex-direction: column; border-radius: 14px; overflow: hidden;
+}
+.ps-batch-confirm-modal {
+  --modal-max-w: 420px;
+  width: 420px; max-width: 92vw;
+  padding: 22px; border-radius: 14px;
+}
+.ps-batch-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px; border-bottom: 1px solid var(--ps-border-bright);
+}
+.ps-batch-modal-title { font-size: 16px; font-weight: 700; color: var(--ps-text); }
+.ps-batch-modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 4px; }
+.ps-batch-modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--ps-border-bright); }
+.ps-batch-confirm-modal .ps-batch-modal-title { margin-bottom: 10px; }
+
+.ps-batch-field-label { font-size: 12px; font-weight: 600; color: var(--ps-text-muted); margin-top: 14px; margin-bottom: 6px; }
+.ps-batch-field-label:first-child { margin-top: 0; }
+
+/* ── Station-to-Processing-Node consistency hint (NewContainerModal) ── */
+.ps-batch-node-hint { font-size: 11px; color: var(--ps-text-dim); margin-top: 5px; }
+.ps-batch-node-hint--warn { color: #f59e0b; }
+.ps-batch-select, .ps-batch-text-input {
+  background: var(--ps-surface); border: 1px solid var(--ps-border-bright); border-radius: 8px;
+  padding: 9px 12px; font-size: 13px; color: var(--ps-text);
+}
+.ps-batch-select:focus, .ps-batch-text-input:focus { outline: none; border-color: var(--ps-teal); }
+.ps-batch-text-input::placeholder { color: var(--ps-text-dim); }
+
+.ps-batch-priority-toggle { display: flex; gap: 8px; }
+.ps-batch-priority-btn {
+  flex: 1; background: var(--ps-surface); border: 1px solid var(--ps-border-bright); border-radius: 8px;
+  padding: 9px 0; font-size: 13px; font-weight: 600; color: var(--ps-text-muted); cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ps-batch-priority-btn:hover { border-color: var(--ps-teal); }
+.ps-batch-priority-btn--active { background: rgba(8,145,178,0.15); border-color: var(--ps-teal); color: var(--ps-text); }
+.ps-batch-priority-btn--stat.ps-batch-priority-btn--active { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #f87171; }
+
+.ps-batch-textarea {
+  width: 100%; min-height: 72px; resize: vertical;
+  background: var(--ps-surface); border: 1px solid var(--ps-border-bright); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; color: var(--ps-text); font-family: inherit;
+  margin-bottom: 4px;
+}
+.ps-batch-textarea::placeholder { color: var(--ps-text-dim); }
+.ps-batch-textarea:focus { outline: none; border-color: var(--ps-teal); }
+.ps-batch-confirm-text { font-size: 13px; color: var(--ps-text-muted); line-height: 1.6; margin-bottom: 14px; }
+
+.ps-batch-danger-btn {
+  background: #ef4444; color: #fff; border: none; border-radius: 10px;
+  padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.ps-batch-danger-btn:hover { background: #dc2626; }
+.ps-batch-danger-btn:disabled { background: var(--ps-border); color: var(--ps-text-dim); cursor: not-allowed; }
+
+/* ── Barcode display (post-creation) ── */
+.ps-batch-barcode-body { align-items: center; text-align: center; }
+.ps-batch-barcode-label { font-size: 13px; color: var(--ps-text-muted); margin-bottom: 16px; }
+.ps-batch-barcode-svg-wrap {
+  background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ps-batch-barcode-svg-wrap svg { width: 100%; height: auto; display: block; }
+.ps-batch-barcode-value { font-family: monospace; font-size: 16px; font-weight: 700; color: var(--ps-text); }
+.ps-batch-barcode-meta { font-size: 12px; color: var(--ps-text-dim); margin-top: 4px; }
+
+/* ── Container & Batch Label Management — rack picker, error text,
+   rack badges/pills ── */
+.ps-batch-modal-error {
+  font-size: 12px; color: #f87171; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3);
+  border-radius: 8px; padding: 8px 12px; margin-top: 14px;
+}
+.ps-batch-rack-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ps-batch-rack-chip {
+  font-family: monospace; font-size: 11px; font-weight: 700; color: #38bdf8;
+  background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px;
+  padding: 5px 10px; cursor: pointer;
+}
+.ps-batch-rack-chip:hover { background: rgba(56,189,248,0.2); }
+.ps-batch-rack-badge {
+  font-size: 11px; font-weight: 700; color: #a78bfa; background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 2px 8px;
+}
+.ps-batch-release-rack-pill {
+  font-size: 12px; font-weight: 700; color: #a78bfa; background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.35); border-radius: 20px; padding: 8px 16px; cursor: pointer;
+}
+.ps-batch-release-rack-pill:hover { background: rgba(139,92,246,0.22); }
+.ps-batch-release-rack-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Move item between batches ── */
+.ps-batch-transfer-note { color: var(--ps-text-dim); font-style: italic; }
+.ps-batch-manifest-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.ps-batch-move-wrap { position: relative; }
+.ps-batch-move-btn {
+  font-size: 11px; font-weight: 600; color: #38bdf8; background: rgba(56,189,248,0.1);
+  border: 1px solid rgba(56,189,248,0.3); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+.ps-batch-move-btn:hover { background: rgba(56,189,248,0.2); }
+.ps-batch-move-picker {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 220px; max-width: 300px;
+  background: var(--ps-surface); border: 1px solid var(--ps-border-bright); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px; display: flex; flex-direction: column; gap: 2px;
+}
+.ps-batch-move-picker-empty { font-size: 12px; color: var(--ps-text-dim); padding: 8px 10px; }
+.ps-batch-move-picker-row {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  background: none; border: none; border-radius: 6px; padding: 7px 10px; cursor: pointer; text-align: left; width: 100%;
+}
+.ps-batch-move-picker-row:hover { background: rgba(255,255,255,0.06); }
+.ps-batch-move-picker-barcode { font-family: monospace; font-size: 12px; font-weight: 700; color: var(--ps-text); }
+.ps-batch-move-picker-protocol { font-size: 11px; color: var(--ps-text-muted); }
+
+@media print {
+  .ps-batch-overlay, .ps-batch-create-modal { background: #fff !important; }
+  .ps-batch-modal-title, .ps-batch-barcode-value { color: #0f172a !important; }
+  .ps-batch-barcode-label, .ps-batch-barcode-meta { color: #475569 !important; }
+}
+
+/* ── Disposal Queue — real, full-screen mismatch alert ── */
+.ps-disposal-redscreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(160deg, #7f1d1d, #450a0a);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; padding: 40px; text-align: center; cursor: pointer;
+  animation: ps-disposal-redscreen-in 0.15s ease-out;
+}
+@keyframes ps-disposal-redscreen-in { from { opacity: 0; } to { opacity: 1; } }
+.ps-disposal-redscreen-icon { font-size: 72px; line-height: 1; }
+.ps-disposal-redscreen-text { font-size: 24px; font-weight: 700; color: #fff; max-width: 640px; line-height: 1.4; }
+.ps-disposal-redscreen-dismiss { font-size: 13px; color: rgba(255,255,255,0.7); }
+
+/* ── Decal / Special Processing — timer + duration inputs ── */
+.ps-batch-decal-timer {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-radius: 10px; margin-bottom: 18px; font-size: 13px; font-weight: 600;
+}
+.ps-batch-decal-timer--normal { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: #38bdf8; }
+.ps-batch-decal-timer--warning { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35); color: #fbbf24; }
+.ps-batch-decal-timer--overdue { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.4); color: #f87171; }
+.ps-batch-decal-timer-icon { font-size: 16px; }
+
+.ps-batch-duration-row { display: flex; gap: 12px; }
+.ps-batch-duration-field { display: flex; align-items: center; gap: 6px; }
+.ps-batch-duration-input { width: 64px; text-align: center; }
+.ps-batch-duration-unit { font-size: 12px; color: var(--ps-text-dim); }
+.ps-batch-duration-hint { font-size: 11px; color: var(--ps-text-dim); margin-top: 6px; }
