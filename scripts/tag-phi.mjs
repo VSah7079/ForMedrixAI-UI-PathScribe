@@ -84,8 +84,16 @@ const PHI_PATTERNS = [
 
 // JSX inline elements worth tagging
 const INLINE_ELEMENTS = ['span', 'td', 'th', 'p', 'div', 'label', 'strong', 'em', 'b', 'li', 'h1', 'h2', 'h3', 'h4'];
+// Real bug found and fixed: the closing-tag half of this regex used to be
+// <\/(?:span|td|div|...)> — matching ANY inline element name, not
+// specifically the one that opened. That let e.g. <span>{x}</div> satisfy
+// the whole pattern whenever the real, unrelated </div> for some OUTER
+// element happened to appear right after the expression — silently
+// consuming and discarding that real closing tag on write, corrupting
+// valid JSX. Fixed with a backreference (\1) so the closing tag must be
+// the exact same element that opened, not just any element in the list.
 const INLINE_RE = new RegExp(
-  `<(${INLINE_ELEMENTS.join('|')})(\\s[^>]*)?>\\s*\\{([^}]+)\\}\\s*<\\/(?:${INLINE_ELEMENTS.join('|')})>`,
+  `<(${INLINE_ELEMENTS.join('|')})(\\s[^>]*)?>\\s*\\{([^}]+)\\}\\s*<\\/\\1>`,
   'g'
 );
 
