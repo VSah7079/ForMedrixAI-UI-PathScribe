@@ -17,8 +17,9 @@ changes, or a folder is added/removed/split/merged.
 | [Voice/](./Voice/README.md) | Voice dictation settings/controls |
 | [ClientDictionary/](./ClientDictionary/README.md) | Facility Configuration table + editor modal (folder/file names kept as `Client*` — see that folder's own README) |
 | [Contribution/](./Contribution/README.md) | My Contribution dashboard β€” 5 tabs/tiles, all serving `ContributionDashboardPage.tsx` |
-| [Common/](./Common/README.md) + Button/ | Shared UI primitives: `ConfirmModal`, `LookupModal`, `InlineCommentThread`, `SuffixSelect`, `Dropdown`, `LogoutWarningModal`, `SessionExpiryWarningModal`, `DraftRecoveryModal`, `SessionSupersededNotice` |
-| [QualityAssurance/](./QualityAssurance/README.md) | 6 QA/compliance reporting tabs (Countersign Turnaround, Intraop Linkage, Reconciliation, FPPE/Credentialing, Post-Finalization Drift, Patient Match Review) β€” newly indexed this session, the folder existed but had no README and was missing from this list entirely until now |
+| [Common/](./Common/README.md) + Button/ | Shared UI primitives: `ConfirmModal`, `LookupModal`, `InlineCommentThread`, `SuffixSelect`, `Dropdown`, `SearchableCombobox`, `PatientIdStatusDot`, `LogoutWarningModal`, `SessionExpiryWarningModal`, `DraftRecoveryModal`, `SessionSupersededNotice` |
+| [QualityAssurance/](./QualityAssurance/README.md) | 8 QA/compliance reporting tabs (Countersign Turnaround, Intraop Linkage, Reconciliation, FPPE/Credentialing, Post-Finalization Drift, Patient Match Review, Retention Holds Management Review, Access Request Response) |
+| [BarcodeScanner/](./BarcodeScanner/README.md) | Real, camera-based barcode capture (`@zxing/browser`), replacing a previous random-MRN simulator |
 | [Worklist/](./Worklist/README.md) | Case worklist table |
 | [Icons/](./Icons/README.md) | Icon components |
 | [Flags/](./Flags/README.md) | Flag display components |
@@ -34,6 +35,31 @@ changes, or a folder is added/removed/split/merged.
 | [AppShell/](./AppShell/README.md) | Global layout shell + the real internal user directory |
 | [SpecimenPicker/](./SpecimenPicker/README.md) | Specimen Dictionary lookup modal (AccessionPage) |
 | [Synoptic/](./Synoptic/README.md) | Synoptic page sidebar wrapper |
+
+## Loose files at `components/` root (Aug 2026)
+
+Three real files sit directly in `components/`, not inside any
+subfolder — all part of the same real, global scan-station feature
+(see `hooks/README.md`'s own "Scan station & material scanning"
+section for the hooks these mount):
+
+- **`MaterialScanTrackingBridge.tsx`** — mounts
+  `useGlobalMaterialScanTracking()` exactly once, at the app root
+  (`App.tsx`, alongside `ScannerProvider` itself) — never tied to any
+  specific page or case being open. Renders nothing; a deliberate
+  "hook as a component" pattern purely so it can be mounted once via
+  JSX in `App.tsx`.
+- **`ScanStationPrompt.tsx`** — real fix, per direct follow-up: "the
+  premise of setting a current station in an actual case is not
+  correct... should be identified at login. Should be sticky too."
+  Replaces the old, case-scoped `MaterialTreePanel.tsx` selector
+  entirely — a station is a property of the terminal, never of
+  whatever case happens to be open.
+- **`StationSwitchGuardModal.tsx`** — real feature, per direct
+  follow-up's exact 3-choice table for an unsaved-data station switch:
+  Save & Switch / Discard & Switch / Cancel (stay at the current
+  station to finish editing). See `useGlobalStationSwitch.ts`'s own
+  header for the real guard logic this modal presents.
 
 ## Naming/structure pass (July 2026)
 

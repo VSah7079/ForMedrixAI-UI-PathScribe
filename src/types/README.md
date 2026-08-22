@@ -1,8 +1,31 @@
 # src/types/
 
-Pure TypeScript type/interface definitions — the case data model
-(`case/`), config (`config/`), report lifecycle (`reports/`), and
-several standalone domain types. 38 files.
+Pure TypeScript type/interface definitions — no runtime logic. 12
+subfolders (each with its own `README.md`, linked below) plus 13
+root-level files. 38 files total.
+
+## Folder index
+
+| Folder | What it is |
+|---|---|
+| [access/](./access/README.md) | Real, tracked access-request tickets (Pediatric, Pool, Orchestration) |
+| [case/](./case/README.md) | **Central folder** — the core case domain model (`Case`, `Specimen`, `RetentionHold`, `CaseHold`, `MatrixBlock`, and more) |
+| [config/](./config/README.md) | Org-hierarchy config shapes (CaseMask, Enterprise, Hospital tier) |
+| [events/](./events/README.md) | PathScribe-owned internal event contracts for the LIS/middleware integration seam |
+| [footPedal/](./footPedal/README.md) | Hands-free grossing-bench peripheral control config |
+| [intraop/](./intraop/README.md) | Intraop Pre-Check "Unlinked Intraoperative Entries" queue data model |
+| [labels/](./labels/README.md) | Real label identifiers + physical label-size presets used by every label-printing feature |
+| [patients/](./patients/README.md) | Break-Glass rebind reason-code taxonomy (MPI Interface Exception module) |
+| [printing/](./printing/README.md) | Real network-print job dispatch + callback event contract |
+| [quality/](./quality/README.md) | Frozen-to-Permanent reconciliation record (full reviewed population, not just mismatches) |
+| [reports/](./reports/README.md) | Real report lifecycle beyond the synoptic itself — amendment/addendum, version history, informal review, LIS-side correction tracking |
+| [specimen/](./specimen/README.md) | Input shape for adding a specimen mid-workflow |
+
+## Root-level files (not in a subfolder)
+
+- **`index.ts`** — barrel re-exports.
+- **`serviceResult.ts`** — an older `ServiceResult<T>` shape (`{success, data, error}`), still genuinely used by the `aiIntegration/` subsystem — see "Real findings" below before assuming this is dead.
+- **`systemConfig.ts`**, **`template.ts`**, **`templateTypes.ts`**, **`reportPart.ts`**, **`smarttag.types.ts`**, **`voiceMacros.ts`**, **`flagsRuntime.ts`**, **`FlagDefinition.ts`**, **`AuditEvent.ts`**, **`SynopticAuditEvents.ts`**, **`ContributionDashboard.ts`** — standalone domain types not yet folded into a dedicated subfolder.
 
 ## Real findings
 

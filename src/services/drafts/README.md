@@ -76,6 +76,29 @@ it.
   verification step before anything commits anywhere. Raised directly by
   Pete as a firm requirement, not a default assumption.
 
+## Real gap closed — Orchestration mode's own draft text was never covered
+
+Found via direct report: "draft not persistent (lost on navigation/
+refresh)" for Orchestration mode specifically. Traced precisely —
+`orchSections` (`SynopticReportPage.tsx`'s own local state holding the
+Orchestrator's narrative section text) was never part of `caseData` at
+all, and `draftableCaseSlice` — the payload this whole cache saves and
+restores — was derived from `caseData` alone. Every one of this page's
+other 18 dirty-able things was already covered; this one, genuinely
+separate piece of state, was not.
+
+Fixed by including it under a dedicated, clearly-non-Case key
+(`__orchSectionsDraft`) in the same saved payload, and extracting it
+back out — applied via `setOrchSections`, not spread into `caseData` —
+in the restore handler. Reuses this same, already-tested cache
+mechanism rather than building a second, parallel one.
+
+Verified live, full round trip: typed real text into an Orchestration
+section, confirmed it landed in the saved cache payload, reloaded the
+page, confirmed the real recovery modal appeared with a real, correct
+timestamp, clicked Restore, and confirmed the exact typed text
+reappeared in the editor. Zero console errors throughout.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

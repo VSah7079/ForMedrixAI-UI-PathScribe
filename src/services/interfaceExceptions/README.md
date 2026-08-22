@@ -36,6 +36,23 @@ future unresolvable event of a different real type without a
 redesign. This design decision paid off directly: extending to
 A40/A24/A47 required zero changes to this folder's own files.
 
+**Paid off a second time — order-type-mapping work, Step 1 of a
+multi-step build (types only, no behavior change yet):** cross-checked
+an external "Order Type Mapping" spec's proposed standalone
+`UnmappedOrderStub`/`/audit` "Unmapped Order Stubs" tab against this
+folder before building anything, and confirmed this existing
+queue/service/UI is the real match — same "unresolvable inbound event,
+real human review, no silent auto-guess" shape as A40/A24/A43/A47. Only
+new, optional fields (`rawOrderCode`, `normalizedOrderCode`,
+`codingSystem`, `organisationId`, `siteId`) were added; `create()`/
+`resolve()`/`dismiss()` need no changes at all. Next real step: raise a
+real exception (`eventType: 'unmapped_order_code'`) from
+`services/orderIntake`'s own `resolveOrder()` when the Specimen Code
+Crosswalk has no match in any coding system tried, alongside — not
+instead of — its existing auto-create-and-continue fallback; then a
+new conditional panel in `InterfaceExceptionReviewModal.tsx` below for
+that `eventType`.
+
 ## Files
 
 - **`IInterfaceExceptionService.ts`** — `InterfaceException` type
@@ -69,8 +86,12 @@ architecture.
 
 ## Real admin UI, per direct confirmation: "Manual Review Queue / Flagging (Safest)"
 
-`components/Audit/InterfaceExceptionReviewModal.tsx` — opened from a
-new "🔌 Interfaces" pill on `AuditLogPage.tsx`'s Error Log tab. A
+`components/Audit/InterfaceExceptionReviewModal.tsx` — originally
+opened from a "🔌 Interfaces" pill on `AuditLogPage.tsx`'s Error Log
+tab. **Real, per direct redesign later the same session: this is now
+a genuine, independent top-level "Interface Log" tab, not a pill
+within Error Log** — see the "Real Interface Log tab redesign" section
+below for the full account. A
 pending exception shows as a clickable "Review" action rather than a
 plain status badge; resolved/dismissed ones stay read-only. The modal
 resolves both `sourcePatientId`/`targetPatientId` (real ids captured
@@ -94,6 +115,54 @@ determines nothing should move. **Real, full manual identity-binding
 for A40/A24/A47 is a separate, not-yet-built follow-up** — Phase A only
 covers routing these to the queue and letting a human see them, not
 resolving them from within this modal.
+
+## Real Interface Log tab redesign (Aug 2026)
+
+Per direct feedback ("I feel like it deserves its own section because
+there is so much going on between PathScribe and the engine and
+instruments and 3rd party") — real, well-reasoned: PS-86 (outbound
+dispatch), PS-87 (Assist-mode LIS milestones), and PS-88 (DP/Specimen
+Tracking) will each add their own real interface event types here,
+making a shortcut into Error Log's own state machine the wrong
+long-term shape. `AuditLogPage.tsx`'s `ActiveTab` now includes a
+genuine `'interfaces'` value — its own real filter pills (Pending/
+Resolved/Dismissed, each with a real, live count), its own search
+state (`interfaceSearch`, deliberately separate from `errorSearch` so
+switching tabs doesn't carry over an unrelated term), and its own real
+CSV export (`exportInterfaceCSV`, matching the same meta-header/PHI-
+safety convention as the other three exports on that page — was the
+one real gap; the others already had it). The old `?tab=errors&pill=interfaces`
+deep-link still works (real backward compatibility for
+`CrosswalkSection.tsx`'s own Unmapped Stubs banner, already shipped
+before this redesign) alongside the new, canonical `?tab=interfaces`.
+
+**Real, new `clientId` field on `InterfaceException`** — added
+specifically for the Map & Link feature below; deliberately distinct
+from `organisationId`/`siteId` (Facility ≠ Organisation/Site, a real,
+different concept in this app). Populated at exception-creation time
+in `mockOrderIntakeService.ts`.
+
+**Map & Link — real, contextual resolution for `unmapped_order_code`
+exceptions**, built directly into `InterfaceExceptionReviewModal.tsx`:
+a `SearchableCombobox` picker (reusing the exact component
+`CrosswalkSection.tsx` already uses) lets an admin pick a real
+Specimen Dictionary entry and resolve the exception in one action —
+`addCrosswalkEntry()` then `resolve()`, both real, existing service
+calls, no new write path. Falls back to the old, manual-instruction
+text when `clientId` is genuinely absent (an exception raised before
+this field existed) rather than creating a mis-scoped crosswalk entry.
+
+**`BreakGlassRebindModal.tsx` renamed to "Map Patient" in every real,
+user-facing string** (trigger button, modal title, confirm button,
+result messages), per direct feedback that "Break-Glass" didn't read
+as clear to a user — the underlying `breakGlassRebind()` service call
+and its own real restrictions are unchanged, this was a labeling fix
+only. Its own modal chrome was also found using a real, rare, minority
+CSS pattern (`ps-modal-overlay`/`ps-iexc-modal` — confirmed via a
+direct count, only 4-5 uses total across the whole app) instead of the
+real, dominant standard (`ps-overlay`/`ps-modal-dark`, confirmed 174/47
+uses) — fixed to match. See `components/Audit/README.md` for the fuller
+account of both changes.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

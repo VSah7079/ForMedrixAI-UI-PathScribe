@@ -53,6 +53,23 @@ etc.), consumed from many places across `pages/`/`components/`.
   not login. Removed — the outer guard already provides the real
   protection.
 
+- **Real feature, per direct, detailed specification: "Barcode Listener
+  & Form Auto-Ingestion."** A real conflict found and fixed while
+  wiring it in: `handleScan()`'s own, existing auto-navigation
+  (`navigate('/case/{accession}/synoptic')` on an accession-pattern
+  match) fired globally, with no route awareness — including on
+  `pages/AccessionPage/AccessionPage.tsx`, which now has its own,
+  real, more specific handling for the exact same event (see that
+  file's own README for the full feature). An accessioner scanning a
+  brand-new specimen label whose payload happened to also match a
+  configured accession-number pattern would have been yanked off the
+  very page they were using to create the case, mid-scan. Fixed by
+  suppressing the navigation specifically on `/accession` (via
+  `useLocation()`, new) — the real `PATHSCRIBE_SCAN` event this file
+  already dispatches on every successful scan still fires
+  unconditionally either way; only the navigation side effect is
+  route-gated.
+
 - **`SystemConfigContext.tsx`** — three independently-persisted config
   layers (system/enterprise/hospital) with a documented override
   hierarchy (`isFeatureEnabled`: hospital → enterprise → false). Clean,

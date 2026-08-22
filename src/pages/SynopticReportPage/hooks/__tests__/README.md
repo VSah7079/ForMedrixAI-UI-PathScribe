@@ -1,10 +1,23 @@
 # Testing the SynopticReportPage hooks
 
-131 tests across all seven hooks. This is the first React-hook test
-coverage in this codebase — the existing suite (~520 tests before this)
-is entirely non-React: services, utilities, calculations, running in
+188 tests across 8 of the 10 hooks in this directory (`useMicroscopicEntry.ts`
+and `useReleaseBufferCountdown.ts` — both new, Aug 2026 — don't yet have a
+dedicated test file; see "Test files" below). This is the first React-hook
+test coverage in this codebase — the existing suite (~520 tests before
+this) is entirely non-React: services, utilities, calculations, running in
 Node with no DOM. Setting these up required real, non-obvious
 infrastructure work, documented here so it isn't rediscovered the hard way.
+
+## Test files
+
+- `useAmendmentWorkflow.test.ts`
+- `useCassetteScanVerification.test.ts`
+- `useGrossingCompletion.test.ts` (referenced below, "gotchas" section)
+- `useLisIntegration.test.ts` (has an integration test — see below)
+- `useOrchestratorDraft.test.ts`
+- `useReportGeneration.test.ts` (referenced below, "gotchas" section)
+- `useSignOutWorkflow.test.ts`
+- `useSpecimenBlockManagement.test.ts` (has an integration test — see below)
 
 ## Running the tests
 

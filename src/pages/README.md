@@ -1,11 +1,23 @@
 # pages/
 
-Top-level route pages. Subfolders (`AccessionPage/`, `WorklistPage/`,
-`SynopticReportPage/`, `Synoptic/`, `modals/`, `system/`, etc.) each have
-their own `README.md`. This file covers the loose files that sit
-directly in `pages/` with no folder of their own — filled in
-incrementally as the `src/pages/` review reaches each one, not written
-all at once.
+Top-level route pages.
+
+## Subfolder index
+
+| Folder | What it is |
+|---|---|
+| [AccessionPage/](./AccessionPage/README.md) | Case accessioning form + order lookup/intraop-merge/deficiency modals |
+| [BatchManagement/](./BatchManagement/README.md) | Cassette/slide chain-of-custody + the disposal/pending-load/retention-hold computed queues |
+| [modals/](./modals/README.md) | Top-level page modals that don't belong to any single page's own folder |
+| [ReportPreview/](./ReportPreview/README.md) | Orchestration mode's template-driven report preview renderer |
+| [Synoptic/](./Synoptic/README.md) | Shared types/hooks extracted from `SynopticReportPage.tsx`, plus Codes/Comments/Delegate/UI subfolders |
+| [SynopticReportPage/](./SynopticReportPage/README.md) | **Central folder** — the core clinical workflow (`/case/:caseId/synoptic`): hooks/components/modals |
+| [system/](./system/README.md) | Admin config pages rendered by `Config/System/index.tsx`'s route switch |
+| [WorklistPage/](./WorklistPage/README.md) | Sortable/filterable case table + its own modals |
+
+This file also covers the loose files that sit directly in `pages/`
+with no folder of their own — filled in incrementally as the
+`src/pages/` review reaches each one, not written all at once.
 
 ## Files reviewed so far
 
@@ -35,20 +47,36 @@ all at once.
   writing `e.currentTarget.style.color`) with a real CSS `:hover` rule
   on the new `.ps-cfgpage-tab-btn` class — the JS version bypassed
   React's rendering model for something CSS already does natively.
+  **Real bug found and fixed since, per direct report**: switching a
+  top-level tab, or a section within System/Integrations, never reset
+  scroll position — the next tab/section could load already scrolled
+  down, hiding its own add button and column headers until manually
+  scrolled up. Root cause: `.ps-cfgpage-scroll` (confirmed via its own
+  `overflow-y: auto`) is the real, single, shared scroll container for
+  the whole page, but two of the three real state changes that can
+  trigger a switch (`Config/System/index.tsx` and
+  `Config/Integrations/index.tsx`'s own internal `setActive`) happen
+  two component levels below it — a prop couldn't reach it without a
+  larger refactor. Fixed with a small, shared, tested utility
+  (`utils/resetConfigScroll.ts`) called from all real trigger paths:
+  this file's own `handleTabChange`, both sub-tabs' sidebar clicks,
+  both sub-tabs' URL-deep-link `useEffect`, and System's voice-navigation
+  event listener. Verified live, every path independently, with a
+  forced-scrollable viewport and a confirmed non-zero scroll position
+  before each switch — not assumed from one working case.
 
 - **`LoginPage.tsx`** — Public unauthenticated route. Already in good
   shape structurally: `attemptLogin`/`handleSubmit` are named functions
   (not anonymous JSX closures), correctly uses the shared `ConfirmModal`
   for the "already signed in elsewhere" session-conflict gate (not
-  `window.confirm()` — see `PRIORITY_FIXES.md` item #19, this file is
+  `window.confirm()` — this file is
   the pattern other files should follow, not an offender), no inline
   styles, no dead code. **Fixed:** `resolveEnvironment()` had an
   unnecessary double-cast on `import.meta.env.VITE_APP_ENV`
   (`(import.meta as unknown as { env?: Record<string, string> })...`).
-  Traced why it existed and why it wasn't needed — see `PRIORITY_FIXES.md`
-  item #20 for the full explanation (Vite's own `ImportMetaEnv` base
+  Traced why it existed and why it wasn't needed: Vite's own `ImportMetaEnv` base
   type is a permissive `any` fallback, so the cast was pure dead
-  weight). The SSO buttons (Google/Microsoft) are intentionally
+  weight. The SSO buttons (Google/Microsoft) are intentionally
   disabled with `aria-disabled` and a "Soon" badge — not a bug, that's
   the resolved state of the "SSO buttons were fully non-functional"
   finding from an earlier session.
@@ -75,7 +103,13 @@ all at once.
   extracted one inline JSX display-string computation
   (`PoolClaimModal`'s `caseSummary` prop) to a named const.
 
-- **`DeficienciesPage.tsx`** — ISO 15189-driven nonconformance
+- **`QualityAssurancePage.tsx`** — renamed from `DeficienciesPage.tsx`
+  (the underlying specimen-deficiency domain terminology below is
+  unchanged; the page itself now also covers Intraoperative Linkage,
+  Discordance & Reconciliation, Countersign Turnaround, Access Request
+  Response, and FPPE Tracking as additional tabs — this section
+  documents the original deficiency-management work queue specifically).
+  ISO 15189-driven nonconformance
   (deficiency) management work queue: Open → Pending Verification →
   Closed, plus Management Reviews and several other QA sub-tabs.
   Genuinely well-architected already: `ResolveModal`/`VerifyModal` are
@@ -87,13 +121,12 @@ all at once.
   removed (verified via `tsc`); the recharts `Tooltip` content prop's
   `any` typing replaced with the library's own exported
   `TooltipContentProps` type. That last one surfaced a wider
-  duplication — see `PRIORITY_FIXES.md` item #21: the exact same
+  duplication (fixed, 5/5): the exact same
   `any`-typed tooltip pattern is repeated in 4 more files under
   `components/`, not touched here since those were already covered by
   an earlier review pass.
 
-  **Restructured in a later session** (`PRIORITY_FIXES.md` items
-  #42/#46/#47), following a request to make this a genuine working
+  **Restructured in a later session**, following a request to make this a genuine working
   queue rather than a browsable archive:
   - Fixed a real infinite-render-loop bug in `FlagManagerModal` (a
     sibling component this page links out to) that was almost
@@ -144,18 +177,18 @@ all at once.
   tracked `isResourcesOpen` state, but had no way to ever set it to
   `true` — no button, no listener, nothing. `WorklistPage.tsx` renders
   the same modal correctly via a global `PATHSCRIBE_PAGE_OPEN_RESOURCES`
-  window event; this page was just missing that listener entirely. See
-  `PRIORITY_FIXES.md` item #25.
+  window event; this page was just missing that listener entirely.
+  Fixed.
 
-  **Grew a third tab in a later session** (`PRIORITY_FIXES.md` item
-  #48): "Quality Control," alongside Audit Log and Error Log, matching
+  **Grew a third tab in a later session:**
+  "Quality Control," alongside Audit Log and Error Log, matching
   every one of their conventions exactly (tab-switcher badge, stats
   cards, status/level/date-range/search filtering, the same
   compliance-oriented CSV export with a notice/filters/requester/
   record-count header). This is now the permanent, complete Quality
   Assurance record — every deficiency regardless of status, the record
   meant to hold up under a CAP or other certification inspection —
-  deliberately separate from `DeficienciesPage.tsx`'s own working
+  deliberately separate from `QualityAssurancePage.tsx`'s own working
   queue, which stays active-work-only. Defaults to All Time rather
   than the Audit tab's last-7-days default, since completeness is the
   point here. Also fixed in the same pass, not scoped to just the new
@@ -166,10 +199,10 @@ all at once.
   `useAuth()` user), so all three benefit, not just the new one. One
   inline style slipped into the initial build of the new tab (the
   Pending Verification status badge) — caught and moved to a proper
-  class (see below, item #49).
+  class.
 
-  **Renamed and substantially expanded in a later session still**
-  (`PRIORITY_FIXES.md` item #52): "Quality Control" → "Quality
+  **Renamed and substantially expanded in a later session still:**
+  "Quality Control" → "Quality
   Assurance," and grew from covering just Deficiencies to all 8 tabbed
   item groups the working queue itself has (Intraoperative Linkage,
   Discordance & Reconciliation, Countersign Turnaround, Credentialing
@@ -190,10 +223,12 @@ all at once.
   review is itself the compliance evidence a review happened, per
   Pete's own reasoning when this was discussed directly.
 
-  **Grew a real, restricted "⚡ Break-Glass Rebind" trigger, per direct
+  **Grew a real, restricted "🔗 Map Patient" trigger (originally "⚡
+  Break-Glass Rebind" — see below), per direct
   confirmation, building Phase B of the "Interface Exception &
-  Case-Binding Module"**: a button surfaced only alongside the "🔌
-  Interfaces" pill and gated to `isAdmin` at both the trigger and the
+  Case-Binding Module"**: a button surfaced on the Interface Log tab
+  (originally alongside the "🔌
+  Interfaces" pill — see below) and gated to `isAdmin` at both the trigger and the
   modal render itself (defense in depth), opening
   `components/Audit/BreakGlassRebindModal.tsx`. A real, deliberate
   fail-safe found while wiring this in: never falls back to a guessed
@@ -204,6 +239,55 @@ all at once.
   established "fail-safe rather than guess" posture elsewhere, rather
   than defaulting to a specific organisation.
 
+  **Real, complete Interface Log redesign, later the same session,
+  per direct feedback ("I feel like it deserves its own section
+  because there is so much going on between PathScribe and the engine
+  and instruments and 3rd party").** What was a "🔌 Interfaces" pill
+  within the Error Log tab became a genuine, independent fourth
+  top-level tab — its own real filter pills (Pending/Resolved/
+  Dismissed, each with a real, live count), its own search state, its
+  own CSV export (`exportInterfaceCSV`, matching the same meta-header/
+  PHI-safety convention already established for the other three
+  exports on this page — was the one real gap; Audit, Error, and
+  Quality already had this). The old `?tab=errors&pill=interfaces`
+  deep-link still works (real backward compatibility for
+  `CrosswalkSection.tsx`'s own Unmapped Stubs banner) alongside the
+  new, canonical `?tab=interfaces`. The "⚡ Break-Glass Rebind" trigger
+  above was renamed "🔗 Map Patient" in this same pass — see
+  `components/Audit/README.md` for the fuller account of that rename.
+
+  **Real stats-grid removed entirely**, per direct feedback ("I would
+  remove the tiles all together, recover the vertical space"): the
+  four big stat cards per tab were purely visual (no `onClick`),
+  duplicating the real, working filter-pill row directly beneath them
+  — real, live counts now live only on the pills themselves (all four
+  tabs), recovering the vertical space the cards used to take.
+
+  **Real corner-badge positioning fix, three passes, per direct
+  reports the count was covering the pill's own label text.** First
+  attempt used a negative-offset, absolute-positioned badge outside
+  each pill's own box (`ps-nav-badge`'s real, established pattern,
+  used on the top nav's own message icon) — still overlapped a short
+  label like "All," since there wasn't real room before the edge, and
+  risked being clipped by any ancestor with `overflow: hidden`. Fixed,
+  real approach: reserved padding *inside* each button specifically
+  for the badge, with a non-negative offset, so the badge's own zone
+  and the label's own zone can never overlap regardless of label
+  length — applied identically to both the top-level tabs and all
+  three sub-pill rows.
+
+  **Real modal-clipping fix.** The "New Billing Code"/RVU Code Map
+  modals (`components/Config/System/BillingDictionarySection.tsx`,
+  `RvuCodeMapSection.tsx`) use the shared `ps-ms-overlay`, whose own
+  `align-items: center` pushes a modal taller than the viewport off
+  the top of the screen equally with the bottom — confirmed the real
+  nav bar (`.ps-nav`) is exactly 80px tall, `position: sticky`, with
+  its own `backdrop-filter` (a real, separate CSS stacking context per
+  spec). A new, scoped `ps-ms-overlay--top-align` modifier (real
+  clearance well past that 80px) fixes this for those two modals
+  specifically — the shared class itself was deliberately left alone,
+  since 28 other real modals across the app depend on it unchanged.
+
 - **`Home.tsx`** — Landing page: navigation cards, footer, a "User
   Preferences" modal (theme picker + support links), and an About
   modal. ~40 inline styles fixed, including the per-card accent color
@@ -212,21 +296,29 @@ all at once.
   isn't reducible to a small fixed set of modifier classes the way
   badge/status colors were elsewhere in this review.
 
-  **Two real, non-cosmetic findings, both documented rather than
-  guess-fixed** — see `PRIORITY_FIXES.md` items #26 and #27:
+  **Two real, non-cosmetic findings, both later resolved by Pete's own
+  product decision, not left as documented-but-unfixed:**
   1. The entire "User Preferences" modal (theme picker, Support &
-     Protocols, About PathScribe) has **no way to ever open** — traced
+     Protocols, About PathScribe) had **no way to ever open** — traced
      to the app's move from each page owning its own `NavBar` (which
      `SynopticReportPage.tsx` still does, wiring `onProfileClick` to
      its own local modal) to the shared `AppShell` layout, which routes
      the nav avatar click to its own separate badge modal instead. This
-     modal looks orphaned by that migration, not a mechanical one-line
+     modal looked orphaned by that migration, not a mechanical one-line
      fix like `AuditLogPage.tsx`'s `ResourcesModal` bug was.
+     **Resolved in a later session:** the whole modal, its state, and
+     its wiring were deleted entirely (273 → 125 lines) — its two real,
+     non-duplicate purposes (theme picker, About PathScribe's stale
+     version string) were both already superseded by the working
+     `AppShell` badge modal, which shows the real, live app version.
   2. Even when reachable, the theme picker only ever affects the Home
      page itself — every other page hardcodes dark-theme colors
      directly, confirmed by checking every consumer of the CSS
-     variables the theme engine sets. Documented in a code comment at
-     the top of the file.
+     variables the theme engine sets.
+     **Resolved in the same later session, per Pete's explicit product
+     decision:** rather than build real app-wide theming, the
+     light/auto theme-switching machinery was removed entirely —
+     dark-only now, a deliberate choice, not an unfinished feature.
 
   Also fixed in passing: `document.body.style.margin = '0'` was set
   imperatively on mount, meaning it only applied once `Home.tsx`
@@ -270,18 +362,33 @@ all at once.
   actually touched this session) — 0 violations after. The other three
   tabs render separate component files not reviewed this session;
   found real contrast violations there too (44 elements combined),
-  flagged for when those files come up rather than fixed now. See
-  `PRIORITY_FIXES.md` item #28 for full detail.
+  flagged for when those files come up rather than fixed now.
 
-  **Real bug found and fixed in a later session** (`PRIORITY_FIXES.md`
-  item #46): the Overview tab's own Quality Flags widget already
+  **`contributionDashboardCalculations.ts`** (+ `contributionDashboardCalculations.test.ts`) — real fix,
+  from a direct product review: the Overview tab had seven separate
+  hardcoded datasets (`mockKpis`, `mockCaseMixData`, `mockRvu30`,
+  `mockClientTatData`, `mockTatTargets`, `mockTatPerf`, `mockDaily`)
+  shown identically to every pathologist — including one KPI tile
+  whose underlying number (128) was fake even though its label
+  ("CASE_LABEL_PLACEHOLDER") was actually a working, real value. Real,
+  per-pathologist calculations extracted here, replacing the hardcoded
+  datasets. Reuses `resolveTatTargetHours` from
+  `components/Contribution/qualityCalculations.ts` — see that file's
+  own README-adjacent notes for the real TAT-target resolution logic
+  this builds on.
+
+  **Real bug found and fixed in a later session:**
+  the Overview tab's own Quality Flags widget already
   correctly displayed a user's open deficiencies, case-level ones
   included — but clicking one navigated to the case's own synoptic
   report page, which has no deficiency resolve/verify UI at all (only
-  `DeficienciesPage.tsx` does). The widget's whole purpose — surface
+  `QualityAssurancePage.tsx` does). The widget's whole purpose — surface
   your own open issues so you can act on them — dead-ended on click.
-  Now links to `/deficiencies?open=<id>` instead, using deep-link
-  support added to that page in the same pass. The same widget's other
+  Now links to `/quality-assurance?open=<id>` instead, using deep-link
+  support added to that page in the same pass (route renamed since;
+  the `?open=` deep-link support itself still works unchanged — see
+  `QualityAssurancePage.tsx`'s own `URLSearchParams` read). The same
+  widget's other
   flag type (Frozen/Final discordances) was checked and confirmed
   already correct as-is — those genuinely do reconcile on the synoptic
   page, unlike deficiencies.
@@ -298,7 +405,7 @@ all at once.
   real camera read — stated plainly rather than glossed over). Only 3
   inline styles found and fixed (`.ps-intraop-discard-body`,
   `.ps-intraop-report-actions`, `.ps-intraop-desktop-switch-link`).
-  Also resolved `PRIORITY_FIXES.md` item #24, the contrast fix flagged
+  Also resolved a contrast fix flagged
   from an earlier batch's broader regression check
   (`.ps-intraop-timeline-time`, `.ps-intraop-note-label`) — confirmed
   via testing that both classes were actually present in the rendered
@@ -310,8 +417,8 @@ all at once.
   Location list), captured once per session alongside OR/surgeon. See
   `services/intraop/README.md` for the full detail.
 
-  **Fixed in a later session** (`PRIORITY_FIXES.md` item #42, part of
-  the systemic button-style cluster): the Merge Mobile Intake Data
+  **Fixed in a later session, part of
+  the systemic button-style cluster:** the Merge Mobile Intake Data
   modal's footer buttons used the older `.ps-ms-btn-cancel`/
   `.ps-ms-btn-apply` classes instead of the real Configuration button
   standard — every other button on this page, checked individually,
@@ -336,11 +443,12 @@ all at once.
   Both fixed with the real `.label` field. Also removed 2 leftover
   debug `console.log` calls.
 
-  **A third occurrence of the `ResourcesModal`-never-opens bug** (see
-  items #25, #26 in `PRIORITY_FIXES.md`) — fixed by adding the same
+  **A third occurrence of the `ResourcesModal`-never-opens bug** —
+  fixed by adding the same
   `PATHSCRIBE_PAGE_OPEN_RESOURCES` listener pattern, verified via
   testing that the modal actually opens now. `isProfileOpen` here is
-  orphaned too, same as `Home.tsx` — flagged, not guess-fixed.
+  orphaned too, same as `Home.tsx` — flagged, not guess-fixed. Tracked
+  as Jira PS-65.
 
   **Pre-existing file corruption found and fixed:** several
   user-facing strings had double-encoded UTF-8 arrows/symbols
@@ -356,10 +464,52 @@ all at once.
   confirmed instance, left 4 other occurrences of the same color
   untouched since only this one was actually verified failing.
 
-  Full detail in `PRIORITY_FIXES.md` item #29.
+## Real, confirmed fixes — RightSynopticPanel.tsx template selection (post-review)
 
-## Review status: complete
+Two real issues found via direct report, after the review below was
+already marked complete — documented here rather than reopening that
+review's own scope.
 
-All files in `src/pages/` have been reviewed — 39/39 on the item #18
-inline-style checklist in `PRIORITY_FIXES.md`, plus every loose
-top-level file and subfolder covered across this README.
+**Selecting certain templates returned an empty report, no fields at
+all.** Traced to `templateService.ts`'s own `getTemplate()`: a
+registry entry with no matching content in `editorStore` silently
+resolves to `sections: []`, regardless of what the registry's own
+`fields` count claims. Reproduced directly — this was exactly the
+shape of the two `'TEST'`-category registry entries ("Generic Synoptic
+Test Form -- Basic"/"-- Complex"), registered for browsing purposes
+per `protocolShared.tsx`'s own comment ("non-clinical test
+templates"), never given real content, never meant to be selectable by
+a pathologist on a real case. Fixed by filtering `category === 'TEST'`
+out of the pathologist-facing picker in `RightSynopticPanel.tsx` —
+scoped to that one list; admin template management elsewhere is
+untouched.
+
+**The suggested template required a click just to attach it.** Real
+product decision: a pathologist shouldn't have to click the one
+template already most likely correct just to get started — reducing
+clicks was the entire point of the suggestion feature existing at all.
+`TemplatePicker` now auto-attaches the top suggestion the moment one
+exists, landing the pathologist directly on a populated report. Escape
+hatch is the existing, real delete-and-re-add flow already available
+on any attached report — deliberately not a second, parallel
+confirmation step, since that would undo the exact click-reduction
+being asked for. Guarded with a ref (not just an effect dependency) so
+a later re-render can't re-trigger a second auto-attach over a report
+the pathologist has already started editing or deliberately replaced.
+
+---
+
+## Review status
+
+All loose top-level files in `src/pages/` have been reviewed — 39/39
+on the inline-style checklist, plus
+every loose top-level file covered in this README.
+
+**Subfolder README coverage (verified August 2026):** every subfolder
+now has its own `README.md`, checked programmatically — every real
+file in every subfolder is actually named in that subfolder's own
+`README.md`, not just assumed. `BatchManagement/`, `ReportPreview/`
+(+ its `__tests__/`), `Synoptic/` (+ its four subfolders), and
+`SynopticReportPage/` (+ its `modals/` and `components/`) were all
+missing entirely before this pass — `SynopticReportPage/hooks/` (+ its
+own `__tests__/`) already had real coverage and needed no work.

@@ -401,13 +401,59 @@ calls at all. 776/776 tests passing, zero regressions. Live-verified:
 the button is genuinely absent from the real, running page while
 pending-release.
 
+## Two known gaps closed (post-push follow-up)
+
+**Orchestration mode's print entry point** — confirmed to be a real,
+separate function (`handleOrchPrint` in `SynopticReportPage.tsx`),
+genuinely distinct from `BottomActionBar.tsx`'s CoPilot print button
+this feature already gated, with its own, separate PDF payload
+construction that never got the Phase 3 `watermarkText` field either.
+Both closed: the same confirmation-before-print gate (naming the
+watermark, never a silent block) now applies here too, and the payload
+now carries `watermarkText` the same way `generateReportPdfSnapshot()`'s
+does. Live-verified: the button only renders on the "Report Draft" tab
+(a real, easy-to-miss UI detail — not visible on the default "Synoptic
+Reporting" tab a case first opens to), and clicking it while
+`pending-release` correctly triggers the exact same confirmation
+message as the CoPilot path.
+
+**Facility Configuration edit modal's override UI** — never
+independently screenshotted in Phase 2; only logic-verified via a
+direct service call at the time. Now confirmed live: the "Post-Sign-Out
+Release Buffer" section renders correctly under the facility editor's
+"AI & Performance" tab, and selecting "Override for this lab" correctly
+reveals all three real fields (buffer enabled, duration, STAT bypass) —
+matching the same design already verified working end-to-end back in
+Phase 2's own resolution-chain test.
+
+## Worklist tile color, revisited (real audit finding)
+
+The teal used for "Queued for Release" (`#06b6d4`) turned out to be part
+of a real, confirmed color-collision problem across the worklist's
+tiles — found during a direct audit against user-reported testing notes,
+not guessed at. Computed actual RGB distances: `grosscomplete` and
+`completed` were the closest pair (37.2), with `pendingrelease`,
+`inprogress`, and `grosscomplete` all clustered in the same teal/cyan
+family. Redesigned the seven colliding tiles' colors as a deliberate,
+evenly-spaced palette (minimum pairwise distance now 63.1, up from
+37.2), verified with an actual rendered swatch before touching any code.
+
+`pendingrelease` is now `#1C8DE3` (a blue), not teal. Updated
+everywhere this color appears for cross-page consistency —
+`HeaderBar.tsx`'s status pill, `WorklistTable.tsx`'s status column, and
+`SearchPage.tsx`'s status filter — including re-deriving the header
+pill's light-theme variant with a freshly WCAG-checked text/background
+pair (6.16:1, actually better than the 5.15:1 it replaced). Did **not**
+touch `#06b6d4` on the login page's submit-button hover state — same
+hex, completely unrelated element, verified via its own separate WCAG
+comment before leaving it alone.
+
 ## Genuinely complete
 
-This closes the confirmed 5-phase build. Two real, honest gaps remain —
-client IP address (needs real backend infrastructure) and the
-`ReportVersionRecord`/`finalizeSignOut()` relationship for §18b (needs a
-real, separate architectural decision) — both documented above rather
-than silently left for someone else to discover. Orchestration mode's
-own print entry point also remains ungated by the print restriction
-(carried forward from Phase 3).
+This closes the confirmed 5-phase build, plus both known gaps above.
+Two real, honest gaps remain — client IP address (needs real backend
+infrastructure) and the `ReportVersionRecord`/`finalizeSignOut()`
+relationship for §18b (needs a real, separate architectural decision) —
+both documented above rather than silently left for someone else to
+discover.
 

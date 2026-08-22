@@ -99,14 +99,20 @@ Selecting one sets `Case.order.locationId` +
 
 **Real feature, per direct confirmation: "I assume that the location
 will download from the select patient encounter, once the order or
-patient is selected."** Confirmed correct and built: importing a
-pending order on `AccessionPage.tsx` (`doImportOrder()`) looks up the
-real `Encounter` linked via `order.encounterNumber` (see
-`services/encounters/`) and, if that encounter has a real
-`locationId`, auto-populates the Location dropdown from it — same
-real pattern as `order.clientId` auto-populating Submitting Facility,
-just one lookup deeper since Location lives on the `Encounter`, not
-directly on the order.
+patient is selected."** Confirmed correct and built — later extended
+into a real, broader "Encounter Selector & Auto-Fill" feature (see
+`services/encounters/README.md`'s own, fuller consumer writeup and
+`pages/AccessionPage/README.md`): Location now auto-populates from two
+real trigger points, not one — importing a pending order
+(`doImportOrder()`, via `order.encounterNumber`) and selecting an
+already-known patient from the Order Lookup & Patient Verification
+modal (via a real, resolved MPI `patientId`) — and only when the
+linked `Encounter` is genuinely active (`src/utils/isEncounterActive.ts`
+— a real Safety Safeguard added later, since a stale/historical
+encounter reference should never silently populate Location with
+outdated data). Same real pattern as `order.clientId` auto-populating
+Submitting Facility, just one lookup deeper since Location lives on
+the `Encounter`, not directly on the order.
 
 **`pages/IntraopQueuePage.tsx`** — a separate, direct consumer, added
 per direct confirmation ("Let's wire in Facility and Location (Room)

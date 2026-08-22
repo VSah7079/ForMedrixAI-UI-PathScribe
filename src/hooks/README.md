@@ -144,6 +144,60 @@ audit logging, and a few smaller single-purpose hooks.
   properly adopted (5 and 1 consumers respectively, no bypasses
   found).
 
+## Scan station & material scanning (Aug 2026)
+
+- **`useCurrentScanStation.ts`** — real, per-device/per-browser
+  station setting (`localStorage`, deliberately not part of any Case
+  or user record) — the real, physical terminal at "Grossing Station
+  3" stays configured as that station regardless of which tech logs
+  in and works there during a given shift; a tech switching benches
+  switches this setting, not their own profile. Real bug found and
+  fixed while live-verifying the scan pipeline end to end.
+- **`useEffectiveScanStation.ts`** — a real, separate, higher-level
+  hook implementing the fallback chain during session initialization
+  (device storage → user profile default → none), deliberately kept
+  separate from `useCurrentScanStation.ts` so that hook's own
+  `stationId` stays exactly what it already is: the real, explicit,
+  device-persisted value set only by a genuine user action.
+- **`useGlobalMaterialScanTracking.ts`** — real fix, per direct
+  follow-up: "the tracking event should occur no matter what page
+  you're on in PathScribe." The original `useMaterialScanTracking.ts`
+  (`SynopticReportPage/hooks/`) only listened while a specific case's
+  own Synoptic page was mounted — a tech scanning a cassette from the
+  Worklist, Search, or any other page was silently ignored, even
+  though `ScannerProvider`'s own `PATHSCRIBE_SCAN` event is already
+  genuinely global (window-level, mounted once at the app root).
+- **`useGlobalStationSwitch.ts`** — real feature: "MVP Station-Switching
+  via Barcode Label" — detects the `STATION:` prefix from the scanner
+  input stream and triggers a station switch, even mid-dictation or
+  mid-grossing. A real, separate listener from
+  `useGlobalMaterialScanTracking.ts` — deliberately two independent
+  listeners on the same real, global `PATHSCRIBE_SCAN` event rather
+  than one listener trying to disambiguate both concerns. Has its own
+  dedicated test file, `__tests__/useGlobalStationSwitch.test.ts` —
+  safety-critical guardrail logic (never switches station mid-write).
+
+## Foot pedal & audio (Aug 2026)
+
+- **`useFootPedal.ts`** — real feature: "Foot pedal support
+  specifically (the one part confirmed to not exist at all)." Detects
+  both real HID/Gamepad-class pedals (via the Gamepad API's
+  animation-frame poll loop — it has no "button pressed" event, so
+  polling is the standard, only way to read live button state) and
+  keyboard-emulating pedals (a common, simpler approach many pedal
+  vendors use instead of true HID). Bindings are captured live from
+  whatever hardware is actually connected — never a hardcoded guess
+  at a specific pedal model's button index or keycode.
+- **`useAudioSegmentRecorder.ts`** — real feature, Foot Pedal 3
+  ("Pause Audio / Replay Last Segment"). The existing dictation system
+  (`VoiceProvider`, via the Web Speech API's `SpeechRecognition`) only
+  ever returns transcribed text — never the raw audio — so "replay"
+  had no real audio to replay from anywhere in this codebase before
+  this. Deliberately a self-contained `MediaRecorder`-based recorder,
+  kept independent from `VoiceProvider`'s own `SpeechRecognition`
+  internals rather than deeply interleaved with them — lower risk than
+  modifying that existing, working system.
+
 ## Real findings this pass, ranked by severity
 
 1. **Draft recovery completely non-functional** (`useDraftCache.ts`) —

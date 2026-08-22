@@ -24,6 +24,11 @@ Shared, reusable UI primitives used across multiple pages.
   className props rather than hardcoding classes) since it's reused across
   two different class systems (`ps-input-dark` on AccessionPage,
   `ps-conf-input` on Config screens). No issues.
+- **`PatientIdStatusDot.tsx`** — real feature, per direct specification:
+  "UI Status Indicator Component." A colored status dot next to a
+  patient ID field, with a real, hoverable tooltip explaining the
+  status — jurisdiction-aware (NHS Number's own real HL7 status code
+  for England & Wales; locally-derived Green/Red elsewhere).
 - **`LookupModal.tsx`** — Shared full-screen search-and-select modal shell
   (overlay, header, close-on-Escape/overlay-click), used across
   SearchPage's SNOMED/ICD-10/ICD-O/Specimen/Synoptic/Flags/Pathologist/
@@ -40,6 +45,11 @@ Shared, reusable UI primitives used across multiple pages.
   over-build ahead of need. ~36 other native `<select>` elements remain
   across `Config/System/` alone; this is the proof-of-concept, not a full
   sweep — logged as its own `PRIORITY_FIXES.md` item.
+- **`SearchableCombobox.tsx`** — a genuine searchable combobox, real fix
+  for item #69 ("Can the specimen type search be contains?"). `Dropdown.tsx`
+  above is explicitly, deliberately a plain single-select with no search
+  — this is its sibling for the cases that genuinely need filter-as-you-type
+  over a longer option list, not a replacement for it.
 - **`LogoutWarningModal.tsx`** — **MOVED HERE**, consolidating what were
   TWO separate implementations of the same "unsaved changes, log out
   anyway?" dialog: this one (was `pages/WorklistPage/LogoutWarningModal.tsx`)

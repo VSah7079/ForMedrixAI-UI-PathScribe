@@ -79,16 +79,20 @@ other consumers of the root-level file, deleted it. Full detail in
 
 | Folder | What it is |
 |---|---|
+| [access/](./access/README.md) | **NEW (August 2026)** — real, tracked AccessRequest tickets (Pediatric, Pool, Orchestration) — replaces message-only requests with a real status lifecycle and quality-metric turnaround time |
 | [actionRegistry/](./actionRegistry/README.md) | Voice/shortcut action catalog |
 | [ai/](./ai/README.md) | Core AI provider abstraction (Claude/GPT/Bedrock swap layer) |
 | [aiBehavior/](./aiBehavior/README.md) | Admin AI behavior settings (confidence thresholds etc.) |
 | [aiIntegration/](./aiIntegration/README.md) | Higher-level AI features: transcript refine, suggestions, spellcheck |
 | [auditlog/](./auditlog/README.md) | System-wide audit log |
 | [auth/](./auth/README.md) | Case access control + institution/session resolution (not login) |
+| [batches/](./batches/README.md) | **NEW (August 2026)** — cassette/slide chain-of-custody through histology processing nodes via container barcode scanning, plus the real, computed pending-batch-load queue |
 | [billing/](./billing/README.md) | **NEW (August 2026)** — real CPT-to-work-RVU mapping table and calculation, workload/productivity tracking only (not a billing system) |
 | [biometric/](./biometric/README.md) | WebAuthn e-signature |
 | [caseRegistry/](./caseRegistry/README.md) | **NEW (August 2026)** — real accession-number generation/masking per organisation, with real facility-timezone-aware `{YEAR}` and annual sequence reset |
 | [cases/](./cases/README.md) | **Central folder** — case data access, LIS/Orchestration routing, production migration plan |
+| [cassetteColors/](./cassetteColors/README.md) | **NEW (August 2026)** — admin-manageable cassette color dictionary (White/Blue/Red/Pink/Green-Mesh/Yellow + custom), fallback policy lives per-color |
+| [cassetteRouting/](./cassetteRouting/README.md) | **NEW (August 2026)** — admin-manageable rules resolving which cassette color an order routes to (protocol/priority/station/facility/case type) |
 | [clientSLA/](./clientSLA/README.md) | Per-client SLA/TAT targets |
 | [clients/](./clients/README.md) | Client (institution) dictionary |
 | [codes/](./codes/README.md) | Terminology system CONFIG (which SNOMED/ICD variants are enabled) |
@@ -98,16 +102,24 @@ other consumers of the root-level file, deleted it. Full detail in
 | [delegationTypes/](./delegationTypes/README.md) | Case delegation type dictionary |
 | [diagnosisCodes/](./diagnosisCodes/README.md) | Referring physician's order-time diagnosis code |
 | [drafts/](./drafts/README.md) | **NEW (July 2026)** — local caching of in-progress unsaved work (Inactivity Timeout & Draft Recovery Phase 2) |
+| [encounters/](./encounters/README.md) | **NEW (August 2026)** — Patient/Encounter Management Subsystem: real encounter tracking, sibling to `patients/`'s identifier crosswalk |
+| [events/](./events/README.md) | **NEW (August 2026)** — real-time event distribution layer for critical patient state changes (Patient/Encounter Management Subsystem Phase 4) |
 | [externalResources/](./externalResources/README.md) | **NEW (July 2026)** — admin-managed reference links (CAP protocols, WHO classification, lab systems), org-scoped with real per-viewer relevance filtering |
+| [facilities/](./facilities/README.md) | **NEW (August 2026)** — canonical `Facility` entity, replaces the old `clients/` (`Client`) entirely |
 | [flags/](./flags/README.md) | Case/specimen flag dictionary |
 | [fonts/](./fonts/README.md) | Editor font dictionary |
+| [governingBodies/](./governingBodies/README.md) | **NEW (August 2026)** — real persistence for the Governing Bodies list (CAP, RCPath, ICCR, RCPA, + custom) |
 | [grossing/](./grossing/README.md) | Grossing template routing (types only, real logic in cases/) |
 | [grossingRoutingOverrides/](./grossingRoutingOverrides/README.md) | Per-client grossing route exceptions |
+| [hardware/](./hardware/README.md) | **NEW (August 2026)** — `ModeAInterfaceService`: dispatches hardware/LIS orders through the existing HL7 seam |
+| [hardwareContainers/](./hardwareContainers/README.md) | **NEW (August 2026)** — check-in/check-out registry for semi-permanent, laser-engraved reusable racks/baskets |
 | [hl7/](./hl7/README.md) | Standard HL7 ORM^O01 builder — deliberate pre-integration scaffolding |
+| [interfaceEngine/](./interfaceEngine/README.md) | **NEW (August 2026)** — real Category E (Order Creation) dispatch for the JSON/REST interface spec; mock-backed, no real backend/transport yet |
 | [interfaceExceptions/](./interfaceExceptions/README.md) | **NEW (August 2026)** — real holding queue for inbound ADT/patient-management messages that can't be safely auto-processed (unresolved identity, missing MRG-5) |
 | [internalNotes/](./internalNotes/README.md) | Lab-internal case notes + management reviews |
 | [intraop/](./intraop/README.md) | Intraoperative Pre-Check queue |
 | [lisSync/](./lisSync/README.md) | Narrow mock for one UI sync-freshness indicator |
+| [locations/](./locations/README.md) | **NEW (August 2026)** — real Location dictionary (wards/rooms/beds, facility-scoped), for HL7 PV1 |
 | [macros/](./macros/README.md) | Text-expansion macro dictionary |
 | [messages/](./messages/README.md) | Internal staff messaging |
 | [models/](./models/README.md) | AI model registry |
@@ -119,16 +131,21 @@ other consumers of the root-level file, deleted it. Full detail in
 | [performanceTargets/](./performanceTargets/README.md) | Admin productivity targets |
 | [physicians/](./physicians/README.md) | Physician directory |
 | [priority/](./priority/README.md) | Display metadata for the 3 fixed priority tiers |
+| [printerProfiles/](./printerProfiles/README.md) | **NEW (August 2026)** — real printer capability registry (ZPL/DPI/DataMatrix size) for correct label template selection |
+| [printSettings/](./printSettings/README.md) | **NEW (August 2026)** — real, admin-configurable, lab-wide default label-printing behavior (on-demand vs. batch, guardrails, scan verification, container label size) — Tier 1 only, per direct follow-up on the hierarchical print-settings architecture |
 | [protocols/](./protocols/README.md) | Standalone processing-protocol dictionary |
 | [quality/](./quality/README.md) | Discordance tracking (Frozen-to-Permanent gate) |
+| [referenceCheck/](./referenceCheck/README.md) | **NEW (August 2026)** — checks whether a foundational config entity (Client, Subspecialty, Specimen Category) is still referenced before deactivation |
 | [reportParts/](./reportParts/README.md) | Atomic report-building-block library |
 | [reportRelease/](./reportRelease/README.md) | **NEW (August 2026)** — Post-Sign-Out Release Buffer: a real, configurable hold window between sign-out and genuine external release, with recall |
 | [reportTemplates/](./reportTemplates/README.md) | Report template assembly + routing resolution chain |
 | [reports/](./reports/README.md) | **Active work (2026)** — amendment/versioning system |
 | [research/](./research/README.md) | **NEW (August 2026)** — external PubMed literature feed for the dashboard ticker (live NCBI eUtils, no firestore stub — see its README) |
+| [retentionPolicy/](./retentionPolicy/README.md) | **NEW (August 2026)** — retention-eligibility resolution + computed disposal/pending-hold queues + real scan-to-dispose action |
 | [roles/](./roles/README.md) | Staff role/permission dictionary |
 | [routingRules/](./routingRules/README.md) | Admin template routing rule overrides |
 | [savedSearches/](./savedSearches/README.md) | Saved search/filter presets |
+| [scanStations/](./scanStations/README.md) | **NEW (August 2026)** — registry of physical scan/work stations (where a tech scans at the bench), facility-scoped |
 | [session/](./session/README.md) | **NEW (July 2026)** — idle-session-timeout resolution (org default + per-performing-lab override) + same-browser session-supersede detection |
 | [specimenCategories/](./specimenCategories/README.md) | Coarse-grained specimen classification |
 | [specimenDictionary/](./specimenDictionary/README.md) | Fine-grained Specimen Dictionary (SpecimenEntry) — the real backend |

@@ -32,8 +32,11 @@
   ADT^A43 alone, **generalized in Phase A of the "Interface Exception &
   Case-Binding Module"** to cover A40/A24/A47 too, since all four now
   route to the same real queue whenever an identity can't be safely,
-  confidently resolved. Opened from `AuditLogPage.tsx`'s "🔌 Interfaces"
-  pill. Resolves both the source and target patient
+  confidently resolved. **Opened from `AuditLogPage.tsx`'s real,
+  independent "Interface Log" tab** — originally a "🔌 Interfaces" pill
+  on the Error Log tab, redesigned into its own top-level tab later
+  the same session (see `services/interfaceExceptions/README.md`'s own
+  "Real Interface Log tab redesign" section). Resolves both the source and target patient
   (`MasterPatientRecord`) for every exception type. The case-selection
   / "Move Selected Cases" action, though, only renders for `A43` — a
   real A40/A24/A47 exception is an unresolved IDENTITY, not a
@@ -53,7 +56,19 @@
   restricted UI for `mockPatientIndexService.breakGlassRebind()`.
   Gated to `isAdmin` at both the trigger button and the render itself
   in `pages/AuditLogPage.tsx` (defense in depth), only surfaced
-  alongside the "🔌 Interfaces" pill. Real flow: select a genuinely
+  on the real "Interface Log" tab (originally alongside the old
+  "🔌 Interfaces" pill — see above). **Renamed to "Map Patient" in
+  every real, user-facing string later the same session**, per direct
+  feedback that "Break-Glass" didn't read as clear — trigger button,
+  modal title, confirm button, and both result messages all updated;
+  the underlying `breakGlassRebind()` call and its own real
+  restrictions are unchanged, this was a labeling fix only. Its own
+  modal chrome was also found using a real, rare, minority CSS pattern
+  (`ps-modal-overlay`/`ps-iexc-modal` — confirmed via a direct count,
+  only 4-5 uses total across the whole app) instead of the real,
+  dominant standard (`ps-overlay`/`ps-modal-dark`, confirmed 174/47
+  uses) — fixed to match. Real flow: select a genuinely
+  `isDowntimeRecord`-flagged patient → search/select the real,
   `isDowntimeRecord`-flagged patient → search/select the real,
   confirmed target (`searchPatients()`, new) → reason code, pre-filled
   from the downtime record's own original reason as a sensible

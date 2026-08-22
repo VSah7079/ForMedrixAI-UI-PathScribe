@@ -44,6 +44,17 @@ Staff directory and role/permission dictionary.
   `PRIORITY_FIXES.md` as a separate, deliberately deferred item; this
   fix is the proof-of-concept, not a full sweep.
 
+- **`AccessRequestsQueue.tsx`** — real feature, per direct follow-up:
+  "Do we Track the request to gain access? I would think that would be
+  a good quality metric. How long did the Admins take, Do we generate
+  a ticket system that has its own status." A real, actionable admin
+  queue for real Pediatric/Pool/Orchestration access requests, backed
+  by `services/access/`. The department-wide turnaround-time rollup
+  built on the same underlying data lives in
+  `components/QualityAssurance/AccessRequestResponseTab.tsx` — this
+  screen is where an admin actually resolves a request; that one is
+  where a manager reviews aggregate response time.
+
 ## Notes
 
 - The stale `Config/Users/` path comment on `RoleDictionary.tsx` (still

@@ -1,7 +1,8 @@
 # components/QualityAssurance/
 
-QA/compliance aggregate reporting tabs, hosted inside `pages/DeficienciesPage.tsx`
-alongside its own deficiency-tracking tabs. Six real, distinct reports —
+QA/compliance aggregate reporting tabs, hosted inside `pages/QualityAssurancePage.tsx`
+(renamed from `DeficienciesPage.tsx` — see that page's own README entry)
+alongside its own deficiency-tracking tabs. Eight real, distinct reports —
 each measures a genuinely different thing, deliberately not merged into
 one generic "QA dashboard" (see each file's own header for why it's
 separate from its siblings). **This folder never had a README before
@@ -11,9 +12,9 @@ this codebase's own stated convention of a README per real folder.
 **Pattern:** Not the interface/mock/firestore triplet — these are report
 views, not data services. Each tab fetches from the real service(s) it
 reports on (`countersignService`, `intraoperativeService`,
-`reconciliationService`, `fppeAssignmentService`, `auditService`) plus
-`caseRouter.getAll()` for case-level context, and renders real charts/
-tables client-side.
+`reconciliationService`, `fppeAssignmentService`, `auditService`,
+`accessRequestService`) plus `caseRouter.getAll()` for case-level
+context, and renders real charts/tables client-side.
 
 ## Files
 
@@ -59,6 +60,27 @@ tables client-side.
   all** — it isn't a "configure once" settings screen; it's a recurring
   compliance work queue, the same shape as every other tab in this
   folder, not the shape of TAT Configuration or Session Security.
+- **`RetentionHoldsTab.tsx`** — real feature, per direct follow-up: "I
+  think we will need Management review of Cases On Hold." Before this,
+  a real hold only became visible by opening that one specific case's
+  own Synoptic Report page — no aggregate view existed for a lab
+  director/manager to see every case currently on hold across the
+  whole lab, how long each has been sitting, or to confirm a hold is
+  still valid. Same real "read view over what already exists" posture
+  as `DriftCorrectionTab.tsx` — no new storage; retention holds already
+  live directly on `Case` (`types/case/RetentionHold.ts`), this just
+  surfaces them in aggregate. "Reviewing" a hold here (`reviewedAt`/
+  `reviewedByUserId`/`reviewedByUserName` on `RetentionHold` itself) is
+  deliberately separate from releasing one — release stays exactly
+  where it already lives (`RetentionHoldModal`, on the case itself);
+  this tab links straight there via "Open Case" rather than duplicating
+  that action.
+- **`AccessRequestResponseTab.tsx`** — real feature, per direct
+  follow-up: "Do we Track the request to gain access? ... How long did
+  the Admins take?" The department-wide equivalent of what "My
+  Contribution" shows one admin at a time. Real turnaround time
+  (`resolvedAt - requestedAt`) across all three real request types
+  (Pediatric, Pool, Orchestration).
 - **`QaScopeSwitcher.tsx`** — Shared scope-filter dropdown used by most
   tabs above (FppeTrackingTab has no case data to scope;
   PatientMatchReviewSection uses its own organisation picker instead,
