@@ -12,6 +12,8 @@ import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { stainTypeService, sectioningProtocolService, stainOrderMacroService } from '../../../services';
 import type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from '../../../services';
+import { prepareDuplicate } from '../../../utils/duplicateEntry';
+import { findDuplicate } from '../../../utils/validateUnique';
 
 type SubTab = 'types' | 'protocols' | 'macros';
 
@@ -20,39 +22,52 @@ type SubTab = 'types' | 'protocols' | 'macros';
 const STAIN_CATEGORIES: StainCategory[] = ['Routine', 'Special Stain', 'IHC', 'Immunofluorescence', 'Molecular', 'Other'];
 
 interface StainTypeModalProps {
+  mode: 'add' | 'edit';
   entry?: StainType;
+  existingEntries: StainType[];
   onSave: (draft: Omit<StainType, 'id' | 'version' | 'updatedBy' | 'updatedAt'>) => void;
   onClose: () => void;
 }
-const StainTypeModal: React.FC<StainTypeModalProps> = ({ entry, onSave, onClose }) => {
+const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
   const [name, setName] = useState(entry?.name ?? '');
   const [category, setCategory] = useState<StainCategory>(entry?.category ?? 'Routine');
   const [description, setDescription] = useState(entry?.description ?? '');
   const [antibodyClone, setAntibodyClone] = useState(entry?.antibodyClone ?? '');
   const [vendor, setVendor] = useState(entry?.vendor ?? '');
   const [turnaround, setTurnaround] = useState(entry?.defaultTurnaroundHours?.toString() ?? '');
-  const [defaultCptCode, setDefaultCptCode] = useState(entry?.defaultCptCode ?? '');
+  const [defaultBillingCode, setDefaultBillingCode] = useState(entry?.defaultBillingCode ?? '');
   const [active, setActive] = useState(entry?.active ?? true);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const handleSave = () => {
     if (!name.trim()) return;
+    // Real, direct request: two entries with the same name genuinely
+    // confuses staff — checked here, before save, not left to a
+    // silent collision later. mode === 'edit' excludes the entry's own
+    // real id; in 'add' mode (including duplicate, which prefills from
+    // an existing entry but is still a real add) nothing is excluded,
+    // so saving a duplicate without renaming it is correctly caught.
+    const collision = findDuplicate(existingEntries, { name: name.trim() }, ['name'], mode === 'edit' ? entry?.id : undefined);
+    if (collision) { setNameError(`A stain type named "${collision.name}" already exists.`); return; }
+    setNameError(null);
     onSave({
       name: name.trim(), category, description: description.trim() || undefined,
       antibodyClone: antibodyClone.trim() || undefined, vendor: vendor.trim() || undefined,
       defaultTurnaroundHours: turnaround ? Number(turnaround) : undefined,
-      defaultCptCode: defaultCptCode.trim() || undefined, active,
+      defaultBillingCode: defaultBillingCode.trim() || undefined, active,
     });
   };
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{entry ? `Edit — ${entry.name}` : 'Add Stain Type'}</div>
+        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Stain Type'}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ki-67" />
+              <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder="e.g. Ki-67" />
+              {nameError && <div className="ps-body-modal-error">{nameError}</div>}
             </div>
             <div className="ps-conf-form-field">
               <label className="ps-conf-label" htmlFor="stain-category">Category</label>
@@ -66,17 +81,20 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ entry, onSave, onClose 
             <textarea className="ps-conf-input ps-conf-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="What this stain is used for" />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Default CPT Code</label>
+            <label className="ps-conf-label">Default Billing Code</label>
             <input
               className="ps-conf-input"
-              value={defaultCptCode}
-              onChange={e => setDefaultCptCode(e.target.value.trim())}
-              placeholder="e.g. 88342 — leave blank to use the generic IHC/special-stain rule"
+              value={defaultBillingCode}
+              onChange={e => setDefaultBillingCode(e.target.value.trim())}
+              placeholder="e.g. PIN4-PANEL — leave blank to use the generic IHC/special-stain rule"
             />
-            <p className="ps-conf-section-subtitle" style={{ marginTop: 4 }}>
-              Real, coder-entered code for this specific stain — requires your own AMA CPT license to determine correctly.
-              Set this for an antibody billed differently than the generic first/additional IHC rule, or a real multiplex
-              panel (e.g. a "PIN-4" combination stain, billed 88344). Leave blank to use the app's generic rule.
+            <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+              References a Billing Dictionary entry by its billingCode — never a raw CPT code directly (CPT
+              values/RVUs/payer rules live only in the Billing Dictionary, the one authoritative source for them).
+              Set this for a stain billed differently than the generic first/additional IHC rule, or a real multiplex
+              panel (e.g. a "PIN-4"-style combination stain, billed as its own distinct code). Leave blank to use the
+              app's generic rule. Free text for now — a real picker against the Billing Dictionary is pending that
+              dictionary's own build.
             </p>
           </div>
           {(category === 'IHC' || category === 'Immunofluorescence') && (
@@ -109,7 +127,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ entry, onSave, onClose 
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{entry ? 'Save Changes' : 'Add Stain Type'}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Stain Type'}</button>
         </div>
       </div>
     </div>
@@ -119,28 +137,35 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ entry, onSave, onClose 
 // ── Sectioning Protocol editor ──────────────────────────────────────────────
 
 interface ProtocolModalProps {
+  mode: 'add' | 'edit';
   entry?: SectioningProtocol;
+  existingEntries: SectioningProtocol[];
   onSave: (draft: Omit<SectioningProtocol, 'id' | 'version' | 'updatedBy' | 'updatedAt'>) => void;
   onClose: () => void;
 }
-const ProtocolModal: React.FC<ProtocolModalProps> = ({ entry, onSave, onClose }) => {
+const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
   const [name, setName] = useState(entry?.name ?? '');
   const [description, setDescription] = useState(entry?.description ?? '');
   const [active, setActive] = useState(entry?.active ?? true);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const handleSave = () => {
     if (!name.trim()) return;
+    const collision = findDuplicate(existingEntries, { name: name.trim() }, ['name'], mode === 'edit' ? entry?.id : undefined);
+    if (collision) { setNameError(`A sectioning protocol named "${collision.name}" already exists.`); return; }
+    setNameError(null);
     onSave({ name: name.trim(), description: description.trim() || undefined, active });
   };
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{entry ? `Edit — ${entry.name}` : 'Add Sectioning Protocol'}</div>
+        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Sectioning Protocol'}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-            <input className="ps-conf-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Level x 3" />
+            <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder="e.g. Level x 3" />
+            {nameError && <div className="ps-body-modal-error">{nameError}</div>}
           </div>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">Description</label>
@@ -158,7 +183,7 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ entry, onSave, onClose })
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{entry ? 'Save Changes' : 'Add Protocol'}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Protocol'}</button>
         </div>
       </div>
     </div>
@@ -168,32 +193,39 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ entry, onSave, onClose })
 // ── Quick-Order Macro editor ────────────────────────────────────────────────
 
 interface MacroModalProps {
+  mode: 'add' | 'edit';
   entry?: StainOrderMacro;
+  existingEntries: StainOrderMacro[];
   stainTypes: StainType[];
   protocols: SectioningProtocol[];
   onSave: (draft: Omit<StainOrderMacro, 'id' | 'version' | 'updatedBy' | 'updatedAt'>) => void;
   onClose: () => void;
 }
-const MacroModal: React.FC<MacroModalProps> = ({ entry, stainTypes, protocols, onSave, onClose }) => {
+const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, stainTypes, protocols, onSave, onClose }) => {
   const [label, setLabel] = useState(entry?.label ?? '');
   const [stainTypeId, setStainTypeId] = useState(entry?.stainTypeId ?? stainTypes[0]?.id ?? '');
   const [sectioningProtocolId, setSectioningProtocolId] = useState(entry?.sectioningProtocolId ?? protocols[0]?.id ?? '');
   const [sortOrder, setSortOrder] = useState(entry?.sortOrder?.toString() ?? '99');
   const [active, setActive] = useState(entry?.active ?? true);
+  const [labelError, setLabelError] = useState<string | null>(null);
 
   const handleSave = () => {
     if (!label.trim() || !stainTypeId || !sectioningProtocolId) return;
+    const collision = findDuplicate(existingEntries, { label: label.trim() }, ['label'], mode === 'edit' ? entry?.id : undefined);
+    if (collision) { setLabelError(`A macro labeled "${collision.label}" already exists.`); return; }
+    setLabelError(null);
     onSave({ label: label.trim(), stainTypeId, sectioningProtocolId, sortOrder: Number(sortOrder) || 99, active });
   };
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{entry ? `Edit — ${entry.label}` : 'Add Quick-Order Macro'}</div>
+        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.label}` : entry ? `Duplicate — ${entry.label}` : 'Add Quick-Order Macro'}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">Label <span className="ps-conf-required">*</span></label>
-            <input className="ps-conf-input" value={label} onChange={e => setLabel(e.target.value)} placeholder='e.g. "H&E x 3"' />
+            <input className="ps-conf-input" value={label} onChange={e => { setLabel(e.target.value); setLabelError(null); }} placeholder='e.g. "H&E x 3"' />
+            {labelError && <div className="ps-body-modal-error">{labelError}</div>}
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
@@ -227,7 +259,7 @@ const MacroModal: React.FC<MacroModalProps> = ({ entry, stainTypes, protocols, o
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{entry ? 'Save Changes' : 'Add Macro'}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Macro'}</button>
         </div>
       </div>
     </div>
@@ -242,9 +274,9 @@ const StainDictionarySection: React.FC = () => {
   const [protocols, setProtocols] = useState<SectioningProtocol[]>([]);
   const [macros, setMacros] = useState<StainOrderMacro[]>([]);
   const [search, setSearch] = useState('');
-  const [typeModal, setTypeModal] = useState<{ entry?: StainType } | null>(null);
-  const [protocolModal, setProtocolModal] = useState<{ entry?: SectioningProtocol } | null>(null);
-  const [macroModal, setMacroModal] = useState<{ entry?: StainOrderMacro } | null>(null);
+  const [typeModal, setTypeModal] = useState<{ mode: 'add' | 'edit'; entry?: StainType } | null>(null);
+  const [protocolModal, setProtocolModal] = useState<{ mode: 'add' | 'edit'; entry?: SectioningProtocol } | null>(null);
+  const [macroModal, setMacroModal] = useState<{ mode: 'add' | 'edit'; entry?: StainOrderMacro } | null>(null);
 
   const loadAll = () => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
@@ -258,12 +290,21 @@ const StainDictionarySection: React.FC = () => {
     return stainTypes.filter(s => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
   }, [stainTypes, search]);
 
-  // ── Duplicate — genuinely missing before; Protocol Dictionary already
-  // has this exact pattern (handleClone), matched here rather than
-  // inventing a different shape for the same idea.
+  // ── Duplicate — opens the Add modal pre-filled with an existing
+  // entry's data, matching Protocol Dictionary's own handleClone
+  // pattern exactly (confirmed working, per direct user feedback) —
+  // NOT an immediate silent save. The user reviews/edits in the form,
+  // then a real Save creates a genuinely new entry. mode: 'add' is
+  // what makes the save-decision logic below treat this as an add()
+  // even though entry is populated for prefill.
   const handleCloneStainType = (source: StainType) => {
-    const { id: _id, version: _version, updatedBy: _updatedBy, updatedAt: _updatedAt, ...draft } = source;
-    stainTypeService.add({ ...draft, name: `${draft.name} (Copy)` }).then(() => loadAll());
+    setTypeModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
+  };
+  const handleCloneProtocol = (source: SectioningProtocol) => {
+    setProtocolModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
+  };
+  const handleCloneMacro = (source: StainOrderMacro) => {
+    setMacroModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'label'), id: '__clone__' } });
   };
 
   // ── Spreadsheet import/export — also genuinely missing before, unlike
@@ -360,7 +401,7 @@ const StainDictionarySection: React.FC = () => {
               <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>Import Spreadsheet</button>
               <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
             </div>
-            <button className="ps-conf-btn-primary" onClick={() => setTypeModal({})}>+ Add Stain Type</button>
+            <button className="ps-conf-btn-primary" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Stain Type</button>
           </div>
           {stainImportPreview && (
             <div className="ps-conf-import-preview">
@@ -373,7 +414,7 @@ const StainDictionarySection: React.FC = () => {
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
                 <thead className="ps-conf-thead-sticky">
-                  <tr>{['Name', 'Category', 'Clone / Vendor', 'Default CPT', 'Turnaround', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+                  <tr>{['Name', 'Category', 'Clone / Vendor', 'Billing Code', 'Turnaround', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredTypes.map(s => (
@@ -381,7 +422,7 @@ const StainDictionarySection: React.FC = () => {
                       <td className="ps-conf-td"><div className="ps-conf-identity-name">{s.name}</div></td>
                       <td className="ps-conf-td">{s.category}</td>
                       <td className="ps-conf-td"><div className="ps-specreq-meta">{[s.antibodyClone, s.vendor].filter(Boolean).join(' · ') || '—'}</div></td>
-                      <td className="ps-conf-td">{s.defaultCptCode || '—'}</td>
+                      <td className="ps-conf-td">{s.defaultBillingCode || '—'}</td>
                       <td className="ps-conf-td">{s.defaultTurnaroundHours ? `${s.defaultTurnaroundHours}h` : '—'}</td>
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
@@ -390,7 +431,7 @@ const StainDictionarySection: React.FC = () => {
                         </span>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => setTypeModal({ entry: s })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => setTypeModal({ mode: 'edit', entry: s })}>Edit</button>
                         <button className="ps-conf-btn-row" onClick={() => handleCloneStainType(s)}>Duplicate</button>
                       </td>
                     </tr>
@@ -407,7 +448,7 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary" onClick={() => setProtocolModal({})}>+ Add Protocol</button>
+            <button className="ps-conf-btn-primary" onClick={() => setProtocolModal({ mode: 'add' })}>+ Add Protocol</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
@@ -416,7 +457,7 @@ const StainDictionarySection: React.FC = () => {
                 <tbody>
                   {protocols.map(p => (
                     <tr key={p.id} className="ps-conf-tr">
-                      <td className="ps-conf-td"><div className="ps-conf-identity-name">{p.name}</div></td>
+                      <td className="ps-conf-td"><div className="ps-conf-identity-name" data-phi="name">{p.name}</div></td>
                       <td className="ps-conf-td"><div className="ps-specreq-meta">{p.description ?? '—'}</div></td>
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
@@ -424,7 +465,10 @@ const StainDictionarySection: React.FC = () => {
                           <span className={`ps-conf-status-text ${p.active ? 'ps-conf-status-text--active' : ''}`}>{p.active ? 'Active' : 'Inactive'}</span>
                         </span>
                       </td>
-                      <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setProtocolModal({ entry: p })}>Edit</button></td>
+                      <td className="ps-conf-td">
+                        <button className="ps-conf-btn-row" onClick={() => setProtocolModal({ mode: 'edit', entry: p })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneProtocol(p)}>Duplicate</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -438,7 +482,7 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary" onClick={() => setMacroModal({})}>+ Add Macro</button>
+            <button className="ps-conf-btn-primary" onClick={() => setMacroModal({ mode: 'add' })}>+ Add Macro</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
@@ -456,7 +500,10 @@ const StainDictionarySection: React.FC = () => {
                           <span className={`ps-conf-status-text ${m.active ? 'ps-conf-status-text--active' : ''}`}>{m.active ? 'Active' : 'Inactive'}</span>
                         </span>
                       </td>
-                      <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setMacroModal({ entry: m })}>Edit</button></td>
+                      <td className="ps-conf-td">
+                        <button className="ps-conf-btn-row" onClick={() => setMacroModal({ mode: 'edit', entry: m })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneMacro(m)}>Duplicate</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -467,27 +514,27 @@ const StainDictionarySection: React.FC = () => {
       )}
 
       {typeModal && (
-        <StainTypeModal entry={typeModal.entry}
+        <StainTypeModal mode={typeModal.mode} entry={typeModal.entry} existingEntries={stainTypes}
           onSave={async draft => {
-            if (typeModal.entry) await stainTypeService.update(typeModal.entry.id, draft);
+            if (typeModal.mode === 'edit' && typeModal.entry) await stainTypeService.update(typeModal.entry.id, draft);
             else await stainTypeService.add(draft);
             setTypeModal(null); loadAll();
           }}
           onClose={() => setTypeModal(null)} />
       )}
       {protocolModal && (
-        <ProtocolModal entry={protocolModal.entry}
+        <ProtocolModal mode={protocolModal.mode} entry={protocolModal.entry} existingEntries={protocols}
           onSave={async draft => {
-            if (protocolModal.entry) await sectioningProtocolService.update(protocolModal.entry.id, draft);
+            if (protocolModal.mode === 'edit' && protocolModal.entry) await sectioningProtocolService.update(protocolModal.entry.id, draft);
             else await sectioningProtocolService.add(draft);
             setProtocolModal(null); loadAll();
           }}
           onClose={() => setProtocolModal(null)} />
       )}
       {macroModal && (
-        <MacroModal entry={macroModal.entry} stainTypes={stainTypes} protocols={protocols}
+        <MacroModal mode={macroModal.mode} entry={macroModal.entry} existingEntries={macros} stainTypes={stainTypes} protocols={protocols}
           onSave={async draft => {
-            if (macroModal.entry) await stainOrderMacroService.update(macroModal.entry.id, draft);
+            if (macroModal.mode === 'edit' && macroModal.entry) await stainOrderMacroService.update(macroModal.entry.id, draft);
             else await stainOrderMacroService.add(draft);
             setMacroModal(null); loadAll();
           }}
