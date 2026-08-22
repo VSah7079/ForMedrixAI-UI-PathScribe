@@ -26,8 +26,8 @@ import React, { useEffect, useState } from 'react';
 import '../../../pathscribe.css';
 import { mockExternalResourceService } from '@/services/externalResources/mockExternalResourceService';
 import type { ExternalResource, ExternalResourceCategory, ExternalResourceScope } from '@/services/externalResources/IExternalResourceService';
-import { mockFacilityService } from '@/services/facilities/mockFacilityService';
 import type { Facility as Client } from '@/services/facilities/IFacilityService';
+import { getActivePerformingLabs } from '@/utils/performingLabs';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import ConfirmModal from '../../Common/ConfirmModal';
 
@@ -70,9 +70,10 @@ const ExternalResourcesSection: React.FC = () => {
 
   useEffect(() => {
     loadResources();
-    mockFacilityService.getAll().then(res => {
-      if (res.ok) setLabs(res.data.filter(c => c.roles.includes('performing_lab') && c.status === 'Active'));
-    });
+    // Same real, shared query every dictionary needing lab-scoping now
+    // uses — see utils/performingLabs.ts's own header (this file's own
+    // version of this query was the one confirmed and extracted from).
+    getActivePerformingLabs().then(setLabs);
   }, [loadResources]);
 
   const openNewForm = () => { setDraft(emptyDraft); setError(null); setShowForm(true); };

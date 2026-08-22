@@ -42,6 +42,21 @@ export interface ContainerType {
    *  file header. */
   systemLogicNotes: string;
   status: 'Active' | 'Inactive';
+  /** Real, per direct request: "Each Performing Lab will want their own
+   *  types. If Performing Lab not defined, it is available for
+   *  everyone." Same field-name convention and same null/undefined =
+   *  inherit/global shape as Facility.idleTimeoutMinutesOverride and
+   *  the other performing-lab-scoped settings in
+   *  services/facilities/IFacilityService.ts — not the separate
+   *  scope-discriminator shape ExternalResourcesSection.tsx uses,
+   *  since this field being unset (not a separate flag) is what "not
+   *  defined" refers to here. A real Facility id, scoped to facilities
+   *  with the 'performing_lab' role — see resolvePerformingLabFacilityId()
+   *  for the established resolution convention this mirrors. Name and
+   *  aplisMapping uniqueness are both scoped by this field: two
+   *  different labs' own types may share a name; two entries within
+   *  the same lab (including two global entries) may not. */
+  performingLabFacilityId?: string;
 }
 
 export interface IContainerTypeService {

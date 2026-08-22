@@ -11,6 +11,10 @@ import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
 import { containerTypeService } from '../../../services';
 import type { ContainerType, ContainerCategory } from '../../../services/containerTypes/IContainerTypeService';
+import type { Facility } from '../../../services/facilities/IFacilityService';
+import { prepareDuplicate } from '../../../utils/duplicateEntry';
+import { findDuplicate } from '../../../utils/validateUnique';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
 const CATEGORY_OPTIONS: { id: ContainerCategory; label: string }[] = [
   { id: 'histology',     label: 'Histology — Biopsies & Resections' },
@@ -22,17 +26,19 @@ const CATEGORY_OPTIONS: { id: ContainerCategory; label: string }[] = [
 type Draft = Omit<ContainerType, 'id' | 'status'> & { active: boolean };
 
 const emptyDraft: Draft = {
-  name: '', description: '', category: 'histology', aplisMapping: '', systemLogicNotes: '', active: true,
+  name: '', description: '', category: 'histology', aplisMapping: '', systemLogicNotes: '', active: true, performingLabFacilityId: undefined,
 };
 
 interface ContainerTypeModalProps {
   mode: 'add' | 'edit';
   containerType?: ContainerType;
+  existingEntries: ContainerType[];
+  labs: Facility[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, containerType, onSave, onClose }) => {
+const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, containerType, existingEntries, labs, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(
     containerType
       ? { ...containerType, active: containerType.status !== 'Inactive' }
@@ -45,6 +51,24 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
   const validate = () => {
     const e: typeof errors = {};
     if (!draft.name.trim()) e.name = 'Required';
+    // Per direct request: "Each Performing Lab will want their own
+    // types. If Performing Lab not defined, it is available for
+    // everyone." Uniqueness is scoped by performingLabFacilityId — a
+    // real, compound check (both fields must match to be a real
+    // collision), same shape as CrosswalkSection.tsx's clientId +
+    // externalCode. Per direct confirmation: only checked WITHIN the
+    // same lab's own scope (including "both undefined" as its own,
+    // real scope) — a different lab's own type, or a global one, may
+    // legitimately share the same name/mapping.
+    const excludeId = mode === 'edit' ? containerType?.id : undefined;
+    if (draft.name.trim()) {
+      const nameCollision = findDuplicate(existingEntries, { performingLabFacilityId: draft.performingLabFacilityId, name: draft.name.trim() }, ['performingLabFacilityId', 'name'], excludeId);
+      if (nameCollision) e.name = `A container type named "${nameCollision.name}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`;
+    }
+    if (draft.aplisMapping?.trim()) {
+      const mappingCollision = findDuplicate(existingEntries, { performingLabFacilityId: draft.performingLabFacilityId, aplisMapping: draft.aplisMapping.trim() }, ['performingLabFacilityId', 'aplisMapping'], excludeId);
+      if (mappingCollision) e.aplisMapping = `"${mappingCollision.aplisMapping}" is already mapped to "${mappingCollision.name}"${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`;
+    }
     return e;
   };
 
@@ -58,7 +82,7 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Container Type' : `Edit — ${containerType?.name}`}
+          {mode === 'edit' ? `Edit — ${containerType?.name}` : containerType ? `Duplicate — ${containerType.name}` : 'Add Container Type'}
         </div>
 
         <div className="ps-ms-body">
@@ -83,7 +107,19 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
 
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">APLIS Mapping</label>
-            <input className="ps-conf-input" value={draft.aplisMapping ?? ''} onChange={e => set('aplisMapping', e.target.value)} placeholder="What specimen type this container is typically used for" />
+            <input className={`ps-conf-input ${errors.aplisMapping ? 'ps-conf-input--error' : ''}`}
+              value={draft.aplisMapping ?? ''} onChange={e => set('aplisMapping', e.target.value)} placeholder="What specimen type this container is typically used for" />
+            {errors.aplisMapping && <span className="ps-conf-error-text">{errors.aplisMapping}</span>}
+          </div>
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="container-performing-lab">Performing Lab</label>
+            <select id="container-performing-lab" className="ps-conf-select"
+              value={draft.performingLabFacilityId ?? ''}
+              onChange={e => set('performingLabFacilityId', e.target.value || undefined)}>
+              <option value="">— All Labs (available to everyone) —</option>
+              {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
           </div>
 
           <div className="ps-conf-form-field">
@@ -116,9 +152,11 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
 // ─── Main ContainerTypesSection ────────────────────────────────────────────────
 const ContainerTypesSection: React.FC = () => {
   const [types,        setTypes]        = useState<ContainerType[]>([]);
+  const [labs,         setLabs]         = useState<Facility[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
+  const [labFilter,    setLabFilter]    = useState<'All' | 'Global' | string>('All');
   const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; containerType?: ContainerType } | null>(null);
 
   useEffect(() => {
@@ -126,14 +164,21 @@ const ContainerTypesSection: React.FC = () => {
       if (res.ok) setTypes(res.data);
       setLoading(false);
     });
+    // Same real, shared query every dictionary needing lab-scoping
+    // uses now — see utils/performingLabs.ts's own header for why this
+    // was extracted (found already independently duplicated).
+    getActivePerformingLabs().then(setLabs);
   }, []);
 
   const categoryLabel = (cat: ContainerCategory) => CATEGORY_OPTIONS.find(c => c.id === cat)?.label ?? cat;
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'All Labs';
 
   const filtered = types.filter(t => {
     const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase()) || (t.description ?? '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'All' || t.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchLab = labFilter === 'All'
+      || (labFilter === 'Global' ? !t.performingLabFacilityId : t.performingLabFacilityId === labFilter);
+    return matchSearch && matchStatus && matchLab;
   });
 
   const handleSave = async (draft: Draft) => {
@@ -152,6 +197,16 @@ const ContainerTypesSection: React.FC = () => {
   const handleToggleStatus = async (t: ContainerType) => {
     const res = t.status === 'Active' ? await containerTypeService.deactivate(t.id) : await containerTypeService.reactivate(t.id);
     if (res.ok) setTypes(prev => prev.map(x => x.id === t.id ? res.data : x));
+  };
+
+  // Opens the Add modal pre-filled with an existing entry's data,
+  // matching Protocol Dictionary's proven, confirmed-working pattern —
+  // NOT an immediate silent save (see PS-72 for the real bug this
+  // pattern replaced). mode: 'add' is what makes handleSave treat this
+  // as a real create() even though containerType is populated for
+  // prefill.
+  const handleClone = (source: ContainerType) => {
+    setModal({ mode: 'add', containerType: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
   };
 
   if (loading) return <div className="ps-conf-loading">Loading container types...</div>;
@@ -177,6 +232,11 @@ const ContainerTypesSection: React.FC = () => {
           <option value="Active">Active</option>
           <option value="Inactive">Inactive</option>
         </select>
+        <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
+          <option value="All">All Labs</option>
+          <option value="Global">Global only (no lab set)</option>
+          {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
       </div>
 
       <div className="ps-conf-table-wrap">
@@ -184,7 +244,7 @@ const ContainerTypesSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Container Type', 'Category', 'APLIS Mapping', 'Status', 'Actions'].map(h => (
+                {['Container Type', 'Category', 'APLIS Mapping', 'Performing Lab', 'Status', 'Actions'].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}
               </tr>
@@ -198,6 +258,7 @@ const ContainerTypesSection: React.FC = () => {
                   </td>
                   <td className="ps-conf-td">{categoryLabel(t.category)}</td>
                   <td className="ps-conf-td">{t.aplisMapping || '—'}</td>
+                  <td className="ps-conf-td">{labName(t.performingLabFacilityId)}</td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${t.status === 'Active' ? 'ps-conf-status-dot--active' : ''}`} />
@@ -207,6 +268,7 @@ const ContainerTypesSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', containerType: t })}>Edit</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleClone(t)}>Duplicate</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(t)}>
                         {t.status === 'Active' ? 'Deactivate' : 'Reactivate'}
                       </button>
@@ -222,7 +284,7 @@ const ContainerTypesSection: React.FC = () => {
         </div>
       </div>
 
-      {modal && <ContainerTypeModal mode={modal.mode} containerType={modal.containerType} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <ContainerTypeModal mode={modal.mode} containerType={modal.containerType} existingEntries={types} labs={labs} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };
