@@ -14,15 +14,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import '../../pathscribe.css';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentScanStation } from '@/hooks/useCurrentScanStation';
-import { batchService } from '@/services';
+import { batchService, hardwareContainerRegistryService } from '@/services';
 import { playScanBeep, playScanErrorTone } from '@/utils/playScanBeep';
 import type { ScanEvent } from '@/contexts/ScannerProvider';
 import type { Batch, BatchProcessingNode } from '@/services/batches/IBatchService';
 import { BATCH_PROCESSING_NODES } from '@/services/batches/IBatchService';
-import CreateBatchModal from './CreateBatchModal';
+import NewContainerModal from './NewContainerModal';
 import BatchDetailView from './BatchDetailView';
 
 const STATUS_LABEL: Record<Batch['status'], string> = {
@@ -39,8 +40,18 @@ const STATUS_COLOR: Record<Batch['status'], string> = {
  *  tile, not a repeated one, so the tile itself (not just its label
  *  text) carries real meaning at a glance. */
 const NODE_COLOR: Record<BatchProcessingNode, string> = {
-  Grossing: '#F59E0B', Processing: '#536EEA', Embedding: '#53E2EA',
-  Microtomy: '#8B5CF6', Staining: '#EC4899', Checkout: '#10B981',
+  'Decal / Special Processing': '#F59E0B', Processing: '#536EEA', Embedding: '#53E2EA',
+  'Microtomy / Sectioning': '#8B5CF6', Staining: '#EC4899', Checkout: '#10B981',
+};
+/** Compact display label for the tile itself — ps-wl-filter-tile's own
+ *  real width/ellipsis constraints (min-width: 80px) suit Worklist's
+ *  own short labels; "Microtomy / Sectioning" is the real, exact,
+ *  consistent value stored and matched everywhere else (batches,
+ *  ScanStation.workflowStage), this is purely a tile-display
+ *  shortening, not a second, competing value. */
+const NODE_TILE_LABEL: Record<BatchProcessingNode, string> = {
+  'Decal / Special Processing': 'Decal / Special', Processing: 'Processing', Embedding: 'Embedding',
+  'Microtomy / Sectioning': 'Microtomy', Staining: 'Staining', Checkout: 'Checkout',
 };
 
 function formatTimestamp(iso: string): string {
@@ -49,6 +60,7 @@ function formatTimestamp(iso: string): string {
 }
 
 const BatchManagementPage: React.FC = () => {
+  const navigate = useNavigate();
   const { pushCrumb } = useBreadcrumb();
   useEffect(() => { pushCrumb('Batch Management', '/batch-management'); }, [pushCrumb]);
   const { user } = useAuth();
@@ -62,6 +74,8 @@ const BatchManagementPage: React.FC = () => {
   const [stageFilter, setStageFilter] = useState<BatchProcessingNode | null>(null);
   const lookupRef = useRef<HTMLInputElement>(null);
 
+  const [prefillRackId, setPrefillRackId] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     const res = await batchService.getAll();
     if (res.ok) setBatches(res.data);
@@ -72,17 +86,39 @@ const BatchManagementPage: React.FC = () => {
 
   const selectedBatch = batches.find(b => b.id === selectedBatchId) ?? null;
 
+  // Real feature, per direct, detailed specification ("Container &
+  // Batch Label Management," FR-2.2): "Scanning a valid container
+  // string immediately creates or loads an active batch record." Three
+  // real, distinct outcomes: (1) an existing batch's own masterBarcode
+  // — open it directly. (2) a real, registered, currently-Available
+  // hardware rack with no active batch of its own yet — the spec's own
+  // Mode B "instantiate a new software batch session" — opens New
+  // Container pre-filled with that rack (protocol/processing node
+  // still need a real, human answer; never silently fabricated). (3)
+  // neither — a real, honest "not found."
   const handleLookup = useCallback(async (raw: string) => {
     const value = raw.trim();
     if (!value) return;
-    const res = await batchService.getByMasterBarcode(value);
-    if (res.ok) {
-      setSelectedBatchId(res.data.id);
+    const batchRes = await batchService.getByMasterBarcode(value);
+    if ('ok' in batchRes && batchRes.ok) {
+      setSelectedBatchId(batchRes.data.id);
       setLookupValue('');
       playScanBeep();
+      return;
+    }
+    const rackRes = await hardwareContainerRegistryService.getByRackId(value);
+    if ('ok' in rackRes && rackRes.ok && rackRes.data.status === 'Available') {
+      setLookupValue('');
+      playScanBeep();
+      setPrefillRackId(rackRes.data.rackId);
+      setShowCreate(true);
+      return;
+    }
+    playScanErrorTone();
+    if ('ok' in rackRes && rackRes.ok) {
+      toast.error(`Rack "${value}" is already checked out to another active batch.`);
     } else {
-      playScanErrorTone();
-      toast.error(`No batch found for "${value}".`);
+      toast.error(`No batch or registered container found for "${value}".`);
     }
   }, []);
 
@@ -93,11 +129,16 @@ const BatchManagementPage: React.FC = () => {
   // only acts on it while this page is mounted and no batch is
   // currently open (once a batch is open, BatchDetailView.tsx's own
   // listener takes over scan handling for adding/reconciling items).
+  // Real, spec-compliant prefixes (FR-1.2): CONT- (disposable) or
+  // RACK- (semi-permanent) — replaces this file's own earlier,
+  // pre-spec "BATCH:" prefix, which no real container barcode ever
+  // carries now.
   useEffect(() => {
     if (selectedBatchId) return;
     const listener = (e: Event) => {
       const scanEvent = (e as CustomEvent<ScanEvent>).detail;
-      if (scanEvent?.raw?.trim().toUpperCase().startsWith('BATCH:')) {
+      const upper = scanEvent?.raw?.trim().toUpperCase();
+      if (upper?.startsWith('CONT-') || upper?.startsWith('RACK-')) {
         handleLookup(scanEvent.raw);
       }
     };
@@ -114,6 +155,7 @@ const BatchManagementPage: React.FC = () => {
         userId={user?.id ?? 'unknown'}
         userName={user?.name ?? 'Unknown User'}
         stationId={stationId}
+        allBatches={batches}
       />
     );
   }
@@ -132,9 +174,9 @@ const BatchManagementPage: React.FC = () => {
           <div className="ps-batch-page-header">
             <h1 className="ps-batch-page-title">📦 Batch Management</h1>
             <p className="ps-batch-page-subtitle">
-              Track groups of cassettes and slides through processing nodes (Grossing, Processing, Embedding,
-              Microtomy, Staining, Checkout) via container barcodes — chain-of-custody scanning, reconciliation,
-              and QA discrepancy logging.
+              Track groups of cassettes and slides through processing nodes (Decal / Special Processing, Processing,
+              Embedding, Microtomy, Staining, Checkout) via container barcodes — chain-of-custody scanning,
+              reconciliation, and QA discrepancy logging.
             </p>
           </div>
 
@@ -165,7 +207,7 @@ const BatchManagementPage: React.FC = () => {
                   } as React.CSSProperties}
                 >
                   <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? color : '#8899aa' } as React.CSSProperties}>
-                    {node}
+                    {NODE_TILE_LABEL[node]}
                   </div>
                   <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': color } as React.CSSProperties}>
                     {count}
@@ -176,6 +218,62 @@ const BatchManagementPage: React.FC = () => {
                 </button>
               );
             })}
+            {/* Real feature, per direct follow-up: "the client selects
+                the disposal tile and the system delivers a list of
+                specimens that qualify for disposal." A real,
+                distinct tile, not a stageFilter toggle like the ones
+                above — this one navigates to the real, computed
+                disposal queue (DisposalQueuePage.tsx) instead of
+                filtering the batch list in place, since disposal no
+                longer runs through the batch/container model at all
+                (see IBatchService.ts's own header for why). */}
+            <button
+              className="ps-wl-filter-tile"
+              title="Disposal Queue — items that qualify for disposal right now"
+              onClick={() => navigate('/batch-management/disposal')}
+              style={{
+                '--tile-bg': '#DC26260d', '--tile-border': '#DC26262e', '--tile-shadow': 'none',
+              } as React.CSSProperties}
+            >
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+                Disposal
+              </div>
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#DC2626' } as React.CSSProperties}>
+                🗑️
+              </div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#DC2626', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+                {'\u00A0'}
+              </div>
+            </button>
+            {/* Real feature, per direct follow-up: "the pending batch
+                queue has no UI at all... the natural place for this
+                is a new tab/section [in Batch Management]." Same
+                real, distinct-tile-navigates-to-its-own-page pattern
+                as Disposal immediately above, not a stageFilter
+                toggle — this is a genuinely different, computed list
+                (computePendingBatchQueue.ts), not a filtered view of
+                the batches already shown below. Emoji rather than a
+                live count, same real reasoning as Disposal's own
+                tile: avoids a second, extra fetch on this page purely
+                to populate one tile's own number. */}
+            <button
+              className="ps-wl-filter-tile"
+              title="Pending Batch Load — printed items not yet scanned into any batch"
+              onClick={() => navigate('/batch-management/pending-load')}
+              style={{
+                '--tile-bg': '#EAB3080d', '--tile-border': '#EAB3082e', '--tile-shadow': 'none',
+              } as React.CSSProperties}
+            >
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+                Pending Load
+              </div>
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#EAB308' } as React.CSSProperties}>
+                📥
+              </div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#EAB308', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+                {'\u00A0'}
+              </div>
+            </button>
           </div>
 
           <div className="ps-batch-toolbar">
@@ -188,7 +286,7 @@ const BatchManagementPage: React.FC = () => {
               onChange={e => setLookupValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleLookup(lookupValue); }}
             />
-            <button className="ps-btn-primary" onClick={() => setShowCreate(true)}>+ Create Batch</button>
+            <button className="ps-btn-primary" onClick={() => setShowCreate(true)}>🖨️ New Container</button>
           </div>
 
           {loading ? (
@@ -241,12 +339,13 @@ const BatchManagementPage: React.FC = () => {
       </div>
 
       {showCreate && (
-        <CreateBatchModal
-          onClose={() => setShowCreate(false)}
-          onCreated={(batch) => { setShowCreate(false); refresh(); setSelectedBatchId(batch.id); }}
+        <NewContainerModal
+          onClose={() => { setShowCreate(false); setPrefillRackId(null); }}
+          onCreated={(batch) => { setShowCreate(false); setPrefillRackId(null); refresh(); setSelectedBatchId(batch.id); }}
           userId={user?.id ?? 'unknown'}
           userName={user?.name ?? 'Unknown User'}
           stationId={stationId}
+          initialRackId={prefillRackId ?? undefined}
         />
       )}
     </div>
