@@ -56,6 +56,30 @@ export interface StainType {
    * a straight replacement; every real call site updated accordingly.
    */
   defaultBillingCode?: string;
+  /**
+   * Real fix, per direct follow-up: resolves the one real question
+   * defaultBillingCode's own doc comment above left open. A stain with
+   * its own configured billing code covers two genuinely different real
+   * cases, and they need different sequence-counting behavior:
+   *   1. A standalone, self-contained billing unit — e.g. "PIN-4," a
+   *      multiplex panel (p63/AMACR/CK on one slide) billed as its own
+   *      distinct code, not as three separate IHC stains. This was
+   *      never really "an IHC stain" in the countable sense — set this
+   *      true so it neither gets assigned 88342/88341 itself NOR
+   *      consumes a slot in the running count for a later, unconfigured
+   *      IHC stain on the same specimen.
+   *   2. A single antibody stain billed at its own specific rate for
+   *      some other real reason (e.g. a vendor/payer-specific override)
+   *      but still, clinically, one real IHC stain — leave this false
+   *      (the default) so it still occupies a real position in the
+   *      specimen's own IHC sequence for whatever comes after it.
+   * Only meaningful when defaultBillingCode is set; ignored otherwise.
+   * Default false/undefined preserves the exact behavior this app
+   * shipped with before this flag existed — nothing changes for an
+   * existing entry unless explicitly opted in. Consumed by
+   * suggestAncillaryCodesForStains (services/billing/codeMapTable.ts).
+   */
+  excludeFromIhcSequenceCounting?: boolean;
   /** Rough turnaround estimate — informational only, not a hard TAT rule
    *  (that's TATConfigSection's job, a separate, already-built system;
    *  this is just a per-stain default hint shown at order time). */

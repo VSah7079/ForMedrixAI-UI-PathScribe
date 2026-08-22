@@ -18,7 +18,7 @@ let STAIN_TYPES: StainType[] = [
   // antibodies applied to the SAME slide, which real CPT guidance
   // (verified via direct search) codes as 88344 rather than as two
   // separate 88342/88341 charges.
-  { id: 'st-p63-ck56', name: 'p63/CK5/6 Dual Stain', category: 'IHC', description: 'Myoepithelial/basal marker dual stain — invasive vs. in-situ breast lesions.', defaultBillingCode: '88344', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-p63-ck56', name: 'p63/CK5/6 Dual Stain', category: 'IHC', description: 'Myoepithelial/basal marker dual stain — invasive vs. in-situ breast lesions.', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   { id: 'st-pdl1',  name: 'PD-L1',                    category: 'IHC', antibodyClone: 'SP142', vendor: 'Ventana', defaultTurnaroundHours: 48, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Immunofluorescence conjugates — the standard renal biopsy IF panel.
   // Genuinely different technique from IHC (fluorescent-conjugated,

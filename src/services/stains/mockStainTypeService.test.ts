@@ -19,6 +19,20 @@ describe('mockStainTypeService seed data — real, demo-labeled CPT assignments 
     expect(dualStain?.defaultBillingCode).toBe('88344');
   });
 
+  it('the p63/CK5/6 dual stain is flagged excludeFromIhcSequenceCounting — a genuine standalone multiplex panel, never a countable individual IHC stain', async () => {
+    const res = await mockStainTypeService.getAll();
+    if (!res.ok) throw new Error('setup failed');
+    const dualStain = res.data.find(s => s.id === 'st-p63-ck56');
+    expect(dualStain?.excludeFromIhcSequenceCounting).toBe(true);
+  });
+
+  it('a plain, single-antibody defaultBillingCode entry (no multiplex reason) does not set excludeFromIhcSequenceCounting by default', async () => {
+    const res = await mockStainTypeService.getAll();
+    if (!res.ok) throw new Error('setup failed');
+    const pas = res.data.find(s => s.id === 'st-pas');
+    expect(pas?.excludeFromIhcSequenceCounting).toBeUndefined();
+  });
+
   it('standard, single-antibody IHC stains (ER/PR/HER2/Ki-67/PD-L1) are left unassigned - the generic first/additional rule genuinely applies to them', async () => {
     const res = await mockStainTypeService.getAll();
     if (!res.ok) throw new Error('setup failed');
