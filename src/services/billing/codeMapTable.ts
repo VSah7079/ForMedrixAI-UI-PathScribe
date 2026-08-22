@@ -12,47 +12,89 @@
 // decision. Work RVU values below were verified via direct search
 // against the current CMS 2026 Medicare Physician Fee Schedule
 // (PPRRVU2026_Apr_nonQPP), not estimated or fabricated. These are work
-// RVUs specifically (physician effort/skill component only), not total
-// RVU (which also includes practice expense and malpractice
-// components) - the physician-productivity number this app's RVU tiles
-// have always been about.
+// RVUs specifically (physician effort/skill component only) - see
+// BillingDictionaryEntry's own rvuPe/rvuMp fields (RvuTableVersion.ts)
+// for the other two RBRVS components, added later, same discipline.
+//
+// Renamed from CODE_MAP_TABLE: CptWorkRvuEntry[] to the Billing
+// Dictionary (BillingDictionaryEntry[]), per direct guidance - the
+// whole point of the Charge Capture work is that this becomes the one
+// authoritative source for billingCode/CPT/RVU data other catalogs
+// (StainType.defaultBillingCode, etc.) reference, not a narrow
+// "work RVU only" table anymore.
 //
 // IMPORTANT, honest scope limits:
 //   - This is NOT a billing system. No claims are generated, no payer
-//     rules are applied, no modifiers are tracked. This is workload/
-//     productivity tracking only - see WORKLOAD_AND_CHARGE_CAPTURE_SCOPE.md
-//     for the fuller reasoning already established for this project.
+//     rules are applied, no bundling/quantity rules are enforced. This
+//     is workload/productivity tracking plus structured charge-capture
+//     output - see WORKLOAD_AND_CHARGE_CAPTURE_SCOPE.md for the fuller
+//     reasoning, and its own Thread 1/Thread 2 split for exactly which
+//     billing-adjacent fields stay out of scope here and why.
 //   - wRVU values are published, national CMS figures and do not
 //     reflect state/locality GPCI adjustments, which this app does not
 //     model.
-//   - This table covers five of the most common anatomic pathology
-//     codes (surgical pathology levels III-V, first IHC stain) - it is
-//     deliberately not exhaustive. Extending it with more real,
-//     verified codes is real, separate future work, not something to
-//     pad out with guessed values now.
+//   - Deliberately not exhaustive. Extending it with more real,
+//     verified codes is real, ongoing work, not something to pad out
+//     with guessed values now. Several real, current entries below
+//     (IHC-ADDL/88341, FROZEN-FIRST/88331, FROZEN-ADDL/88332,
+//     PIN4-PANEL/88344) have a verified CPT code and coding RULE
+//     (confirmed via direct search against current AMA/payer coding
+//     guidance) but an UNVERIFIED work RVU - workRvu left undefined
+//     rather than guessed, same honest-gap posture 88341 already had
+//     before this table existed as a real Billing Dictionary.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface CptWorkRvuEntry {
-  code: string;
-  description: string;
-  workRvu: number;
-}
+import type { BillingDictionaryEntry } from './RvuTableVersion';
 
-/** Real, curated CPT → work RVU table. Source: CMS 2026 National
- *  Physician Fee Schedule Relative Value File (PPRRVU2026_Apr_nonQPP),
- *  verified via direct search rather than assumed from training data. */
-export const CODE_MAP_TABLE: CptWorkRvuEntry[] = [
-  { code: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
-  { code: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
-  { code: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
-  { code: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
-  { code: '88312', description: 'Special stain (group 1), including interpretation',                 workRvu: 0.53 },
-  { code: '88342', description: 'Immunohistochemistry, first single antibody stain',                 workRvu: 0.68 },
+/** Real, curated Billing Dictionary. Source for verified entries: CMS
+ *  2026 National Physician Fee Schedule Relative Value File
+ *  (PPRRVU2026_Apr_nonQPP), verified via direct search rather than
+ *  assumed from training data. Unverified-RVU entries verified for
+ *  their CPT code/coding rule only (see this file's own header). */
+export const CODE_MAP_TABLE: BillingDictionaryEntry[] = [
+  { code: '88302', billingCode: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
+  { code: '88304', billingCode: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
+  { code: '88305', billingCode: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
+  { code: '88307', billingCode: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
+  { code: '88312', billingCode: 'SPECIAL-STAIN', description: 'Special stain (group 1), including interpretation',         workRvu: 0.53 },
+  { code: '88342', billingCode: 'IHC-FIRST', description: 'Immunohistochemistry, first single antibody stain',             workRvu: 0.68 },
+  // Real, current CPT code + coding rule (verified via direct search
+  // against AMA/payer IHC coding guidance), unverified work RVU - see
+  // this file's own header for the disclosed-gap reasoning.
+  { code: '88341', billingCode: 'IHC-ADDL', description: 'Immunohistochemistry, each additional single antibody stain' },
+  { code: '88344', billingCode: 'PIN4-PANEL', description: 'Immunohistochemistry, each multiplex antibody stain procedure (e.g. "PIN-4")' },
+  // Real, current CPT code + coding rule (verified via direct search,
+  // confirmed as an add-on code to 88331) for frozen section work,
+  // unverified work RVU - see this file's own header.
+  { code: '88331', billingCode: 'FROZEN-FIRST', description: 'Pathology consultation during surgery, first tissue block, with frozen section(s), single specimen' },
+  { code: '88332', billingCode: 'FROZEN-ADDL', description: 'Pathology consultation during surgery, each additional tissue block with frozen section(s)' },
 ];
 
-const WORK_RVU_BY_CODE: Record<string, number> = Object.fromEntries(
-  CODE_MAP_TABLE.map(e => [e.code, e.workRvu])
-);
+// Real fix, per direct guidance: keyed by BOTH code and billingCode
+// (not billingCode alone) - Case.coding.cpt/Specimen.coding.cpt/
+// Block.coding.cpt historically hold raw CPT strings (e.g. '88342'),
+// written under the suggestion functions' old, pre-Charge-Capture
+// output format. Once those functions push billingCode labels instead
+// (e.g. 'IHC-FIRST' - see suggestAncillaryCodesForStains below), NEW
+// case data will carry billingCode strings instead. Both need to
+// resolve to the same real RVU value without knowing in advance which
+// era a given stored code string came from - for entries where
+// code === billingCode (the base surgical-pathology-level codes),
+// this is a no-op; for the ones that differ (IHC-FIRST/88342 etc.),
+// this is what keeps historical case data's RVU total from silently
+// breaking once the suggestion functions' output format changes.
+// workRvu is optional now (BillingDictionaryEntry) - an entry with no
+// verified value yet is real, honestly excluded here exactly the same
+// way a fully-absent row always was, not a new failure mode.
+function buildWorkRvuLookup(entries: BillingDictionaryEntry[]): Record<string, number> {
+  return Object.fromEntries(
+    entries
+      .filter((e): e is BillingDictionaryEntry & { workRvu: number } => e.workRvu !== undefined)
+      .flatMap(e => e.code === e.billingCode ? [[e.code, e.workRvu]] : [[e.code, e.workRvu], [e.billingCode, e.workRvu]])
+  );
+}
+
+const WORK_RVU_BY_CODE: Record<string, number> = buildWorkRvuLookup(CODE_MAP_TABLE);
 
 /** Real fix: sums the real, verified work RVU for a case's real,
  *  assigned CPT codes (Case.coding.cpt). Unknown codes (not in the
@@ -133,10 +175,10 @@ export function parseRvuUploadRows(rows: any[]): ParsedRvuUpload {
 
 export function computeWorkRvuForCodes(
   cptCodes: string[] | undefined,
-  entries: CptWorkRvuEntry[] = CODE_MAP_TABLE
+  entries: BillingDictionaryEntry[] = CODE_MAP_TABLE
 ): { totalWorkRvu: number; unrecognizedCodes: string[] } {
   if (!cptCodes || cptCodes.length === 0) return { totalWorkRvu: 0, unrecognizedCodes: [] };
-  const rvuByCode = entries === CODE_MAP_TABLE ? WORK_RVU_BY_CODE : Object.fromEntries(entries.map(e => [e.code, e.workRvu]));
+  const rvuByCode = entries === CODE_MAP_TABLE ? WORK_RVU_BY_CODE : buildWorkRvuLookup(entries);
   let total = 0;
   const unrecognized: string[] = [];
   for (const code of cptCodes) {
@@ -232,18 +274,40 @@ function suggestAncillaryCodesForStains(
     // rule, and a real multiplex panel (e.g. "PIN-4") that's its own
     // distinct StainType record, correctly billed as 88344 rather than
     // being counted as separate IHC stains under the generic rule.
-    if (matchedType?.defaultCptCode) {
-      suggestions.push(matchedType.defaultCptCode);
-      if (matchedType.category === 'IHC') ihcCount += 1; // still counts toward the generic rule for any later, unconfigured IHC stain on this same specimen
+    //
+    // Counting question resolved, per direct follow-up: whether this
+    // stain still occupies a slot in the running IHC count for a LATER,
+    // unconfigured IHC stain on the same specimen is now real,
+    // per-stain configuration (StainType.excludeFromIhcSequenceCounting
+    // - see its own doc comment for the two real cases this
+    // distinguishes), not a blanket always-increments rule. Default
+    // false/undefined still increments, preserving the exact behavior
+    // this app shipped with before the flag existed.
+    //
+    // Output format resolved, per direct follow-up (addCharge(billingCode
+    // = ...) pseudocode): suggestions now carry real billingCode labels
+    // (e.g. 'IHC-FIRST', 'PIN4-PANEL'), not raw CPT strings - the
+    // Billing Dictionary (CODE_MAP_TABLE, BillingDictionaryEntry) is
+    // now real, so StainType.defaultBillingCode genuinely resolves
+    // against it rather than being pushed through as an opaque value.
+    // A caller needing the real CPT/RVU resolves the billingCode
+    // against CODE_MAP_TABLE (or a specific historical version's
+    // entries) via computeWorkRvuForCodes/buildWorkRvuLookup - kept as
+    // a separate, later step rather than resolved eagerly here, same
+    // "suggest a reference, resolve it where it's actually needed"
+    // posture as every other dictionary reference in this app.
+    if (matchedType?.defaultBillingCode) {
+      suggestions.push(matchedType.defaultBillingCode);
+      if (matchedType.category === 'IHC' && !matchedType.excludeFromIhcSequenceCounting) ihcCount += 1;
       continue;
     }
 
     const category = matchedType?.category ?? null;
     if (category === 'Special Stain') {
-      suggestions.push('88312');
+      suggestions.push('SPECIAL-STAIN');
     } else if (category === 'IHC') {
       ihcCount += 1;
-      suggestions.push(ihcCount === 1 ? '88342' : '88341');
+      suggestions.push(ihcCount === 1 ? 'IHC-FIRST' : 'IHC-ADDL');
     }
     // 'Routine', 'Immunofluorescence', 'Molecular', 'Other', and null
     // (unresolvable) are all deliberately excluded - no real, verified

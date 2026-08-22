@@ -6,10 +6,15 @@ import type { RvuTableVersion } from './RvuTableVersion';
 
 const STORAGE_KEY = 'rvu_code_map_versions_v1';
 
-// Real, verified CMS 2026 values (PPRRVU2026_Apr_nonQPP) - the same five
-// entries codeMapTable.ts's original CODE_MAP_TABLE established, now the
-// seed for the first real version rather than a bare, unversioned
-// constant.
+// Real, verified CMS 2026 values (PPRRVU2026_Apr_nonQPP), now real
+// BillingDictionaryEntry rows (billingCode added) - matches
+// codeMapTable.ts's own CODE_MAP_TABLE exactly, including the honest,
+// disclosed-gap entries (real CPT code + coding rule, unverified work
+// RVU) added for the Charge Capture work. Real fix along the way: this
+// seed was missing 88312 (Special Stain) even though CODE_MAP_TABLE
+// always had it - a real, pre-existing discrepancy between the two,
+// closed here rather than left standing while touching this file for
+// an unrelated reason.
 const SEED_VERSION: RvuTableVersion = {
   id: 'rvu-v-seed-2026',
   label: 'CMS 2026 (April update)',
@@ -18,11 +23,16 @@ const SEED_VERSION: RvuTableVersion = {
   uploadedBy: 'system-seed',
   isActive: true,
   entries: [
-    { code: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
-    { code: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
-    { code: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
-    { code: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
-    { code: '88342', description: 'Immunohistochemistry, first single antibody stain',                 workRvu: 0.68 },
+    { code: '88302', billingCode: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
+    { code: '88304', billingCode: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
+    { code: '88305', billingCode: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
+    { code: '88307', billingCode: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
+    { code: '88312', billingCode: 'SPECIAL-STAIN', description: 'Special stain (group 1), including interpretation',         workRvu: 0.53 },
+    { code: '88342', billingCode: 'IHC-FIRST', description: 'Immunohistochemistry, first single antibody stain',             workRvu: 0.68 },
+    { code: '88341', billingCode: 'IHC-ADDL', description: 'Immunohistochemistry, each additional single antibody stain' },
+    { code: '88344', billingCode: 'PIN4-PANEL', description: 'Immunohistochemistry, each multiplex antibody stain procedure (e.g. "PIN-4")' },
+    { code: '88331', billingCode: 'FROZEN-FIRST', description: 'Pathology consultation during surgery, first tissue block, with frozen section(s), single specimen' },
+    { code: '88332', billingCode: 'FROZEN-ADDL', description: 'Pathology consultation during surgery, each additional tissue block with frozen section(s)' },
   ],
 };
 
@@ -58,8 +68,8 @@ export const mockRvuCodeMapService: IRvuCodeMapService = {
     if (!input.effectiveDate) return err('An effective date is required.');
     if (input.entries.length === 0) return err('A version must have at least one real code entry.');
 
-    const invalid = input.entries.find(e => !e.code.trim() || !(e.workRvu > 0));
-    if (invalid) return err(`Entry "${invalid.code || '(blank)'}" needs a real code and a positive work RVU value.`);
+    const invalid = input.entries.find(e => !e.code.trim() || (e.workRvu !== undefined && !(e.workRvu > 0)));
+    if (invalid) return err(`Entry "${invalid.code || '(blank)'}" needs a real code, and a positive work RVU value if one is given.`);
 
     const versions = load();
     const newVersion: RvuTableVersion = {

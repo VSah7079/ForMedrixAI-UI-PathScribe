@@ -9,8 +9,21 @@ describe('CODE_MAP_TABLE — real, verified CMS 2026 work RVU values, not fabric
     expect(codes).toEqual(expect.arrayContaining(['88302', '88304', '88305', '88307', '88342']));
   });
 
-  it('every entry has a real, positive work RVU value', () => {
-    CODE_MAP_TABLE.forEach(e => expect(e.workRvu).toBeGreaterThan(0));
+  it('every entry that HAS a verified work RVU carries a real, positive value - not every entry is required to have one yet (honest, disclosed gaps for unverified codes)', () => {
+    CODE_MAP_TABLE.filter(e => e.workRvu !== undefined).forEach(e => expect(e.workRvu).toBeGreaterThan(0));
+  });
+
+  it('every real entry has a real billingCode - the new primary identifier', () => {
+    CODE_MAP_TABLE.forEach(e => expect(e.billingCode).toBeTruthy());
+  });
+
+  it('the new Charge Capture entries (IHC-ADDL, PIN4-PANEL, FROZEN-FIRST, FROZEN-ADDL) are real, present rows with a verified CPT code and coding rule, honestly unverified work RVU', () => {
+    const newEntries = CODE_MAP_TABLE.filter(e => ['IHC-ADDL', 'PIN4-PANEL', 'FROZEN-FIRST', 'FROZEN-ADDL'].includes(e.billingCode));
+    expect(newEntries).toHaveLength(4);
+    newEntries.forEach(e => {
+      expect(e.code).toBeTruthy();
+      expect(e.workRvu).toBeUndefined(); // honest, disclosed gap - never fabricated
+    });
   });
 });
 
@@ -107,14 +120,14 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
     expect(suggestBlockAncillaryCptCodes([{ stainName: 'H&E' }], stainTypes)).toEqual([]);
   });
 
-  it('suggests one 88312 per real special stain, not once per block', () => {
+  it('suggests one SPECIAL-STAIN billingCode per real special stain, not once per block', () => {
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'PAS' }, { stainName: 'GMS' }], stainTypes);
-    expect(result).toEqual(['88312', '88312']);
+    expect(result).toEqual(['SPECIAL-STAIN', 'SPECIAL-STAIN']);
   });
 
-  it('suggests 88342 for the first real IHC stain on a block, 88341 for each additional - the real, verified CMS rule', () => {
+  it('suggests IHC-FIRST for the first real IHC stain on a block, IHC-ADDL for each additional - the real, verified CMS rule (88342/88341)', () => {
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'ER' }, { stainName: 'PR' }], stainTypes);
-    expect(result).toEqual(['88342', '88341']);
+    expect(result).toEqual(['IHC-FIRST', 'IHC-ADDL']);
   });
 
   it('excludes an unresolvable stain name silently, never guessing at its category', () => {
@@ -127,13 +140,13 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
       [{ stainName: 'H&E' }, { stainName: 'PAS' }, { stainName: 'ER' }],
       stainTypes
     );
-    expect(result).toEqual(['88312', '88342']);
+    expect(result).toEqual(['SPECIAL-STAIN', 'IHC-FIRST']);
   });
 
   it('per direct guidance: a real, coder-configured code on a specific antibody wins over the generic first/additional IHC rule', () => {
     const typesWithOverride: StainType[] = [
       ...stainTypes,
-      { id: '6', name: 'Ki-67', category: 'IHC', antibodyClone: '30-9', defaultCptCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '6', name: 'Ki-67', category: 'IHC', antibodyClone: '30-9', defaultBillingCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'Ki-67' }], typesWithOverride);
     expect(result).toEqual(['88360']); // the real, coder-configured code, not the generic 88342 first-stain default
@@ -142,7 +155,7 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
   it('per direct guidance: a real multiplex panel (own distinct StainType record) resolves to its own real code, not counted as separate IHC stains', () => {
     const typesWithMultiplex: StainType[] = [
       ...stainTypes,
-      { id: '7', name: 'PIN-4', category: 'IHC', defaultCptCode: '88344', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }], typesWithMultiplex);
     expect(result).toEqual(['88344']); // real multiplex code, not 88342
@@ -151,12 +164,33 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
   it('a configured stain still counts toward the generic rule for a later, unconfigured IHC stain on the same block', () => {
     const typesWithOverride: StainType[] = [
       ...stainTypes,
-      { id: '6', name: 'Ki-67', category: 'IHC', defaultCptCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '6', name: 'Ki-67', category: 'IHC', defaultBillingCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     // Ki-67 (configured, real 88360) comes first, then ER (unconfigured) -
     // ER should be treated as the second real IHC stain on this block (88341), not the first (88342).
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'Ki-67' }, { stainName: 'ER' }], typesWithOverride);
-    expect(result).toEqual(['88360', '88341']);
+    expect(result).toEqual(['88360', 'IHC-ADDL']);
+  });
+
+  it('per direct follow-up: excludeFromIhcSequenceCounting=true does NOT consume a slot — a real, standalone multiplex panel like PIN-4 leaves the sequence untouched for a later, unconfigured IHC stain', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    // PIN-4 (excluded) comes first, then ER (unconfigured) - ER should
+    // still be treated as the FIRST real IHC stain on this block
+    // (88342), since PIN-4 was never a countable IHC stain at all.
+    const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }, { stainName: 'ER' }], typesWithExcludedMultiplex);
+    expect(result).toEqual(['88344', 'IHC-FIRST']);
+  });
+
+  it('excludeFromIhcSequenceCounting=true still resolves to the stain\'s own configured code, only the counting side effect changes', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }], typesWithExcludedMultiplex);
+    expect(result).toEqual(['88344']); // unchanged from the non-excluded case — the flag only affects later stains
   });
 });
 
@@ -175,8 +209,8 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88342']); // real specimen-wide first IHC stain
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88341']); // real specimen-wide second, NOT another 88342
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['IHC-FIRST']); // real specimen-wide first IHC stain
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-ADDL']); // real specimen-wide second, NOT another IHC-FIRST
   });
 
   it('threads the count correctly across three real blocks with multiple stains each', () => {
@@ -187,8 +221,8 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88342', '88341']);
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88341']); // real third IHC stain on the specimen, still additional
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['IHC-FIRST', 'IHC-ADDL']);
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-ADDL']); // real third IHC stain on the specimen, still additional
   });
 
   it('a block with no IHC stains at all does not disturb the running count for later blocks', () => {
@@ -199,7 +233,7 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88342']); // still the real first IHC stain on the specimen
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-FIRST']); // still the real first IHC stain on the specimen
   });
 
   it('a single-block specimen behaves identically to the original single-block function', () => {
@@ -209,6 +243,24 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
     );
     const blockResult = suggestBlockAncillaryCptCodes([{ stainName: 'ER' }, { stainName: 'PR' }], stainTypes);
     expect(specimenResult.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(blockResult);
+  });
+
+  it('excludeFromIhcSequenceCounting on one block does not consume a slot for a later block on the same specimen', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const result = suggestSpecimenAncillaryCptCodes(
+      [
+        { blockId: 'blk-A', stains: [{ stainName: 'PIN-4' }] },
+        { blockId: 'blk-B', stains: [{ stainName: 'ER' }] },
+      ],
+      typesWithExcludedMultiplex
+    );
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88344']);
+    // blk-B's ER is still the real, FIRST countable IHC stain on the
+    // specimen — blk-A's PIN-4 never occupied a slot, cross-block or not.
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-FIRST']);
   });
 });
 
@@ -256,8 +308,8 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
     );
     const blockA = result[0].blocks.find(b => b.blockId === 'blk-A');
     const blockB = result[0].blocks.find(b => b.blockId === 'blk-B');
-    expect(blockA?.unappliedSuggestions).toEqual(['88342']);
-    expect(blockB?.unappliedSuggestions).toEqual(['88341']); // real, specimen-wide second IHC stain
+    expect(blockA?.unappliedSuggestions).toEqual(['IHC-FIRST']);
+    expect(blockB?.unappliedSuggestions).toEqual(['IHC-ADDL']); // real, specimen-wide second IHC stain
   });
 
   it('reports a real base code and no warning for a fully-coded specimen', () => {
@@ -284,7 +336,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
       stainTypes,
     );
     expect(result[0].hasAncillaryButNoBaseCode).toBe(true);
-    expect(result[0].blocks[0].unappliedSuggestions).toEqual(['88312']);
+    expect(result[0].blocks[0].unappliedSuggestions).toEqual(['SPECIAL-STAIN']);
   });
 
   it('does not warn a specimen with no blocks and no base code at all - nothing ancillary to flag', () => {
