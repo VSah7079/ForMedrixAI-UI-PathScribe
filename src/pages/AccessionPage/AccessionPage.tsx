@@ -1601,6 +1601,18 @@ const AccessionPage: React.FC = () => {
           description: s.description.trim(),
           comments: s.comments.length ? s.comments : undefined,
           specimenDictionaryEntryId: s.dictionaryEntryId || undefined,
+          // Real feature, per direct request: "if the specimen level is
+          // deterministic, why should we make them assign?" This is a
+          // real, coder-configured default (SpecimenEntry.
+          // defaultBaseCptCode), not an AI guess - auto-applying it here
+          // means the common case (a real dictionary answer exists)
+          // never needs a separate manual "Assign Base Code" click at
+          // all. Left undefined (not an empty array) when no default is
+          // configured, so the existing hasBaseCode/Pending Base Code
+          // UI still correctly prompts for manual assignment in that
+          // case - this only removes the step where the answer is
+          // already fully known.
+          coding: entry?.defaultBaseCptCode ? { cpt: [entry.defaultBaseCptCode] } : undefined,
           // receivedAt defaults to "now" if the accessioner didn't touch
           // the field; collectedAt/processedAt stay genuinely blank when
           // not entered, rather than defaulting to "now" — see the
@@ -1754,6 +1766,7 @@ const AccessionPage: React.FC = () => {
         // itself uses if the organisation somehow didn't resolve, not a
         // third, different literal.
         originEnterpriseId: originOrganisation?.enterpriseId ?? 'ENT-DEFAULT',
+        patientMatchOutcome: mpiResult.outcome,
         status: 'accessioned',
         patient: {
           id: mpiResult.patientId,

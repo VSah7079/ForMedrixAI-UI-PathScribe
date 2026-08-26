@@ -135,6 +135,16 @@ export interface SpecimenDeficiency {
   /** What was actually done to fix this specific occurrence — the
    *  multi-stage manual flow's equivalent of resolutionComment. */
   correctiveAction?: string;
+  /** Real, per Epic reference document, Section 3 ("Root Cause
+   *  Analysis (RCA)") and per direct guidance: why this actually
+   *  happened - distinct from correctiveAction (what was done about
+   *  this one occurrence) and preventiveAction (what stops it
+   *  recurring). Only meaningful for the escalation path (resolve()
+   *  below) - an immediately-contained item (containImmediately())
+   *  never gets this deep, by design: it's the quick, no-further-
+   *  follow-up path specifically for issues that don't warrant a
+   *  formal root-cause analysis at all. */
+  rootCause?: string;
   /** What prevents this from recurring — distinct from correctiveAction,
    *  which only fixes the one instance in front of you. Optional: not
    *  every deficiency type has a meaningful systemic prevention step. */
@@ -210,12 +220,27 @@ export interface ISpecimenDeficiencyService {
    * Moves an open deficiency to 'pending-verification' — NOT closed.
    * Captures the corrective action taken and a target date to actually
    * come back and check it worked. This is the real multi-stage manual
-   * flow; see verifyEffectiveness() for the step that actually closes
-   * something out.
+   * flow — the "Escalate to CAPA" action; see verifyEffectiveness()
+   * for the step that actually closes something out.
    */
   resolve(id: ID, resolution: {
-    resolutionTypeId: string; correctiveAction: string; preventiveAction?: string;
+    resolutionTypeId: string; correctiveAction: string; rootCause: string; preventiveAction?: string;
     resolvedBy: string; verificationDueDate?: string;
+  }): Promise<ServiceResult<SpecimenDeficiency>>;
+  /**
+   * Real, per direct guidance: the "Immediate Containment" action —
+   * resolves an EXISTING open deficiency straight to 'closed',
+   * deliberately skipping pending-verification and never asking for
+   * rootCause. Same real posture raiseAndResolve() already has for a
+   * brand-new deficiency (the fix and the record of the fix are the
+   * same action, nothing meaningful to verify later) — this is that
+   * same shape, for an issue that was already open rather than one
+   * just detected. Not every open issue warrants a full RCA/
+   * escalation; this is the quick, contained-on-the-spot path for the
+   * ones that don't.
+   */
+  containImmediately(id: ID, resolution: {
+    resolutionTypeId: string; resolutionComment: string; resolvedBy: string;
   }): Promise<ServiceResult<SpecimenDeficiency>>;
   /**
    * The effectiveness check itself — ISO 15189:2022 Clause 8.7's actual

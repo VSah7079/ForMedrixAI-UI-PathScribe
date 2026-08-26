@@ -107,6 +107,18 @@ export interface MasterPatientRecord {
   dateOfBirth: string;
   createdAt: string;
   updatedAt: string;
+  /** Real, per PathScribe Interface Specification v1.2 §2.6 (patient
+   *  data minimization) - the real resolveOrCreatePatient() outcome
+   *  that first established this identity, persisted here since a
+   *  much-later consumer (a billing payload built weeks after
+   *  accession, at sign-out) needs this same signal and the outcome
+   *  itself is otherwise only ever returned transiently, in the
+   *  moment, by resolveOrCreatePatient() - never stored anywhere
+   *  before this field. Set once, at creation, never changed
+   *  afterward - a patient's own later cases at this org are always
+   *  real re-matches against this same, already-established identity,
+   *  regardless of how THIS record first came to exist. */
+  establishedVia: 'matched' | 'created' | 'ambiguous';
   /**
    * Real fix, per direct follow-up on Phase 3 (idempotency & sequence
    * control, per the original spec's own "EVN-2" framing): the real,

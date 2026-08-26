@@ -44,6 +44,11 @@ import type { Case, ProtocolChange } from '@/types/case/Case';
 import type { CaseStatus } from '@/types/case/CaseStatus';
 import type { SetConcurrencyConflict } from './sharedHookTypes';
 import { handleConcurrencyConflict } from './sharedHookTypes';
+import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
+import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
+import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox';
+import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
+import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 
 interface UseGrossingCompletionParams {
   caseData: Case | null;
@@ -274,6 +279,45 @@ export function useGrossingCompletion({
       await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
       setCaseData({ ...caseData, ...patch } as typeof caseData);
+
+      // Real, per Epic: PathScribe Outbound Billing & Charge Event
+      // Engine, User Story 2 - "emit TC codes immediately upon
+      // SPECIMEN_GROSSED." Fire-and-forget, deliberately never awaited
+      // - a failure here must never surface as a grossing-completion
+      // failure. Scoped to the whole case, not one specimen - this
+      // function itself transitions every draft grossingReport at
+      // once (see its own header), so every specimen is genuinely,
+      // simultaneously grossed at this moment.
+      (async () => {
+        const chargesRes = await mockServiceChargeService.getChargesForCase(caseData.id);
+        if (!chargesRes.ok) return;
+        const alreadyQueuedRes = await mockOutboundChargeQueueService.getByServiceChargeRecordIds(
+          chargesRes.data.map(c => c.id)
+        );
+        const alreadyQueuedIds = new Set(alreadyQueuedRes.ok ? alreadyQueuedRes.data.map(e => e.serviceChargeRecordId) : []);
+        const triggerMapRes = await mockBillingTypeTriggerConfigService.getEffectiveTriggerMap(caseData.order?.siteId);
+        const toEnqueue = sweepChargesForOutbox(chargesRes.data, 'SPECIMEN_GROSSED', alreadyQueuedIds, triggerMapRes.ok ? triggerMapRes.data : undefined);
+        const metadataFailures = validateChargeMetadata(caseData);
+        await Promise.all(toEnqueue.map(async f => {
+          const enqueueRes = await mockOutboundChargeQueueService.enqueue({
+            serviceChargeRecordId: f.serviceChargeRecordId,
+            caseId: f.caseId,
+            specimenId: f.specimenId,
+            billingType: f.billingType,
+            triggerEvent: 'SPECIMEN_GROSSED',
+          });
+          // Real, per Story 4: a charge genuinely missing required
+          // metadata is flagged FAILED immediately, not left QUEUED
+          // with data already known to be bad.
+          if (enqueueRes.ok && metadataFailures.length > 0) {
+            await mockOutboundChargeQueueService.markFailed(enqueueRes.data.id, {
+              errorCode: metadataFailures[0].errorCode,
+              errorMessage: metadataFailures[0].errorMessage,
+              maxRetriesExceeded: false,
+            });
+          }
+        }));
+      })().catch(e => console.error('[PathScribe] Outbound charge queue sweep failed (non-blocking):', e));
 
       // Real fix, found via a direct audit: automatic pool routing
       // (routeCase/routeStatCase) was fully built - real admin-

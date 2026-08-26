@@ -20,7 +20,7 @@ import '@/pathscribe.css';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { containerTypeService } from '@/services';
 import type { ContainerType, ContainerCategory } from '@/services/containerTypes/IContainerTypeService';
-import type { Specimen, SpecimenLisStatus } from '@/types/case/Specimen';
+import type { Specimen, SpecimenLisStatus, SpecimenComplexity } from '@/types/case/Specimen';
 import { findForeignIdCollision } from '@/utils/foreignIdCollision';
 import type { ForeignIdCollision } from '@/utils/foreignIdCollision';
 
@@ -34,6 +34,15 @@ interface SpecimenEditModalProps {
   /** All existing specimens on the case (used to validate label uniqueness) */
   existingSpecimens:    Specimen[];
   isOrchestrationMode:  boolean;
+  /** Real, per direct guidance's own follow-up: the real, auto-derived
+   *  effective complexity (getEffectiveComplexity,
+   *  useEffectiveSpecimenComplexity.ts) for this specific specimen,
+   *  when real synoptic evidence exists to derive one - undefined
+   *  otherwise. Resolved by the caller, never computed in this
+   *  component; this modal only displays it, as a hint the explicit
+   *  Gross Only / Gross + Micro toggle below may be silently
+   *  overridden at billing time regardless of what's selected here. */
+  effectiveComplexity?: SpecimenComplexity;
   onSave:               (specimen: Specimen) => void;
   onClose:              () => void;
 }
@@ -45,7 +54,7 @@ const genId = () => crypto.randomUUID();
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
-  specimen, nextLabel, existingSpecimens, isOrchestrationMode, onSave, onClose,
+  specimen, nextLabel, existingSpecimens, isOrchestrationMode, effectiveComplexity, onSave, onClose,
 }) => {
   const isEdit = !!specimen;
   const { dictionary } = useSpecimenDictionary();
@@ -64,7 +73,8 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
   const [snomedCode,  setSnomedCode]  = useState(specimen?.snomedTypeCode        ?? '');
   const [siteCode,    setSiteCode]    = useState(specimen?.snomedSiteCode        ?? '');
   const [dictSearch,  setDictSearch]  = useState('');
-  const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<string | null>(specimen?.specimenDictionaryEntryId ?? null);
+  const [complexity, setComplexity] = useState<SpecimenComplexity | undefined>(specimen?.complexity);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Real feature, per direct follow-up: "Specimen/Decant-level foreign
@@ -124,6 +134,10 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
     if (entry.site)        setBodySite(entry.site);
     if (entry.laterality)  setLaterality(entry.laterality);
     if (entry.procedure)   setMethod(entry.procedure);
+    // Real, per direct guidance's own spec: "Default Assignment (Smart
+    // Preset): when a specimen is... selected from the dictionary...
+    // default complexity... based on the dictionary template."
+    if (entry.defaultComplexity) setComplexity(entry.defaultComplexity);
   }, [dictionary]);
 
   // ── Validation ────────────────────────────────────────────────────────────
@@ -162,6 +176,17 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
       displayName: `Specimen ${label.trim().toUpperCase()} — ${description.trim()}`,
       active:      true,
       lisStatus,
+      // Real fix, found while building specimen complexity: selecting
+      // a dictionary entry from the left panel never actually
+      // persisted the link - selectedEntry was tracked in local state
+      // but never written into the saved specimen, silently breaking
+      // resolveSpecimenDictionaryBaseCptCode's own real dependency on
+      // this field for every specimen edited through this modal.
+      // Falls back to the specimen's own existing link when no new
+      // selection was made this session, never clears a real,
+      // pre-existing link the user didn't touch.
+      specimenDictionaryEntryId: selectedEntry ?? specimen?.specimenDictionaryEntryId,
+      complexity,
       collection: {
         ...(specimen?.collection ?? {}),
         bodySite: bodySite.trim() || undefined,
@@ -276,6 +301,39 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 placeholder="e.g. Left breast mastectomy"
               />
               {errors.description && <span className="ps-specedit-error-msg">{errors.description}</span>}
+            </div>
+
+            {/* Complexity */}
+            <div className="ps-specedit-field-group">
+              <label className="ps-specedit-label">Complexity</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setComplexity('GROSS_ONLY')}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${complexity === 'GROSS_ONLY' ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}`, background: complexity === 'GROSS_ONLY' ? 'rgba(139,92,246,0.15)' : 'transparent', color: complexity === 'GROSS_ONLY' ? '#a78bfa' : '#94a3b8' }}
+                >
+                  Gross Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComplexity('GROSS_AND_MICRO')}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${complexity === 'GROSS_AND_MICRO' ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}`, background: complexity === 'GROSS_AND_MICRO' ? 'rgba(139,92,246,0.15)' : 'transparent', color: complexity === 'GROSS_AND_MICRO' ? '#a78bfa' : '#94a3b8' }}
+                >
+                  Gross + Micro
+                </button>
+              </div>
+              {selectedEntryObj?.defaultComplexity && complexity && complexity !== selectedEntryObj.defaultComplexity && (
+                <p className="ps-specedit-hint" style={{ marginTop: 4 }}>
+                  Overriding this specimen type's usual {selectedEntryObj.defaultComplexity === 'GROSS_ONLY' ? 'gross-only' : 'gross + micro'} default.
+                </p>
+              )}
+              {!complexity && effectiveComplexity && (
+                <p className="ps-specedit-hint" style={{ marginTop: 4 }}>
+                  No explicit complexity set — based on this specimen's own real synoptic findings, it
+                  will automatically bill as {effectiveComplexity === 'GROSS_AND_MICRO' ? 'Gross + Micro' : 'Gross Only'} unless
+                  you set one explicitly above.
+                </p>
+              )}
             </div>
 
             {/* Site + Laterality */}

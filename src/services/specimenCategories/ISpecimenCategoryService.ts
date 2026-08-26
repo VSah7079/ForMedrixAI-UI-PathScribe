@@ -21,7 +21,6 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { ServiceResult, ID } from '../types';
-import type { RetentionOverrideDays } from '../retentionPolicy/RetentionPolicy';
 
 export interface SpecimenCategory {
   id: ID;
@@ -38,17 +37,6 @@ export interface SpecimenCategory {
    * targets instead of a raw template id.
    */
   defaultGrossingTemplateId: string;
-
-  /** Real feature, per direct follow-up: "Retention should be
-   *  configured... at minimum at the specimen dictionary." Confirmed
-   *  directly this category dictionary (6 real entries) is the far
-   *  smaller, lower-admin-burden level compared to the full Specimen
-   *  Dictionary or Protocol dictionaries — see
-   *  services/retentionPolicy/RetentionPolicy.ts's own header for the
-   *  full reasoning. Optional and per-material-type: an admin only
-   *  sets an entry here for a genuine exception; anything omitted
-   *  falls back to the jurisdiction-level default. */
-  retentionOverrideDays?: RetentionOverrideDays;
 
   /**
    * Accession numbering. `accessionPrefix` is the letter(s) that start the

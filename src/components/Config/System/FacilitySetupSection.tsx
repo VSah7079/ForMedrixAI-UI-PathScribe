@@ -38,6 +38,7 @@ interface EditModalProps {
 
 const EditModal: React.FC<EditModalProps> = ({ site, onSave, onClose }) => {
   const [cliaOrIsoNumber, setCliaOrIsoNumber] = useState(site.cliaOrIsoNumber ?? '');
+  const [performingLabType, setPerformingLabType] = useState<NonNullable<Site['performingLabType']> | ''>(site.performingLabType ?? '');
   const [lisType, setLisType] = useState<LisType>(site.lisType);
   const [lisEndpoint, setLisEndpoint] = useState(site.lisEndpoint ?? '');
   const [lisVersion, setLisVersion] = useState(site.lisVersion ?? '');
@@ -59,6 +60,7 @@ const EditModal: React.FC<EditModalProps> = ({ site, onSave, onClose }) => {
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     onSave({
       cliaOrIsoNumber: cliaOrIsoNumber.trim() || undefined,
+      performingLabType: performingLabType || undefined,
       lisType,
       lisEndpoint: lisEndpoint.trim(),
       lisVersion: lisVersion.trim() || undefined,
@@ -77,6 +79,20 @@ const EditModal: React.FC<EditModalProps> = ({ site, onSave, onClose }) => {
             <label className="ps-conf-label">CLIA / ISO Registration Number</label>
             <input className="ps-conf-input" value={cliaOrIsoNumber} onChange={e => setCliaOrIsoNumber(e.target.value)}
               placeholder="e.g. a real CLIA number (US) or accreditation number" />
+          </div>
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Performing Lab Type (Place of Service)</label>
+            <select className="ps-conf-select" value={performingLabType} onChange={e => setPerformingLabType(e.target.value as NonNullable<Site['performingLabType']> | '')}>
+              <option value="">Not set</option>
+              <option value="independent">Independent Lab</option>
+              <option value="hospital_based">Hospital-Based</option>
+            </select>
+            <p className="ps-billing-reason-hint">
+              A real, raw fact about this specific lab — not a computed CMS Place of Service code. The interface
+              engine/RCM resolves the actual POS code (e.g. 11, 22) from this, since the exact mapping varies by
+              payer.
+            </p>
           </div>
 
           <div className="ps-conf-form-row">
@@ -180,7 +196,7 @@ const FacilitySetupSection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead>
-              <tr>{['Site', 'Organisation', 'CLIA / ISO', 'LIS Type', 'Endpoint', 'Credential', 'Actions'].map(h =>
+              <tr>{['Site', 'Organisation', 'CLIA / ISO', 'Performing Lab Type', 'LIS Type', 'Endpoint', 'Credential', 'Actions'].map(h =>
                 <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
@@ -189,6 +205,7 @@ const FacilitySetupSection: React.FC = () => {
                   <td className="ps-conf-td"><span className="ps-conf-identity-name">{s.name}</span></td>
                   <td className="ps-conf-td">{s.organisationId}</td>
                   <td className="ps-conf-td">{s.cliaOrIsoNumber ?? '—'}</td>
+                  <td className="ps-conf-td">{s.performingLabType === 'independent' ? 'Independent' : s.performingLabType === 'hospital_based' ? 'Hospital-Based' : '—'}</td>
                   <td className="ps-conf-td">{s.lisType}</td>
                   <td className="ps-conf-td">{s.lisEndpoint}</td>
                   <td className="ps-conf-td">

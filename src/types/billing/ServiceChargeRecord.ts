@@ -40,6 +40,30 @@ export interface ServiceChargeRecord {
   id: string;
   caseId: string;
 
+  /** Real feature, per direct requirement: "the Pathologist has the
+   *  right to update all billing, even those that are deterministic
+   *  ... we need a mechanism to send a credit transaction on billing
+   *  that gets changed. What I've seen is a credit transaction for
+   *  the code removed and then a new billable charge for the new one.
+   *  ... All must be audited." 'charge' is a real, new billable
+   *  amount (an AI-confirmed suggestion, a manually-added code, or a
+   *  real dictionary default applied at accession). 'credit' is a
+   *  real, exact reversal of a specific prior charge - see
+   *  reversesTransactionId below. Defaults to 'charge' via
+   *  buildServiceChargeRecord below for every existing call shape,
+   *  so this stays additive rather than a breaking change to the type. */
+  transactionType: 'charge' | 'credit';
+  /** Real, required link for a 'credit' record - the exact
+   *  ServiceChargeRecord.id this credit reverses. A credit is never a
+   *  fresh re-resolution against the current Billing Dictionary (the
+   *  dictionary may have changed since the original charge was made);
+   *  it's a literal, exact reversal of whatever was actually charged,
+   *  copying that original record's own resolved cptCode/rvuWork/etc.
+   *  verbatim - see reverseServiceCharge in
+   *  services/billing/resolveServiceCharge.ts. Always undefined on a
+   *  real 'charge' record. */
+  reversesTransactionId?: string;
+
   /** 'specimen-level' (the base accession code) or 'block-level' (an
    *  ancillary code, e.g. special stains) - mirrors
    *  services/hl7/dftBuilder.ts's real specimen-vs-block charge
@@ -68,6 +92,18 @@ export interface ServiceChargeRecord {
   // ─── Resolved, immutable at the moment of creation - see header ───
   cptCode: string;
   cptDescription?: string;
+  /** Real, per Epic: PathScribe Outbound Billing & Charge Event
+   *  Engine - copied from the resolved BillingRuleVersion's own level/
+   *  billingType at resolution time, same "permanent snapshot,
+   *  never re-resolved" posture as every other field in this section.
+   *  billingType specifically is what Story 2's own trigger logic
+   *  (which code fires at SPECIMEN_GROSSED vs CASE_SIGNED_OUT) reads
+   *  per charge - it has to come from this immutable snapshot, not a
+   *  live re-lookup of the rule, since a rule's billingType could
+   *  change in a later version after this charge was already
+   *  resolved. */
+  level: 'specimen' | 'block' | 'stain' | 'decant';
+  billingType: 'TC' | '26' | 'Global';
   hcpcsCode?: string;
   modifier?: string;
   /** Matches Category C's own quantity field. Undefined means 1 -
@@ -145,4 +181,74 @@ export interface ServiceChargeRecord {
    *  everywhere else a charge/mapping could be system- or
    *  human-sourced (e.g. SpecimenCodeCrosswalkEntry.createdBy). */
   resolvedBy: string;
+
+  /** Real, per direct guidance's own follow-up: billing is one of the
+   *  few things that can genuinely change after a case signs out.
+   *  Only ever populated on a credit or a new charge created while the
+   *  case's own real status was already finalized/pending-release/
+   *  closed - undefined on any normal, pre-signout charge. Points at
+   *  the real, selected ReasonDictionaryEntry
+   *  (category: 'POST_SIGNOUT_BILLING_CHANGE') a billing specialist
+   *  actually chose, permanently attached to the exact charge it
+   *  concerns rather than living only in a separate audit log a
+   *  reviewer would have to go looking for. */
+  postSignoutChangeReasonId?: string;
+  /** Required alongside postSignoutChangeReasonId above - the real,
+   *  free-text comment a billing specialist actually wrote explaining
+   *  this specific change (e.g. "payer denied 88307 for this specimen
+   *  type, resubmitting as 88305 per documented gross description"). */
+  postSignoutChangeComment?: string;
+
+  // ─── Real, per direct guidance's own Feature Specification
+  // (Pathology Billing Rules Engine & Audit Logging): a genuinely
+  // separate approval lifecycle from BillingRuleVersion's own
+  // Draft/Pending Approval/Approve/Reject workflow (PS-94's own
+  // Four-Eyes Principle). That one governs the rule DICTIONARY - how
+  // a charge gets calculated, changed rarely, global/practice-wide.
+  // This one governs whether THIS SPECIFIC, ALREADY-CALCULATED charge
+  // is cleared to actually export - changed on every signed-out
+  // specimen, scoped to one case/specimen. Same real dual-control
+  // principle, enforced completely independently
+  // (mockServiceChargeService.ts's own approveCharge/rejectCharge),
+  // never sharing state or enforcement with the rule-level workflow. ───
+
+  /** Real, per direct guidance's own established migration posture
+   *  (BillingRuleVersion.ts's own append-only precedent): undefined on
+   *  every charge created before this field existed - that is NOT the
+   *  same as DRAFT (which would incorrectly imply an already-resolved,
+   *  historical charge now needs retroactive approval). Every real
+   *  consumer (export gating, UI display) reads this through
+   *  getEffectiveChargeStatus (mockServiceChargeService.ts), which
+   *  treats undefined as the safe, already-cleared legacy default -
+   *  never checked directly against undefined elsewhere. */
+  approvalStatus?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'EXPORTED' | 'REJECTED' | 'HOLD';
+  draftedBy?: string;
+  draftedAt?: string;
+  /** Real, per direct guidance's own Four-Eyes Principle requirement,
+   *  hard-enforced in mockServiceChargeService.ts's own approveCharge -
+   *  never equal to draftedBy (or whoever actually submitted, if that
+   *  differs) except when a real, explicit break-glass override fires
+   *  (see approvedViaBreakGlass below). */
+  approvedBy?: string;
+  approvedAt?: string;
+  /** Required alongside a REJECTED approvalStatus - same "a real
+   *  decision always needs a real reason on record" posture as
+   *  rejectionReason elsewhere in this app's other approval workflows
+   *  (AmendmentRecord.rejectionReason, BillingRuleVersion's own). */
+  rejectionReason?: string;
+  /** Real, per direct guidance's own "Break-Glass Override Exception"
+   *  requirement, for solo practitioners/small labs where a genuinely
+   *  different second approver may not exist. True only when the
+   *  approver's own CAN_BYPASS_BILLING_APPROVAL permission was
+   *  actually used to approve a charge they themselves drafted -
+   *  every real occurrence also gets a real, separate, high-priority
+   *  audit alert (mockServiceChargeService.ts's own approveCharge),
+   *  never silently allowed. */
+  approvedViaBreakGlass?: boolean;
+  /** Real, per direct guidance's own status enum - the real
+   *  approvalStatus this charge held immediately before being placed
+   *  on HOLD, so releaseHold (mockServiceChargeService.ts) can
+   *  restore it exactly rather than guessing or resetting to DRAFT.
+   *  Undefined whenever approvalStatus itself isn't currently HOLD. */
+  approvalStatusBeforeHold?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'EXPORTED' | 'REJECTED';
 }

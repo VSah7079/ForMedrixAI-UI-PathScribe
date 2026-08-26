@@ -3,18 +3,27 @@ import { storageGet, storageSet } from '../mockStorage';
 import type { ServiceResult } from '../types';
 import type { IRvuCodeMapService } from './IRvuCodeMapService';
 import type { RvuTableVersion } from './RvuTableVersion';
+import { CODE_MAP_TABLE } from './codeMapTable';
 
 const STORAGE_KEY = 'rvu_code_map_versions_v1';
 
-// Real, verified CMS 2026 values (PPRRVU2026_Apr_nonQPP), now real
-// BillingDictionaryEntry rows (billingCode added) - matches
-// codeMapTable.ts's own CODE_MAP_TABLE exactly, including the honest,
-// disclosed-gap entries (real CPT code + coding rule, unverified work
-// RVU) added for the Charge Capture work. Real fix along the way: this
-// seed was missing 88312 (Special Stain) even though CODE_MAP_TABLE
-// always had it - a real, pre-existing discrepancy between the two,
-// closed here rather than left standing while touching this file for
-// an unrelated reason.
+// Real fix, per direct question ("if the dictionaries are basically
+// the same, why have two?"): this file used to maintain its own,
+// separate, hardcoded copy of the same entries codeMapTable.ts's own
+// CODE_MAP_TABLE already has - genuine, accidental duplication, not
+// an intentional design choice. This exact drift already happened
+// once before (88312 went missing from this copy while
+// CODE_MAP_TABLE always had it, patched manually rather than
+// unified) and happened again this session (a description-format fix
+// and the new billingType field both missed this file initially,
+// simply because there was no reason to know a second copy existed).
+// References CODE_MAP_TABLE directly now - never mutated in place
+// anywhere in this file (a new version upload replaces `entries`
+// wholesale via input.entries, it never pushes/splices onto the
+// existing array), so this is safe. The only real, legitimate thing
+// this file adds beyond CODE_MAP_TABLE is the version-wrapper
+// metadata (id/label/effectiveDate/uploadedAt/uploadedBy/isActive) -
+// that stays; only the duplicate entries array is gone.
 const SEED_VERSION: RvuTableVersion = {
   id: 'rvu-v-seed-2026',
   label: 'CMS 2026 (April update)',
@@ -22,18 +31,7 @@ const SEED_VERSION: RvuTableVersion = {
   uploadedAt: '2026-01-01T00:00:00.000Z',
   uploadedBy: 'system-seed',
   isActive: true,
-  entries: [
-    { code: '88302', billingCode: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
-    { code: '88304', billingCode: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
-    { code: '88305', billingCode: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
-    { code: '88307', billingCode: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
-    { code: '88312', billingCode: 'SPECIAL-STAIN', description: 'Special stain (group 1), including interpretation',         workRvu: 0.53 },
-    { code: '88342', billingCode: 'IHC-FIRST', description: 'Immunohistochemistry, first single antibody stain',             workRvu: 0.68 },
-    { code: '88341', billingCode: 'IHC-ADDL', description: 'Immunohistochemistry, each additional single antibody stain' },
-    { code: '88344', billingCode: 'PIN4-PANEL', description: 'Immunohistochemistry, each multiplex antibody stain procedure (e.g. "PIN-4")' },
-    { code: '88331', billingCode: 'FROZEN-FIRST', description: 'Pathology consultation during surgery, first tissue block, with frozen section(s), single specimen' },
-    { code: '88332', billingCode: 'FROZEN-ADDL', description: 'Pathology consultation during surgery, each additional tissue block with frozen section(s)' },
-  ],
+  entries: CODE_MAP_TABLE,
 };
 
 const load    = (): RvuTableVersion[] => storageGet<RvuTableVersion[]>(STORAGE_KEY, [SEED_VERSION]);
@@ -56,8 +54,12 @@ export const mockRvuCodeMapService: IRvuCodeMapService = {
     if (isNaN(target)) return err(`Invalid date: ${isoDate}`);
     // Most-recent version whose effectiveDate is still <= the target
     // date - the real rates that were genuinely in force at that
-    // moment, not just whatever's marked active today.
+    // moment, not just whatever's marked active today. Real, per
+    // direct follow-up: a version PENDING_APPROVAL or REJECTED must
+    // never be resolved against here, even if its own effectiveDate
+    // would otherwise make it the best match.
     const candidates = load()
+      .filter(v => v.approvalStatus !== 'PENDING_APPROVAL' && v.approvalStatus !== 'REJECTED')
       .filter(v => new Date(v.effectiveDate).getTime() <= target)
       .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
     return ok(candidates[0] ?? null);
@@ -79,7 +81,13 @@ export const mockRvuCodeMapService: IRvuCodeMapService = {
       uploadedAt: new Date().toISOString(),
       uploadedBy: input.uploadedBy,
       sourceFileName: input.sourceFileName,
-      isActive: false, // never auto-activated - see activateVersion
+      isActive: false, // never auto-activated - see activateVersion/approveVersion
+      // Real, per direct follow-up: every new version - whether from a
+      // single manual edit or a full upload - now genuinely requires a
+      // different, real reviewer's approval before it can ever become
+      // the active table. No more silent, unreviewed activation.
+      approvalStatus: 'PENDING_APPROVAL',
+      submittedForApprovalBy: input.uploadedBy,
       entries: input.entries,
     };
     persist([...versions, newVersion]);
@@ -93,5 +101,42 @@ export const mockRvuCodeMapService: IRvuCodeMapService = {
     const updated = versions.map(v => ({ ...v, isActive: v.id === versionId }));
     persist(updated);
     return ok({ ...target, isActive: true });
+  },
+
+  async approveVersion(versionId, reviewedBy) {
+    const versions = load();
+    const idx = versions.findIndex(v => v.id === versionId);
+    if (idx === -1) return err(`Version ${versionId} not found.`);
+    const target = versions[idx];
+    if (target.approvalStatus !== 'PENDING_APPROVAL') return err(`This version is not real pending approval (currently ${target.approvalStatus ?? 'no approval history'}).`);
+    // Real, per direct guidance's own Four-Eyes Principle (dual
+    // control) requirement - hard-enforced here, not just in the UI.
+    // Mirrors mockModifierDictionaryService.ts's own approveVersion
+    // exactly.
+    if (reviewedBy === target.uploadedBy || reviewedBy === target.submittedForApprovalBy) {
+      return err('Four-Eyes Principle: the person who submitted this change cannot approve it. A different, real reviewer is required.');
+    }
+    const approved: RvuTableVersion = { ...target, approvalStatus: 'APPROVED', reviewedBy, reviewedAt: new Date().toISOString() };
+    const withApproval = [...versions];
+    withApproval[idx] = approved;
+    persist(withApproval.map(v => ({ ...v, isActive: v.id === versionId })));
+    return ok({ ...approved, isActive: true });
+  },
+
+  async rejectVersion(versionId, reviewedBy, rejectionReason) {
+    if (!rejectionReason.trim()) return err('A real rejection reason is required.');
+    const versions = load();
+    const idx = versions.findIndex(v => v.id === versionId);
+    if (idx === -1) return err(`Version ${versionId} not found.`);
+    const target = versions[idx];
+    if (target.approvalStatus !== 'PENDING_APPROVAL') return err(`This version is not real pending approval (currently ${target.approvalStatus ?? 'no approval history'}).`);
+    if (reviewedBy === target.uploadedBy || reviewedBy === target.submittedForApprovalBy) {
+      return err('Four-Eyes Principle: the person who submitted this change cannot reject it either. A different, real reviewer is required.');
+    }
+    const rejected: RvuTableVersion = { ...target, approvalStatus: 'REJECTED', reviewedBy, reviewedAt: new Date().toISOString(), rejectionReason: rejectionReason.trim() };
+    const updated = [...versions];
+    updated[idx] = rejected;
+    persist(updated);
+    return ok(rejected);
   },
 };

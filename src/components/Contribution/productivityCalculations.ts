@@ -97,14 +97,14 @@ export function computeMonthlyCaseCounts(
  *  the scenario ruleBasedDefaultCptCodes's own doc comment says it
  *  exists for ("workload/productivity tracking," not billing. */
 function gatherRealCptCodes(c: Case): string[] {
-  const specimens = (c as any).specimens as Array<{ coding?: { cpt?: string[] }; blocks?: Array<{ coding?: { cpt?: string[] } }> }> | undefined;
+  const specimens = (c as any).specimens as Array<{ coding?: { cpt?: string[] }; blocks?: Array<{ coding?: { cpt?: { code: string; stainOrderId?: string }[] } }> }> | undefined;
   if (!specimens || specimens.length === 0) return [];
 
   const codes: string[] = [];
   for (const sp of specimens) {
     if (sp.coding?.cpt) codes.push(...sp.coding.cpt);
     for (const block of sp.blocks ?? []) {
-      if (block.coding?.cpt) codes.push(...block.coding.cpt);
+      if (block.coding?.cpt) codes.push(...block.coding.cpt.map(c => c.code));
     }
   }
   if (codes.length > 0) return codes;

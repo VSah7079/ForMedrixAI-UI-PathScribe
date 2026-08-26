@@ -58,7 +58,7 @@ export const VoiceToggleButton: React.FC = () => {
         </button>
         {showTooltip && (
           <div style={{
-            position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+            position: 'absolute', top: 'calc(100% + 8px)', left: '50%',
             transform: 'translateX(-50%)',
             background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '8px', padding: '8px 12px',
@@ -83,7 +83,7 @@ export const VoiceToggleButton: React.FC = () => {
       <button
         type="button"
         onClick={toggleVoice}
-        title={title}
+        title={(!aiAvailable && IS_DEV) ? undefined : title}
         style={{
           background:   isStandby ? 'transparent' : `${color}18`,
           border:       `1.5px solid ${isStandby ? 'rgba(255,255,255,0.1)' : color}`,
@@ -130,7 +130,7 @@ export const VoiceToggleButton: React.FC = () => {
       {/* Dev-only tooltip when AI unavailable */}
       {showTooltip && !aiAvailable && IS_DEV && (
         <div style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+          position: 'absolute', top: 'calc(100% + 8px)', left: '50%',
           transform: 'translateX(-50%)',
           background: '#0f172a', border: '1px solid rgba(245,158,11,0.4)',
           borderRadius: '8px', padding: '8px 12px',

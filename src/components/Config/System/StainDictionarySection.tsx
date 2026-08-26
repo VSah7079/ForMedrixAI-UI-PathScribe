@@ -5,6 +5,13 @@
 // design reasoning (orthogonal Stain Type / Sectioning Protocol,
 // composed via quick-order macros for the ordering UX without merging
 // the two dimensions in the data).
+//
+// Real, user-facing rename, per direct guidance: displayed as
+// "Diagnostic Catalog" (not "Stain Dictionary") - reflects that this
+// now houses stains, FISH/molecular testing (Category: 'Molecular'),
+// and future testing suites (PCR/NGS), not stains alone. File/
+// component name intentionally left as-is - an internal identifier,
+// not the user-facing label this rename is actually about.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -12,23 +19,27 @@ import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { stainTypeService, sectioningProtocolService, stainOrderMacroService } from '../../../services';
 import type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from '../../../services';
+import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
+import type { MolecularTarget, MolecularMethodology, BillingModel, CptMappingRule } from '@/types/billing/MolecularBillingRule';
 import { prepareDuplicate } from '../../../utils/duplicateEntry';
 import { findDuplicate } from '../../../utils/validateUnique';
 
-type SubTab = 'types' | 'protocols' | 'macros';
+type SubTab = 'types' | 'protocols' | 'macros' | 'targets';
 
 // ── Stain Type editor ───────────────────────────────────────────────────────
 
-const STAIN_CATEGORIES: StainCategory[] = ['Routine', 'Special Stain', 'IHC', 'Immunofluorescence', 'Molecular', 'Other'];
+const STAIN_CATEGORIES: StainCategory[] = ['Routine', 'Special Stain', 'IHC', 'Immunofluorescence', 'Molecular', 'Cytology', 'Other'];
 
 interface StainTypeModalProps {
   mode: 'add' | 'edit';
   entry?: StainType;
   existingEntries: StainType[];
+  masterTargets: MolecularTarget[];
+  onAddTarget: (symbol: string, detail: string) => Promise<MolecularTarget | null>;
   onSave: (draft: Omit<StainType, 'id' | 'version' | 'updatedBy' | 'updatedAt'>) => void;
   onClose: () => void;
 }
-const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
+const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEntries, masterTargets, onAddTarget, onSave, onClose }) => {
   const [name, setName] = useState(entry?.name ?? '');
   const [category, setCategory] = useState<StainCategory>(entry?.category ?? 'Routine');
   const [description, setDescription] = useState(entry?.description ?? '');
@@ -39,6 +50,19 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
   const [excludeFromIhcSequenceCounting, setExcludeFromIhcSequenceCounting] = useState(entry?.excludeFromIhcSequenceCounting ?? false);
   const [active, setActive] = useState(entry?.active ?? true);
   const [nameError, setNameError] = useState<string | null>(null);
+  // ── Real, per direct guidance: Molecular-category fields ──────────
+  const [methodology, setMethodology] = useState<MolecularMethodology | ''>(entry?.methodology ?? '');
+  const [selectedTargets, setSelectedTargets] = useState<MolecularTarget[]>(entry?.defaultTargets ?? []);
+  const [targetSearch, setTargetSearch] = useState('');
+  const [newTargetSymbol, setNewTargetSymbol] = useState('');
+  const [newTargetDetail, setNewTargetDetail] = useState('');
+  const [billingModel, setBillingModel] = useState<BillingModel>(entry?.billingRule?.billingModel ?? 'BASE_ADDON');
+  const [baseCptCode, setBaseCptCode] = useState(entry?.billingRule?.baseCptCode ?? '');
+  const [addOnCptCode, setAddOnCptCode] = useState(entry?.billingRule?.addOnCptCode ?? '');
+  const [multiplexCptCode, setMultiplexCptCode] = useState(entry?.billingRule?.multiplexCptCode ?? '');
+  const [multiplexThreshold, setMultiplexThreshold] = useState(entry?.billingRule?.multiplexThreshold?.toString() ?? '3');
+  const [perUnitCptCode, setPerUnitCptCode] = useState(entry?.billingRule?.perUnitCptCode ?? '');
+  const [flatFeeCptCode, setFlatFeeCptCode] = useState(entry?.billingRule?.flatFeeCptCode ?? '');
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -51,16 +75,31 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
     const collision = findDuplicate(existingEntries, { name: name.trim() }, ['name'], mode === 'edit' ? entry?.id : undefined);
     if (collision) { setNameError(`A stain type named "${collision.name}" already exists.`); return; }
     setNameError(null);
+
+    // Real, per direct guidance: only the fields the chosen billingModel
+    // actually uses are ever persisted - never a stale baseCptCode left
+    // over from switching away from BASE_ADDON, for instance.
+    const billingRule: CptMappingRule | undefined = category === 'Molecular' ? {
+      billingModel,
+      ...(billingModel === 'BASE_ADDON' ? {
+        baseCptCode: baseCptCode.trim() || undefined,
+        addOnCptCode: addOnCptCode.trim() || undefined,
+        multiplexCptCode: multiplexCptCode.trim() || undefined,
+        multiplexThreshold: multiplexThreshold.trim() ? Number(multiplexThreshold) : undefined,
+      } : {}),
+      ...(billingModel === 'PER_UNIT_MULTIPLIER' ? { perUnitCptCode: perUnitCptCode.trim() || undefined } : {}),
+      ...(billingModel === 'FLAT_FEE' ? { flatFeeCptCode: flatFeeCptCode.trim() || undefined } : {}),
+    } : undefined;
+
     onSave({
       name: name.trim(), category, description: description.trim() || undefined,
       antibodyClone: antibodyClone.trim() || undefined, vendor: vendor.trim() || undefined,
       defaultTurnaroundHours: turnaround ? Number(turnaround) : undefined,
       defaultBillingCode: defaultBillingCode.trim() || undefined,
-      // Only meaningful alongside a real defaultBillingCode — never
-      // persisted true on its own, which would be a real, confusing
-      // combination nothing downstream expects (see the field's own
-      // doc comment in IStainService.ts).
       excludeFromIhcSequenceCounting: defaultBillingCode.trim() ? excludeFromIhcSequenceCounting : undefined,
+      methodology: category === 'Molecular' && methodology ? methodology : undefined,
+      defaultTargets: category === 'Molecular' && selectedTargets.length > 0 ? selectedTargets : undefined,
+      billingRule,
       active,
     });
   };
@@ -68,7 +107,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Stain Type'}</div>
+        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Diagnostic Process'}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
@@ -136,6 +175,119 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
               </div>
             </div>
           )}
+          {category === 'Molecular' && (
+            <>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="stain-methodology">Methodology</label>
+                <select id="stain-methodology" className="ps-conf-select" value={methodology} onChange={e => setMethodology(e.target.value as MolecularMethodology)}>
+                  <option value="">— Select —</option>
+                  <option value="FISH_ANATOMIC">Anatomic Pathology FISH</option>
+                  <option value="FISH_CYTOGENETICS">Cytogenetic FISH</option>
+                  <option value="PCR_SINGLE">Single-Gene / Targeted PCR</option>
+                  <option value="NGS_PANEL">NGS Panel</option>
+                </select>
+              </div>
+
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label">Default Targets</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {selectedTargets.map(t => (
+                    <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', fontSize: 12, color: '#a78bfa' }}>
+                      {t.symbol}{t.detail ? ` (${t.detail})` : ''}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTargets(prev => prev.filter(x => x.id !== t.id))}
+                        style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}
+                        aria-label={`Remove ${t.symbol}`}
+                      >×</button>
+                    </span>
+                  ))}
+                  {selectedTargets.length === 0 && <span className="ps-conf-hint">No default targets yet — search below to add from the master target dictionary.</span>}
+                </div>
+                <input
+                  className="ps-conf-input"
+                  placeholder="Search master targets (e.g. ERBB2, BCL2)…"
+                  value={targetSearch}
+                  onChange={e => setTargetSearch(e.target.value)}
+                />
+                {targetSearch.trim() && (
+                  <div style={{ maxHeight: 140, overflowY: 'auto', marginTop: 4, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+                    {masterTargets
+                      .filter(t => !selectedTargets.some(s => s.id === t.id))
+                      .filter(t => t.symbol.toLowerCase().includes(targetSearch.trim().toLowerCase()) || t.detail?.toLowerCase().includes(targetSearch.trim().toLowerCase()))
+                      .map(t => (
+                        <div key={t.id} onClick={() => { setSelectedTargets(prev => [...prev, t]); setTargetSearch(''); }}
+                          style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>
+                          <strong>{t.symbol}</strong>{t.detail ? <span style={{ color: '#64748b' }}> — {t.detail}</span> : null}
+                        </div>
+                      ))}
+                  </div>
+                )}
+                <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+                  Copied onto each new order at order time, then freely editable there — changing this dictionary
+                  default never touches an existing order's own targets.
+                </p>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <input className="ps-conf-input" placeholder="New target symbol (e.g. TP53)" value={newTargetSymbol} onChange={e => setNewTargetSymbol(e.target.value)} style={{ flex: 1 }} />
+                  <input className="ps-conf-input" placeholder="Detail (e.g. 17p13.1) — optional" value={newTargetDetail} onChange={e => setNewTargetDetail(e.target.value)} style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    className="ps-conf-btn-secondary"
+                    disabled={!newTargetSymbol.trim()}
+                    onClick={async () => {
+                      const created = await onAddTarget(newTargetSymbol.trim(), newTargetDetail.trim());
+                      if (created) { setSelectedTargets(prev => [...prev, created]); setNewTargetSymbol(''); setNewTargetDetail(''); }
+                    }}
+                  >Add to master dictionary</button>
+                </div>
+              </div>
+
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="billing-model">Billing Model</label>
+                <select id="billing-model" className="ps-conf-select" value={billingModel} onChange={e => setBillingModel(e.target.value as BillingModel)}>
+                  <option value="BASE_ADDON">Base + Add-on (with multiplex threshold)</option>
+                  <option value="PER_UNIT_MULTIPLIER">Per-Unit Multiplier (N units of one code)</option>
+                  <option value="FLAT_FEE">Flat Fee (one code regardless of target count)</option>
+                </select>
+              </div>
+              {billingModel === 'BASE_ADDON' && (
+                <div className="ps-conf-form-row">
+                  <div className="ps-conf-form-field">
+                    <label className="ps-conf-label">Base billingCode (1st target)</label>
+                    <input className="ps-conf-input" value={baseCptCode} onChange={e => setBaseCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-BASE" />
+                  </div>
+                  <div className="ps-conf-form-field">
+                    <label className="ps-conf-label">Add-on billingCode (each additional)</label>
+                    <input className="ps-conf-input" value={addOnCptCode} onChange={e => setAddOnCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-ADDL" />
+                  </div>
+                  <div className="ps-conf-form-field">
+                    <label className="ps-conf-label">Multiplex billingCode</label>
+                    <input className="ps-conf-input" value={multiplexCptCode} onChange={e => setMultiplexCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-MULTIPLEX" />
+                  </div>
+                  <div className="ps-conf-form-field">
+                    <label className="ps-conf-label">Multiplex threshold</label>
+                    <input className="ps-conf-input" type="number" min="1" value={multiplexThreshold} onChange={e => setMultiplexThreshold(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              {billingModel === 'PER_UNIT_MULTIPLIER' && (
+                <div className="ps-conf-form-field">
+                  <label className="ps-conf-label">Per-unit billingCode</label>
+                  <input className="ps-conf-input" value={perUnitCptCode} onChange={e => setPerUnitCptCode(e.target.value)} placeholder="e.g. FISH-CYTO-PROBE" />
+                </div>
+              )}
+              {billingModel === 'FLAT_FEE' && (
+                <div className="ps-conf-form-field">
+                  <label className="ps-conf-label">Flat-fee billingCode</label>
+                  <input className="ps-conf-input" value={flatFeeCptCode} onChange={e => setFlatFeeCptCode(e.target.value)} placeholder="e.g. NGS-PANEL-5-50" />
+                </div>
+              )}
+              <p className="ps-conf-section-subtitle">
+                References real Billing Dictionary entries by their billingCode — never a raw CPT code directly,
+                same convention as Default Billing Code above.
+              </p>
+            </>
+          )}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">Default Turnaround (hours)</label>
@@ -154,7 +306,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Stain Type'}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Diagnostic Process'}</button>
         </div>
       </div>
     </div>
@@ -211,6 +363,92 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntr
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Protocol'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Master Target editor ────────────────────────────────────────────────────
+// Real, per direct follow-up: "actually manage targets... not just see
+// them in seed data." The Stain Type editor's own inline "Add to
+// master dictionary" action only ever creates - this is the real,
+// separate, dedicated screen for fixing a typo in an existing target,
+// or retiring an obsolete one, matching the exact same
+// add/edit/duplicate/deactivate pattern every other real dictionary in
+// this app already uses.
+
+interface MolecularTargetModalProps {
+  mode: 'add' | 'edit';
+  entry?: MolecularTarget;
+  existingEntries: MolecularTarget[];
+  onSave: (draft: Omit<MolecularTarget, 'id'>) => void;
+  onClose: () => void;
+}
+const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
+  const [symbol, setSymbol] = useState(entry?.symbol ?? '');
+  const [detail, setDetail] = useState(entry?.detail ?? '');
+  const [targetType, setTargetType] = useState<MolecularTarget['targetType']>(entry?.targetType ?? 'PROBE');
+  const [active, setActive] = useState(entry?.active ?? true);
+  const [symbolError, setSymbolError] = useState<string | null>(null);
+
+  const handleSave = () => {
+    if (!symbol.trim()) return;
+    // Real, same real-world collision this app's own real add() path
+    // already guards against (symbol + detail together, not symbol
+    // alone - ERBB2 with no detail and ERBB2 at a different real
+    // locus are both legitimately real, distinct entries).
+    const collision = existingEntries.find(t =>
+      t.id !== (mode === 'edit' ? entry?.id : undefined) &&
+      t.symbol.toLowerCase() === symbol.trim().toLowerCase() &&
+      (t.detail ?? '') === detail.trim()
+    );
+    if (collision) { setSymbolError(`A target "${collision.symbol}"${collision.detail ? ` (${collision.detail})` : ''} already exists.`); return; }
+    setSymbolError(null);
+    onSave({ symbol: symbol.trim(), detail: detail.trim() || undefined, targetType, active });
+  };
+
+  return (
+    <div className="ps-ms-overlay">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.symbol}` : entry ? `Duplicate — ${entry.symbol}` : 'Add Target'}</div>
+        <div className="ps-ms-body">
+          <div className="ps-conf-form-row">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">Symbol <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={symbol} onChange={e => { setSymbol(e.target.value); setSymbolError(null); }} placeholder="e.g. ERBB2" />
+              {symbolError && <div className="ps-body-modal-error">{symbolError}</div>}
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="target-type">Type</label>
+              <select id="target-type" className="ps-conf-select" value={targetType} onChange={e => setTargetType(e.target.value as MolecularTarget['targetType'])}>
+                <option value="PROBE">Probe (FISH)</option>
+                <option value="GENE">Gene (NGS)</option>
+                <option value="MUTATION_REGION">Mutation Region (PCR)</option>
+              </select>
+            </div>
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Detail</label>
+            <input className="ps-conf-input" value={detail} onChange={e => setDetail(e.target.value)} placeholder="e.g. 17q12 (locus), or V600E (mutation) — optional" />
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Status</label>
+            <div className="ps-conf-toggle-row">
+              <div onClick={() => setActive(!active)} className={`ps-conf-toggle-track ${active ? 'ps-conf-toggle-track--active' : ''}`}>
+                <div className="ps-conf-toggle-thumb" />
+              </div>
+              <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? 'Active' : 'Inactive'}</span>
+            </div>
+            <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+              Inactive targets stay searchable in existing Stain Type entries that already reference them, but won't
+              appear when searching to add a new default target.
+            </p>
+          </div>
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Target'}</button>
         </div>
       </div>
     </div>
@@ -300,17 +538,31 @@ const StainDictionarySection: React.FC = () => {
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [protocols, setProtocols] = useState<SectioningProtocol[]>([]);
   const [macros, setMacros] = useState<StainOrderMacro[]>([]);
+  const [masterTargets, setMasterTargets] = useState<MolecularTarget[]>([]);
   const [search, setSearch] = useState('');
   const [typeModal, setTypeModal] = useState<{ mode: 'add' | 'edit'; entry?: StainType } | null>(null);
   const [protocolModal, setProtocolModal] = useState<{ mode: 'add' | 'edit'; entry?: SectioningProtocol } | null>(null);
   const [macroModal, setMacroModal] = useState<{ mode: 'add' | 'edit'; entry?: StainOrderMacro } | null>(null);
+  const [targetModal, setTargetModal] = useState<{ mode: 'add' | 'edit'; entry?: MolecularTarget } | null>(null);
 
   const loadAll = () => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
     sectioningProtocolService.getAll().then(res => { if (res.ok) setProtocols(res.data); });
     stainOrderMacroService.getAll().then(res => { if (res.ok) setMacros(res.data); });
+    mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data); });
   };
   useEffect(() => { loadAll(); }, []);
+
+  // Real, per direct guidance: the modal's own "Add to master
+  // dictionary" action writes through to the real, persistent target
+  // service, then refreshes this list - a target added mid-edit is
+  // immediately available to search/select for the rest of this
+  // session, not just this one modal instance.
+  const handleAddTarget = async (symbol: string, detail: string) => {
+    const res = await mockMolecularTargetService.add({ symbol, detail: detail || undefined, targetType: 'PROBE', active: true });
+    if (res.ok) { setMasterTargets(prev => [...prev, res.data]); return res.data; }
+    return null;
+  };
 
   const filteredTypes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -334,6 +586,10 @@ const StainDictionarySection: React.FC = () => {
     setMacroModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'label'), id: '__clone__' } });
   };
 
+  const handleCloneTarget = (source: MolecularTarget) => {
+    setTargetModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'symbol'), id: '__clone__' } });
+  };
+
   // ── Spreadsheet import/export — also genuinely missing before, unlike
   // Specimen Dictionary which already has this. Same two-step
   // preview-then-apply shape, matched rather than reinvented.
@@ -349,7 +605,7 @@ const StainDictionarySection: React.FC = () => {
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Stain Types');
+    XLSX.utils.book_append_sheet(wb, ws, 'Diagnostic Assays');
     XLSX.writeFile(wb, 'StainDictionary.xlsx');
   };
 
@@ -405,18 +661,20 @@ const StainDictionarySection: React.FC = () => {
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Stain Dictionary</h3>
+          <h3 className="ps-conf-section-title">Diagnostic Catalog</h3>
           <p className="ps-conf-section-subtitle">
-            Stain Type and Sectioning Protocol are independent dimensions — Quick-Order Macros compose
-            one of each into a single ordering preset for the UX, without merging them in the data.
+            Stains, FISH/molecular testing, and future testing suites, all in one catalog. Stain Type and
+            Sectioning Protocol are independent dimensions — Quick-Order Macros compose one of each into a single
+            ordering preset for the UX, without merging them in the data.
           </p>
         </div>
       </div>
 
       <div className="ps-tab-bar ps-staindict-tabs">
-        <button className={`ps-tab-btn ${subTab === 'types' ? 'active' : ''}`} onClick={() => setSubTab('types')}>Stain Types ({stainTypes.length})</button>
+        <button className={`ps-tab-btn ${subTab === 'types' ? 'active' : ''}`} onClick={() => setSubTab('types')}>Diagnostic Assays ({stainTypes.length})</button>
         <button className={`ps-tab-btn ${subTab === 'protocols' ? 'active' : ''}`} onClick={() => setSubTab('protocols')}>Sectioning Protocols ({protocols.length})</button>
         <button className={`ps-tab-btn ${subTab === 'macros' ? 'active' : ''}`} onClick={() => setSubTab('macros')}>Quick-Order Macros ({macros.length})</button>
+        <button className={`ps-tab-btn ${subTab === 'targets' ? 'active' : ''}`} onClick={() => setSubTab('targets')}>Master Targets ({masterTargets.length})</button>
       </div>
 
       {subTab === 'types' && (
@@ -428,7 +686,7 @@ const StainDictionarySection: React.FC = () => {
               <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>Import Spreadsheet</button>
               <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
             </div>
-            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Stain Type</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Diagnostic Process</button>
           </div>
           {stainImportPreview && (
             <div className="ps-conf-import-preview">
@@ -540,8 +798,52 @@ const StainDictionarySection: React.FC = () => {
         </>
       )}
 
+      {subTab === 'targets' && (
+        <>
+          <div className="ps-conf-form-row--3">
+            <div /><div />
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTargetModal({ mode: 'add' })}>+ Add Target</button>
+          </div>
+          <p className="ps-conf-section-subtitle">
+            The real, master probe/gene/mutation-region catalog every Stain Type's own Default Targets is built
+            from — edit an existing entry here to fix a symbol/detail typo across every Stain Type that already
+            references it, or deactivate one that's no longer in use.
+          </p>
+          <div className="ps-conf-table-wrap">
+            <div className="ps-conf-table-scroll">
+              <table className="ps-conf-table">
+                <thead className="ps-conf-thead-sticky"><tr>{['Symbol', 'Type', 'Detail', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                <tbody>
+                  {masterTargets.map(t => (
+                    <tr key={t.id} className="ps-conf-tr">
+                      <td className="ps-conf-td"><div className="ps-conf-identity-name">{t.symbol}</div></td>
+                      <td className="ps-conf-td">{t.targetType === 'PROBE' ? 'Probe' : t.targetType === 'GENE' ? 'Gene' : 'Mutation Region'}</td>
+                      <td className="ps-conf-td">{t.detail ?? '—'}</td>
+                      <td className="ps-conf-td">
+                        <span className="ps-conf-status-cell">
+                          <span className={`ps-conf-status-dot ${t.active ? 'ps-conf-status-dot--active' : ''}`} />
+                          <span className={`ps-conf-status-text ${t.active ? 'ps-conf-status-text--active' : ''}`}>{t.active ? 'Active' : 'Inactive'}</span>
+                        </span>
+                      </td>
+                      <td className="ps-conf-td">
+                        <button className="ps-conf-btn-row" onClick={() => setTargetModal({ mode: 'edit', entry: t })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneTarget(t)}>Duplicate</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {masterTargets.length === 0 && (
+                    <tr><td className="ps-conf-empty-row" colSpan={5}>No targets yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       {typeModal && (
         <StainTypeModal mode={typeModal.mode} entry={typeModal.entry} existingEntries={stainTypes}
+          masterTargets={masterTargets} onAddTarget={handleAddTarget}
           onSave={async draft => {
             if (typeModal.mode === 'edit' && typeModal.entry) await stainTypeService.update(typeModal.entry.id, draft);
             else await stainTypeService.add(draft);
@@ -566,6 +868,15 @@ const StainDictionarySection: React.FC = () => {
             setMacroModal(null); loadAll();
           }}
           onClose={() => setMacroModal(null)} />
+      )}
+      {targetModal && (
+        <MolecularTargetModal mode={targetModal.mode} entry={targetModal.entry} existingEntries={masterTargets}
+          onSave={async draft => {
+            if (targetModal.mode === 'edit' && targetModal.entry) await mockMolecularTargetService.update(targetModal.entry.id, draft);
+            else await mockMolecularTargetService.add(draft);
+            setTargetModal(null); loadAll();
+          }}
+          onClose={() => setTargetModal(null)} />
       )}
     </div>
   );

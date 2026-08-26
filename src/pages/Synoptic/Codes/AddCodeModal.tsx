@@ -11,10 +11,11 @@ import '../../../pathscribe.css';
 import type { MedicalCode } from '../synopticTypes';
 import { searchCodes, type CodeResult, type SnomedFilter } from '../../../services/terminologySearch/codeSearchService';
 import { getOrganisationByHospitalId, type CodingSystem } from '@/services/organisation/organisationService';
+import { CODE_MAP_TABLE, resolveSpecimenDictionaryBaseCptCode } from '@/services/billing/codeMapTable';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SpecimenOption { index: number; id: number; specimenId?: string | null; name: string; }
+interface SpecimenOption { index: number; id: number; specimenId?: string | null; name: string; specimenDictionaryEntryId?: string; complexity?: 'GROSS_ONLY' | 'GROSS_AND_MICRO'; }
 
 export interface AiCodeSuggestion {
   code: string;
@@ -28,6 +29,14 @@ export interface AiCodeSuggestion {
 export interface AddCodeModalProps {
   existingCodes: MedicalCode[];
   allSpecimens: SpecimenOption[];
+  /** Real feature, per direct feedback: the Specimen Dictionary already
+   *  has a real, coder-entered "Default Base CPT Code" per specimen
+   *  type - a genuinely verified value, not a guess. When available
+   *  for the currently-targeted specimen's own type, this is shown as
+   *  a real, high-confidence default rather than relying on the AI's
+   *  own narrative-text estimate for something a real coder has
+   *  already, deliberately determined. */
+  specimenDictionary?: { id: string; defaultBaseCptCode?: string }[];
   activeSpecimenIndex?: number;  // reserved for future per-specimen default targeting
   /** Real fix: which coding-system tab to open on - e.g. 'CPT' when
    *  launched from a specimen's own "+Code" contextual button, so the
@@ -51,11 +60,32 @@ export interface AddCodeModalProps {
    *  suggestions. Optional so callers without a resolvable client
    *  still fall back safely to the org-wide default. */
   clientId?: string;
+  /** Real, per direct requirement: "the Pathologist has the right to
+   *  update all billing, even those that are deterministic ... LIS
+   *  will handle the billing in assist mode" alongside a real,
+   *  separate follow-up ("can we still keep RVU... useful to track
+   *  Pathologist performance"). A CPT code added here in orchestration
+   *  mode is a real billing decision; in assist mode it's honestly
+   *  relabeled as RVU/productivity tracking only - never hidden
+   *  entirely, since contributionDashboardCalculations.ts genuinely
+   *  prefers a specimen's own real, applied CPT code over its generic
+   *  fallback estimate. Optional, defaulting to false (assist-style
+   *  labeling) so no existing caller needs to change to keep working -
+   *  a real caller should pass this explicitly rather than rely on
+   *  the default. */
+  isOrchestrationMode?: boolean;
 }
 
 type CodeSystem = 'SNOMED' | 'ICD10' | 'ICD11' | 'LOINC' | 'ICDO' | 'CPT' | 'OPCS4';
 
 interface PendingCode {
+  /** Real, per direct feedback ("if an IHC interp was done on 4
+   *  slides, they have to enter the code 4 times?"): a stable,
+   *  per-instance identifier - the old code+specimenIndex matching
+   *  throughout this file couldn't tell two real, separate instances
+   *  of the same code apart, so deleting/moving/restoring "one" of
+   *  them actually affected every instance at once. */
+  id: string;
   code: string;
   display: string;
   system: string;
@@ -131,9 +161,9 @@ const IcoUndo = () => (
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const AddCodeModal: React.FC<AddCodeModalProps> = ({
-  existingCodes, allSpecimens, onAddToSpecimens, onClose,
+  existingCodes, allSpecimens, specimenDictionary = [], onAddToSpecimens, onClose,
   caseText, synopticAnswers, templateName, synopticDerivedCodes, narrativeText,
-  originHospitalId, activeSpecimenIndex, initialSystem, clientId,
+  originHospitalId, activeSpecimenIndex, initialSystem, clientId, isOrchestrationMode = false,
 }) => {
   // ── Site coding config ────────────────────────────────────────────────────
   // Coding systems shown are driven by site config from organisationService.
@@ -146,18 +176,19 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     const systems = siteOrg?.sites?.[0]?.codingSystems;
     return systems?.length ? systems : ['SNOMED', 'ICD10', 'ICD11', 'LOINC', 'ICDO', 'CPT'] as CodingSystem[];
   }, [siteOrg]);
-  const SYSTEMS = ALL_SYSTEMS.filter(s => siteCodingSystems.includes(s.id));
+  const SYSTEMS = ALL_SYSTEMS.filter(s => siteCodingSystems.includes(s.id) && !(s.id === 'CPT' && isOrchestrationMode));
   const isUK = siteOrg?.sites?.[0]?.defaultLocale === 'en-GB';
 
   const [system,       setSystem]       = useState<CodeSystem>(initialSystem ?? 'SNOMED');
   const [snomedFilter, setSnomedFilter] = useState<SnomedFilter>('morphology');
   const [query,        setQuery]        = useState('');
   const [results,      setResults]      = useState<CodeResult[]>([]);
+  const [searchError,  setSearchError]  = useState<string | null>(null);
   const [loading,      setLoading]      = useState(false);
   const [focused,      setFocused]      = useState(-1);
   const [target,       setTarget]       = useState<number | null>(activeSpecimenIndex ?? null);
-  const [applied,      setApplied]      = useState<PendingCode[]>(() =>
-    existingCodes
+  const [applied,      setApplied]      = useState<PendingCode[]>(() => {
+    const fromExisting = existingCodes
       // Guards against malformed entries with an empty/missing code --
       // these were rendering as blank rows (grabber + trash icon, no
       // visible text) with no indication anything was wrong. Filtering
@@ -168,26 +199,87 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
       // case's codes are saved for any reason -- no separate cleanup
       // migration needed.
       .filter(c => !!c.code)
-      .map(c => {
+      .map((c, idx) => {
         // Resolve specimenId back to specimenIndex so left panel groups correctly
         const specOption = (c as any).specimenId
           ? allSpecimens.find(s => s.specimenId === (c as any).specimenId)
           : null;
         return {
+          id:            `existing-${idx}-${c.code}-${c.system}`,
           code:          c.code,
           display:       c.display,
           system:        c.system,
           specimenIndex: specOption ? specOption.index : null,
           pendingDelete: false,
         };
-      })
-  );
+      });
+    // Real fix, per direct clarification: "something that defaults from
+    // maintenance/configuration doesn't need to be verified, it should
+    // automatically get applied." A Specimen Dictionary default base
+    // CPT code is a real, deliberate, prior coder determination, not a
+    // guess - matches how AccessionPage.tsx already auto-populates
+    // this same field right at specimen creation. This is the same
+    // real default, applied here too, for any specimen that doesn't
+    // already have a CPT code - backfills cases created before a
+    // dictionary default existed, or where the dictionary was updated
+    // after the specimen was already accessioned. Scoped to Assist
+    // mode only - orchestration mode's own real rule engine already
+    // resolves this far more precisely from structured stain data.
+    const autoDefaults: PendingCode[] = !isOrchestrationMode
+      ? allSpecimens
+        .filter(sp => !fromExisting.some(c => c.specimenIndex === sp.index && c.system === 'CPT'))
+        .map(sp => {
+          const defaultCode = sp.specimenDictionaryEntryId
+            ? resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: sp.specimenDictionaryEntryId, complexity: sp.complexity }, specimenDictionary)
+            : null;
+          if (!defaultCode) return null;
+          const entry = CODE_MAP_TABLE.find(e => e.code === defaultCode);
+          return {
+            id: `dictionary-default-${sp.index}-${defaultCode}`,
+            code: defaultCode,
+            display: entry?.description ?? defaultCode,
+            system: 'CPT',
+            specimenIndex: sp.index,
+            pendingDelete: false,
+          };
+        })
+        .filter((c): c is PendingCode => c !== null)
+      : [];
+    if (autoDefaults.length > 0) setTimeout(() => setIsDirty(true), 0);
+    return [...fromExisting, ...autoDefaults];
+  });
   const [isDirty, setIsDirty] = useState(false);
   const [aiSuggestions,    setAiSuggestions]    = useState<AiCodeSuggestion[]>([]);
   const [aiLoading,        setAiLoading]        = useState(false);
   const [aiError,          setAiError]          = useState<string | null>(null);
   const [aiRan,            setAiRan]            = useState(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
+
+  // Real fix, found via direct feedback: "should just show the
+  // recommended codes based on the selected pill." The AI suggestion
+  // list previously showed every real suggestion across every coding
+  // system at once (SNOMED, ICD-10, ICD-O, LOINC all mixed together),
+  // regardless of which system tab was actually active - this is the
+  // real, shared filter both the panel's own count and its list use,
+  // so they can never drift out of sync with each other.
+  // Real fix, per direct feedback: "I couldn't add it to two
+  // specimens." The old check only compared code+system against
+  // existingCodes - a code already saved for ONE specimen made the
+  // suggestion disappear for every specimen, not just that one, since
+  // the check never looked at which real specimen the existing code
+  // actually belonged to. Resolves the currently-selected target
+  // (an index) to its real specimenId once, then only treats a
+  // suggestion as "already applied" when an existing code genuinely
+  // matches this exact target - a different specimen, or the case
+  // level, no longer hides it.
+  const targetSpecimenId = target !== null ? (allSpecimens.find(s => s.index === target)?.specimenId ?? null) : null;
+
+  const visibleSuggestions = React.useMemo(() => (
+    aiSuggestions
+      .filter((s, i, a) => a.findIndex(x => x.code === s.code) === i)
+      .filter(s => !existingCodes.some(ec => ec.code === s.code && ec.system === s.system && ((ec as any).specimenId ?? null) === targetSpecimenId))
+      .filter(s => s.system === system)
+  ), [aiSuggestions, existingCodes, system, targetSpecimenId]);
 
 
   const [saving,       setSaving]       = useState(false);
@@ -214,10 +306,21 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     if (!query.trim() && system !== 'CPT') { setResults([]); setLoading(false); return; }
 
     setLoading(true);
+    setSearchError(null);
     debounceRef.current = setTimeout(async () => {
       const filter = system === 'SNOMED' ? snomedFilter : 'all';
-      const data = await searchCodes(system, query, filter);
-      setResults(data);
+      try {
+        const data = await searchCodes(system, query, filter);
+        setResults(data);
+      } catch (err: any) {
+        // Real fix, per direct feedback: a failed search (missing API
+        // key, network error, CORS) previously looked identical to a
+        // genuine "no matches" result. Distinct state here so the UI
+        // can tell the person their search backend is unavailable,
+        // not that the term itself has no matches.
+        setResults([]);
+        setSearchError(err?.message ?? 'Search failed — please try again.');
+      }
       setLoading(false);
       setFocused(-1);
     }, 300);
@@ -236,17 +339,24 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   // ── Add / remove / undo ───────────────────────────────────────────────────
 
   const addCode = useCallback((r: CodeResult) => {
-    const alreadyActive = applied.some(
-      c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete
-    );
-    if (alreadyActive) return;
-    const existing = applied.find(c => c.code === r.code && c.specimenIndex === target);
-    if (existing) {
+    // Real fix, per direct feedback: "if an IHC interp was done on 4
+    // slides, they have to enter the code 4 times?" - the old logic
+    // hard-blocked re-adding an already-active code, silently
+    // undercounting a real, repeated procedure with no error or
+    // feedback at all. If a pending-delete instance of this exact
+    // code exists, restore that one first (matches the original
+    // "oops, didn't mean to remove that" intent behind this branch);
+    // otherwise, always add a new, genuinely separate instance - a
+    // real, repeatable procedure needs a real, separate count, not a
+    // single toggle.
+    const pendingDeleteInstance = applied.find(c => c.code === r.code && c.specimenIndex === target && c.pendingDelete);
+    if (pendingDeleteInstance) {
       setApplied(prev => prev.map(c =>
-        c.code === r.code && c.specimenIndex === target ? { ...c, pendingDelete: false } : c
+        c.id === pendingDeleteInstance.id ? { ...c, pendingDelete: false } : c
       ));
     } else {
       setApplied(prev => [...prev, {
+        id: `new-${r.code}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         code: r.code, display: r.display, system: r.system,
         specimenIndex: target, pendingDelete: false,
       }]);
@@ -254,16 +364,16 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     setIsDirty(true);
   }, [applied, target]);
 
-  const removeCode = useCallback((code: string, specimenIndex: number | null) => {
+  const removeCode = useCallback((id: string) => {
     setApplied(prev => prev.map(c =>
-      c.code === code && c.specimenIndex === specimenIndex ? { ...c, pendingDelete: true } : c
+      c.id === id ? { ...c, pendingDelete: true } : c
     ));
     setIsDirty(true);
   }, []);
 
-  const undoRemove = useCallback((code: string, specimenIndex: number | null) => {
+  const undoRemove = useCallback((id: string) => {
     setApplied(prev => prev.map(c =>
-      c.code === code && c.specimenIndex === specimenIndex ? { ...c, pendingDelete: false } : c
+      c.id === id ? { ...c, pendingDelete: false } : c
     ));
     setIsDirty(true);
   }, []);
@@ -272,7 +382,7 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   const moveCode = useCallback((entry: PendingCode, toSpecimenIndex: number | null) => {
     if (entry.specimenIndex === toSpecimenIndex) return; // already there
     setApplied(prev => prev.map(c =>
-      c.code === entry.code && c.specimenIndex === entry.specimenIndex
+      c.id === entry.id
         ? { ...c, specimenIndex: toSpecimenIndex, pendingDelete: false }
         : c
     ));
@@ -297,7 +407,7 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
       const { text: raw } = await callAi({
         system: isUK
           ? 'You are a pathology coding specialist with expertise in NHS surgical pathology coding — SNOMED CT, ICD-10, ICD-O, and OPCS-4. Return only valid JSON — no markdown, no preamble.'
-          : 'You are a pathology coding specialist with expertise in surgical pathology CPT, ICD-10, SNOMED CT, and ICD-O coding. Return only valid JSON — no markdown, no preamble.',
+          : 'You are a pathology coding specialist with expertise in ICD-10, SNOMED CT, and ICD-O diagnostic coding. Return only valid JSON — no markdown, no preamble.',
         prompt: isUK
           ? `Suggest appropriate medical codes for this NHS pathology case. Include diagnostic codes and OPCS-4 procedure codes.
 
@@ -345,7 +455,7 @@ Rules:
 - Do NOT include CPT codes — not used in NHS
 - confidence 0-100, rationale ≤12 words
 - Return 4-8 codes total — MUST include at least one SNOMED morphology code`
-          : `Suggest appropriate medical codes for this pathology case. Include BOTH diagnostic codes AND procedure (CPT) codes.
+          : `Suggest appropriate diagnostic codes for this pathology case.
 
 TEMPLATE: ${templateName ?? 'Unknown'}
 ${narrativeText ? `NARRATIVE REPORT (primary source):
@@ -364,14 +474,21 @@ DIAGNOSTIC CODES (ICD-10, SNOMED CT, ICD-O):
 - Primary diagnosis ICD-10 code
 - SNOMED CT morphology code
 - ICD-O topography and morphology codes if applicable
-
-PROCEDURE CODES (CPT):
-- Surgical pathology level (88300-88309) based on specimen complexity
-- Special stains (88312-88314) if mentioned in ancillary
-- IHC codes (88342 per antibody, 88341 for each additional) if IHC performed
-- Molecular/genomic codes (81275, 81479 etc.) if molecular studies performed
-- Include RVU value for each CPT code
-
+${!isOrchestrationMode ? `
+SPECIMEN-LEVEL BILLING CODE (RVU ESTIMATE ONLY — Assist mode):
+- This case is in Assist mode: your LIS owns real billing, this is
+  read-only, internal RVU/productivity tracking - never a real charge.
+- Pick at most ONE code from this exact, real, verified list, based
+  on the overall complexity of the gross/microscopic work described -
+  never invent a code outside this list:
+${CODE_MAP_TABLE.filter(e => e.level === 'specimen').map(e => `  - ${e.code}: ${e.description}`).join('\n')}
+- Do NOT suggest ancillary/stain-level codes (special stains, IHC) -
+  those need an exact stain count this prompt cannot reliably judge
+  from narrative text alone, and are already handled by this app's
+  own real, structured rule engine in orchestration mode.
+- Mark confidence honestly lower for this one (it's a rough estimate,
+  not a precision determination) and say so in rationale.
+` : ''}
 Format:
 [
   {
@@ -381,34 +498,70 @@ Format:
     "confidence": 95,
     "rationale": "Left breast invasive carcinoma upper outer quadrant",
     "rvu": null
-  },
+  }${!isOrchestrationMode ? `,
   {
-    "code": "88307",
-    "display": "Surgical pathology, gross and microscopic examination — Breast, mastectomy",
+    "code": "88305",
+    "display": "Code 88305 — Specimen Level",
     "system": "CPT",
-    "confidence": 97,
-    "rationale": "Total mastectomy specimen with lymph node dissection",
-    "rvu": 4.44
-  }
+    "confidence": 65,
+    "rationale": "Estimate only - moderate complexity specimen, Assist mode",
+    "rvu": null
+  }` : ''}
 ]
 
 Rules:
-- system must be one of: ICD10, SNOMED, ICDO, LOINC, CPT
+- system must be one of: ICD10, SNOMED, ICDO, LOINC${!isOrchestrationMode ? ', CPT' : ''}
+${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level, special stain, and IHC billing codes are resolved by this app\'s own real, verified rule engine from structured stain data, not guessed from narrative text' : '- At most ONE CPT code, only from the real, verified list above, only for the specimen-level base code - never a stain-level ancillary code'}
 - confidence 0-100
 - rationale ≤12 words
-- rvu: include the standard RVU value for CPT codes, null for others
-- Return 6-12 codes total — MUST include at least one SNOMED morphology code
+- rvu: always null - this prompt no longer suggests billable procedure codes
+- Return 4-8 codes total — MUST include at least one SNOMED morphology code
 - SNOMED morphology example: {"code":"413448000","display":"Invasive carcinoma of breast, no special type","system":"SNOMED","confidence":95,"rationale":"Primary diagnosis morphology","rvu":null}
-- Only include codes you are highly confident are correct
-- For CPT 88307 vs 88309: mastectomy with lymph nodes = 88307, complex cases = 88309`,
+- Only include codes you are highly confident are correct`,
         maxTokens: 1200,
         configOverride: await resolveAiConfigOverrideForClient(clientId),
       });
 
       const clean = raw.replace(/```json|```/g, '').trim();
-      const parsed: AiCodeSuggestion[] = JSON.parse(clean);
+      // Real fix, per direct report: a raw JSON.parse error message
+      // ("Unexpected non-whitespace character after JSON...") was
+      // surfacing straight to the user - the LLM had added trailing
+      // content after the real JSON array that the markdown-fence
+      // strip above didn't catch. Extracting the array by its
+      // outermost [ ] rather than trusting the whole cleaned string
+      // is pure JSON survives that regardless of what the extra
+      // content actually was.
+      const arrayStart = clean.indexOf('[');
+      const arrayEnd = clean.lastIndexOf(']');
+      if (arrayStart === -1 || arrayEnd === -1 || arrayEnd < arrayStart) {
+        throw new Error('AI response did not contain a recognizable code list — please try again.');
+      }
+      const parsed: AiCodeSuggestion[] = JSON.parse(clean.slice(arrayStart, arrayEnd + 1));
+      // Real, defensive filter, per direct requirement: CPT is no
+      // longer part of what this prompt asks for (see the prompt's own
+      // header comment on this whole function for why), but an LLM
+      // doesn't always perfectly follow an instruction - explicitly
+      // dropping any CPT suggestion here too, rather than relying on
+      // the prompt change alone, since a wrong CPT guess with a false
+      // sense of confidence is a real billing risk, not just noise.
+      const specimenLevelCptCodes = new Set(CODE_MAP_TABLE.filter(e => e.level === 'specimen').map(e => e.code));
+      let cptSeen = false;
       const filtered = Array.isArray(parsed)
-        ? parsed.filter(s => siteCodingSystems.includes(s.system as CodeSystem))
+        ? parsed.filter(s => {
+            if (!siteCodingSystems.includes(s.system as CodeSystem)) return false;
+            if (s.system !== 'CPT') return true;
+            // Real fix: CPT suggestions are only ever real here in
+            // Assist mode (see the prompt's own conditional block
+            // above) - defensively re-verify even then, since the
+            // model is only asked, not guaranteed, to stay inside the
+            // real, verified specimen-level list this app actually
+            // knows about. A wrong or hallucinated code showing up
+            // with a confident-looking percentage is the real risk
+            // this guards against, not just noise to filter later.
+            if (isOrchestrationMode || cptSeen || !specimenLevelCptCodes.has(s.code)) return false;
+            cptSeen = true;
+            return true;
+          })
         : [];
       setAiSuggestions(filtered);
       setAiRan(true);
@@ -417,7 +570,7 @@ Rules:
     } finally {
       setAiLoading(false);
     }
-  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems]);
+  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems, isOrchestrationMode]);
 
   // Auto-run on open — after generateAiCodes is defined
   // Tier 1: use pre-derived synoptic codes immediately
@@ -491,11 +644,28 @@ Rules:
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
 
+  // Real fix, found ahead of a live demo: selecting a code in this
+  // modal only updates the local, staged `applied` list - real
+  // persistence to specimen.coding.cpt only happens via the separate
+  // Save button below (see handleSave). All three ways to leave this
+  // modal (X button, Cancel, Escape) previously called onClose
+  // directly with zero check for unsaved changes, so a code that felt
+  // "added" the moment it was clicked could be silently discarded if
+  // the modal was closed before Save - exactly what happened when a
+  // base code was picked here but never showed up as applied anywhere
+  // else in the app.
+  const handleCloseAttempt = () => {
+    if (isDirty && !window.confirm('You have unsaved code changes. Discard them and close without saving?')) {
+      return;
+    }
+    onClose();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setFocused(f => Math.min(f + 1, results.length - 1)); }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setFocused(f => Math.max(f - 1, 0)); }
     if (e.key === 'Enter' && focused >= 0 && results[focused]) addCode(results[focused]);
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') handleCloseAttempt();
   };
 
   // ── Pending counts for footer ─────────────────────────────────────────────
@@ -548,20 +718,82 @@ Rules:
           </span>
         )}
         <span className={`fm-flag-chip-name${entry.pendingDelete ? ' strikethrough' : ''}`}>
-          <span className="acd-code-mono">{entry.code}</span>
+          <span className="acd-code-mono" title={`${entry.code} — ${entry.display}`}>{entry.code}</span>
           {entry.display}
         </span>
         {entry.pendingDelete ? (
-          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.code, entry.specimenIndex)} title="Undo removal">
+          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title="Undo removal">
             <IcoUndo />
           </button>
         ) : (
-          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.code, entry.specimenIndex)} title="Remove code">
+          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title="Remove code">
             <IcoTrash />
           </button>
         )}
       </div>
     );
+  };
+
+  // Real feature, per direct feedback ("if an IHC interp was done on 4
+  // slides, they have to enter the code 4 times?" / "use the same
+  // display approach ... used in the Billing review pane"): when the
+  // same real code has more than one genuine instance for this
+  // specimen (e.g. a real, repeated ancillary procedure), shows them
+  // as one compact row - the description once, then each instance's
+  // code comma-separated with its own "code — definition" tooltip,
+  // matching BillingReviewPanel.tsx's own stain/block row treatment
+  // exactly, rather than N redundant, full-size chips each repeating
+  // the same description text. A single instance (the common case)
+  // still renders as the existing, full CodeChip - drag-and-drop and
+  // the right-click context menu stay exactly as they were.
+  const GroupedCodeRow: React.FC<{ entries: PendingCode[] }> = ({ entries }) => {
+    const first = entries[0];
+    return (
+      <div className="fm-flag-chip" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{first.display}</span>
+        <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+          {entries.map((entry, i) => (
+            <span key={entry.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+              {i > 0 && <span style={{ color: '#64748b' }}>,</span>}
+              <span
+                className={`acd-code-mono${entry.pendingDelete ? ' strikethrough' : ''}`}
+                title={`${entry.code} — ${entry.display}`}
+              >
+                {entry.code}
+              </span>
+              {entry.pendingDelete ? (
+                <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title="Undo removal">
+                  <IcoUndo />
+                </button>
+              ) : (
+                <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title="Remove this instance">
+                  <IcoTrash />
+                </button>
+              )}
+            </span>
+          ))}
+        </span>
+      </div>
+    );
+  };
+
+  // Groups a specimen's (or the case level's) own applied entries by
+  // real code value, preserving first-seen order - a group of one
+  // renders as the existing, full CodeChip; a group of several
+  // renders compactly via GroupedCodeRow above.
+  const renderAppliedGroups = (entries: PendingCode[]) => {
+    const order: string[] = [];
+    const groups = new Map<string, PendingCode[]>();
+    entries.forEach(e => {
+      if (!groups.has(e.code)) { groups.set(e.code, []); order.push(e.code); }
+      groups.get(e.code)!.push(e);
+    });
+    return order.map(code => {
+      const group = groups.get(code)!;
+      return group.length > 1
+        ? <GroupedCodeRow key={code} entries={group} />
+        : <CodeChip key={group[0].id} entry={group[0]} />;
+    });
   };
 
   // ── Drop target wrapper ───────────────────────────────────────────────────
@@ -673,7 +905,7 @@ Rules:
               )}
             </div>
           </div>
-          <button className="acd-close-btn" aria-label="Close" onClick={onClose}
+          <button className="acd-close-btn" aria-label="Close" onClick={handleCloseAttempt}
             onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
           >✕</button>
@@ -702,7 +934,7 @@ Rules:
                   <span className="fm-count-badge">{activeCaseApplied.length}</span>
                 )}
               </button>
-              {caseApplied.map(entry => <CodeChip key={`case-${entry.code}`} entry={entry} />)}
+              {renderAppliedGroups(caseApplied)}
               {caseApplied.length === 0 && (
                 <div className="fm-no-flags-note">No case-level codes</div>
               )}
@@ -728,7 +960,7 @@ Rules:
                       <span className="fm-count-badge">{activeCount}</span>
                     )}
                   </button>
-                  {spApplied.map(entry => <CodeChip key={`sp${sp.index}-${entry.code}`} entry={entry} />)}
+                  {renderAppliedGroups(spApplied)}
                   {spApplied.length === 0 && (
                     <div className="fm-no-flags-note">No codes applied — drag here or click row to add</div>
                   )}
@@ -777,31 +1009,26 @@ Rules:
                   <span>✦</span>
                   <span className="acd-ai-panel-label">AI Suggested Codes — review and apply</span>
                   <span className="acd-ai-panel-count">
-                    {aiSuggestions
-                      .filter((s, i, a) => a.findIndex(x => x.code === s.code) === i)
-                      .filter(s => !existingCodes.some(ec => ec.code === s.code && ec.system === s.system))
-                      .length} suggestions
+                    {visibleSuggestions.length} suggestions
                   </span>
                   <span style={{ fontSize: 14, transition: 'transform 0.2s', transform: aiPanelCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 </div>
-                {!aiPanelCollapsed && aiSuggestions
-                  .filter((sug, idx, arr) => arr.findIndex(s => s.code === sug.code) === idx)
-                  .filter(sug => !existingCodes.some(ec => ec.code === sug.code && ec.system === sug.system))
+                {!aiPanelCollapsed && visibleSuggestions
                   .map((sug) => {
-                  const isActive = applied.some(c => c.code === sug.code && !c.pendingDelete);
+                  const activeCount = applied.filter(c => c.code === sug.code && c.specimenIndex === target && !c.pendingDelete).length;
                   return (
                     <div
                       key={sug.code}
-                      onClick={() => !isActive && addCode({ code: sug.code, display: sug.display, system: sug.system })}
+                      onClick={() => addCode({ code: sug.code, display: sug.display, system: sug.system })}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', cursor: isActive ? 'default' : 'pointer',
-                        background: isActive ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)',
+                        padding: '10px 14px', cursor: 'pointer',
+                        background: activeCount > 0 ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)',
                         borderTop: '1px solid rgba(255,255,255,0.05)',
                         transition: 'background 0.15s',
                       }}
-                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(8,145,178,0.08)'; }}
-                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.08)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = activeCount > 0 ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)')}
                     >
                       <span className="acd-code-badge">
                         {sug.code}
@@ -809,7 +1036,15 @@ Rules:
                       <span className="acd-system-badge">
                         {sug.system}
                       </span>
-                      <span style={{ flex: 1, fontSize: 13, color: isActive ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {sug.system === 'CPT' && (
+                        <span
+                          style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: 'rgba(251,191,36,0.12)', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }}
+                          title="Rough RVU estimate only, not a precision billing determination — your LIS owns real billing for this case"
+                        >
+                          Estimate
+                        </span>
+                      )}
+                      <span style={{ flex: 1, fontSize: 13, color: activeCount > 0 ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {sug.display}
                       </span>
                       <span style={{ fontSize: 12, color: sug.confidence >= 85 ? '#34d399' : '#fbbf24', fontWeight: 700, flexShrink: 0 }}>
@@ -820,8 +1055,8 @@ Rules:
                           {sug.rvu} RVU
                         </span>
                       )}
-                      {isActive ? (
-                        <span className="acd-added-check">✓</span>
+                      {activeCount > 0 ? (
+                        <span className="acd-added-check" title={`Applied ${activeCount}× — click to add another instance`}>✓ ×{activeCount}</span>
                       ) : (
                         <span className="acd-add-btn" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                       )}
@@ -841,7 +1076,7 @@ Rules:
                     background: system === s.id ? s.accent : 'rgba(255,255,255,0.06)',
                     color: system === s.id ? 'white' : '#94a3b8',
                   }}
-                >{s.label}</button>
+                >{s.id === 'CPT' ? (isOrchestrationMode ? 'Billing Code' : 'CPT (RVU)') : s.label}</button>
               ))}
             </div>
 
@@ -870,6 +1105,21 @@ Rules:
               </strong>
               <span className="acd-hint-muted">— click a row on the left to change</span>
             </div>
+
+            {/* Real, honest note, per direct requirement: "the
+                Pathologist has the right to update all billing, even
+                those that are deterministic ... LIS will handle the
+                billing in assist mode" alongside the real, separate
+                follow-up on keeping RVU tracking useful. Only shown on
+                the CPT tab, only in assist mode - never hidden, since
+                the code itself still needs to be added for RVU
+                tracking to work, just honestly labeled as not a real
+                charge here. */}
+            {system === 'CPT' && !isOrchestrationMode && (
+              <div className="acd-hint-text" style={{ color: '#fbbf24', marginTop: -4, marginBottom: 8 }}>
+                ⓘ Assist mode: this records a CPT code for RVU/productivity tracking only — your LIS owns real billing for this case.
+              </div>
+            )}
 
             {/* Search */}
             <div className="fm-search-wrap acd-search-mb">
@@ -906,6 +1156,12 @@ Rules:
                      'ICD-O search requires backend proxy — coming soon'}
                   </div>
                 </div>
+              ) : searchError ? (
+                <div className="fm-empty">
+                  <IcoSearch />
+                  <div className="fm-empty-heading" style={{ color: '#f59e0b' }}>Search unavailable</div>
+                  <div className="fm-empty-hint">{searchError}</div>
+                </div>
               ) : results.length === 0 ? (
                 <div className="fm-empty">
                   <IcoSearch />
@@ -913,24 +1169,24 @@ Rules:
                   <div className="fm-empty-hint">Try a different term or switch filters</div>
                 </div>
               ) : results.map((r, i) => {
-                const isActive = applied.some(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete);
+                const activeCount = applied.filter(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete).length;
                 const isFocus  = focused === i;
                 return (
                   <div
                     key={r.code}
-                    className={`fm-flag-card${isActive ? ' applied' : ''}`}
-                    style={{ background: isFocus && !isActive ? 'rgba(255,255,255,0.05)' : undefined }}
+                    className={`fm-flag-card${activeCount > 0 ? ' applied' : ''}`}
+                    style={{ background: isFocus && activeCount === 0 ? 'rgba(255,255,255,0.05)' : undefined }}
                     onMouseEnter={() => setFocused(i)}
-                    onClick={() => !isActive && addCode(r)}
+                    onClick={() => addCode(r)}
                   >
-                    <span className={`fm-code-chip${isActive ? ' applied' : ''}`} style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                    <span className={`fm-code-chip${activeCount > 0 ? ' applied' : ''}`} style={{ fontFamily: 'monospace', fontSize: 11 }}>
                       {r.code}
                     </span>
-                    <span style={{ fontSize: 13, color: isActive ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, color: activeCount > 0 ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.display}
                     </span>
-                    {isActive ? (
-                      <span className="acd-added-text">✓ Applied</span>
+                    {activeCount > 0 ? (
+                      <span className="acd-added-text" title={`Applied ${activeCount}× — click to add another instance`}>✓ Applied ×{activeCount}</span>
                     ) : (
                       <span className="fm-apply-btn acd-apply-btn-right" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                     )}
@@ -955,7 +1211,7 @@ Rules:
             }
           </span>
           <div className="acd-footer-row">
-            <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
+            <button className="fm-btn-cancel" onClick={handleCloseAttempt}>Cancel</button>
             <button
               className="fm-btn-save"
               disabled={saving || !isDirty}

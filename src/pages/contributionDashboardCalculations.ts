@@ -225,11 +225,12 @@ export function computeOrgWideTatPerformance(
 
 import { computeWorkRvuForCodes, ruleBasedDefaultCptCodes, resolveSpecimenDictionaryBaseCptCode, type SpecimenEntryForCptResolution, CODE_MAP_TABLE } from '../services/billing/codeMapTable';
 import { resolveVersionEffectiveAt, type RvuTableVersion } from '../services/billing/RvuTableVersion';
+import type { AppliedBlockCode } from '@/types/case/Specimen';
 
 export interface SpecimenForRvuCalc {
   id: string;
   coding?: { cpt?: string[] };
-  blocks?: { coding?: { cpt?: string[] } }[];
+  blocks?: { coding?: { cpt?: AppliedBlockCode[] } }[];
   specimenDictionaryEntryId?: string;
 }
 
@@ -265,7 +266,7 @@ function realWorkRvuForCase(c: CaseForRvuCalc, versions: RvuTableVersion[], dict
 
     for (const block of sp.blocks ?? []) {
       if (block.coding?.cpt && block.coding.cpt.length > 0) {
-        total += computeWorkRvuForCodes(block.coding.cpt, entries).totalWorkRvu;
+        total += computeWorkRvuForCodes(block.coding.cpt.map(c => c.code), entries).totalWorkRvu;
       }
     }
   }

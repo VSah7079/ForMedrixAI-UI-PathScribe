@@ -4,7 +4,7 @@ import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
 
 function makeVersion(over: Partial<BillingRuleVersion> = {}): BillingRuleVersion {
   return {
-    billingCode: 'IHC-FIRST', version: 1,
+    billingCode: 'IHC-FIRST', level: 'specimen', billingType: 'Global', version: 1,
     effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE',
     cpt: '88342', rvuWork: 0.68,
     createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system',

@@ -59,7 +59,24 @@
 // metadata for a human or a downstream RCM system to act on.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type BillingRuleStatus = 'ACTIVE' | 'RETIRED';
+// Real, per direct guidance's own Four-Eyes Principle (dual control)
+// requirement: a real billing rule change - which directly determines
+// what gets charged - previously went live immediately on save, with
+// no second-person review at all. approvedBy existed as a form field,
+// but was purely decorative free text; nothing enforced it, and the
+// person creating a version could type their own name into it.
+//
+// DRAFT: created, still editable by its own author, not yet visible
+// to anyone else, never resolvable by resolveBillingRuleAt.
+// PENDING_APPROVAL: submitted for review - locked from further edits
+// by its own author, awaiting a real, different user's decision.
+// ACTIVE: approved by a real, different user - now genuinely live.
+// REJECTED: reviewed and declined by a real, different user - a
+// terminal state; the original drafter creates a fresh draft to try
+// again rather than editing a rejected one back to life.
+// RETIRED: unchanged from before - a real, formerly-ACTIVE rule
+// superseded by a newer, since-approved version.
+export type BillingRuleStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'ACTIVE' | 'REJECTED' | 'RETIRED';
 
 export interface BillingRuleVersion {
   /** Real, two-tier scoping - see this file's own header. Undefined
@@ -103,6 +120,31 @@ export interface BillingRuleVersion {
    *  window, not inferred from it. */
   status: BillingRuleStatus;
 
+  /** Real, per direct guidance: at what hierarchy level this charge
+   *  attaches - a specimen's own primary diagnostic work, a block's
+   *  own processing/preparation, a specific stain's own
+   *  staining/analytical procedure, or a decanted fluid/slide's own
+   *  work. Deliberately distinct from billingType below - explicit,
+   *  direct confirmation that merging the two would cause real
+   *  execution bugs in the Charge Event Engine, since granularity and
+   *  billing component type govern completely different operational
+   *  lifecycle rules. Drives UI badge grouping, tree rendering, and
+   *  specimen-container vs. slide-level charge binding - matches
+   *  BillingDictionaryEntry.level's own real values exactly
+   *  (codeMapTable.ts), this dictionary's own equivalent concept. */
+  level: 'specimen' | 'block' | 'stain' | 'decant';
+  /** Real, required per Epic: PathScribe Outbound Billing & Charge
+   *  Event Engine, User Story 1 - which real-world biller performs
+   *  the billable work this code represents, and therefore when its
+   *  charge actually releases. 'TC' (technical component) releases
+   *  immediately upon specimen grossing/lab completion; '26'
+   *  (professional component) and 'Global' (combined TC+26) hold
+   *  until final pathologist signout. Drives Story 1's real trigger
+   *  logic directly - see BILLING_TYPE_DEFAULT_TRIGGER
+   *  (codeMapTable.ts) for the real event mapping this uses. Matches
+   *  BillingDictionaryEntry.billingType's own values exactly. */
+  billingType: 'TC' | '26' | 'Global';
+
   cpt: string;
   /** Real, human-readable CPT description (e.g. "Immunohistochemistry,
    *  first single antibody stain") - deliberately separate from
@@ -139,6 +181,20 @@ export interface BillingRuleVersion {
    *  completeness counter - see ServiceChargeRecord.ts's own header
    *  for why (that pipeline has a real, already-disclosed gap). */
   documentationRequirements?: string[];
+  /** Real, per direct guidance's own follow-up - whether a real coder
+   *  has confirmed this billingCode appears on CMS's own, official,
+   *  quarterly-updated list of laboratory tests subject to the 42 CFR
+   *  414.510(b)(5) DOS exception (molecular pathology tests performed
+   *  by a lab that is not a blood bank/center, ADLTs, certain
+   *  cancer-related protein-based MAAAs, and CPT 81490 - see
+   *  resolveBillingDateOfService.ts's own header for the full rule).
+   *  This app has no real, live way to fetch or parse that official
+   *  list itself - same "the lab's own AMA/CMS-list access covers
+   *  this, this app never fabricates the mapping" posture as
+   *  defaultBaseCptCode elsewhere in this codebase. Undefined/false
+   *  means not confirmed eligible - the (b)(5) exception advisory
+   *  never fires for this code until a real coder sets this true. */
+  dosExceptionEligible?: boolean;
   /** Informational/advisory only, per direct, explicit confirmation:
    *  PathScribe never auto-suppresses a real charge - this field
    *  exists so a real, local reason a charge might not actually be
@@ -173,9 +229,23 @@ export interface BillingRuleVersion {
    *  migration seed - a real rule change always needs a real reason on
    *  record, per direct guidance. */
   changeReason?: string;
-  /** Real approver, distinct from createdBy - per direct guidance's
-   *  own governance rule. Optional at the type level since the
-   *  initial migration seed (version 1 for existing behavior) has no
-   *  real separate approval step behind it. */
-  approvedBy?: string;
+  /** Real, per direct guidance's own Four-Eyes Principle (dual
+   *  control) requirement - when a DRAFT was genuinely submitted for
+   *  review (mockBillingRuleService.submitForApproval), moving it to
+   *  PENDING_APPROVAL. Undefined for a version still in DRAFT, or for
+   *  the real, initial migration seed (version 1 for existing
+   *  behavior, which predates this workflow entirely). */
+  submittedForApprovalBy?: string;
+  submittedForApprovalAt?: string;
+  /** Real, per direct guidance's own Four-Eyes Principle - who
+   *  actually approved or rejected this version (approveVersion /
+   *  rejectVersion), and when. Service-enforced to never equal
+   *  createdBy or submittedForApprovalBy - see those methods' own doc
+   *  comments for the full reasoning. Undefined until a real decision
+   *  has actually been made. */
+  reviewedBy?: string;
+  reviewedAt?: string;
+  /** Required when status is REJECTED - a real decline always needs a
+   *  real reason on record, same posture as changeReason above. */
+  rejectionReason?: string;
 }

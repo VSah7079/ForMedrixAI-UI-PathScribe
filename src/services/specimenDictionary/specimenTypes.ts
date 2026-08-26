@@ -39,6 +39,34 @@ export interface SpecimenEntry {
    */
   defaultBaseCptCode?: string;
   /**
+   * Real, per direct guidance's own detailed spec ("Default Assignment
+   * (Smart Preset): when a specimen is accessioned or selected from
+   * the dictionary... default complexity and its initial CPT code
+   * based on the dictionary template"). What this specimen type
+   * normally is - e.g. "Gallbladder - Calculous" defaults to
+   * GROSS_ONLY, "Colon resection" defaults to GROSS_AND_MICRO. Copied
+   * onto the real Specimen.complexity when this entry is selected,
+   * then freely overridable per specimen - this dictionary default
+   * never changes because one specific case's specimen was declared
+   * differently.
+   */
+  defaultComplexity?: import('@/types/case/Specimen').SpecimenComplexity;
+  /**
+   * Real, per direct guidance: only meaningful when defaultComplexity
+   * is GROSS_ONLY. The real, specimen-type-specific CPT code
+   * (88302-88309) to use if a pathologist overrides this specimen's
+   * own complexity up to GROSS_AND_MICRO. Same "the lab's own AMA
+   * license covers this, this app never fabricates the mapping"
+   * posture as defaultBaseCptCode above - genuinely different
+   * specimen types warrant genuinely different micro-level codes, and
+   * this app has no honest way to guess which one applies without a
+   * real coder configuring it here. Undefined means no real coder has
+   * set one yet - an upgrade to GROSS_AND_MICRO with no code
+   * configured here honestly clears the suggested base code for
+   * manual review rather than guessing.
+   */
+  microUpgradeBaseCptCode?: string;
+  /**
    * When true, this specimen type requires processing.processedAt (the
    * fixative-added timestamp — cold ischemia time = collection to
    * fixation gap, tracked per CAP/ASCO biomarker guidance, e.g. breast

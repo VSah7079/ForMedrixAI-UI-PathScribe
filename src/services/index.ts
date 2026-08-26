@@ -10,6 +10,7 @@ export { mockContainerTypeService as containerTypeService } from './containerTyp
 export { mockIntraoperativeService as intraoperativeService } from './intraop/mockIntraoperativeService';
 export { mockReconciliationService as reconciliationService } from './quality/mockReconciliationService';
 export { mockAmendmentService as amendmentService } from './reports/mockAmendmentService';
+export { mockCriticalResultNotificationService as criticalResultNotificationService } from './clinical/mockCriticalResultNotificationService';
 export { mockReportVersionService as reportVersionService } from './reports/mockReportVersionService';
 export { mockLisAmendmentNoticeService as lisAmendmentNoticeService } from './reports/mockLisAmendmentNoticeService';
 export { mockInformalReviewService as informalReviewService } from './reports/mockInformalReviewService';

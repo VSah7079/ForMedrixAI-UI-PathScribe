@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -156,6 +156,40 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const navigate = useNavigate();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [claimOpen,  setClaimOpen]  = useState(false);
+
+  // Real fix, per direct report: at a narrow enough effective viewport
+  // (the fixed-width right-hand action cluster forcing this scrollable
+  // left group to shrink well below what its own content needs),
+  // History/Flags/Codes could become entirely invisible with only the
+  // existing 28px fade gradient as a cue — not discoverable enough on
+  // its own, confirmed by direct reproduction. Real, visible, clickable
+  // scroll arrows only render when genuinely needed (real overflow
+  // present), never as permanent visual clutter on a normal-width
+  // screen where everything already fits.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const updateScrollState = () => {
+      setCanScrollLeft(el.scrollLeft > 2);
+      setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+    };
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  const scrollBar = (direction: 'left' | 'right') => {
+    scrollRef.current?.scrollBy({ left: direction === 'left' ? -160 : 160, behavior: 'smooth' });
+  };
   const [emrOpen,    setEmrOpen]    = useState(false);
   const { openCompanion, closeCompanion: _closeCompanion, isWindowOpen: isEmrWindowOpen } = useCompanionWindow({
     // _closeCompanion unused — openCompanion/isEmrWindowOpen are both
@@ -268,25 +302,50 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, gap: '6px',
       overflow: 'visible', position: 'relative', zIndex: 200,
     }}>
-      <div className="ps-bottombar-scroll" style={{ display: 'flex', gap: '4px', alignItems: 'center', overflowX: 'auto', flexShrink: 1, minWidth: 0, padding: '10px 2px' }}>
-        <ActionButton onClick={onPreviousCase} variant="outline" color="#94a3b8" title="Previous case">← Previous</ActionButton>
-        <ActionButton onClick={onNextCase} variant="outline" color="#94a3b8" title="Next case">Next →</ActionButton>
-        <Divider />
-        
-        {/* LAUNCH EMR BUTTON */}
-        <ActionButton onClick={handleLaunchEMR} variant="outline" color="#0ea5e9" title="Open Patient Record in EMR Sidecar">
-          🌐 Launch EMR
-        </ActionButton>
+      <div className="ps-bottombar-scroll-wrapper">
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollBar('left')}
+            aria-label="Scroll left for more actions"
+            className="ps-bottombar-scroll-arrow ps-bottombar-scroll-arrow--left"
+          >
+            ‹
+          </button>
+        )}
+        <div ref={scrollRef} className="ps-bottombar-scroll">
+          <ActionButton onClick={onPreviousCase} variant="outline" color="#94a3b8" title="Previous case">← Prev</ActionButton>
+          <ActionButton onClick={onNextCase} variant="outline" color="#94a3b8" title="Next case">Next →</ActionButton>
+          <Divider />
+          
+          {/* LAUNCH EMR BUTTON */}
+          <ActionButton onClick={handleLaunchEMR} variant="outline" color="#0ea5e9" title="Open Patient Record in EMR Sidecar">
+            🌐 EMR
+          </ActionButton>
 
-        {/* Hide delegate/review/flags/codes for pool cases — not yet assigned */}
-        {!isPool && <>
-          <ActionButton onClick={() => onDelegate?.()} variant="outline" color="#a78bfa" title="Delegate case">👥 Delegate</ActionButton>
-          <ActionButton onClick={() => onTeam?.()} variant="outline" color="#0891B2" title="Manage case team">👤 Team</ActionButton>
-          <ActionButton onClick={() => setReviewOpen(true)} variant="outline" color="#a78bfa" title="Request informal peer review">🔍 Request Review</ActionButton>
-          <ActionButton onClick={() => onHistory?.()} variant="outline" color="#0891B2">📋 History</ActionButton>
-          <ActionButton onClick={() => onFlags?.()} variant="outline" color="#f59e0b">🚩 Flags</ActionButton>
-          <ActionButton onClick={() => onCodes?.()} variant="outline" color={codesColor}># Codes</ActionButton>
-        </>}
+          {/* Hide delegate/review/flags/codes for pool cases — not yet assigned */}
+          {!isPool && <>
+            <ActionButton onClick={() => onDelegate?.()} variant="outline" color="#a78bfa" title="Delegate case">👥 Delegate</ActionButton>
+            <ActionButton onClick={() => onTeam?.()} variant="outline" color="#0891B2" title="Manage case team">👤 Team</ActionButton>
+            <ActionButton onClick={() => setReviewOpen(true)} variant="outline" color="#a78bfa" title="Request informal peer review">🔍 Req. Review</ActionButton>
+            <ActionButton onClick={() => onHistory?.()} variant="outline" color="#0891B2">📋 History</ActionButton>
+            <ActionButton onClick={() => onFlags?.()} variant="outline" color="#f59e0b">🚩 Flags</ActionButton>
+            <ActionButton onClick={() => onCodes?.()} variant="outline" color={codesColor}># Codes</ActionButton>
+          </>}
+        </div>
+        {canScrollRight && (
+          <>
+            <div className="ps-bottombar-fade" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => scrollBar('right')}
+              aria-label="Scroll right for more actions"
+              className="ps-bottombar-scroll-arrow ps-bottombar-scroll-arrow--right"
+            >
+              ›
+            </button>
+          </>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
@@ -359,7 +418,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
                   </ActionButton>
                 ) : (
                   <ActionButton onClick={onGenerateReport} variant="outline" color="#38bdf8" title="Generate AI report draft from synoptic answers">
-                    ⚡ Generate Report
+                    ⚡ Gen. Report
                   </ActionButton>
                 )}
                 <Divider />

@@ -20,11 +20,13 @@
 // FieldLineageEntry records before the existing unlock/captureFields
 // flow proceeds unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import '../../../pathscribe.css';
 import type { NotificationMethod } from '@/types/reports/AmendmentRecord';
 import { physicianService } from '@/services';
 import type { Physician } from '@/services/physicians/IPhysicianService';
+import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
+import type { ReasonDictionaryEntry, ReasonDictionaryCategory } from '@/types/reasons/ReasonDictionaryEntry';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { getFacilityDateTimeParts } from '@/utils/facilityTime';
 import { initials, avatarColorClass, contactRowsFor } from '@/utils/physicianDisplay';
@@ -61,7 +63,7 @@ interface AmendmentModalProps {
   onModeChange: (mode: 'amendment' | 'correction' | 'addendum') => void;
   onTextChange: (value: string) => void;
   onClose: () => void;
-  onSubmit: (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string }) => void;
+  onSubmit: (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string; reasonId: string }) => void;
   /** Fired once, when the Delta step is confirmed — before the editor
    *  step opens. Empty object if no fields were overridden (baseline
    *  accepted as-is) or if the Delta step was skipped. */
@@ -115,6 +117,28 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
 }) => {
   const { config } = useSystemConfig();
   const [addendumTitle, setAddendumTitle] = useState('');
+  const [reasonId, setReasonId] = useState('');
+  const [reasonOptions, setReasonOptions] = useState<ReasonDictionaryEntry[]>([]);
+
+  // Real, per direct guidance's own detailed post-sign-out revision
+  // taxonomy - placed before the early `if (!show) return null` below,
+  // since hooks can't follow a conditional return. Computes category
+  // directly from the amendmentMode prop (not the derived isAmendment/
+  // isCorrection further down, which only exist after that early
+  // return). Resets the selection whenever the mode changes - a reason
+  // chosen under one category is never valid once the mode switches to
+  // a different one.
+  useEffect(() => {
+    setReasonId('');
+    const category: ReasonDictionaryCategory =
+      amendmentMode === 'amendment' ? 'AMENDMENT' : amendmentMode === 'correction' ? 'CORRECTION' : 'ADDENDUM';
+    let cancelled = false;
+    mockReasonDictionaryService.getAll(category).then(res => {
+      if (cancelled) return;
+      if (res.ok) setReasonOptions(res.data.filter(r => r.status === 'Active'));
+    });
+    return () => { cancelled = true; };
+  }, [amendmentMode]);
   const [clinicianName, setClinicianName] = useState('');
   const [physicianQuery, setPhysicianQuery] = useState('');
   const [filteredPhysicians, setFilteredPhysicians] = useState<Physician[]>([]);
@@ -229,10 +253,10 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
   const isUnlockFlow = isAmendment || isCorrection;
 
   const canSubmit = isAmendment
-    ? amendmentText.trim().length > 0 && clinicianName.trim().length > 0 && !!method
+    ? amendmentText.trim().length > 0 && clinicianName.trim().length > 0 && !!method && reasonId !== ''
     : isCorrection
-    ? amendmentText.trim().length > 0
-    : amendmentText.trim().length > 0 && addendumTitle.trim().length > 0;
+    ? amendmentText.trim().length > 0 && reasonId !== ''
+    : amendmentText.trim().length > 0 && addendumTitle.trim().length > 0 && reasonId !== '';
 
   const headerLabel = isAmendment ? 'AMENDED REPORT' : isCorrection ? 'CORRECTED REPORT' : `ADDENDUM ${sequenceNumber}`;
 
@@ -257,6 +281,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
       clinicianName: isAmendment ? clinicianName : undefined,
       method: isAmendment && method ? method : undefined,
       notifiedAt: isAmendment ? (notifiedAt || new Date().toISOString()) : undefined,
+      reasonId,
     });
   };
 
@@ -399,6 +424,21 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
                   placeholder="e.g. Addendum: Immunohistochemical Staining Results" />
               </div>
             )}
+
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="amendment-reason-select">
+                Reason <span className="ps-conf-required">*</span>
+              </label>
+              <select
+                id="amendment-reason-select"
+                className="ps-conf-select"
+                value={reasonId}
+                onChange={e => setReasonId(e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {reasonOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
 
             <textarea
               autoFocus

@@ -282,6 +282,8 @@ export const mockAmendmentService: IAmendmentService = {
       id: `amend-${Date.now().toString(36)}`,
       caseId: input.caseId,
       type: input.type,
+      reportInstanceId: input.reportInstanceId,
+      specimenId: input.specimenId,
       sequenceNumber: existing.length + 1,
       body: '',
       initiatedAt: new Date().toISOString(),
@@ -305,6 +307,14 @@ export const mockAmendmentService: IAmendmentService = {
         ? 'Correction requires an explanation of what was fixed and why.'
         : 'Amendment requires an explanation of what changed and why.');
     }
+    // Real, per direct guidance's own detailed post-sign-out revision
+    // taxonomy - required for every real AmendmentType, same hard-gate
+    // posture as explanationOfChange immediately above.
+    if (!fields.reasonId?.trim()) {
+      return err(record.type === 'correction'
+        ? 'Correction requires a reason code before the explanation.'
+        : 'Amendment requires a reason code before the explanation.');
+    }
     // Clinical Notification hard gate — 'amendment' only. A 'correction'
     // leaves the diagnosis untouched, so CAP's notification requirement
     // (aimed at changes affecting patient management/interpretation)
@@ -317,6 +327,7 @@ export const mockAmendmentService: IAmendmentService = {
     records[idx] = {
       ...record,
       explanationOfChange: fields.explanationOfChange.trim(),
+      reasonId: fields.reasonId.trim(),
       notification: fields.notification,
       // ROOT FIX: one-time capture, not overwrite-every-call. Page-level
       // state tracking "the true pre-edit baseline" (preOverrideSnapshot
@@ -346,6 +357,15 @@ export const mockAmendmentService: IAmendmentService = {
     if (record.type === 'addendum' && !fields.addendumTitle?.trim()) {
       return err('Addendum requires a title describing what it contains.');
     }
+    // Real, per direct guidance's own detailed post-sign-out revision
+    // taxonomy - required for every real AmendmentType. Addenda have
+    // no captureFields stage, so this is checked fresh here every
+    // time; amendment/correction use the same "already captured in
+    // Stage 1" fallback structure explanationOfChange already uses
+    // below.
+    if (record.type === 'addendum' && !fields.reasonId?.trim()) {
+      return err('Addendum requires a reason code describing what supplemental information is being added.');
+    }
     // Fallback gate for a direct release() call that skipped captureFields
     // (e.g. a same-step amendment/correction). Explanation is required for
     // both; the Clinical Notification hard gate stays amendment-only —
@@ -356,6 +376,11 @@ export const mockAmendmentService: IAmendmentService = {
           ? 'Correction requires an explanation of what was fixed and why.'
           : 'Amendment requires an explanation of what changed and why.');
       }
+      if (!fields.reasonId?.trim()) {
+        return err(record.type === 'correction'
+          ? 'Correction requires a reason code before the explanation.'
+          : 'Amendment requires a reason code before the explanation.');
+      }
       if (record.type === 'amendment' && (!fields.notification?.clinicianName?.trim() || !fields.notification?.method)) {
         return err('Amendment cannot be released without the Clinical Notification Log — who was notified and how.');
       }
@@ -365,6 +390,7 @@ export const mockAmendmentService: IAmendmentService = {
       ...record,
       addendumTitle: fields.addendumTitle?.trim() ?? record.addendumTitle,
       explanationOfChange: fields.explanationOfChange?.trim() ?? record.explanationOfChange,
+      reasonId: fields.reasonId?.trim() ?? record.reasonId,
       notification: fields.notification ?? record.notification,
       body: fields.body.trim(),
       releasedAt: new Date().toISOString(),

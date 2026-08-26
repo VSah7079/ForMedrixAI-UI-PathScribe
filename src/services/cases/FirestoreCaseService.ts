@@ -302,6 +302,27 @@ export const firestoreCaseService: ICaseService = {
           (c as any).accession?.fullAccession === params.accessionNo
         );
       }
+      if ((params as any)?.compFlagCodes?.length) {
+        // Real, per direct guidance's own follow-up: same real check
+        // (sf.lisCode === code || sf.id === code || sf.label === code)
+        // as caseFilterUtils.ts's own mock-path implementation -
+        // specimenFlags is an array of objects, and Firestore has no
+        // native way to query "does any array element's property X
+        // equal Y" without a separate, denormalized scalar index
+        // field this app's data model doesn't maintain. Applied here,
+        // same real "no index required but post-fetch" posture as the
+        // DOB/age range fallback above - inherits that same,
+        // already-documented pagination trade-off (hasMore/nextCursor
+        // reflect the pre-filter page), not a new limitation.
+        const codes = (params as any).compFlagCodes as string[];
+        results = results.filter(c =>
+          codes.some(code =>
+            ((c as any).specimenFlags ?? []).some((sf: any) =>
+              sf.lisCode === code || sf.id === code || sf.label === code
+            )
+          )
+        );
+      }
 
       return params?.pageSize
         ? { ok: true, data: results, meta: { hasMore, nextCursor } }

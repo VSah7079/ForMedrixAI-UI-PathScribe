@@ -131,6 +131,20 @@ export interface CaseFilterParams {
    * Matched with name-contains logic so partial selections still connect.
    */
   flagIds?: string[];
+  /**
+   * Real, per direct guidance's own follow-up: computational flag
+   * codes (Flag.tagClass === 'COMPUTATIONAL', a distinct category from
+   * the manually-assigned case flags flagIds already matches above),
+   * matched against a case's own real specimenFlags - true when ANY
+   * specimen flag's lisCode, id, or label equals ANY of the given
+   * codes. Previously applied client-side in SearchPage.tsx itself,
+   * after the real page had already been fetched - moved here so
+   * every real caller gets the same, correct, pre-pagination
+   * filtering (mockCaseService.ts applies this before
+   * applyCasePagination, same real pipeline order as every other
+   * filter field here).
+   */
+  compFlagCodes?: string[];
 
   // ── Submitting client ──────────────────────────────────────────────────────
   /** Real client ids from clientService.getAll(), matched against order.clientId */

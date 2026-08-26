@@ -110,6 +110,17 @@ export function useAmendmentWorkflow({
         body: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
       });
       const releasedAddendumType = addendumReleaseRes.ok ? addendumReleaseRes.data.type : 'addendum';
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability: found via direct check to have zero real audit
+      // trail anywhere in this flow - this is the actual, genuine
+      // release/transmission moment, not just a draft being opened.
+      log('amendment_released', {
+        caseId: caseData.id,
+        amendmentId: activeInstance.pendingAddendumId,
+        type: releasedAddendumType,
+        reportInstanceId: activeInstance.instanceId,
+        specimenId: activeInstance.specimenId,
+      });
       setCaseData(prev => prev ? {
         ...prev,
         lastRevisionType: releasedAddendumType,
@@ -150,6 +161,16 @@ export function useAmendmentWorkflow({
       // (Amended)/(Corrected) display label. Falls back to 'amendment'
       // only if the release call itself failed to return the record.
       const releasedRevisionType = amendmentReleaseRes.ok ? amendmentReleaseRes.data.type : 'amendment';
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability - same real gap, same fix, as the addendum path
+      // above.
+      log('amendment_released', {
+        caseId: caseData.id,
+        amendmentId: activeInstance.pendingAmendmentId,
+        type: releasedRevisionType,
+        reportInstanceId: activeInstance.instanceId,
+        specimenId: activeInstance.specimenId,
+      });
       setCaseData(prev => prev ? {
         ...prev,
         status: 'finalized' as CaseStatus,
@@ -203,7 +224,7 @@ export function useAmendmentWorkflow({
     }
 
     return releasedAmendmentId;
-  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict]);
+  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict, log]);
 
   const alertAdminsOfUnresolvedDrift = useCallback(async (caseId: string, count: number, outcome: string) => {
     try {
@@ -518,8 +539,33 @@ export function useAmendmentWorkflow({
     const res = await amendmentService.startDraft({
       caseId: caseData.id, type: mode,
       authoringPathologist: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+      // Real, per direct guidance's own follow-up on structured
+      // linkage: this exact context is already available right here,
+      // before any editing happens - see AmendmentRecord.reportInstanceId's
+      // own doc comment for the full reasoning.
+      reportInstanceId: activeReportInstanceId ?? undefined,
+      specimenId: (caseData.synopticReports ?? []).find((r: SynopticReportInstance) => r.instanceId === activeReportInstanceId)?.specimenId,
     });
-    if (res.ok) { setAmendmentDraftId(res.data.id); setAmendmentSequenceNumber(res.data.sequenceNumber); }
+    if (res.ok) {
+      setAmendmentDraftId(res.data.id); setAmendmentSequenceNumber(res.data.sequenceNumber);
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability: this app's own established "all must be
+      // audited" principle, found via direct check to have zero real
+      // audit trail anywhere in the amendment/addendum flow -
+      // startDraft, captureFields, and release all persisted real
+      // data with no corresponding audit log entry at all, despite
+      // this being one of the most compliance-critical actions in the
+      // app (CAP/RCPath accreditation, AmendmentRecord.ts's own
+      // header). Logs the real reportInstanceId/specimenId
+      // association captured above, not just that a draft opened.
+      log('amendment_draft_opened', {
+        caseId: caseData.id,
+        amendmentId: res.data.id,
+        type: mode,
+        reportInstanceId: res.data.reportInstanceId,
+        specimenId: res.data.specimenId,
+      });
+    }
 
     // Delta step needs the true pre-amendment baseline captured NOW,
     // before any field overrides get applied below — not re-cloned
@@ -546,7 +592,7 @@ export function useAmendmentWorkflow({
       await lisAmendmentNoticeService.updateStatus(pendingLisNotice.id, 'synoptic_amended');
       setPendingLisNotice(null);
     }
-  }, [caseData, signingUser, pendingLisNotice, setPendingLisNotice, activeReportInstanceId]);
+  }, [caseData, signingUser, pendingLisNotice, setPendingLisNotice, activeReportInstanceId, log]);
 
   const handleFieldOverridesConfirmed = useCallback(async (overrides: Record<string, FieldOverride>) => {
     if (!caseData || !activeReportInstanceId) return;
@@ -639,7 +685,7 @@ export function useAmendmentWorkflow({
     openAmendmentDraft('amendment');
   }, [caseData, activeReportInstanceId, openAmendmentDraft, setAmendmentMode, setAmendmentText, setShowAmendmentModal]);
 
-  const handleAmendmentSubmit = useCallback(async (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string }) => {
+  const handleAmendmentSubmit = useCallback(async (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string; reasonId: string }) => {
     if (!amendmentDraftId) return;
     const notification = fields.clinicianName && fields.method
       ? { clinicianName: fields.clinicianName, method: fields.method, notifiedAt: fields.notifiedAt ?? new Date().toISOString() }
@@ -678,6 +724,7 @@ export function useAmendmentWorkflow({
         explanationOfChange: fields.explanationOfChange ?? '',
         notification,
         originalReportSnapshot,
+        reasonId: fields.reasonId,
       });
       if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not proceed — check required fields.'); return; }
 
@@ -714,15 +761,29 @@ export function useAmendmentWorkflow({
       explanationOfChange: fields.explanationOfChange,
       notification,
       body: amendmentText,
+      reasonId: fields.reasonId,
     });
     if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not release — check required fields.'); return; }
+
+    // Real, per direct guidance's own follow-up on provenance &
+    // auditability - same real gap, same fix, as
+    // releasePendingAmendmentOrAddendum above. Uses the real,
+    // returned record's own reportInstanceId/specimenId (set at
+    // startDraft time), not re-derived here.
+    log('amendment_released', {
+      caseId: caseData?.id,
+      amendmentId: amendmentDraftId,
+      type: res.data.type,
+      reportInstanceId: res.data.reportInstanceId,
+      specimenId: res.data.specimenId,
+    });
 
     setAmendmentSubmitError(null);
     setShowAmendmentModal(false);
     setAmendmentDraftId(null);
     showToast(`${amendmentMode === 'addendum' ? 'Addendum' : 'Amendment'} released`);
     setAmendmentText('');
-  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict]);
+  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict, log]);
 
   return {
     releasePendingAmendmentOrAddendum,

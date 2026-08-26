@@ -9,9 +9,17 @@ import OrchestratorConfigSection from './OrchestratorConfigSection';
 // ── Role check helper ─────────────────────────────────────────
 // Reads from the same auth context used elsewhere in PathScribe.
 // Returns true if the current user has org-admin privileges.
+//
+// Real fix, per direct guidance's own PHI-warning follow-up: this
+// previously read 'pathscribe_current_user' - confirmed directly
+// that AuthContext.tsx's own real STORAGE_KEY is 'pathscribe-user',
+// a different key nothing else in the app ever writes to. isAdmin
+// was therefore always false for every real user, regardless of
+// their actual role - AiProviderSettings (and the PHI data-handling
+// warning it now carries) never rendered for anyone.
 function useIsAdmin(): boolean {
   try {
-    const raw  = localStorage.getItem('pathscribe_current_user');
+    const raw  = localStorage.getItem('pathscribe-user');
     const user = raw ? JSON.parse(raw) : null;
     return user?.role === 'admin' || user?.role === 'superadmin';
   } catch { return false; }

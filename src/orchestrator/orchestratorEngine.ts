@@ -130,8 +130,17 @@ function buildSectionPrompt(
     `Section instruction: ${sectionInstruction}`,
     '',
     '─── CASE CONTEXT ───',
-    `Patient:         ${context.patient.fullName}`,
-    `DOB:             ${context.patient.dateOfBirth}`,
+    // Real, per direct guidance's own priority follow-up on PHI
+    // minimization ("apply this to everything, not just the current
+    // piece"): patient full name and date of birth were previously
+    // sent here, in every real narrative-generation call, to
+    // whichever external LLM provider is configured - confirmed
+    // directly, not assumed. Removed entirely; this task (writing a
+    // pathology report section from specimen/gross/microscopic/
+    // synoptic findings) never genuinely needed to know who the
+    // patient is by name or when they were born. Sex is kept - it's
+    // clinically relevant to certain findings and not a direct
+    // identifier.
     `Sex:             ${context.patient.sex}`,
     `Accession:       ${context.accession.fullAccession}`,
     `Priority:        ${context.order.priority}`,

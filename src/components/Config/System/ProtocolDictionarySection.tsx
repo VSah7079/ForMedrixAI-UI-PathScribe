@@ -631,7 +631,7 @@ const ProtocolDictionarySection: React.FC = () => {
           <p>
             {importPreview.length} protocol{importPreview.length === 1 ? '' : 's'} parsed from the spreadsheet.
             {importUnmatchedStains.size > 0 && (
-              <> {importUnmatchedStains.size} stain name{importUnmatchedStains.size === 1 ? '' : 's'} didn't match the Stain Dictionary and were skipped: {[...importUnmatchedStains].join(', ')}.</>
+              <> {importUnmatchedStains.size} stain name{importUnmatchedStains.size === 1 ? '' : 's'} didn't match the Diagnostic Catalog and were skipped: {[...importUnmatchedStains].join(', ')}.</>
             )}
           </p>
           <button className="ps-conf-btn-primary" onClick={handleApplyProtocolImport}>Apply Import</button>

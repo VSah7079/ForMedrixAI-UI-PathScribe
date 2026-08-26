@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSignOutWorkflow } from '../useSignOutWorkflow';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
+import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
+import { mockCriticalResultNotificationService } from '@/services/clinical/mockCriticalResultNotificationService';
 import type { Case } from '@/types/case/Case';
 
 vi.mock('@/services/cases/CaseRouter', () => ({
@@ -38,6 +40,12 @@ vi.mock('@/services/communications/notificationService', () => ({
 }));
 vi.mock('@/services/templates/templateService', () => ({
   getTemplate: vi.fn().mockResolvedValue({ template: { sections: [] } }),
+}));
+vi.mock('@/services/clinical/detectCriticalFindings', () => ({
+  detectCriticalFindings: vi.fn().mockResolvedValue({ ok: true, data: { flags: [] } }),
+}));
+vi.mock('@/services/clinical/mockCriticalResultNotificationService', () => ({
+  mockCriticalResultNotificationService: { recordNotification: vi.fn().mockResolvedValue({ ok: true, data: {} }) },
 }));
 
 function makeTestCase(overrides: Partial<Case> = {}): Case {
@@ -417,6 +425,88 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
     const { result } = renderHook(() => useSignOutWorkflow(baseParams()));
     await act(async () => { await result.current.handleRequestFinalize(false); });
     expect(result.current.showPreFinalise).toBe(true);
+  });
+
+  it('blocks finalize and opens the critical findings modal when a real, detected \'critical\' severity finding is present', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+    });
+    const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+
+    expect(result.current.showPreFinalise).toBe(false);
+    expect(result.current.showCriticalFindingsModal).toBe(true);
+    expect(result.current.criticalFindings).toHaveLength(1);
+    expect(result.current.criticalFindings[0].term).toBe('invasive carcinoma');
+  });
+
+  it('does NOT block finalize when only an \'abnormal\' severity finding is detected - only \'critical\' soft-blocks', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'mild dysplasia', sourceField: 'microscopic', sourceQuote: 'mild dysplastic changes noted', severity: 'abnormal' }] },
+    });
+    const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Mild dysplastic changes noted.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+
+    expect(result.current.showPreFinalise).toBe(true);
+    expect(result.current.showCriticalFindingsModal).toBe(false);
+  });
+
+  it('does NOT block finalize when the case has no real diagnostic text at all', async () => {
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams()));
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    expect(result.current.showPreFinalise).toBe(true);
+    expect(detectCriticalFindings).not.toHaveBeenCalled();
+  });
+
+  it('handleAcknowledgeCriticalFindings dismisses the modal and marks this session\'s findings acknowledged - a second Finalize click no longer re-blocks on the same, unchanged findings', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValue({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+    });
+    const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    expect(result.current.showCriticalFindingsModal).toBe(true);
+
+    act(() => { result.current.handleAcknowledgeCriticalFindings(); });
+    expect(result.current.showCriticalFindingsModal).toBe(false);
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    expect(result.current.showPreFinalise).toBe(true);
+    expect(result.current.showCriticalFindingsModal).toBe(false);
+  });
+
+  it('handleRecordCriticalNotification records a real notification with every required field, then dismisses the modal', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    expect(result.current.showCriticalFindingsModal).toBe(true);
+
+    await act(async () => {
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', readBackConfirmed: true });
+    });
+
+    expect(mockCriticalResultNotificationService.recordNotification).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: 'TEST-CASE-CRITICAL',
+      trigger: 'critical_value',
+      clinicianName: 'Dr. Faulkner',
+      method: 'verbal_phone',
+      readBackConfirmed: true,
+      notifiedBy: { userId: 'PATH-001', userName: 'Dr. Test' },
+    }));
+    expect(result.current.showCriticalFindingsModal).toBe(false);
   });
 });
 

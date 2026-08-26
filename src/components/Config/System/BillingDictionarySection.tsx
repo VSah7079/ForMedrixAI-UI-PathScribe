@@ -54,15 +54,22 @@
 // enforcement anywhere.
 // ─────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
 import { mockBillingRuleService } from '@/services/billing/mockBillingRuleService';
 import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
+import { mockModifierDictionaryService } from '@/services/billing/mockModifierDictionaryService';
+import type { CptModifierEntry } from '@/services/billing/cptModifierDictionary';
+import { HCPCS_LEVEL_II_DICTIONARY } from '@/services/billing/hcpcsLevelIIDictionary';
+import type { HcpcsLevelIIEntry } from '@/services/billing/hcpcsLevelIIDictionary';
 import type { BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
+import { BILLING_TYPE_LABEL } from '@/services/billing/codeMapTable';
+import { CptCodeSearchPicker } from '@/components/Common/CptCodeSearchPicker';
 import { listAllSites } from '@/services/organisation/organisationService';
 import type { Site } from '@/services/organisation/organisationService';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { auditService } from '@/services';
 
 type NewVersionDraft = Omit<BillingRuleVersion, 'version' | 'createdAt' | 'status'> & { status?: BillingRuleVersion['status'] };
 
@@ -111,7 +118,7 @@ const EU_COUNTRIES: { code: string; name: string }[] = [
   { code: 'SE', name: 'Sweden' },
 ];
 
-function siteLabel(sites: Site[], siteId: string | undefined): string {
+export function siteLabel(sites: Site[], siteId: string | undefined): string {
   if (!siteId) return 'Enterprise-Wide';
   return sites.find(s => s.id === siteId)?.name ?? siteId;
 }
@@ -153,71 +160,10 @@ interface NewVersionModalProps {
 // search-dropdown mechanics, single-select instead of multi-chip
 // (a real billing rule has exactly one CPT code, not several).
 //
-// Real, per direct follow-up: "lets have just CPT code search" — this
-// is now the sole real field for the CPT code, not a separate search
-// box alongside a separate manual-entry input. A real, controlled
-// component: value/onChange carry the real, current CPT value
-// (supports typing a genuinely new code not yet in the dictionary —
-// never blocks manual entry), onSelect fires additionally when a real
-// dictionary match is picked, so the parent can also auto-fill
-// Description/RVU/HCPCS from that same real match.
-const CptCodeSearchPicker: React.FC<{
-  entries: BillingDictionaryEntry[];
-  value: string;
-  onChange: (value: string) => void;
-  onSelect: (entry: BillingDictionaryEntry) => void;
-  disabled?: boolean;
-  hasError?: boolean;
-}> = ({ entries, value, onChange, onSelect, disabled, hasError }) => {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  const matches = entries
-    .filter(e => {
-      const q = value.trim().toLowerCase();
-      return !q || e.code.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
-    })
-    .slice(0, 20);
-
-  return (
-    <div className="ps-protocol-stainselect ps-protocol-stainselect--no-margin" ref={wrapRef}>
-      <input
-        className={`ps-conf-input ${hasError ? 'ps-conf-input--error' : ''}`}
-        placeholder="e.g. 88342 — search by code or description"
-        value={value}
-        onFocus={() => setOpen(true)}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        disabled={disabled}
-      />
-      {open && matches.length > 0 && (
-        <div className="ps-protocol-stainselect-dropdown">
-          {matches.map(e => (
-            <div key={e.code} className="ps-protocol-stainselect-option ps-protocol-stainselect-option--code-col"
-              onMouseDown={() => { onSelect(e); setOpen(false); }}>
-              <span>{e.code}</span>
-              <span className="ps-protocol-stainselect-option-cat">
-                {e.description}{e.workRvu !== undefined ? ` · RVU ${e.workRvu}` : ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && value.trim() && matches.length === 0 && (
-        <div className="ps-protocol-stainselect-dropdown">
-          <div className="ps-protocol-stainselect-empty">No matching verified codes — this will be saved as entered.</div>
-        </div>
-      )}
-    </div>
-  );
-};
+// CptCodeSearchPicker extracted to components/Common/CptCodeSearchPicker.tsx,
+// per direct requirement - BillingReviewPanel.tsx's own new manual add-code
+// feature needed this same, real search UI. See that shared file's own
+// header for the full reasoning.
 
 const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, siteId, existingVersions, duplicateFrom, onSave, onClose }) => {
   const latest = existingVersions[existingVersions.length - 1];
@@ -241,6 +187,22 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
     });
   }, []);
 
+  // Real, per direct guidance's own follow-up: modifiersAllowed was
+  // free text despite a real, fixed CPT modifier dictionary genuinely
+  // existing (cptModifierDictionary.ts) - fetched once, read-only,
+  // same pattern as rvuEntries immediately above.
+  const [modifierEntries, setModifierEntries] = useState<CptModifierEntry[]>([]);
+  useEffect(() => {
+    mockModifierDictionaryService.getActiveVersion().then(res => {
+      if (res.ok && res.data) setModifierEntries(res.data.entries);
+    });
+  }, []);
+
+  // Real, per direct guidance's own "HCPCS Level II Pre-loading" best
+  // practice: unlike CPT/modifiers, HCPCS Level II is public domain -
+  // the real, verified dictionary (hcpcsLevelIIDictionary.ts) is
+  // embedded directly, no license or import step required.
+  const hcpcsEntries: HcpcsLevelIIEntry[] = HCPCS_LEVEL_II_DICTIONARY;
   // Real, per direct request: "why don't we tab this modal. But the
   // fields that include the 'below' text on the second tab." Splits
   // exactly at that real, existing explanatory paragraph's own
@@ -254,11 +216,13 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
   const [targetSiteId, setTargetSiteId] = useState(siteId ?? duplicateFrom?.siteId ?? '');
   const [cpt, setCpt] = useState(seed?.cpt ?? '');
   const [description, setDescription] = useState(seed?.description ?? '');
+  const [level, setLevel] = useState<BillingRuleVersion['level']>(seed?.level ?? duplicateFrom?.level ?? 'stain');
+  const [billingType, setBillingType] = useState<BillingRuleVersion['billingType']>(seed?.billingType ?? duplicateFrom?.billingType ?? 'Global');
   const [hcpcsCode, setHcpcsCode] = useState(seed?.hcpcsCode ?? '');
   const [rvuWork, setRvuWork] = useState(seed?.rvuWork?.toString() ?? '');
   const [rvuPe, setRvuPe] = useState(seed?.rvuPe?.toString() ?? '');
   const [rvuMp, setRvuMp] = useState(seed?.rvuMp?.toString() ?? '');
-  const [modifiersAllowed, setModifiersAllowed] = useState((seed?.modifiersAllowed ?? []).join(', '));
+  const [modifiersAllowed, setModifiersAllowed] = useState<string[]>(seed?.modifiersAllowed ?? []);
   const [quantityRules, setQuantityRules] = useState(seed?.quantityRules ?? '');
   const [bundlingRules, setBundlingRules] = useState(seed?.bundlingRules ?? '');
   const [documentationRequirements, setDocumentationRequirements] = useState((seed?.documentationRequirements ?? []).join(', '));
@@ -267,7 +231,6 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
   const [notes, setNotes] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [changeReason, setChangeReason] = useState('');
-  const [approvedBy, setApprovedBy] = useState('');
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
 
   const set = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setErrors({}); };
@@ -305,11 +268,13 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
       siteId: targetSiteId.trim() || undefined,
       cpt: cpt.trim(),
       description: description.trim() || undefined,
+      level,
+      billingType,
       hcpcsCode: hcpcsCode.trim() || undefined,
       rvuWork: rvuWork.trim() ? Number(rvuWork) : undefined,
       rvuPe: rvuPe.trim() ? Number(rvuPe) : undefined,
       rvuMp: rvuMp.trim() ? Number(rvuMp) : undefined,
-      modifiersAllowed: parseCommaList(modifiersAllowed),
+      modifiersAllowed: modifiersAllowed.length > 0 ? modifiersAllowed : undefined,
       quantityRules: quantityRules.trim() || undefined,
       bundlingRules: bundlingRules.trim() || undefined,
       documentationRequirements: parseCommaList(documentationRequirements),
@@ -319,7 +284,6 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
       effectiveFrom: new Date(effectiveFrom).toISOString(),
       effectiveTo: null,
       changeReason: changeReason.trim() || undefined,
-      approvedBy: approvedBy.trim() || undefined,
       createdBy: getSessionUser()?.id ?? 'admin',
     });
   };
@@ -413,7 +377,12 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
                 </div>
                 <div className="ps-conf-form-field">
                   <label className="ps-conf-label">HCPCS Code</label>
-                  <input className="ps-conf-input" value={hcpcsCode} onChange={e => setHcpcsCode(e.target.value)} placeholder="Optional" />
+                  <CptCodeSearchPicker
+                    entries={hcpcsEntries}
+                    value={hcpcsCode}
+                    onChange={setHcpcsCode}
+                    onSelect={entry => setHcpcsCode(entry.code)}
+                  />
                 </div>
               </div>
 
@@ -453,6 +422,32 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
 
               <div className="ps-conf-form-row--3">
                 <div className="ps-conf-form-field">
+                  <label className="ps-conf-label">Level <span className="ps-conf-required">*</span></label>
+                  <select className="ps-conf-input" value={level} onChange={e => setLevel(e.target.value as BillingRuleVersion['level'])}>
+                    <option value="specimen">Specimen — primary diagnostic work</option>
+                    <option value="block">Block — tissue processing &amp; preparation</option>
+                    <option value="stain">Stain — staining, recuts &amp; analytical procedures</option>
+                    <option value="decant">Decant — decanted fluid/slide work</option>
+                  </select>
+                </div>
+                <div className="ps-conf-form-field">
+                  <label className="ps-conf-label">
+                    Component Type <span className="ps-conf-required">*</span>{' '}
+                    <span
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1px solid #64748b', color: '#94a3b8', fontSize: 10, fontWeight: 700, cursor: 'help', verticalAlign: 'middle' }}
+                      title={`Which biller performs this work, and therefore when its charge releases: ${BILLING_TYPE_LABEL.TC} at specimen grossing complete, ${BILLING_TYPE_LABEL['26']}/${BILLING_TYPE_LABEL.Global} at case signout.`}
+                    >i</span>
+                  </label>
+                  <select className="ps-conf-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingRuleVersion['billingType'])}>
+                    <option value="TC">{BILLING_TYPE_LABEL.TC}</option>
+                    <option value="26">{BILLING_TYPE_LABEL['26']}</option>
+                    <option value="Global">{BILLING_TYPE_LABEL.Global}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="ps-conf-form-row--3">
+                <div className="ps-conf-form-field">
                   <label className="ps-conf-label">RVU — Work</label>
                   <input className="ps-conf-input" type="number" step="0.01" value={rvuWork} onChange={e => setRvuWork(e.target.value)}
                     placeholder="Blank if unverified" />
@@ -474,10 +469,6 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
                   <input className={`ps-conf-input ${errors.effectiveFrom ? 'ps-conf-input--error' : ''}`}
                     type="date" value={effectiveFrom} onChange={e => set(setEffectiveFrom)(e.target.value)} />
                   {errors.effectiveFrom && <span className="ps-conf-error-text">{errors.effectiveFrom}</span>}
-                </div>
-                <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">Approved By</label>
-                  <input className="ps-conf-input" value={approvedBy} onChange={e => setApprovedBy(e.target.value)} placeholder="Optional" />
                 </div>
                 {needsChangeReason && (
                   <div className="ps-conf-form-field">
@@ -509,8 +500,18 @@ const NewVersionModal: React.FC<NewVersionModalProps> = ({ sites, billingCode, s
               <div className="ps-conf-form-row--3">
                 <div className="ps-conf-form-field">
                   <label className="ps-conf-label">Modifiers Commonly Associated</label>
-                  <input className="ps-conf-input" value={modifiersAllowed} onChange={e => setModifiersAllowed(e.target.value)}
-                    placeholder="Comma-separated, e.g. 26, TC" />
+                  <div className="ps-conf-row-actions">
+                    {modifierEntries.map(m => (
+                      <label key={m.code} className="ps-conf-label" title={m.description}>
+                        <input
+                          type="checkbox"
+                          checked={modifiersAllowed.includes(m.code)}
+                          onChange={e => setModifiersAllowed(prev => e.target.checked ? [...prev, m.code] : prev.filter(c => c !== m.code))}
+                        />
+                        {' '}{m.code}
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="ps-conf-form-field">
                   <label className="ps-conf-label">Quantity Rule (descriptive)</label>
@@ -558,10 +559,14 @@ interface HistoryModalProps {
   versions: BillingRuleVersion[];
   onRetire: (version: number) => void;
   onDuplicate: (version: BillingRuleVersion) => void;
+  /** Real, per direct guidance's own Four-Eyes Principle requirement -
+   *  moves a real DRAFT to PENDING_APPROVAL. Only ever shown for a
+   *  version whose own status is genuinely DRAFT. */
+  onSubmitForApproval: (version: number) => void;
   onClose: () => void;
 }
 
-const HistoryModal: React.FC<HistoryModalProps> = ({ billingCode, siteId, sites, versions, onRetire, onDuplicate, onClose }) => {
+const HistoryModal: React.FC<HistoryModalProps> = ({ billingCode, siteId, sites, versions, onRetire, onDuplicate, onSubmitForApproval, onClose }) => {
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   return (
     <div className="ps-ms-overlay ps-ms-overlay--top-align">
@@ -596,6 +601,9 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ billingCode, siteId, sites,
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => onDuplicate(v)}>Duplicate</button>
+                      {v.status === 'DRAFT' && (
+                        <button className="ps-conf-btn-row" onClick={() => onSubmitForApproval(v.version)}>Submit for Approval</button>
+                      )}
                       {v.status === 'ACTIVE' && (
                         <button className="ps-conf-btn-row" onClick={() => onRetire(v.version)}>Retire</button>
                       )}
@@ -720,6 +728,27 @@ const BillingDictionarySection: React.FC = () => {
     refresh();
   };
 
+  // Real, per direct guidance's own Four-Eyes Principle requirement -
+  // moves a real DRAFT to PENDING_APPROVAL, placing it in a real,
+  // different reviewer's queue. Audited here (UI layer), matching the
+  // established pattern this app already uses for admin config
+  // actions elsewhere (OutboundChargeDlqSection.tsx,
+  // BillingTypeTriggerSection.tsx).
+  const handleSubmitForApproval = async (billingCode: string, version: number, siteId?: string) => {
+    const submittedBy = getSessionUser()?.id ?? 'unknown';
+    const res = await mockBillingRuleService.submitForApproval(billingCode, version, siteId, submittedBy);
+    if (res.ok === false) { setErrorMsg(res.error); return; }
+    auditService.logEvent({
+      type: 'user',
+      event: 'Billing rule submitted for approval',
+      detail: `${billingCode} v${version}${siteId ? ` (site ${siteId})` : ' (enterprise-wide)'} submitted for review`,
+      user: getSessionUser()?.firstName ? `${getSessionUser()?.firstName} ${getSessionUser()?.lastName ?? ''}`.trim() : submittedBy,
+      caseId: null,
+      confidence: null,
+    });
+    refresh();
+  };
+
   if (loading) return <div className="ps-conf-loading">Loading Billing Dictionary...</div>;
 
   return (
@@ -834,6 +863,7 @@ const BillingDictionarySection: React.FC = () => {
           versions={(byCodeAllScopes.get(historyFor.billingCode) ?? []).filter(v => (v.siteId ?? undefined) === (historyFor.siteId ?? undefined))}
           onRetire={version => handleRetire(historyFor.billingCode, version, historyFor.siteId)}
           onDuplicate={version => { setHistoryFor(null); setNewVersionState({ duplicateFrom: version, siteId: activeSiteId }); }}
+          onSubmitForApproval={version => handleSubmitForApproval(historyFor.billingCode, version, historyFor.siteId)}
           onClose={() => setHistoryFor(null)}
         />
       )}

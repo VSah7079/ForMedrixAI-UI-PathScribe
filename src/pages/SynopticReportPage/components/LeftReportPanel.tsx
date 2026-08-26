@@ -15,6 +15,18 @@ import { mockReportReleaseService } from '@/services/reportRelease/mockReportRel
 interface LeftReportPanelProps {
   caseData: Case | null;
   highlightText?: string;
+  /** Real, per direct requirement: a second, independent highlight path
+   *  for callers with a short, already-exact term to find (e.g. a
+   *  stain name like "PAS" from the billing review panel) - the real
+   *  highlightText/matchSourceText path above deliberately requires at
+   *  least a 3-word phrase, since it's built for AI-cited synoptic
+   *  answers where the exact wording is a genuine, meaningful
+   *  question. A stain name doesn't have that shape, and shouldn't be
+   *  run through the same shortening logic. When set (and highlightText
+   *  isn't), this is used directly - HighlightedText's own render
+   *  logic already does a plain, unrestricted substring search, so no
+   *  changes were needed there at all. */
+  rawHighlightText?: string;
   /** Fired once per highlightText change, reporting whether a real,
    *  verbatim match was actually found in the report text. Lets the
    *  right panel show an honest "source not found" indicator next to
@@ -60,7 +72,7 @@ const HighlightedText: React.FC<{
   );
 };
 
-const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightText, onMatchResolved, autoOpenNotes }) => {
+const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightText, rawHighlightText, onMatchResolved, autoOpenNotes }) => {
   const { user } = useAuth();
   const [notesOpen, setNotesOpen] = React.useState(!!autoOpenNotes);
   const [unreadNoteCount, setUnreadNoteCount] = React.useState(0);
@@ -169,7 +181,7 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
     [highlightText, caseData]
   );
 
-  const matchPhrase = matchResult.phrase;
+  const matchPhrase = rawHighlightText ?? matchResult.phrase;
 
   // Report whether the highlight actually resolved, once per
   // highlightText change — lets the right panel show an honest

@@ -12,7 +12,7 @@
 // HistologyBlock/StainOrder before that was caught; this component reuses
 // them directly rather than re-flattening its own copy.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MaterialTrackingHistoryModal from '../modals/MaterialTrackingHistoryModal';
 import GrossingReleasePanel from './GrossingReleasePanel';
 import { mockCassetteColorService } from '@/services/cassetteColors/mockCassetteColorService';
@@ -52,6 +52,13 @@ interface MaterialTreePanelProps {
    *  matching section here so switching specimens keeps the tree in
    *  sync rather than leaving the last-viewed selection stale. */
   activeSpecimenId?: string;
+  /** Real fix, per direct feedback on BillingReviewPanel: clicking a
+   *  specific AI billing suggestion is expected to highlight its real
+   *  source stain here, not just scroll to the specimen. Separate from
+   *  rawHighlightText (LeftReportPanel's own report-text search) -
+   *  this matches by real stain id, exact and unambiguous, not by
+   *  string search against prose. */
+  highlightedStainId?: string;
   /** Real fix, item #28: previously took no argument at all, so
    *  clicking any specific block opened the editor generically without
    *  telling it which block was actually clicked - the editor always
@@ -193,7 +200,7 @@ const DecantIcon: React.FC<{ label: string }> = ({ label }) => (
   </div>
 );
 
-const SlideChip: React.FC<{ level: string; stainName: string; status: string; onClick: () => void; displayId?: string; locationHistory?: MaterialLocation[] }> = ({ level, stainName, status, onClick, displayId, locationHistory }) => {
+const SlideChip: React.FC<{ level: string; stainName: string; status: string; onClick: () => void; displayId?: string; locationHistory?: MaterialLocation[]; isHighlighted?: boolean }> = ({ level, stainName, status, onClick, displayId, locationHistory, isHighlighted }) => {
   // 'Pending Cut' / 'Cut & Placed' / 'Staining' — the stain is real and
   // known, it just hasn't produced a finished, reviewable slide yet.
   // The dashed visual reflects that in-progress state; it never hides
@@ -208,8 +215,9 @@ const SlideChip: React.FC<{ level: string; stainName: string; status: string; on
       style={{ cursor: 'pointer' }}
     >
       <div style={{
-        background: notYetReady ? 'transparent' : 'rgba(212,83,126,0.15)',
-        border: notYetReady ? '0.5px dashed rgba(148,163,184,0.5)' : '0.5px solid rgba(148,163,184,0.3)',
+        background: isHighlighted ? 'rgba(34,211,238,0.18)' : notYetReady ? 'transparent' : 'rgba(212,83,126,0.15)',
+        border: isHighlighted ? '1.5px solid #22d3ee' : notYetReady ? '0.5px dashed rgba(148,163,184,0.5)' : '0.5px solid rgba(148,163,184,0.3)',
+        boxShadow: isHighlighted ? '0 0 0 2px rgba(34,211,238,0.25)' : undefined,
         borderRadius: 3, width: 68, height: 28, position: 'relative',
         display: 'flex', alignItems: 'stretch',
       }}>
@@ -263,8 +271,20 @@ const SlideChip: React.FC<{ level: string; stainName: string; status: string; on
   );
 };
 
-const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeSpecimenId, onOpenBlockEditor, onOpenMatrixBlockEditor, onAddSpecimen, onAddBlock, onUpdateBlock, onReleaseGrossingBlocks, onRemovePendingBlock, onAddDecant, onAssignBaseCode, onCreateBiopsyArray, onEditBiopsyArray, pendingCassetteVerification, isOrchestrationMode }) => {
+const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeSpecimenId, highlightedStainId, onOpenBlockEditor, onOpenMatrixBlockEditor, onAddSpecimen, onAddBlock, onUpdateBlock, onReleaseGrossingBlocks, onRemovePendingBlock, onAddDecant, onAssignBaseCode, onCreateBiopsyArray, onEditBiopsyArray, pendingCassetteVerification, isOrchestrationMode }) => {
   const [showTrackingHistory, setShowTrackingHistory] = useState(false);
+  // Real fix, per direct follow-up: "the highlighting in the Material
+  // tree isn't working - or its too subtle." Confirmed both were real:
+  // the highlight itself was strengthened above (isActiveSpecimen's own
+  // background/border/box-shadow), and this ref+effect actually
+  // scrolls the active specimen into view - previously, if it wasn't
+  // already visible in the panel's current scroll position (as
+  // happened in the exact screenshot that reported this), the highlight
+  // could be perfectly correct and still go completely unseen.
+  const activeSpecimenRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (activeSpecimenId) activeSpecimenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activeSpecimenId]);
   // Real feature, per direct follow-up: "Decant has no creation flow
   // at all." Tracks which specimen's own "add decant" menu is
   // currently open — a single, shared piece of state rather than one
@@ -369,11 +389,12 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
         const resolvedSpecimenId = resolveSpecimenDisplayId(fullAccession, sp);
 
         return (
-          <div key={sp.id} style={{
+          <div key={sp.id} ref={isActiveSpecimen ? activeSpecimenRef : undefined} style={{
             marginBottom: 28, marginLeft: -12, marginRight: -12, padding: '8px 12px', borderRadius: 8,
-            background: isActiveSpecimen ? 'rgba(8,145,178,0.08)' : 'transparent',
-            borderLeft: isActiveSpecimen ? '2px solid #0891B2' : '2px solid transparent',
-            transition: 'background 0.15s, border-color 0.15s',
+            background: isActiveSpecimen ? 'rgba(8,145,178,0.18)' : 'transparent',
+            borderLeft: isActiveSpecimen ? '3px solid #22d3ee' : '2px solid transparent',
+            boxShadow: isActiveSpecimen ? '0 0 0 1px rgba(34,211,238,0.25)' : 'none',
+            transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <ContainerIcon />
@@ -660,6 +681,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                         onClick={() => onOpenBlockEditor(block.id)}
                         displayId={resolveSlideDisplayId(fullAccession, sp.label, block.label, `L${i + 1}`, stain)}
                         locationHistory={stain.locationHistory}
+                        isHighlighted={!!highlightedStainId && stain.id === highlightedStainId}
                       />
                     ))}
                   </div>
@@ -735,6 +757,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       onClick={() => onOpenBlockEditor(decant.id)}
                       displayId={resolveDecantSlideDisplayId(fullAccession, sp.label, decant.label, `L${i + 1}`, stain)}
                       locationHistory={stain.locationHistory}
+                      isHighlighted={!!highlightedStainId && stain.id === highlightedStainId}
                     />
                   ))}
                 </div>

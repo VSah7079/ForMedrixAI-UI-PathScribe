@@ -51,6 +51,21 @@ import { intraoperativeService } from '@/services';
 import { amendmentService, reportVersionService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
+import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
+import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
+import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
+import { checkSignOutBillingDeficiencies } from '@/services/billing/checkSignOutBillingDeficiencies';
+import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
+import type { CriticalFindingFlag } from '@/services/clinical/detectCriticalFindings';
+import { mockCriticalResultNotificationService } from '@/services/clinical/mockCriticalResultNotificationService';
+import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
+import { shouldRandomlySampleForCodeReview } from '@/services/billing/shouldRandomlySampleForCodeReview';
+import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
+import { facilityService } from '@/services';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
+import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox';
+import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
+import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 import { sendEmail } from '@/services/communications/notificationService';
 import type { FixativeGateSpecimen } from '../modals/FixativeTimeGateModal';
 import { PreFinalisationModal, type SynopticForReview } from '../modals/PreFinalisationModal';
@@ -519,6 +534,96 @@ export function useSignOutWorkflow({
   const [showPreFinalise,   setShowPreFinalise]   = useState(false);
   const [preFinalSynoptics, setPreFinalSynoptics] = useState<SynopticForReview[]>([]);
 
+  // Real, per direct guidance's own PS-105 scope ("Sign-Out
+  // Guardrails" - soft block, not a hard block): a real, detected
+  // 'critical' severity finding must be acknowledged or recorded
+  // before finalize can proceed to PreFinalisationModal; an
+  // 'abnormal' finding is real but non-blocking, same posture as the
+  // existing billing-warning check just above. acknowledgedCritical
+  // is deliberately session-scoped (not per-finding) - once the
+  // pathologist has actually seen and acted on the real modal once,
+  // re-detecting the same, unchanged text on a second Finalize click
+  // would be pure friction, not a real safeguard.
+  const [criticalFindings,        setCriticalFindings]        = useState<CriticalFindingFlag[]>([]);
+  const [showCriticalFindingsModal, setShowCriticalFindingsModal] = useState(false);
+  const [acknowledgedCritical,    setAcknowledgedCritical]    = useState(false);
+
+  // Real, shared detection step for Trigger A (UNSUPPORTED_CPT_LEVEL)
+  // and Trigger B (NCCI_BUNDLING_VIOLATION) - read-only, never raises
+  // or persists anything itself. Two real callers: previewBillingWarnings
+  // (below, via handleRequestFinalize - the actual "pathologist
+  // attempts signature" moment, per Trigger A's own trigger event) and
+  // finalizeCase's own real, post-commit raise immediately below.
+  const fetchBillingDeficiencyFindings = useCallback(async () => {
+    if (!caseData?.id) return [];
+    const [chargesRes, ncciRes] = await Promise.all([
+      mockServiceChargeService.getChargesForCase(caseData.id),
+      mockNcciEditService.getAll(),
+    ]);
+    if (!chargesRes.ok || !ncciRes.ok) return [];
+    const specimens = (caseData.specimens ?? []).map((sp: Specimen) => ({
+      id: sp.id, label: sp.label, specimenDictionaryEntryId: sp.specimenDictionaryEntryId,
+    }));
+    return checkSignOutBillingDeficiencies(chargesRes.data, specimens, specimenDictionary, ncciRes.data);
+  }, [caseData, specimenDictionary]);
+
+  // Real, per direct guidance's own revised PS-105 scope: the actual
+  // "pathologist attempts electronic signature" detection moment for
+  // critical/abnormal narrative findings, same real trigger event as
+  // fetchBillingDeficiencyFindings above. Read-only - detects and
+  // returns real, structured flags; never records a notification or
+  // blocks anything itself. Deliberately scoped to narrative text
+  // only (gross/microscopic/ancillary), same real PHI-minimization
+  // boundary detectCriticalFindings' own signature already enforces.
+  const fetchCriticalFindings = useCallback(async (): Promise<CriticalFindingFlag[]> => {
+    if (!caseData?.diagnostic) return [];
+    const res = await detectCriticalFindings({
+      gross:       caseData.diagnostic.grossDescription ?? '',
+      microscopic: caseData.diagnostic.microscopicDescription ?? '',
+      ancillary:   caseData.diagnostic.ancillaryStudies ?? '',
+    });
+    return res.ok ? res.data.flags : [];
+  }, [caseData]);
+
+  /** Real, per direct guidance - the pathologist has reviewed the real,
+   *  detected finding(s) and chosen to record a real notification.
+   *  Requires every real field ICriticalResultNotificationService
+   *  itself requires - never partially recorded. Dismisses the modal
+   *  and marks this session's findings acknowledged either way, same
+   *  as handleAcknowledgeCriticalFindings below, since a pathologist
+   *  who's actually recorded the call has just as genuinely dealt
+   *  with the finding as one who explicitly acknowledged it. */
+  const handleRecordCriticalNotification = useCallback(async (input: {
+    clinicianName: string;
+    method: 'verbal_phone' | 'secure_page' | 'direct_lis_flag';
+    readBackConfirmed?: boolean;
+  }) => {
+    if (!caseData?.id) return;
+    const findingSummary = criticalFindings.map(f => f.term).join(', ') || 'Critical finding detected at sign-out';
+    await mockCriticalResultNotificationService.recordNotification({
+      caseId: caseData.id,
+      trigger: 'critical_value',
+      findingSummary,
+      clinicianName: input.clinicianName,
+      method: input.method,
+      readBackConfirmed: input.readBackConfirmed,
+      notifiedBy: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+    });
+    setAcknowledgedCritical(true);
+    setShowCriticalFindingsModal(false);
+  }, [caseData, criticalFindings, signingUser]);
+
+  /** Real, per direct guidance - a soft block, not a hard one: the
+   *  detection here is an LLM-based heuristic that can be wrong, and
+   *  the finding may already have been communicated through a real
+   *  means this feature doesn't capture. Acknowledging dismisses the
+   *  modal without recording anything - a real, honest choice, not a
+   *  forced action. */
+  const handleAcknowledgeCriticalFindings = useCallback(() => {
+    setAcknowledgedCritical(true);
+    setShowCriticalFindingsModal(false);
+  }, []);
+
   // ── Real finalization logic — shared by both finalize entry points ────────
   // Previously: handlePreFinalConfirm only console.log'd and closed the
   // modal — no status change, no persistence, no audit event. The OTHER
@@ -637,6 +742,106 @@ export function useSignOutWorkflow({
       showToast(bufferResolution.applies
         ? `Report signed — release in ${bufferResolution.durationMinutes} min unless recalled`
         : 'Report finalized');
+
+      // Real, per direct guidance: the actual detection + raising step
+      // for Trigger A/Trigger B, run here (inside the one, real, shared
+      // finalize implementation) rather than in either outer caller -
+      // a real, previously-shipped bug had this logic only in
+      // handleFinalizeConfirm's own wrapper, meaning
+      // handlePreFinalConfirm (the actual PRIMARY finalize path, per
+      // this function's own header comment) never triggered it at
+      // all. Fire-and-forget, deliberately never awaited - a failure
+      // here must never surface as a sign-out failure.
+      (async () => {
+        const findings = await fetchBillingDeficiencyFindings();
+        if (findings.length === 0) return;
+        await Promise.all(findings.map(f => mockBillingDeficiencyService.raise({
+          caseId: caseData.id,
+          chargeRecordId: f.chargeRecordId,
+          deficiencyType: f.deficiencyType,
+          severity: f.deficiencyType === 'NCCI_BUNDLING_VIOLATION' ? 'CRITICAL_REJECTION_RISK' : 'COMPLIANCE_WARNING',
+          raisedByTrigger: f.deficiencyType === 'NCCI_BUNDLING_VIOLATION' ? 'AUTO_NCCI_CHECK' : 'AUTO_CROSSWALK_CHECK',
+          auditorNotes: f.auditorNotes,
+          createdBy: 'system',
+        })));
+        showToast(`${findings.length} billing item${findings.length === 1 ? '' : 's'} flagged for QA review — case signed out, not blocked.`);
+      })().catch(e => console.error('[PathScribe] Billing deficiency raise failed (non-blocking):', e));
+
+      // Real, per direct guidance's own Code Review Pool design - the
+      // random-sampling half (the manual-flagging half already exists
+      // via the Request Colleague Review modal). Deliberately its own,
+      // independent fire-and-forget block, same reasoning as every
+      // other real block here - a failure must never affect sign-out
+      // or any other real, independent post-finalize action. No toast
+      // for a random selection - per direct confirmation, a random
+      // compliance pull isn't actionable by the originating
+      // pathologist, so it stays silent to them (unlike the manual
+      // flagging path, which is a deliberate, visible action someone
+      // just took).
+      (async () => {
+        if (!caseData.originHospitalId) return;
+        const orderingRes = await facilityService.getById(caseData.originHospitalId);
+        if (!orderingRes.ok) return;
+        const labId = resolvePerformingLabFacilityId(orderingRes.data);
+        if (!labId) return;
+        const labRes = labId === caseData.originHospitalId ? orderingRes : await facilityService.getById(labId);
+        if (!labRes.ok) return;
+        if (!shouldRandomlySampleForCodeReview(labRes.data.codeReviewSamplingRatePercent)) return;
+        await mockCodeReviewPoolService.create({
+          caseId: caseData.id,
+          caseLabel: caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : undefined,
+          source: 'RANDOM_SAMPLE',
+          performingLabFacilityId: labId,
+        });
+        // Real, per direct guidance's own follow-up on the broader
+        // provenance & auditability sweep: the pool entry itself is a
+        // real, persisted record, but every other similar
+        // routing/flagging event this app builds also gets a separate,
+        // case-searchable audit log entry - this one didn't. Silent
+        // to the pathologist (no toast, per direct confirmation
+        // above) is a UI decision, not a reason to leave the case's
+        // own audit history blank about a real, significant event
+        // that happened to it.
+        log('code_review_random_sample', {
+          caseId: caseData.id,
+          performingLabFacilityId: labId,
+          samplingRatePercent: labRes.data.codeReviewSamplingRatePercent,
+        });
+      })().catch(e => console.error('[PathScribe] Random code review sampling failed (non-blocking):', e));
+
+      // Real, per Epic: PathScribe Outbound Billing & Charge Event
+      // Engine, User Story 2 - "hold 26 and Combined codes until
+      // CASE_SIGNED_OUT." Deliberately its own, independent
+      // fire-and-forget block, not merged with the billing-deficiency
+      // one above - a failure in one must never affect the other.
+      (async () => {
+        const chargesRes = await mockServiceChargeService.getChargesForCase(caseData.id);
+        if (!chargesRes.ok) return;
+        const alreadyQueuedRes = await mockOutboundChargeQueueService.getByServiceChargeRecordIds(
+          chargesRes.data.map(c => c.id)
+        );
+        const alreadyQueuedIds = new Set(alreadyQueuedRes.ok ? alreadyQueuedRes.data.map(e => e.serviceChargeRecordId) : []);
+        const triggerMapRes = await mockBillingTypeTriggerConfigService.getEffectiveTriggerMap(caseData.order?.siteId);
+        const toEnqueue = sweepChargesForOutbox(chargesRes.data, 'CASE_SIGNED_OUT', alreadyQueuedIds, triggerMapRes.ok ? triggerMapRes.data : undefined);
+        const metadataFailures = validateChargeMetadata(caseData);
+        await Promise.all(toEnqueue.map(async f => {
+          const enqueueRes = await mockOutboundChargeQueueService.enqueue({
+            serviceChargeRecordId: f.serviceChargeRecordId,
+            caseId: f.caseId,
+            specimenId: f.specimenId,
+            billingType: f.billingType,
+            triggerEvent: 'CASE_SIGNED_OUT',
+          });
+          if (enqueueRes.ok && metadataFailures.length > 0) {
+            await mockOutboundChargeQueueService.markFailed(enqueueRes.data.id, {
+              errorCode: metadataFailures[0].errorCode,
+              errorMessage: metadataFailures[0].errorMessage,
+              maxRetriesExceeded: false,
+            });
+          }
+        }));
+      })().catch(e => console.error('[PathScribe] Outbound charge queue sweep failed (non-blocking):', e));
+
       return true;
     } catch (err) {
       // The actual finalize action — the highest-stakes write in this
@@ -649,7 +854,7 @@ export function useSignOutWorkflow({
       showToast('Finalization failed — please try again');
       return false;
     }
-  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPendingFinalizeArgs]);
+  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
 
   // Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
   // into handleRequestFinalize." Genuinely case-wide, unlike
@@ -746,6 +951,27 @@ export function useSignOutWorkflow({
     return blocking;
   }, [caseData]);
 
+  // Real, per direct guidance ("alert the Pathologist with a warning
+  // message, but not block") and per Trigger A's own real trigger
+  // event ("Pathologist attempts electronic signature") - called from
+  // handleRequestFinalize, the actual moment the pathologist clicks
+  // Finalize, BEFORE PreFinalisationModal even opens. Read-only -
+  // never raises a BillingDeficiencyRecord itself (that's a real,
+  // durable audit event that should only happen once the case has
+  // actually, successfully signed out - see finalizeCase's own
+  // comment) - this is purely the real-time heads-up. Deliberately
+  // never blocks: shows the toast, then lets the caller continue
+  // straight on to PreFinalisationModal regardless of what it finds.
+  const previewBillingWarnings = useCallback(async () => {
+    const findings = await fetchBillingDeficiencyFindings();
+    if (findings.length === 0) return;
+    showToast(
+      findings.length === 1
+        ? `Billing note: ${findings[0].auditorNotes}`
+        : `${findings.length} billing items flagged — starting with: ${findings[0].auditorNotes}`
+    );
+  }, [fetchBillingDeficiencyFindings, showToast]);
+
   const handleRequestFinalize = useCallback(async (andNext: boolean) => {
     setFinalizeAndNextPending(andNext);
     // Real feature, per direct follow-up: "putting a case on Hold at
@@ -786,7 +1012,24 @@ export function useSignOutWorkflow({
       setActiveReportType('microscopic');
       return;
     }
+    // Real, per direct guidance's own revised PS-105 scope ("Sign-Out
+    // Guardrails" - soft block): a real, detected 'critical' severity
+    // finding must be acknowledged or recorded before finalize can
+    // proceed. Checked here, the one shared point before both real
+    // setShowPreFinalise(true) exit paths below - never re-blocks
+    // once the pathologist has already acted on this session's
+    // findings once.
+    if (!acknowledgedCritical) {
+      const findings = await fetchCriticalFindings();
+      const criticalOnly = findings.filter(f => f.severity === 'critical');
+      if (criticalOnly.length > 0) {
+        setCriticalFindings(criticalOnly);
+        setShowCriticalFindingsModal(true);
+        return;
+      }
+    }
     if (!synopticPanelRef.current) {
+      previewBillingWarnings().catch(e => console.error('[PathScribe] Billing warning preview failed (non-blocking):', e));
       setPreFinalSynoptics(await buildSynopticsForReview());
       setShowPreFinalise(true);
       return;
@@ -812,9 +1055,14 @@ export function useSignOutWorkflow({
       setAlertFieldId(blocking[0].fieldId);
       return;
     }
+    // Real, per direct guidance: fire-and-forget, deliberately never
+    // awaited - the actual "pathologist attempts electronic signature"
+    // moment (Trigger A's own real trigger event), but this must never
+    // delay or block PreFinalisationModal from opening.
+    previewBillingWarnings().catch(e => console.error('[PathScribe] Billing warning preview failed (non-blocking):', e));
     setPreFinalSynoptics(await buildSynopticsForReview());
     setShowPreFinalise(true);
-  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType]);
+  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType, previewBillingWarnings, acknowledgedCritical, fetchCriticalFindings]);
 
   const handlePreFinalConfirm = useCallback((_ordered: string[], _excluded: string[]) => {
     setShowPreFinalise(false);
@@ -942,5 +1190,9 @@ export function useSignOutWorkflow({
     handleRequestFinalize,
     handlePreFinalConfirm,
     handleFinalizeConfirm,
+    criticalFindings,
+    showCriticalFindingsModal, setShowCriticalFindingsModal,
+    handleRecordCriticalNotification,
+    handleAcknowledgeCriticalFindings,
   };
 }

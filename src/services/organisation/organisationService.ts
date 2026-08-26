@@ -102,6 +102,27 @@ export interface Site {
    *  doesn't have a verified format spec for either to validate
    *  against, so this deliberately doesn't pretend to. */
   cliaOrIsoNumber?: string;
+  /** Real, per direct follow-up (Billing Capacity Review's own POS
+   *  codes gap): a real, raw fact about this specific performing lab
+   *  - independent lab vs. hospital-based - not a computed CMS Place
+   *  of Service code. Same deliberate "surface the raw signal, never
+   *  adjudicate the billing decision" posture already established for
+   *  financialClass/encounterClass in jsonWebhookBuilder.ts - which
+   *  specific POS code (11, 22, etc.) actually applies depends on
+   *  payer-specific rules PathScribe has no reliable way to resolve
+   *  itself; the interface engine/RCM makes that call from this raw
+   *  fact, the same way it already does from financialClass. */
+  performingLabType?: 'independent' | 'hospital_based';
+  /** Real, per direct guidance's own detailed jurisdictional research
+   *  (resolveBillingDateOfService.ts) - a real, explicit override for
+   *  which real date this site's own charges use as billing date of
+   *  service. Undefined means the real country-based default applies
+   *  (see that file's own defaultRuleForCountry) - only set here when
+   *  a site's own real billing arrangement genuinely differs from its
+   *  country's typical default (e.g. a UK site serving meaningful
+   *  private-insurance volume, which should override away from the
+   *  NHS-costing SIGNOUT_DATE default to COLLECTION_DATE). */
+  billingDosRule?: 'COLLECTION_DATE' | 'SIGNOUT_DATE' | 'ACCESSION_DATE';
   /** Real, new field for Facility Setup - what kind of credential this
    *  site's own LIS connection (lisEndpoint above) uses. Deliberately
    *  NOT a place to store the real secret value itself - see
@@ -368,6 +389,7 @@ const FACILITY_SETUP_STORAGE_KEY = 'org_site_facility_setup_v1';
 
 interface SiteFacilitySetupOverlay {
   cliaOrIsoNumber?: string;
+  performingLabType?: Site['performingLabType'];
   connectionAuthType?: Site['connectionAuthType'];
   credentialConfigured?: boolean;
   /** Real, per direct guidance's own explicit "endpoints" scope for
@@ -461,6 +483,7 @@ export async function updateSiteFacilitySetup(
   siteId: string,
   update: {
     cliaOrIsoNumber?: string;
+    performingLabType?: Site['performingLabType'];
     connectionAuthType?: Site['connectionAuthType'];
     credentialConfigured?: boolean;
     lisType?: LisType;
@@ -475,6 +498,7 @@ export async function updateSiteFacilitySetup(
   const overlays = loadFacilitySetupOverlays();
   overlays[siteId] = {
     cliaOrIsoNumber: update.cliaOrIsoNumber,
+    performingLabType: update.performingLabType,
     connectionAuthType: update.connectionAuthType,
     credentialConfigured: update.credentialConfigured,
     lisType: update.lisType,
@@ -529,6 +553,22 @@ export async function updateSiteFacilitySetup(
 /** Resolve site from accession prefix (siteCode) */
 export function getSiteBySiteCode(siteCode: string): Site | null {
   return SITE_BY_CODE.get(siteCode) ?? null;
+}
+
+/** Real, per direct guidance's own billing date-of-service work
+ *  (resolveBillingDateOfService.ts) - resolves a real Site directly by
+ *  its own id (Case.originSiteId), using the same real, existing
+ *  SITE_BY_ID lookup every other real site resolution in this file
+ *  already relies on internally. */
+export function getSiteById(siteId: string): Site | null {
+  return SITE_BY_ID.get(siteId) ?? null;
+}
+
+/** Real, per direct guidance's own work - resolves a real Site's own
+ *  parent Organisation (for its real, authoritative .country), via the
+ *  same real ORG_BY_ID lookup this file already uses internally. */
+export function getOrganisationForSite(site: Pick<Site, 'organisationId'>): Organisation | null {
+  return ORG_BY_ID.get(site.organisationId) ?? null;
 }
 
 /** Resolve organisation from originHospitalId on a Case */

@@ -17,17 +17,83 @@ const STORAGE_KEY = 'billing_rule_versions_v1';
 // changeReason/approvedBy for this seed - it represents existing,
 // already-shipped behavior being formally versioned for the first
 // time, not a real rule change with a real approver behind it.
+//
+// Real fix, per direct guidance found during review: level and
+// billingType added as two distinct, explicit fields (never merged
+// - granularity and billing component type govern completely
+// different operational lifecycle rules) - level values match
+// CODE_MAP_TABLE's own real classification for these same codes;
+// billingType defaults to 'Global' for this initial seed, same
+// default CODE_MAP_TABLE itself uses.
+//
+// Real fix, per direct guidance (PS-92): description strings below
+// are now the same synthetic "Code {cpt} — {Level} Level" format
+// CODE_MAP_TABLE/mockRvuCodeMapService already use - this file's own
+// descriptions were the one real gap PS-92's earlier pass missed,
+// since this is a separate, third copy of the same reference data,
+// found and closed during this review.
 const SEED_VERSIONS: BillingRuleVersion[] = [
-  { billingCode: '88302', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88302', description: 'Surgical pathology, gross examination only (Level II)', rvuWork: 0.13, quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: '88304', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', rvuWork: 0.21, quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: '88305', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)', rvuWork: 0.73, quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: '88307', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)', rvuWork: 1.55, quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: 'SPECIAL-STAIN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88312', description: 'Special stain (group 1), including interpretation', rvuWork: 0.53, quantityRules: 'per special stain ordered', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: 'IHC-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88342', description: 'Immunohistochemistry, first single antibody stain', rvuWork: 0.68, modifiersAllowed: ['26', 'TC'], quantityRules: 'per block, first real IHC stain', bundlingRules: 'IHC sequence first', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
-  { billingCode: 'IHC-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88341', description: 'Immunohistochemistry, each additional single antibody stain', modifiersAllowed: ['26', 'TC'], quantityRules: 'per block, each additional real IHC stain', bundlingRules: 'IHC sequence additional', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
-  { billingCode: 'PIN4-PANEL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88344', description: 'Immunohistochemistry, each multiplex antibody stain procedure (e.g. "PIN-4")', quantityRules: 'per specimen, standalone multiplex panel', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
-  { billingCode: 'FROZEN-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88331', description: 'Pathology consultation during surgery, first tissue block, with frozen section(s), single specimen', quantityRules: 'per specimen, first frozen tissue block', documentationRequirements: ['pathologist interpretation'], country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
-  { billingCode: 'FROZEN-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88332', description: 'Pathology consultation during surgery, each additional tissue block with frozen section(s)', quantityRules: 'per specimen, each additional frozen tissue block', documentationRequirements: ['pathologist interpretation'], country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
+  { billingCode: '88300', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88300', description: 'Code 88300 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Real CPT code/description verified via direct search; RVU intentionally left unset for the client to configure' },
+  { billingCode: '88302', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88302', description: 'Code 88302 — Specimen Level', rvuWork: 0.13, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: '88304', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88304', description: 'Code 88304 — Specimen Level', rvuWork: 0.21, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: '88305', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88305', description: 'Code 88305 — Specimen Level', rvuWork: 0.73, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: '88307', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88307', description: 'Code 88307 — Specimen Level', rvuWork: 1.55, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: '88309', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88309', description: 'Code 88309 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Real CPT code/description verified via direct search; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'SPECIAL-STAIN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88312', description: 'Code 88312 — Stain Level', rvuWork: 0.53, level: 'stain', billingType: 'Global', quantityRules: 'per special stain ordered', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: 'IHC-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88342', description: 'Code 88342 — Stain Level', rvuWork: 0.68, level: 'stain', billingType: 'Global', modifiersAllowed: ['26', 'TC'], quantityRules: 'per block, first real IHC stain', bundlingRules: 'IHC sequence first', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - existing app behavior' },
+  { billingCode: 'IHC-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88341', description: 'Code 88341 — Stain Level', level: 'stain', billingType: 'Global', modifiersAllowed: ['26', 'TC'], quantityRules: 'per block, each additional real IHC stain', bundlingRules: 'IHC sequence additional', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
+  { billingCode: 'PIN4-PANEL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88344', description: 'Code 88344 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per specimen, standalone multiplex panel', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
+  // Real, per direct fix - discovered via direct testing that
+  // mockStainTypeService.ts's p63/CK5/6 Dual Stain pointed its own
+  // defaultBillingCode at PIN4-PANEL above, a clinically different,
+  // prostate-specific cocktail (P504S/p63/HMWCK) that only happens to
+  // share the same real CPT code (88344, the generic multiplex-
+  // antibody-stain procedure code). A shared CPT doesn't mean a shared
+  // billingCode - reusing PIN4-PANEL would have shown the wrong panel
+  // name in this specimen's own real audit trail. Its own, honestly-
+  // named entry instead, same real CPT.
+  { billingCode: 'P63-CK56-DUAL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88344', description: 'Code 88344 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, standalone dual-antibody stain', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Real, per direct fix - same real CPT as PIN4-PANEL, genuinely different panel; RVU honestly unverified, not fabricated' },
+  { billingCode: 'FROZEN-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88331', description: 'Code 88331 — Block Level', level: 'block', billingType: 'Global', quantityRules: 'per specimen, first frozen tissue block', documentationRequirements: ['pathologist interpretation'], country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
+  { billingCode: 'FROZEN-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88332', description: 'Code 88332 — Block Level', level: 'block', billingType: 'Global', quantityRules: 'per specimen, each additional frozen tissue block', documentationRequirements: ['pathologist interpretation'], country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Initial migration - real CPT code/coding rule verified via direct search; RVU honestly unverified, not fabricated' },
+  // Real, per direct guidance's own detailed CPT research - Anatomic
+  // Pathology FISH (88364-88377), three real, distinct scoring-method
+  // variants, each its own base/add-on/multiplex trio. See
+  // MolecularBillingRule.ts/calculateMolecularUnits.ts for how a real
+  // target count resolves to these. PS-92 synthetic descriptions only,
+  // same as every other real dictionary entry - no real AMA text.
+  { billingCode: 'FISH-MANUAL-BASE', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88368', description: 'Code 88368 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, first probe, manual direct count', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-MANUAL-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88369', description: 'Code 88369 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, each additional probe, manual direct count', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-MANUAL-MULTIPLEX', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88377', description: 'Code 88377 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, 3+ probes, manual direct count', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-COMPASSIST-BASE', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88367', description: 'Code 88367 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, first probe, computer-assisted', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-COMPASSIST-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88373', description: 'Code 88373 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, each additional probe, computer-assisted', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-COMPASSIST-MULTIPLEX', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88374', description: 'Code 88374 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, 3+ probes, computer-assisted', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-QUAL-BASE', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88365', description: 'Code 88365 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, first probe, qualitative/non-quantitative', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-QUAL-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88364', description: 'Code 88364 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, each additional probe, qualitative/non-quantitative', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-QUAL-MULTIPLEX', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88366', description: 'Code 88366 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, 3+ probes, qualitative/non-quantitative', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  // Real, per direct guidance - Cytogenetic FISH (88271-88275), a
+  // genuinely different real structural model: a per-probe multiplier
+  // (88271 x N) rather than a base/add-on/multiplex trio, plus real,
+  // separate cell-count-tier codes (88272-88275) for the analysis
+  // itself, paired alongside the probe charge, not part of the same
+  // multiplier count.
+  { billingCode: 'FISH-CYTO-PROBE', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88271', description: 'Code 88271 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, N units = N real probes hybridized', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-CYTO-3-5CELL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88272', description: 'Code 88272 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, chromosomal ISH, 3-5 cells analyzed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-CYTO-10-30CELL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88273', description: 'Code 88273 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, chromosomal ISH, 10-30 cells analyzed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-CYTO-25-99CELL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88274', description: 'Code 88274 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, interphase ISH, 25-99 cells analyzed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  { billingCode: 'FISH-CYTO-100-300CELL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88275', description: 'Code 88275 — Stain Level', level: 'stain', billingType: 'Global', quantityRules: 'per block, interphase ISH, 100-300 cells analyzed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; RVU intentionally left unset for the client to configure' },
+  // Real, per direct guidance ("Cytology GYN will be coming soon") -
+  // confirmed via direct search before adding, same PS-92 discipline
+  // as every other real code in this dictionary. 88164 (conventional,
+  // Bethesda system) and 88175 (liquid-based, automated screening with
+  // manual review - the ThinPrep-typical modern variant) are each one
+  // real, representative code among several real, valid alternatives
+  // that depend on a lab's own screening workflow (manual vs
+  // automated) - notes below disclose this honestly, not fabricated
+  // as the one, universally-correct choice.
+  { billingCode: 'PAP-CONVENTIONAL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88164', description: 'Code 88164 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, conventional Pap smear, Bethesda system reporting', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search. One of several real, valid conventional-Pap codes (88150-88155 non-Bethesda, 88164-88167 Bethesda) depending on the lab\'s own reporting system - confirm against your actual workflow before relying on this default. RVU intentionally left unset.' },
+  { billingCode: 'PAP-THINPREP', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88175', description: 'Code 88175 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, liquid-based Pap (ThinPrep), automated screening with manual review', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search. One of several real, valid liquid-based codes (88142/88143 manual screening, 88174/88175 automated) depending on the lab\'s own screening workflow - confirm against your actual workflow before relying on this default. RVU intentionally left unset.' },
+  { billingCode: 'HPV-HIGHRISK-SCREEN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '87624', description: 'Code 87624 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, high-risk HPV types, pooled result - billed when only the screen is performed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search (revised 2025 CPT set). RVU intentionally left unset.' },
+  { billingCode: 'HPV-GENOTYPING', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '87625', description: 'Code 87625 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, HPV types 16/18 (includes 45 if performed) - individually reported, real reflex test following a positive 87624 screen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search. Honest, disclosed limitation: this app has no real, conditional result-based billing logic yet - see the "HPV High-Risk Screening with Reflex Genotyping" Diagnostic Assay entry\'s own notes for how the reflex portion is (and is not yet) handled.' },
 ];
 
 const load    = (): BillingRuleVersion[] => storageGet<BillingRuleVersion[]>(STORAGE_KEY, SEED_VERSIONS);
@@ -83,11 +149,82 @@ export const mockBillingRuleService: IBillingRuleService = {
     const newVersion: BillingRuleVersion = {
       ...input,
       version: nextVersion,
-      status: input.status ?? 'ACTIVE',
+      // Real, per direct guidance's own Four-Eyes Principle
+      // requirement: a new rule change no longer goes live on save.
+      // An explicit status is still honored (the real, initial
+      // migration seed passes 'ACTIVE' directly in its own literal
+      // array below, never through this function, but any future
+      // caller with a genuine reason to bypass DRAFT can still do so
+      // explicitly).
+      status: input.status ?? 'DRAFT',
       createdAt: new Date().toISOString(),
     };
     persist([...versions, newVersion]);
     return ok(newVersion);
+  },
+
+  async submitForApproval(billingCode, version, siteId, submittedBy) {
+    const versions = load();
+    const idx = versions.findIndex(v => v.billingCode === billingCode && v.version === version && (v.siteId ?? undefined) === (siteId ?? undefined));
+    if (idx === -1) return err(`No real version ${version} found for billingCode "${billingCode}"${siteId ? ` at site "${siteId}"` : ' (enterprise-wide)'}.`);
+    if (versions[idx].status !== 'DRAFT') return err(`Version ${version} of "${billingCode}" is not a real draft (currently ${versions[idx].status}) - only a draft can be submitted for approval.`);
+
+    const updated: BillingRuleVersion = { ...versions[idx], status: 'PENDING_APPROVAL', submittedForApprovalBy: submittedBy, submittedForApprovalAt: new Date().toISOString() };
+    const next = [...versions];
+    next[idx] = updated;
+    persist(next);
+    return ok(updated);
+  },
+
+  async approveVersion(billingCode, version, siteId, reviewedBy) {
+    const versions = load();
+    const idx = versions.findIndex(v => v.billingCode === billingCode && v.version === version && (v.siteId ?? undefined) === (siteId ?? undefined));
+    if (idx === -1) return err(`No real version ${version} found for billingCode "${billingCode}"${siteId ? ` at site "${siteId}"` : ' (enterprise-wide)'}.`);
+    const target = versions[idx];
+    if (target.status !== 'PENDING_APPROVAL') return err(`Version ${version} of "${billingCode}" is not real pending approval (currently ${target.status}).`);
+    // Real, per direct guidance's own Four-Eyes Principle (dual
+    // control) requirement - hard-enforced here, not just in the UI.
+    // The person who drafted or submitted a change can never be the
+    // one who approves it.
+    if (reviewedBy === target.createdBy || reviewedBy === target.submittedForApprovalBy) {
+      return err('Four-Eyes Principle: the person who drafted or submitted this change cannot approve it. A different, real reviewer is required.');
+    }
+
+    const versionsWithApproval = [...versions];
+    // Real, clean audit history: retires whichever version was
+    // previously ACTIVE within this same (billingCode, siteId) scope,
+    // if any - rather than leaving two ACTIVE rows to quietly compete
+    // via resolveBillingRuleAt's own tie-break (see that file's own
+    // comment on why that "shouldn't happen with correctly governed
+    // data").
+    const priorActiveIdx = versionsWithApproval.findIndex(v => v.billingCode === billingCode && (v.siteId ?? undefined) === (siteId ?? undefined) && v.status === 'ACTIVE');
+    if (priorActiveIdx !== -1) {
+      versionsWithApproval[priorActiveIdx] = { ...versionsWithApproval[priorActiveIdx], status: 'RETIRED', effectiveTo: target.effectiveFrom };
+    }
+
+    const updated: BillingRuleVersion = { ...target, status: 'ACTIVE', reviewedBy, reviewedAt: new Date().toISOString() };
+    versionsWithApproval[idx] = updated;
+    persist(versionsWithApproval);
+    return ok(updated);
+  },
+
+  async rejectVersion(billingCode, version, siteId, reviewedBy, rejectionReason) {
+    if (!rejectionReason.trim()) return err('A real rejection reason is required.');
+    const versions = load();
+    const idx = versions.findIndex(v => v.billingCode === billingCode && v.version === version && (v.siteId ?? undefined) === (siteId ?? undefined));
+    if (idx === -1) return err(`No real version ${version} found for billingCode "${billingCode}"${siteId ? ` at site "${siteId}"` : ' (enterprise-wide)'}.`);
+    const target = versions[idx];
+    if (target.status !== 'PENDING_APPROVAL') return err(`Version ${version} of "${billingCode}" is not real pending approval (currently ${target.status}).`);
+    // Same real, hard-enforced dual-control gate as approveVersion.
+    if (reviewedBy === target.createdBy || reviewedBy === target.submittedForApprovalBy) {
+      return err('Four-Eyes Principle: the person who drafted or submitted this change cannot reject it either. A different, real reviewer is required.');
+    }
+
+    const updated: BillingRuleVersion = { ...target, status: 'REJECTED', reviewedBy, reviewedAt: new Date().toISOString(), rejectionReason: rejectionReason.trim() };
+    const next = [...versions];
+    next[idx] = updated;
+    persist(next);
+    return ok(updated);
   },
 
   async retireVersion(billingCode, version, effectiveTo, siteId) {

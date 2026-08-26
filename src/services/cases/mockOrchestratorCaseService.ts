@@ -59,11 +59,21 @@ const PETE_CASES: Case[] = [
     status: 'gross-complete' as any,
     patient: { id: 'OPAT-001', mrn: '200001', firstName: 'Robert', lastName: 'Ashford', dateOfBirth: isoYearsAgo(67, 4, 22), sex: 'M' },
     specimens: [
-      { id: 'O26-0001-SP-A', label: 'A', description: 'Right hemicolectomy',                   receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [{ id: 'comp-mol-0001', name: 'Molecular Panel', lisCode: 'MOL', color: '#10b981', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0001-SP-A' }],
+      { id: 'O26-0001-SP-A', label: 'A', description: 'Right hemicolectomy',                   coding: { cpt: ['88309'] }, receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [{ id: 'comp-mol-0001', name: 'Molecular Panel', lisCode: 'MOL', color: '#10b981', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0001-SP-A' }],
         blocks: [
           { id: 'blk-0001-a1', label: '1', status: 'Embedded', stains: [
             { id: 'stn-0001-a1-1', stainName: 'H&E', status: 'Ready for Review' },
-            { id: 'stn-0001-a1-2', stainName: 'MMR Panel', status: 'Pending Cut' },
+            // Real fix, per direct decision: MMR IHC is read as 4 separate
+            // antibodies, each its own billable stain going through normal
+            // IHC-FIRST/IHC-ADDL sequencing - not a single bundled panel
+            // code the way PIN-4's genuine multiplex (one physical stain,
+            // one slide) is. Replaces the single 'MMR Panel' placeholder
+            // stain that had no real StainType match at all and produced
+            // zero billing suggestions.
+            { id: 'stn-0001-a1-2', stainName: 'MLH1', status: 'Pending Cut' },
+            { id: 'stn-0001-a1-3', stainName: 'MSH2', status: 'Pending Cut' },
+            { id: 'stn-0001-a1-4', stainName: 'MSH6', status: 'Pending Cut' },
+            { id: 'stn-0001-a1-5', stainName: 'PMS2', status: 'Pending Cut' },
           ] },
           { id: 'blk-0001-a2', label: '2', status: 'Embedded', stains: [
             { id: 'stn-0001-a2-1', stainName: 'H&E', status: 'Coverslipped' },
@@ -310,7 +320,7 @@ const PETE_CASES: Case[] = [
     originHospitalId: 'HOSP-001', status: 'gross-complete' as any,
     patient: { id: 'OPAT-004', mrn: '200004', firstName: 'Sandra', lastName: 'Kovacs', dateOfBirth: isoYearsAgo(44, 7, 19), sex: 'F' },
     specimens: [
-      { id: 'O26-0004-SP-A', label: 'A', description: 'Left total mastectomy',                        receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'comp-erh2-0004', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0004-SP-A' }],
+      { id: 'O26-0004-SP-A', label: 'A', description: 'Left total mastectomy',                        coding: { cpt: ['88307'] }, receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'comp-erh2-0004', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0004-SP-A' }],
         blocks: [
           { id: 'blk-0004-a1', label: '1', status: 'Embedded', stains: [
             { id: 'stn-0004-a1-1', stainName: 'H&E', status: 'Ready for Review' },
@@ -1398,7 +1408,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     status: 'finalized' as any,
     patient: { id: 'OPAT-024', mrn: '200024', firstName: 'Walter', lastName: 'Higgins', dateOfBirth: isoYearsAgo(69, 2, 14), sex: 'M' },
     specimens: [
-      { id: 'O26-0024-SP-A', label: 'A', description: 'Right upper lobectomy', receivedAt: isoDaysAgo(9), collectedAt: isoDaysAgo(9), specimenFlags: [{ id: 'comp-mprof-0024', name: 'Molecular Profiling', lisCode: 'MPROF', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0024-SP-A' }],
+      { id: 'O26-0024-SP-A', label: 'A', description: 'Right upper lobectomy', coding: { cpt: ['88309'] }, receivedAt: isoDaysAgo(9), collectedAt: isoDaysAgo(9), specimenFlags: [{ id: 'comp-mprof-0024', name: 'Molecular Profiling', lisCode: 'MPROF', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0024-SP-A' }],
         blocks: [
           { id: 'blk-0024-a1', label: '1', status: 'Embedded', stains: [
             { id: 'stn-0024-a1-1', stainName: 'H&E', status: 'Coverslipped' },
@@ -1486,7 +1496,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     status: 'finalized' as any,
     patient: { id: 'OPAT-025', mrn: '200025', firstName: 'Diane', lastName: 'Castellano', dateOfBirth: isoYearsAgo(55, 6, 2), sex: 'F' },
     specimens: [
-      { id: 'O26-0025-SP-A', label: 'A', description: 'Left total mastectomy', receivedAt: isoDaysAgo(7), collectedAt: isoDaysAgo(7), specimenFlags: [{ id: 'comp-erh2-0025', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0025-SP-A' }],
+      { id: 'O26-0025-SP-A', label: 'A', description: 'Left total mastectomy', coding: { cpt: ['88307'] }, receivedAt: isoDaysAgo(7), collectedAt: isoDaysAgo(7), specimenFlags: [{ id: 'comp-erh2-0025', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0025-SP-A' }],
         blocks: [
           { id: 'blk-0025-a1', label: '1', status: 'Embedded', stains: [
             { id: 'stn-0025-a1-1', stainName: 'H&E', status: 'Coverslipped' },
@@ -1577,7 +1587,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     status: 'finalized' as any,
     patient: { id: 'OPAT-026', mrn: '200026', firstName: 'Monica', lastName: 'Ferreira', dateOfBirth: isoYearsAgo(48, 10, 27), sex: 'F' },
     specimens: [
-      { id: 'O26-0026-SP-A', label: 'A', description: 'Right breast lumpectomy', receivedAt: isoDaysAgo(5), collectedAt: isoDaysAgo(5), specimenFlags: [{ id: 'comp-erh2-0026', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0026-SP-A' }],
+      { id: 'O26-0026-SP-A', label: 'A', description: 'Right breast lumpectomy', coding: { cpt: ['88307'] }, receivedAt: isoDaysAgo(5), collectedAt: isoDaysAgo(5), specimenFlags: [{ id: 'comp-erh2-0026', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0026-SP-A' }],
         blocks: [
           { id: 'blk-0026-a1', label: '1', status: 'Embedded', stains: [
             { id: 'stn-0026-a1-1', stainName: 'H&E', status: 'Coverslipped' },
@@ -1706,6 +1716,16 @@ const COMPLETED_DEMO_CASES: Case[] = [
     status: 'pathologist-review' as any,
     patient: { id: 'OPAT-028', mrn: '200028', firstName: 'Renata', lastName: 'Alves', dateOfBirth: isoYearsAgo(58, 3, 12), sex: 'F' },
     specimens: [
+      // Real, deliberate decision: this is the one case in the demo set
+      // left WITHOUT a specimen-level base CPT code, on purpose - real
+      // ancillary (IHC) suggestions exist here with nothing to attach
+      // them to, which is exactly the condition CaseSignOutModal's own
+      // hasAncillaryButNoBaseCode warning exists to catch. Every other
+      // demo case with real pending billing suggestions (O26-0001,
+      // O26-0004, O26-0024, O26-0025, O26-0026) got a real base code
+      // added instead, so this one case is what keeps that safety
+      // feature itself demonstrable - do not "complete" this one to
+      // match the others.
       { id: 'O26-0028-SP-A', label: 'A', description: 'Left breast lumpectomy', receivedAt: isoDaysAgo(3), collectedAt: isoDaysAgo(3), specimenFlags: [{ id: 'comp-erh2-0028', name: 'ER / PR / HER2', lisCode: 'ERH2', color: '#3b82f6', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0028-SP-A' }],
         blocks: [{ id: 'blk-0028-a1', label: '1', status: 'Embedded', stains: [
           { id: 'stn-0028-a1-1', stainName: 'H&E', status: 'Coverslipped' },
@@ -1889,7 +1909,7 @@ const ORCH_CASES: Case[] = [...PETE_CASES, ...PAUL_CASES, ...AMBER_CASES, ...BRO
 // sync with STORAGE_KEY — the exact mismatch that caused this file's
 // data to look stale even after a Full Reset). Increment
 // ORCH_MOCK_VERSION whenever ORCH_CASES content changes.
-const ORCH_MOCK_VERSION = '5'; // bumped: corrected clinically questionable stain choices — Ki-67 replaced with MMR Panel on the colon case (Lynch screening is the real reflex test, not proliferation index), NGS Panel added to the lung case to match its already-flagged Molecular Profiling request
+const ORCH_MOCK_VERSION = '7'; // bumped: added real, accurate specimen-level base CPT codes to 5 of the 6 demo cases with pending ancillary suggestions (O26-0001: 88309, O26-0004/0025/0026: 88307, O26-0024: 88309), so a sales/test demo of the full sign-out workflow doesn't hit an unrelated "no base code" warning. O26-0028 deliberately left without one, per direct decision, so the existing hasAncillaryButNoBaseCode safety warning stays demonstrable on at least one real case.
 const ORCH_VERSION_KEY = 'pathscribe_mock_orch_cases_version';
 const storedOrchVersion = localStorage.getItem(ORCH_VERSION_KEY);
 if (storedOrchVersion !== ORCH_MOCK_VERSION) {

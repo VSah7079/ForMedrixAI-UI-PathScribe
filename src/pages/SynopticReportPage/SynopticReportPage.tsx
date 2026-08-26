@@ -41,17 +41,20 @@ import { AmendmentDraftBanner } from './components/AmendmentDraftBanner';
 import RightSynopticPanel, { type RightSynopticPanelHandle, type AiSuggestion } from './components/RightSynopticPanel';
 import MicroscopicEntryPanel from './components/MicroscopicEntryPanel';
 import { useMicroscopicEntry } from './hooks/useMicroscopicEntry';
+import { useEffectiveSpecimenComplexity } from './hooks/useEffectiveSpecimenComplexity';
 import BottomActionBar    from './components/BottomActionBar';
 
 import AmendmentModal        from './modals/AmendmentModal';
 import { CaseCommentModal }   from '../Synoptic/Comments/CaseCommentModal';
 import { RetentionHoldModal } from './modals/RetentionHoldModal';
 import { CaseHoldModal } from './modals/CaseHoldModal';
+import { CriticalFindingsModal } from './modals/CriticalFindingsModal';
 import PatientHistoryModal    from '../../components/PatientHistory/PatientHistoryModal';
 import FlagManagerModal       from '../../components/Flags/FlagManagerModal';
 import { AddCodeModal }       from '../Synoptic/Codes/AddCodeModal';
 import { ReportCommentModal } from '../Synoptic/Comments/ReportCommentModal';
 import CaseSignOutModal      from './modals/CaseSignOutModal';
+import BillingReviewPanel from './components/BillingReviewPanel';
 import { DiscordanceReconciliationModal } from './modals/DiscordanceReconciliationModal';
 import { CopilotReportViewModal } from './modals/CopilotReportViewModal';
 import { useLisIntegration } from './hooks/useLisIntegration';
@@ -80,6 +83,18 @@ import { SaveToast }           from '../Synoptic/UI/SaveToast';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockAuditService } from '@/services/auditlog/mockAuditService';
 import { priorityService } from '@/services';
+import { stainTypeService } from '@/services';
+import { computeCaseCodingSummary } from '@/services/billing/codeMapTable';
+import { resolveServiceCharge, reverseServiceCharge } from '@/services/billing/resolveServiceCharge';
+import type { PostSignoutChangeContext } from '@/services/billing/resolveServiceCharge';
+import { isCaseSignedOutForBilling } from '@/services/billing/isCaseSignedOutForBilling';
+import { PostSignoutBillingChangeModal } from '@/components/Billing/PostSignoutBillingChangeModal';
+import { CorrectAppliedCodeModal } from '@/components/Billing/CorrectAppliedCodeModal';
+import { correctServiceCharge } from '@/services/billing/correctServiceCharge';
+import { mockBillingRuleService } from '@/services/billing/mockBillingRuleService';
+import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
+import { resolveRequireBillingApprovalForCase } from '@/services/billing/shouldRequireBillingApproval';
+import { auditService } from '@/services';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import { intraoperativeService } from '@/services';
 import { IntraopMergePromptModal } from '@/pages/AccessionPage/IntraopMergePromptModal';
@@ -301,6 +316,24 @@ const SynopticReportPage: React.FC = () => {
     () => computeDraftDiff(draftableCaseSlice as any, existingDraftPayload as any),
     [draftableCaseSlice, existingDraftPayload],
   );
+
+  // Real fix, per direct question: "why does a case with no changes give
+  // me a warning?" Traced precisely - the autosave in useDraftCache
+  // writes a new draft on every real caseData reference change
+  // (including normal load/hydration updates that don't reflect any
+  // actual edit, since React state updates always produce a new object
+  // reference even when the field values end up identical). The modal
+  // itself was gated only on "does any draft exist," never on whether
+  // computeDraftDiff's own, already-correct noise-filtered comparison
+  // (see that file's own header comment) found anything real - so a
+  // functionally-identical, no-op draft still triggered the prompt,
+  // just to honestly report "no differences found" once shown. This
+  // silently clears that exact no-op case rather than leaving it to
+  // resurface on every future visit to this same case.
+  useEffect(() => {
+    if (hasExistingDraft && draftDiff.length === 0) discardDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasExistingDraft, draftDiff.length]);
 
   // ── Voice context activation ────────────────────────────────────────────────
   // This page — the entire SynopticReportPage tree, including whatever's
@@ -609,10 +642,36 @@ const SynopticReportPage: React.FC = () => {
   // ── declared until much later). ──────────────────────────────────────────
 
   const [activeReportInstanceId, setActiveReportInstanceId] = useState<string>('');
-  const [activeReportType, setActiveReportType] = useState<'grossing' | 'microscopic' | 'synoptic'>('synoptic');
+  const [activeReportType, setActiveReportType] = useState<'grossing' | 'microscopic' | 'synoptic' | 'billing'>('synoptic');
   const [isAlertExpanded, setIsAlertExpanded] = useState(false);
   const [isSimilarCasesOpen, setIsSimilarCasesOpen] = useState(false);
   const [showCodesModal, setShowCodesModal] = useState(false);
+  // Real, per direct guidance's own follow-up: the general Codes
+  // manager (AddCodeModal) had no post-signout gating at all, unlike
+  // the QA CODE_CORRECTED resolution path. A pending prompt captures
+  // the resolve/reject of a real, in-flight Promise so an async save
+  // handler can genuinely pause and await the person's real
+  // confirmation before any charge/credit or case-data mutation
+  // happens - never after, which would leave the UI showing a change
+  // that was never actually confirmed if the person cancelled.
+  const [pendingPostSignoutPrompt, setPendingPostSignoutPrompt] = useState<{
+    summary: string;
+    resolve: (context: PostSignoutChangeContext) => void;
+    reject: () => void;
+  } | null>(null);
+  const requestPostSignoutConfirmation = (summary: string): Promise<PostSignoutChangeContext> => {
+    return new Promise((resolve, reject) => {
+      setPendingPostSignoutPrompt({ summary, resolve, reject });
+    });
+  };
+  // Real, per direct guidance's own follow-up: "post-signout additions
+  // may be required if the wrong code was billed... the original bill
+  // is credited and the new billing code submitted." Captures which
+  // real, already-applied code is being corrected - specimenId always
+  // present, blockId only for a block-level ancillary code (undefined
+  // means a specimen-level base code, same distinction
+  // onDelete/onDeleteBaseCode already make).
+  const [correctingCode, setCorrectingCode] = useState<{ specimenId: string; blockId?: string; oldCode: string; stainOrderId?: string } | null>(null);
   // Real feature, per direct follow-up: "Move Manage Reprints...
   // Bottom-Right Action Cluster... removes the visual orphaning of
   // the current Manage Reports button." Lifted here from
@@ -639,6 +698,29 @@ const SynopticReportPage: React.FC = () => {
     try { localStorage.setItem('pathscribe_header_compact_manual', isHeaderCompactManual ? '1' : '0'); } catch {}
   }, [isHeaderCompactManual]);
   const [highlightText, setHighlightText] = useState<string | null>(null);
+  // Real, per direct requirement: a second, independent highlight
+  // source for the billing review panel - deliberately kept separate
+  // from highlightText above (see LeftReportPanel's own rawHighlightText
+  // prop comment for why), so switching between the synoptic and
+  // billing tabs never leaves a stale highlight from the other one.
+  const [rawHighlightText, setRawHighlightText] = useState<string | undefined>(undefined);
+  // Real fix, per direct feedback: rawHighlightText above only ever
+  // targets LeftReportPanel's own report-text search (Report Draft
+  // tab) - it was never wired to anything on the Material tab, which
+  // is where BillingReviewPanel's own AI-source highlighting is
+  // actually expected to show up. Separate, exact-id-based state
+  // rather than another string-search target.
+  const [highlightedStainId, setHighlightedStainId] = useState<string | undefined>(undefined);
+  // Real feature, per direct request: the reverse direction of the
+  // sync above - if the user is on the Material tab with Billing
+  // Review open and clicks a block or one of its stains (both real,
+  // selectable actions there), the corresponding row in Billing
+  // Review's own tree is expected to highlight to match. Deliberately
+  // a new, separate id rather than reusing activeSpecimenId - that one
+  // already flows the other way (Billing's own selection sets it via
+  // onFocusBlock), and folding this into it risked a real, hard-to-
+  // reason-about bidirectional loop between the two directions.
+  const [materialSelectedBlockId, setMaterialSelectedBlockId] = useState<string | undefined>(undefined);
   // Honest signal for when the AI's cited source couldn't actually be
   // located in the report text — see LeftReportPanel's matchResult.
   const [highlightNotFound, setHighlightNotFound] = useState(false);
@@ -1188,6 +1270,442 @@ const SynopticReportPage: React.FC = () => {
   // added to the shared useSynopticFinalize hook since it's specific to
   // this one flow and doesn't need to be shared with other components.
   const [countersignFeedback, setCountersignFeedback] = useState('');
+
+  // Real fix: handleUpdateBlock does a shallow merge at the block
+  // level ({ ...block, ...changes }), not a deep merge into coding -
+  // passing only { coding: { cpt: [...] } } would silently wipe out
+  // any real, existing rejectedCpt on that same block, and vice versa.
+  // Both real arrays are read and re-passed together here for exactly
+  // that reason.
+  const findCaseBlock = (specimenId: string, blockId: string) =>
+    caseData?.specimens?.find(sp => sp.id === specimenId)?.blocks?.find(b => b.id === blockId);
+
+  // Real feature, per direct requirement: "the Pathologist has the
+  // right to update all billing, even those that are deterministic
+  // ... we need a mechanism to send a credit transaction on billing
+  // that gets changed ... All must be audited." Shared helper -
+  // resolves a real charge against the current, real Billing
+  // Dictionary and records it permanently (mockServiceChargeService),
+  // plus a real, general audit trail entry, matching this app's own
+  // established "type: 'user', event, detail (PHI-safe)" convention
+  // everywhere else a significant user action gets logged.
+  const recordChargeTransaction = async (specimenId: string, blockId: string | undefined, code: string, postSignoutContext?: PostSignoutChangeContext) => {
+    const sp = caseData?.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    if (!caseData?.id || !sp) return;
+    const versionsRes = await mockBillingRuleService.getAll();
+    if (!versionsRes.ok) return;
+    const charge = resolveServiceCharge(code, versionsRes.data, {
+      caseId: caseData.id,
+      sourceLevel: blockId ? 'block' : 'specimen',
+      sourceLabel: block ? `${sp.label}${block.label}` : sp.label,
+      specimenId,
+      blockId,
+      // Real, deliberate choice: the specimen's own real receivedAt as
+      // date of service, not "now" - a billing decision made today
+      // still concerns clinical work actually performed on the real
+      // date the specimen was received, not the date it was reviewed.
+      dateOfService: sp.receivedAt ?? new Date().toISOString(),
+      resolvedBy: signingUser?.id ?? 'unknown',
+      postSignoutContext,
+    });
+    if (!charge) return; // honest, real gap: no ACTIVE dictionary rule covers this code/date - never fabricated
+    // Real, per direct guidance's own Feature Specification refinement
+    // ("Opt-in Core"): a new charge starts as DRAFT, requiring a real,
+    // different approver before it can export, only when the
+    // performing lab has explicitly opted in. Absence (the real,
+    // default state) preserves today's exact behavior - no
+    // approvalStatus at all.
+    if (await resolveRequireBillingApprovalForCase(caseData.originHospitalId)) {
+      charge.approvalStatus = 'DRAFT';
+      charge.draftedBy = signingUser?.id ?? 'unknown';
+      charge.draftedAt = new Date().toISOString();
+    }
+    await mockServiceChargeService.saveCharge(charge);
+    auditService.logEvent({
+      type: 'user',
+      event: 'Billing code charged',
+      detail: `${charge.sourceLabel}: ${charge.billingCode} (${charge.cptCode}) charged`
+        + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData.accession?.fullAccession ?? caseData.id,
+      confidence: null,
+    });
+  };
+
+  // Real, per direct requirement: a credit is an exact reversal of
+  // whatever was actually charged - see reverseServiceCharge's own
+  // header for why this never re-resolves against the current
+  // dictionary. Gracefully proceeds (with its own honest audit entry)
+  // even when no matching charge record can be found, rather than
+  // blocking a pathologist's real right to remove a code just because
+  // older data predates this ledger.
+  const recordCreditTransaction = async (specimenId: string, blockId: string | undefined, code: string, postSignoutContext?: PostSignoutChangeContext) => {
+    if (!caseData?.id) return;
+    const activeRes = await mockServiceChargeService.findActiveChargeForSource(caseData.id, specimenId, blockId, code);
+    const sp = caseData.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    const sourceLabel = block ? `${sp?.label ?? ''}${block.label}` : (sp?.label ?? specimenId);
+    if (activeRes.ok && activeRes.data) {
+      const credit = reverseServiceCharge(activeRes.data, signingUser?.id ?? 'unknown', undefined, postSignoutContext);
+      if (await resolveRequireBillingApprovalForCase(caseData.originHospitalId)) {
+        credit.approvalStatus = 'DRAFT';
+        credit.draftedBy = signingUser?.id ?? 'unknown';
+        credit.draftedAt = new Date().toISOString();
+      }
+      await mockServiceChargeService.saveCharge(credit);
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code credited',
+        detail: `${sourceLabel}: ${code} (${credit.cptCode}) removed - real credit issued reversing charge ${activeRes.data.id}`
+          + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    } else {
+      // Real, honest case: removing a code with no matching charge
+      // record (e.g. applied before this ledger existed). Still
+      // audited - "All must be audited" - just without a financial
+      // reversal that has nothing real to reverse.
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code removed (no charge record found)',
+        detail: `${sourceLabel}: ${code} removed - no matching real charge record found to credit`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    }
+  };
+
+  const handleApproveBillingCode = async (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    // Real, confirmed gap fix: pending AI suggestions are live-
+    // recomputed from unapplied stain evidence (BillingReviewPanel.tsx's
+    // own pending/unappliedSuggestionSources), not a one-time-resolved
+    // list - they genuinely can still exist and be approved on an
+    // already-signed-out case. Gated before any mutation, same
+    // principle as handleAddCodesToSpecimens/handleConfirmCodeCorrection.
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${code} approved.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: [...(block?.coding?.cpt ?? []), { code, stainOrderId }],
+        rejectedCpt: block?.coding?.rejectedCpt ?? [],
+      },
+    });
+    recordChargeTransaction(specimenId, blockId, code, postSignoutContext);
+  };
+
+  const handleRejectBillingCode = (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: block?.coding?.cpt ?? [],
+        rejectedCpt: [...(block?.coding?.rejectedCpt ?? []), { code, stainOrderId }],
+      },
+    });
+    // Real, per direct requirement ("All must be audited"): no
+    // financial transaction here - overriding a pending AI suggestion
+    // means nothing was ever actually charged, so there is nothing
+    // real to credit. The decision itself is still worth a real audit
+    // trail entry, distinct from recordCreditTransaction's own
+    // "removed an already-applied code" case above.
+    auditService.logEvent({
+      type: 'user',
+      event: 'AI billing suggestion overridden',
+      detail: `${specimenId}${blockId}${stainOrderId ? ` (stain ${stainOrderId})` : ''}: ${code} overridden, not applied`,
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData?.accession?.fullAccession ?? caseData?.id ?? null,
+      confidence: null,
+    });
+  };
+
+  // Real fix, found via direct inspection of the actual, real case data
+  // after testing BillingReviewPanel's own new expand-in-place Override
+  // flow: calling handleRejectBillingCode then immediately,
+  // synchronously, handleApproveBillingCode in the same event handler
+  // silently lost one of the two changes. Both handlers read block via
+  // findCaseBlock, a plain read of the closure-captured caseData (not
+  // caseDataRef.current, unlike handleUpdateBlock's own internal merge
+  // logic) - so the second call computed its own changes.coding object
+  // from the same, pre-first-call snapshot, and handleUpdateBlock's
+  // shallow merge let that whole object silently overwrite the first
+  // call's own update. This computes both the rejectedCpt and cpt
+  // changes from one single read, then writes them together in one
+  // real update - no second, competing read/write cycle possible.
+  // Real, per direct requirement to make code application genuinely
+  // stain-level: the replacement code inherits the same stainOrderId
+  // as the suggestion it's replacing - an override is still resolving
+  // that specific stain's own billing, just with a different code.
+  const handleOverrideBillingCode = async (specimenId: string, blockId: string, oldCode: string, newCode: string, stainOrderId?: string) => {
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${oldCode} \u2192 ${newCode}.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: [...(block?.coding?.cpt ?? []), { code: newCode, stainOrderId }],
+        rejectedCpt: [...(block?.coding?.rejectedCpt ?? []), { code: oldCode, stainOrderId }],
+      },
+    });
+    recordChargeTransaction(specimenId, blockId, newCode, postSignoutContext);
+    auditService.logEvent({
+      type: 'user',
+      event: 'AI billing suggestion overridden',
+      detail: `${specimenId}${blockId}${stainOrderId ? ` (stain ${stainOrderId})` : ''}: ${oldCode} overridden, not applied — replaced with ${newCode}`
+        + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData?.accession?.fullAccession ?? caseData?.id ?? null,
+      confidence: null,
+    });
+  };
+
+  // Real feature, per direct request: "we need the delete in case they
+  // want to remove the billing on that item." Removes the code from
+  // coding.cpt only - rejectedCpt is deliberately left untouched, so a
+  // deleted AI-confirmed code is free to reappear as a real, pending
+  // suggestion on the next recompute (the underlying stain evidence on
+  // the block hasn't changed), rather than being silently lost for
+  // this block forever. Matches by both code AND stainOrderId now -
+  // real, necessary precision once multiple entries can share the same
+  // code value but belong to different stains.
+  const handleDeleteBillingCode = (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    const block = findCaseBlock(specimenId, blockId);
+    const cpt = [...(block?.coding?.cpt ?? [])];
+    const idx = cpt.findIndex(c => c.code === code && c.stainOrderId === stainOrderId);
+    if (idx !== -1) cpt.splice(idx, 1);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: { cpt, rejectedCpt: block?.coding?.rejectedCpt ?? [] },
+    });
+    recordCreditTransaction(specimenId, blockId, code);
+  };
+
+  // Real feature, per direct request: "an option to Approve all billing
+  // since they can see it all now... could be a lot in some instances."
+  // Deliberately batched by block, one handleUpdateBlock call per real
+  // affected block, rather than calling handleApproveBillingCode once
+  // per item - a naive loop would have each call read the same real,
+  // pre-update caseData.specimens (React doesn't re-render mid-
+  // synchronous-loop), so several rapid calls to the same block would
+  // all compute their new cpt array from the same stale starting point
+  // and the last call would win, silently dropping the others. Real,
+  // confirmed risk, not theoretical: several real demo blocks (e.g. the
+  // MMR case, O26-0001) carry more than one pending suggestion with the
+  // exact same code value on the exact same block.
+  const handleApproveAllBillingCodes = async (items: { specimenId: string; blockId: string; code: string; stainOrderId?: string }[]) => {
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status) && items.length > 0) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${items.length} code${items.length === 1 ? '' : 's'} approved.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const byBlock = new Map<string, { specimenId: string; blockId: string; codes: { code: string; stainOrderId?: string }[] }>();
+    for (const item of items) {
+      const key = `${item.specimenId}::${item.blockId}`;
+      if (!byBlock.has(key)) byBlock.set(key, { specimenId: item.specimenId, blockId: item.blockId, codes: [] });
+      byBlock.get(key)!.codes.push({ code: item.code, stainOrderId: item.stainOrderId });
+    }
+    for (const { specimenId, blockId, codes } of byBlock.values()) {
+      const block = findCaseBlock(specimenId, blockId);
+      handleUpdateBlock(specimenId, blockId, {
+        coding: {
+          cpt: [...(block?.coding?.cpt ?? []), ...codes],
+          rejectedCpt: block?.coding?.rejectedCpt ?? [],
+        },
+      });
+    }
+    // Real transaction/audit trail for every real item in the batch -
+    // same recordChargeTransaction helper a single Confirm uses, so
+    // "Confirm All" produces exactly the same real ledger entries a
+    // pathologist confirming each one individually would have.
+    for (const item of items) recordChargeTransaction(item.specimenId, item.blockId, item.code, postSignoutContext);
+  };
+
+  // Real feature, per direct request: "display the specimen level codes
+  // in the billing area where they can remove the code if need be."
+  // Specimen-level, not block-level - no handleUpdateBlock equivalent
+  // exists for this, so this follows the same real, established
+  // pattern directly: functional setCaseData update (avoids acting on
+  // a stale closure) plus markDirty, same as handleUpdateBlock's own
+  // real persistence path.
+  const handleDeleteSpecimenBaseCode = (specimenId: string, code: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp =>
+          sp.id === specimenId
+            ? { ...sp, coding: { ...sp.coding, cpt: (sp.coding?.cpt ?? []).filter(c => c !== code) } }
+            : sp
+        ),
+      } as typeof prev;
+    });
+    markDirty('Billing code removed');
+    recordCreditTransaction(specimenId, undefined, code);
+  };
+
+  // Real, per direct guidance's own follow-up: "post-signout additions
+  // may be required if the wrong code was billed... the original bill
+  // is credited and the new billing code submitted." These two
+  // entry points only capture WHICH real code is being corrected -
+  // opening CorrectAppliedCodeModal to collect the new code. The
+  // actual "credit the old, charge the new" orchestration happens in
+  // handleConfirmCodeCorrection below, once the new code is known.
+  const handleCorrectBillingCode = (specimenId: string, blockId: string, oldCode: string, stainOrderId?: string) => {
+    setCorrectingCode({ specimenId, blockId, oldCode, stainOrderId });
+  };
+  const handleCorrectSpecimenBaseCode = (specimenId: string, oldCode: string) => {
+    setCorrectingCode({ specimenId, oldCode });
+  };
+
+  // Real, per direct guidance's own follow-up. Gates on the real
+  // post-signout reason + comment when the case has already signed
+  // out (same requestPostSignoutConfirmation used by
+  // handleAddCodesToSpecimens), updates the visible code in real case
+  // state, then calls the real, shared correctServiceCharge
+  // orchestration (services/billing/correctServiceCharge.ts) - never
+  // reimplemented inline here, per direct correction that this kind of
+  // financial orchestration belongs in the services layer.
+  const handleConfirmCodeCorrection = async (newCode: string) => {
+    const pending = correctingCode;
+    setCorrectingCode(null);
+    if (!pending || !caseData?.id) return;
+    const { specimenId, blockId, oldCode, stainOrderId } = pending;
+
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${oldCode} \u2192 ${newCode}.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+
+    if (blockId) {
+      const block = findCaseBlock(specimenId, blockId);
+      const cpt = [...(block?.coding?.cpt ?? [])];
+      const idx = cpt.findIndex(c => c.code === oldCode && c.stainOrderId === stainOrderId);
+      if (idx !== -1) cpt[idx] = { code: newCode, stainOrderId };
+      handleUpdateBlock(specimenId, blockId, { coding: { cpt, rejectedCpt: block?.coding?.rejectedCpt ?? [] } });
+    } else {
+      setCaseData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          specimens: prev.specimens?.map(sp =>
+            sp.id === specimenId
+              ? { ...sp, coding: { ...sp.coding, cpt: (sp.coding?.cpt ?? []).map(c => c === oldCode ? newCode : c) } }
+              : sp
+          ),
+        } as typeof prev;
+      });
+      markDirty('Billing code corrected');
+    }
+
+    if (!isOrchestrationMode) return; // assist mode: RVU-tracking code change only, no real financial transaction - matches every other billing action in this file
+    const activeRes = await mockServiceChargeService.findActiveChargeForSource(caseData.id, specimenId, blockId, oldCode);
+    const sp = caseData.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    const sourceLabel = block ? `${sp?.label ?? ''}${block.label}` : (sp?.label ?? specimenId);
+    if (activeRes.ok && activeRes.data) {
+      const res = await correctServiceCharge(caseData.id, activeRes.data.id, newCode, signingUser?.id ?? 'unknown', postSignoutContext);
+      if (res.ok) {
+        auditService.logEvent({
+          type: 'user',
+          event: 'Billing code corrected',
+          detail: `${sourceLabel}: ${oldCode} \u2192 ${newCode} \u2014 real credit issued reversing charge ${res.data.original.id}, new charge ${res.data.corrected.id} created`
+            + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+          user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+          caseId: caseData.accession?.fullAccession ?? caseData.id,
+          confidence: null,
+        });
+      }
+    } else {
+      // Real, honest case: correcting a code with no matching charge
+      // record (e.g. applied before this ledger existed) - same
+      // graceful-proceed posture as recordCreditTransaction's own
+      // "no charge record found" path.
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code corrected (no charge record found)',
+        detail: `${sourceLabel}: ${oldCode} \u2192 ${newCode} \u2014 no matching real charge record found to credit`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    }
+  };
+
+  // Real feature, per the billing panel's own redesign (a specimen row
+  // can now be selected directly, closing a real, pre-existing gap:
+  // there was previously no way to manually assign a specimen-level
+  // base code through this panel at all, only delete an auto-applied
+  // one). Mirrors handleDeleteSpecimenBaseCode's own structure exactly,
+  // adding rather than removing - and reuses recordChargeTransaction,
+  // the same real charge/audit helper every other billing addition in
+  // this file already goes through.
+  const handleAddSpecimenBaseCode = (specimenId: string, code: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp =>
+          sp.id === specimenId
+            ? { ...sp, coding: { ...sp.coding, cpt: [...(sp.coding?.cpt ?? []), code] } }
+            : sp
+        ),
+      } as typeof prev;
+    });
+    markDirty('Billing code added');
+    recordChargeTransaction(specimenId, undefined, code);
+  };
+
+  // Real gate, per direct request: sign-out checks, using the exact
+  // same real computeCaseCodingSummary the billing tab itself renders
+  // from, whether anything is genuinely pending. Fetches stain types
+  // on demand here rather than keeping them in page-level state for
+  // the whole page's lifecycle, since they're only needed at the
+  // moment sign-out is actually clicked. A rough, stain-count-only
+  // heuristic was considered and rejected - it would have flagged any
+  // block with unrelated stains (e.g. a plain H&E) as pending, since
+  // it couldn't tell which stains genuinely trigger a real suggestion.
+  //
+  // Real restriction, per direct requirement: "we should only bill on
+  // orchestration cases. LIS will handle the billing in assist mode."
+  // Uses the app's own established isOrchestrationMode (reportingMode
+  // === 'orchestrator'), not a bare !== 'assist' check - that inverse
+  // would have also caught a genuinely undefined/missing reportingMode
+  // (older records), which isOrchestrationMode's own comment
+  // deliberately does NOT treat as orchestration. A non-orchestration
+  // case skips this whole check and proceeds straight to sign-out,
+  // exactly as it did before this feature existed.
+  const handleSignOutClick = async () => {
+    if (!isOrchestrationMode) { setShowSignOutModal(true); return; }
+    const stainTypesRes = await stainTypeService.getAll();
+    const activeStainTypes = stainTypesRes.ok ? stainTypesRes.data.filter(s => s.active) : [];
+    const summary = computeCaseCodingSummary((caseData?.specimens ?? []) as any, activeStainTypes);
+    const hasPending = summary.some(sp => sp.blocks.some(b => b.unappliedSuggestions.length > 0));
+    if (hasPending) {
+      setActiveReportType('billing');
+    } else {
+      setShowSignOutModal(true);
+    }
+  };
 
   const {
     showLogoutModal,  setShowLogoutModal,
@@ -2184,6 +2702,7 @@ const SynopticReportPage: React.FC = () => {
   const microscopicEntry = useMicroscopicEntry({
     caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast,
   });
+  const effectiveSpecimenComplexity = useEffectiveSpecimenComplexity(caseData);
 
   // Previously an anonymous inline closure on SequencerPanel's onSave JSX
   // prop — reorders specimens and their synoptic reports per the
@@ -2559,6 +3078,10 @@ const SynopticReportPage: React.FC = () => {
     handleRequestFinalize,
     handlePreFinalConfirm,
     handleFinalizeConfirm,
+    criticalFindings,
+    showCriticalFindingsModal,
+    handleRecordCriticalNotification,
+    handleAcknowledgeCriticalFindings,
   } = useSignOutWorkflow({
     caseData, setCaseData, signingUser, showToast, activeReportInstanceId,
     knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
@@ -2656,20 +3179,41 @@ const SynopticReportPage: React.FC = () => {
   // case, routing each CPT code to its own specimen's coding.cpt.
   const handleAddCodesToSpecimens = useCallback(async (codes: any[], _specimenIndices: unknown) => {
     if (!caseData) return;
-    const newIcd    = codes.filter(c => c.system === 'ICD');
+    // Real fix, per direct correction: "you can delete cpt codes in
+    // the code manager - it uses the trash can icon." The modal's own
+    // Save button resolves its FULL, final set of active codes
+    // (AddCodeModal.tsx's own allActiveCodes, built from applied minus
+    // whatever's pendingDelete) and hands that whole set back here -
+    // not just newly-added ones. Treating it as "new additions to
+    // append" (the previous behavior) would silently duplicate every
+    // already-active, untouched code on every single save.
+    // Real, per direct guidance's own follow-up on structured
+    // linkage: the modal's own allActiveCodes already carries a real
+    // specimenId on every code, ICD included (AddCodeModal.tsx's own
+    // allActiveCodes construction) - this previously discarded it for
+    // ICD entries, flattening every one into one, undifferentiated
+    // case-wide list regardless of which specimen it was actually
+    // applied to. A real specimenId here means a real, post-
+    // examination, specimen-specific diagnosis (Specimen.coding.icd10,
+    // see that field's own doc comment); no specimenId means the
+    // real, case-wide, order-level indication, same as before.
+    const newIcd          = codes.filter(c => c.system === 'ICD' && !(c as any).specimenId);
+    const newIcd10BySpecimenId = new Map<string, { code: string; description: string }[]>();
+    codes.filter(c => c.system === 'ICD' && (c as any).specimenId).forEach(c => {
+      const specId = (c as any).specimenId;
+      if (!newIcd10BySpecimenId.has(specId)) newIcd10BySpecimenId.set(specId, []);
+      newIcd10BySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
+    });
     const newSnomed = codes.filter(c => c.system === 'SNOMED');
-    const newCoding = {
-      icd10:  [...(((caseData as any).coding?.icd10  ?? []) as any[]), ...newIcd],
-      snomed: [...(((caseData as any).coding?.snomed ?? []) as any[]), ...newSnomed],
-    };
+    const newCoding = { icd10: newIcd, snomed: newSnomed };
+
     // Real fix, Phase 1 of specimen-level CPT association: a real
     // LIS assigns base surgical pathology CPT codes per specimen,
     // not as one flat, undifferentiated case-level list (see
     // types/case/Specimen.ts's own doc comment on
     // Specimen.coding.cpt for the fuller reasoning). The modal
     // already tells us which real specimen each code was applied
-    // to via c.specimenId — routes each new CPT code to its own
-    // real specimen's coding.cpt.
+    // to via c.specimenId.
     const newCptBySpecimenId = new Map<string, string[]>();
     codes.filter(c => c.system === 'CPT').forEach(c => {
       const specId = (c as any).specimenId;
@@ -2677,11 +3221,73 @@ const SynopticReportPage: React.FC = () => {
       if (!newCptBySpecimenId.has(specId)) newCptBySpecimenId.set(specId, []);
       newCptBySpecimenId.get(specId)!.push(c.code);
     });
+
+    // Real, per-specimen diff against what's there today - a real
+    // addition (in the new, resolved list but not the old one) needs
+    // a real charge; a real removal (in the old list but not the new
+    // one) needs a real credit. Count-based, not a plain Set diff, so
+    // a specimen with two real, identical base codes isn't confused
+    // for "nothing changed" when only one of the two was removed.
+    const additionsBySpecimen = new Map<string, string[]>();
+    const removalsBySpecimen  = new Map<string, string[]>();
     const updatedSpecimens = (caseData.specimens ?? []).map((sp: any) => {
-      const additions = newCptBySpecimenId.get(sp.id);
-      if (!additions || additions.length === 0) return sp;
-      return { ...sp, coding: { ...(sp.coding ?? {}), cpt: [...((sp.coding?.cpt ?? []) as string[]), ...additions] } };
+      // Real, per direct guidance's own follow-up: a specimen counts
+      // as having a real ICD10 change either when the modal's own
+      // final, resolved set includes a real entry for it, OR when it
+      // previously had real entries that are now entirely gone (the
+      // user deleted its only assignment(s) via the modal's trash
+      // icon) - the latter must still clear the stale value, not
+      // silently preserve it.
+      const hadExistingIcd10 = ((sp.coding?.icd10 ?? []) as { code: string }[]).length > 0;
+      const hasIcd10Change = newIcd10BySpecimenId.has(sp.id) || hadExistingIcd10;
+      if (!newCptBySpecimenId.has(sp.id) && !hasIcd10Change && !((sp.coding?.cpt ?? []) as string[]).length) return sp;
+      const oldList = [...((sp.coding?.cpt ?? []) as string[])];
+      const newList = [...(newCptBySpecimenId.get(sp.id) ?? [])];
+      const remaining = [...oldList];
+      const added: string[] = [];
+      for (const code of newList) {
+        const idx = remaining.indexOf(code);
+        if (idx !== -1) remaining.splice(idx, 1); // already existed - not a real addition
+        else added.push(code);
+      }
+      if (added.length) additionsBySpecimen.set(sp.id, added);
+      if (remaining.length) removalsBySpecimen.set(sp.id, remaining); // whatever's left in oldList was never matched in newList - a real removal
+      return {
+        ...sp,
+        coding: {
+          ...(sp.coding ?? {}),
+          cpt: newList,
+          // Real, per direct guidance's own follow-up: the modal's
+          // own complete, resolved set for this specimen - undefined
+          // (not the stale old value) when the user removed every
+          // real assignment it had.
+          icd10: hasIcd10Change ? newIcd10BySpecimenId.get(sp.id) : sp.coding?.icd10,
+        },
+      };
     });
+
+    // Real, per direct guidance's own follow-up: billing is one of the
+    // few things that can genuinely change after a case signs out, but
+    // it needs a real, documented reason - gated here, before ANY
+    // mutation (case update, setCaseData, or the transaction loops
+    // below), never after. A cancelled prompt means nothing happens at
+    // all - no partial state where the UI shows a change that was
+    // never actually confirmed.
+    const hasRealChange = additionsBySpecimen.size > 0 || removalsBySpecimen.size > 0;
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && hasRealChange && isCaseSignedOutForBilling(caseData.status)) {
+      const addCount = [...additionsBySpecimen.values()].reduce((n, c) => n + c.length, 0);
+      const removeCount = [...removalsBySpecimen.values()].reduce((n, c) => n + c.length, 0);
+      const parts = [];
+      if (addCount) parts.push(`${addCount} code${addCount === 1 ? '' : 's'} added`);
+      if (removeCount) parts.push(`${removeCount} code${removeCount === 1 ? '' : 's'} removed`);
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(parts.join(', ') + '.');
+      } catch {
+        return; // cancelled - no mutation at all, modal stays open per the existing "stays open" contract
+      }
+    }
+
     try {
       await caseRouter.updateCase(caseData.id, { coding: newCoding, specimens: updatedSpecimens } as any, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
@@ -2694,7 +3300,56 @@ const SynopticReportPage: React.FC = () => {
     }
     setCaseData(prev => prev ? ({ ...prev, coding: newCoding, specimens: updatedSpecimens } as typeof prev) : prev);
     markDirty('Codes');
-  }, [caseData, knownVersionRef, setConcurrencyConflict, setCaseData, markDirty]);
+
+    // Real fix, per direct requirement: this CPT path previously wrote
+    // straight to coding.cpt with no real transaction or audit trail
+    // at all - a second, silent way into the exact same field the
+    // billing panel's own ledger governs. Real, per direct follow-up
+    // ("can we still keep RVU... useful to track Pathologist
+    // performance"): only a real, orchestration-mode change becomes an
+    // actual financial charge/credit - LIS owns real billing in assist
+    // mode, per established policy - but the code itself is still
+    // written either way, since contributionDashboardCalculations.ts
+    // genuinely prefers a specimen's real, applied CPT code over its
+    // own generic estimate when one exists, and losing that would
+    // make assist-mode RVU tracking less accurate, not more compliant.
+    // Every path is audited regardless of mode - "All must be audited"
+    // doesn't stop being true just because no money moved.
+    for (const [specId, addedCodes] of additionsBySpecimen) {
+      for (const code of addedCodes) {
+        if (isOrchestrationMode) {
+          recordChargeTransaction(specId, undefined, code, postSignoutContext);
+        } else {
+          const sp = caseData.specimens?.find(s => s.id === specId);
+          auditService.logEvent({
+            type: 'user',
+            event: 'CPT code added (assist mode - RVU tracking only, not a real charge)',
+            detail: `${sp?.label ?? specId}: ${code} added via Code Manager - LIS owns real billing in assist mode`,
+            user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+            caseId: caseData.accession?.fullAccession ?? caseData.id,
+            confidence: null,
+          });
+        }
+      }
+    }
+    for (const [specId, removedCodes] of removalsBySpecimen) {
+      for (const code of removedCodes) {
+        if (isOrchestrationMode) {
+          recordCreditTransaction(specId, undefined, code, postSignoutContext);
+        } else {
+          const sp = caseData.specimens?.find(s => s.id === specId);
+          auditService.logEvent({
+            type: 'user',
+            event: 'CPT code removed (assist mode - no real charge to credit)',
+            detail: `${sp?.label ?? specId}: ${code} removed via Code Manager - RVU tracking only, LIS owns real billing in assist mode`,
+            user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+            caseId: caseData.accession?.fullAccession ?? caseData.id,
+            confidence: null,
+          });
+        }
+      }
+    }
+  }, [caseData, knownVersionRef, setConcurrencyConflict, setCaseData, markDirty, isOrchestrationMode, signingUser]);
 
   // ── Orchestrator handlers ──────────────────────────────────
   const {
@@ -2806,7 +3461,7 @@ const SynopticReportPage: React.FC = () => {
         <HeaderBar
           caseData={caseData}
           onNavigate={guard}
-          onSignOut={() => setShowSignOutModal(true)}
+          onSignOut={handleSignOutClick}
           aiSynthesisStatus={aiSynthesisStatus}
           onAiStatusClick={handleAiStatusReviewClick}
           compact={(isOrchestrationMode && leftTab === 'draft') || isHeaderCompactManual}
@@ -3222,7 +3877,7 @@ const SynopticReportPage: React.FC = () => {
                   </div>
                 )}
                 <AmendmentDraftBanner caseData={caseData} activeReportInstanceId={activeReportInstanceId} onEdit={handleRequestAmendment} />
-                <AmendmentStatusBanner caseId={caseData?.id} synopticReports={caseData?.synopticReports} />
+                <AmendmentStatusBanner caseId={caseData?.id} synopticReports={caseData?.synopticReports} specimens={caseData?.specimens} />
 
                 <ReleaseBufferBanner
                   caseData={caseData}
@@ -3245,12 +3900,13 @@ const SynopticReportPage: React.FC = () => {
                     </div>
                   );
                 })()}
-                <LeftReportPanel caseData={caseData} highlightText={highlightText ?? undefined} onMatchResolved={found => setHighlightNotFound(!found)} />
+                <LeftReportPanel caseData={caseData} highlightText={highlightText ?? undefined} rawHighlightText={rawHighlightText} onMatchResolved={found => setHighlightNotFound(!found)} />
               </div>
               <div className={`ps-syn-tab-panel${leftTab === 'material' ? ' ps-syn-tab-panel--visible-block' : ''}`}>
                 <MaterialTreePanel
                   caseData={caseData}
                   activeSpecimenId={activeSpecimenId}
+                  highlightedStainId={highlightedStainId}
                   onOpenBlockEditor={(blockOrDecantId) => {
                     // Real bug fix, per direct follow-up: "decant-level
                     // linking UI." MaterialTreePanel.tsx's own decant
@@ -3265,6 +3921,7 @@ const SynopticReportPage: React.FC = () => {
                     if (blockIdx >= 0) {
                       setFocusedBlockIndex(blockIdx);
                       setFocusedDecantId(null);
+                      setMaterialSelectedBlockId(blockOrDecantId);
                     } else if (allDecants.some(d => d.decant.id === blockOrDecantId)) {
                       setFocusedDecantId(blockOrDecantId);
                     }
@@ -3278,6 +3935,20 @@ const SynopticReportPage: React.FC = () => {
                   onRemovePendingBlock={handleRemovePendingBlock}
                   onAddDecant={handleAddDecant}
                   onAssignBaseCode={(_specimenId, specimenIndex) => {
+                    // Real fix, per direct guidance: "remove [Code
+                    // Manager's billing code tab] altogether, and let
+                    // the billing review handle the coding." In
+                    // Orchestration mode, BillingReviewPanel already
+                    // has its own real "+ Add a code manually" flow
+                    // for a specimen's base code - opening Code
+                    // Manager's own, now-removed CPT tab here would be
+                    // a dead end. Redirects to the Material tab, where
+                    // BillingReviewPanel actually renders, instead.
+                    if (isOrchestrationMode) {
+                      safeSetLeftTab('material');
+                      setActiveReportType('billing');
+                      return;
+                    }
                     setCodesModalTargetSpecimenIndex(specimenIndex);
                     setShowCodesModal(true);
                     log('codes_modal_opened', { caseId: caseId ?? '' });
@@ -3299,7 +3970,36 @@ const SynopticReportPage: React.FC = () => {
           {/* Right panel — hidden in orchestration draft mode (Sequencer provides synoptic access) */}
           <div className={`ps-syn-right-panel${isOrchestrationMode && leftTab === 'draft' ? ' ps-syn-right-panel--collapsed' : ''}`}>
             <div className="ps-syn-right-panel-scroll">
-              {activeReportType === 'microscopic' && activeSpecimenId ? (
+              {isOrchestrationMode && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px 0' }}>
+                  <button
+                    className={activeReportType === 'billing' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'}
+                    style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => setActiveReportType(activeReportType === 'billing' ? 'synoptic' : 'billing')}
+                  >
+                    {activeReportType === 'billing' ? '← Back to Synoptic' : '$ Billing Review'}
+                  </button>
+                </div>
+              )}
+              {activeReportType === 'billing' && isOrchestrationMode ? (
+                <BillingReviewPanel
+                  specimens={(caseData?.specimens as any) ?? []}
+                  onApprove={handleApproveBillingCode}
+                  onOverride={handleOverrideBillingCode}
+                  onRejectOnly={handleRejectBillingCode}
+                  onDelete={handleDeleteBillingCode}
+                  onDeleteBaseCode={handleDeleteSpecimenBaseCode}
+                  onCorrect={handleCorrectBillingCode}
+                  onCorrectBaseCode={handleCorrectSpecimenBaseCode}
+                  onAddBaseCode={handleAddSpecimenBaseCode}
+                  onApproveAll={handleApproveAllBillingCodes}
+                  onHighlight={setRawHighlightText}
+                  onHighlightStain={setHighlightedStainId}
+                  materialSelectedBlockId={materialSelectedBlockId}
+                  onFocusBlock={(specimenId) => { setLeftTab('material'); setActiveSpecimenId(specimenId); }}
+                  contextLabel="sign-out"
+                />
+              ) : activeReportType === 'microscopic' && activeSpecimenId ? (
                 <MicroscopicEntryPanel
                   specimenId={activeSpecimenId}
                   specimenLabel={caseData?.specimens?.find(sp => sp.id === activeSpecimenId)?.label ?? ''}
@@ -3315,7 +4015,7 @@ const SynopticReportPage: React.FC = () => {
                 caseData={caseData}
                 activeTab={activeTab}
                 activeReportInstanceId={activeReportInstanceId}
-                activeReportType={activeReportType === 'microscopic' ? 'synoptic' : activeReportType}
+                activeReportType={activeReportType === 'microscopic' || activeReportType === 'billing' ? 'synoptic' : activeReportType}
                 activeSpecimenId={activeSpecimenId}
                 onReportInstanceChange={setActiveReportInstanceId}
                 onReportTypeChange={setActiveReportType}
@@ -3347,7 +4047,7 @@ const SynopticReportPage: React.FC = () => {
           }}
           onFinalize={() => handleRequestFinalize(false)}
           onFinalizeAndNext={() => handleRequestFinalize(true)}
-          onSignOut={() => { if (caseData?.reportingMode !== 'assist') setShowSignOutModal(true); }}
+          onSignOut={() => { if (caseData?.reportingMode !== 'assist') handleSignOutClick(); }}
           onRequestAmendment={handleRequestAmendment}
           onPrint={openCopilotReportView}
           onOpenReprints={() => setShowReprintModal(true)}
@@ -3385,6 +4085,14 @@ const SynopticReportPage: React.FC = () => {
         onCountersignFeedbackChange={setCountersignFeedback}
         specimens={caseData?.specimens as any}
         onAssignBaseCode={(_specimenId, specimenIndex) => {
+          // Real fix, per direct guidance: same redirect as the
+          // Material tab's own "+ Code" button - see that call site's
+          // own comment for the full reasoning.
+          if (isOrchestrationMode) {
+            safeSetLeftTab('material');
+            setActiveReportType('billing');
+            return;
+          }
           setCodesModalTargetSpecimenIndex(specimenIndex);
           setShowCodesModal(true);
           log('codes_modal_opened', { caseId: caseId ?? '' });
@@ -3552,6 +4260,32 @@ const SynopticReportPage: React.FC = () => {
         onConfirm={handleFinalizeConfirm}
       />
 
+      {/* Real, per direct guidance's own follow-up: the general Codes
+          manager save path can now pause and require a real reason +
+          comment before any post-signout charge/credit or case-data
+          mutation happens - see requestPostSignoutConfirmation above. */}
+      {pendingPostSignoutPrompt && (
+        <PostSignoutBillingChangeModal
+          summary={pendingPostSignoutPrompt.summary}
+          onConfirm={(context) => { pendingPostSignoutPrompt.resolve(context); setPendingPostSignoutPrompt(null); }}
+          onCancel={() => { pendingPostSignoutPrompt.reject(); setPendingPostSignoutPrompt(null); }}
+        />
+      )}
+
+      {/* Real, per direct guidance's own follow-up: "post-signout
+          additions may be required if the wrong code was billed...
+          the original bill is credited and the new billing code
+          submitted." Captures the real, new replacement code before
+          handleConfirmCodeCorrection runs the actual orchestration. */}
+      {correctingCode && (
+        <CorrectAppliedCodeModal
+          originalCode={correctingCode.oldCode}
+          onConfirm={handleConfirmCodeCorrection}
+          onCancel={() => setCorrectingCode(null)}
+        />
+      )}
+
+
       {/* Protocol change review — AI proposes after microscopic received */}
       <ProtocolChangeModal
         show={showProtoReview}
@@ -3639,6 +4373,14 @@ const SynopticReportPage: React.FC = () => {
           nextLabel={String.fromCharCode(65 + (caseData.specimens?.length ?? 0))}
           existingSpecimens={caseData.specimens ?? []}
           isOrchestrationMode={isOrchestrationMode}
+          // Real, per direct guidance's own follow-up: the real,
+          // auto-derived effective complexity (getEffectiveComplexity,
+          // via useEffectiveSpecimenComplexity above) for this
+          // specific specimen, if any - undefined when this specimen
+          // has no real evidence to derive one from. Resolved once,
+          // for every specimen, by the parent; the modal never
+          // computes this itself.
+          effectiveComplexity={editingSpecimen ? effectiveSpecimenComplexity[editingSpecimen.id] : undefined}
           onClose={() => { setShowSpecimenEdit(false); setEditingSpecimen(null); }}
           onSave={handleSpecimenSave}
         />
@@ -3748,6 +4490,14 @@ const SynopticReportPage: React.FC = () => {
         />
       )}
 
+      {showCriticalFindingsModal && (
+        <CriticalFindingsModal
+          findings={criticalFindings}
+          onRecord={handleRecordCriticalNotification}
+          onAcknowledge={handleAcknowledgeCriticalFindings}
+        />
+      )}
+
       {showSpecimenCommentModal && activeSpecimenCommentId && (
         <ReportCommentModal
           specimenName={
@@ -3837,12 +4587,33 @@ const SynopticReportPage: React.FC = () => {
                 id: `cpt-${sp.id}-${code}`, system: 'CPT' as const, code, display: code, source: 'manual' as const, specimenId: sp.id,
               }))
             ),
+            // Real, per direct guidance's own follow-up on structured
+            // linkage: a real, specimen-specific diagnosis
+            // (Specimen.coding.icd10, see that field's own doc
+            // comment) - same real pattern as CPT immediately above,
+            // attaching specimenId so the modal's own existing
+            // left-panel grouping and re-selection description lookup
+            // both work correctly for these too.
+            ...((caseData.specimens ?? []) as any[]).flatMap((sp: any) =>
+              ((sp.coding?.icd10 ?? []) as { code: string; description: string }[]).map((dx) => ({
+                id: `icd10-${sp.id}-${dx.code}`, system: 'ICD' as const, code: dx.code, display: dx.description, source: 'manual' as const, specimenId: sp.id,
+              }))
+            ),
           ]}
           allSpecimens={(caseData.specimens ?? []).map((sp, i) => ({
-            index: i, id: i + 1,
+            index: i, id: i + 1, specimenId: sp.id,
             name: `${sp.label}: ${sp.description ?? ''}`,
+            specimenDictionaryEntryId: sp.specimenDictionaryEntryId,
+            // Real, per useEffectiveSpecimenComplexity's own doc
+            // comment - already incorporates sp.complexity when
+            // explicitly set (getEffectiveComplexity checks that
+            // first, internally), so this alone is the real,
+            // effective value - no separate ?? sp.complexity needed.
+            complexity: effectiveSpecimenComplexity[sp.id],
           }))}
+          specimenDictionary={specimenDictionary}
           clientId={caseData.order?.clientId}
+          isOrchestrationMode={isOrchestrationMode}
           caseText={{
             gross:       caseData.diagnostic?.grossDescription ?? '',
             microscopic: caseData.diagnostic?.microscopicDescription ?? '',
@@ -3966,7 +4737,7 @@ const SynopticReportPage: React.FC = () => {
         </div>
       )}
 
-      {hasExistingDraft && existingDraftSavedAt && (
+      {hasExistingDraft && existingDraftSavedAt && draftDiff.length > 0 && (
         <DraftRecoveryModal
           savedAt={existingDraftSavedAt}
           onRestore={handleRestoreDraft}

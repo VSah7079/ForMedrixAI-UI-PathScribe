@@ -48,10 +48,46 @@ export interface IBillingRuleService {
    *  retireVersion. Requires a real changeReason for any version beyond
    *  the first WITHIN that same (billingCode, siteId) scope - per
    *  direct guidance's own governance rule ("Changes require: Reason.
-   *  Effective date. Approver."). */
+   *  Effective date. Approver.").
+   *
+   *  Real, per direct guidance's own Four-Eyes Principle requirement:
+   *  defaults to status 'DRAFT' when the caller doesn't pass one
+   *  explicitly - a new rule change no longer goes live on save. An
+   *  explicit status is still accepted (the real, initial migration
+   *  seed passes 'ACTIVE' directly, since that data predates this
+   *  workflow and was never meant to require retroactive approval). */
   createVersion(input: Omit<BillingRuleVersion, 'version' | 'createdAt' | 'status'> & {
     status?: BillingRuleVersion['status'];
   }): Promise<ServiceResult<BillingRuleVersion>>;
+
+  /** Real, per direct guidance's own Four-Eyes Principle requirement:
+   *  moves a real DRAFT to PENDING_APPROVAL, locking it from further
+   *  edits by its own author and placing it in a real, second
+   *  person's review queue. Rejects if the version isn't currently a
+   *  real DRAFT - a version already submitted, live, rejected, or
+   *  retired can't be re-submitted. */
+  submitForApproval(billingCode: string, version: number, siteId: string | undefined, submittedBy: string): Promise<ServiceResult<BillingRuleVersion>>;
+
+  /** Real, per direct guidance's own Four-Eyes Principle (dual
+   *  control) requirement: approves a real PENDING_APPROVAL version,
+   *  making it genuinely live. Hard-enforced here, not just in the
+   *  UI: rejects if reviewedBy matches this version's own createdBy
+   *  or submittedForApprovalBy - the person who drafted or submitted
+   *  a change can never be the one who approves it. Also retires
+   *  whichever version was previously ACTIVE within this same
+   *  (billingCode, siteId) scope, if any - real, clean audit history,
+   *  not two ACTIVE rows left to quietly compete via
+   *  resolveBillingRuleAt's own tie-break. */
+  approveVersion(billingCode: string, version: number, siteId: string | undefined, reviewedBy: string): Promise<ServiceResult<BillingRuleVersion>>;
+
+  /** Real, per direct guidance's own Four-Eyes Principle requirement:
+   *  declines a real PENDING_APPROVAL version - same dual-control
+   *  enforcement as approveVersion, plus a required rejectionReason,
+   *  same "a real decision always needs a real reason on record"
+   *  posture as changeReason elsewhere in this type. Terminal - the
+   *  original author creates a fresh draft to try again, rather than
+   *  editing a rejected one back to life. */
+  rejectVersion(billingCode: string, version: number, siteId: string | undefined, reviewedBy: string, rejectionReason: string): Promise<ServiceResult<BillingRuleVersion>>;
 
   /** Marks one specific (billingCode, siteId, version) RETIRED and, if
    *  given, sets its real effectiveTo - the real way a rule change

@@ -160,6 +160,16 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
           : 'Local override for development and testing. Takes priority over org settings. Never use in production.'}
       </p>
 
+      {/* Real, per direct guidance's own priority follow-up on PHI
+          handling ("will the data going to the LLM be encrypted, we
+          have to be careful") - placed here, front and center, since
+          this is the one screen an admin is actually making the
+          provider decision this warning concerns. */}
+      <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, padding: '12px 14px', marginBottom: 24, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
+        <strong>⚠ Data handling — read before selecting a provider:</strong>{' '}
+        Case narrative text (Gross/Microscopic/Ancillary descriptions) is sent to whichever provider is configured here for real, live AI features (report generation, synoptic field suggestions, template assignment). Confirmed directly: no field on this app's own request templates structurally includes patient name, MRN, or date of birth — those are never automatically appended. This does not cover free text a pathologist types directly into a narrative field; avoid including direct patient identifiers there. Transit to the configured endpoint is TLS-encrypted; at-rest retention and any Business Associate Agreement are governed by that provider's own contract with your organisation, not by this application. Confirm a real BAA is in place before using a non-mock provider with real patient cases.
+      </div>
+
       {/* Active config summary */}
       <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 24, fontSize: 12, color: '#38bdf8' }}>
         <strong>Currently active:</strong>{' '}

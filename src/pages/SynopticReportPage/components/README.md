@@ -18,6 +18,7 @@ Presentational and semi-presentational pieces specific to the case report page �
 - **`GrossingReleasePanel.tsx`** — real scan-triggered grossing release UI (grossing-scan → hydrate → release workflow).
 - **`MicroscopicEntryPanel.tsx`** — simple microscopic-description entry step, filling a real gap in the Orchestration flow ("after gross complete, what's the next logical step?").
 - **`BiopsyArrayDiagram.tsx`** — real, visual diagram for assigning each biopsy core to a specific section of a shared block, so a pathologist can always identify which section of the block a given core was embedded in.
+- **`BillingReviewPanel.tsx`** — AI Billing Code Review tab: left tree (specimens/blocks with pending/applied-count badges), right detail panel (pending suggestions, applied codes, manual add), matching the Code Manager's own left-tree/right-detail interaction pattern. **Known gap, not yet fixed**: has no coverage for Biopsy Array cases — see `services/billing/README.md`'s own disclosure for why.
 - **`AddSynopticModal.tsx`** — two-panel Flag-Manager-style modal for adding synoptic reports to a case.
 
 ## Amendment, release & status banners

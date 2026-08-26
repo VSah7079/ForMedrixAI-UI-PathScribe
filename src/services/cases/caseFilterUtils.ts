@@ -186,6 +186,22 @@ export function applyCaseFilters(cases: Case[], params?: CaseFilterParams): Case
       )
     );
   }
+  if (params?.compFlagCodes?.length) {
+    // Real, per direct guidance's own follow-up: moved verbatim from
+    // SearchPage.tsx's own runSearch, where this exact check
+    // (sf.lisCode === code || sf.id === code || sf.label === code)
+    // ran client-side, after the real page had already been fetched -
+    // now applied here, before pagination, same real pipeline
+    // position as every other filter in this function.
+    const codes = params.compFlagCodes as string[];
+    results = results.filter(c =>
+      codes.some(code =>
+        ((c as any).specimenFlags ?? []).some((sf: any) =>
+          sf.lisCode === code || sf.id === code || sf.label === code
+        )
+      )
+    );
+  }
 
   if (params?.clientIds?.length) {
     const ids = params.clientIds as string[];

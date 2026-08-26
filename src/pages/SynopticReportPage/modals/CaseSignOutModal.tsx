@@ -3,6 +3,7 @@ import '../../../pathscribe.css';
 import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
 import { computeCaseCodingSummary } from '@/services/billing/codeMapTable';
+import type { AppliedBlockCode } from '@/types/case/Specimen';
 
 interface CaseSignOutModalProps {
   show: boolean;
@@ -27,7 +28,7 @@ interface CaseSignOutModalProps {
    *  trip through the codes modal to find out. Optional - a case
    *  without a real, populated specimen list simply shows no summary,
    *  same as before this feature existed. */
-  specimens?: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { stainName: string }[]; coding?: { cpt?: string[] } }[] }[];
+  specimens?: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { stainName: string }[]; coding?: { cpt?: AppliedBlockCode[] } }[] }[];
   /** Real fix: lets the soft warning's "Assign" link jump straight to
    *  the real, contextual codes modal for the specific specimen that's
    *  missing its base code - the same real callback MaterialTreePanel's
@@ -110,7 +111,7 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
                     <div key={b.blockId} style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 12, color: '#64748b' }}>
                       <span>{sp.specimenLabel}{b.blockLabel}</span>
                       <span>
-                        {b.appliedAncillaryCodes.join(', ')}
+                        {b.appliedAncillaryCodes.map(c => c.code).join(', ')}
                         {b.unappliedSuggestions.length > 0 && (
                           <span style={{ color: '#f59e0b' }}> (suggested, not applied: {b.unappliedSuggestions.join(', ')})</span>
                         )}

@@ -413,7 +413,7 @@ describe('useAmendmentWorkflow — handleAmendmentSubmit', () => {
     await act(async () => { await result.current.openAmendmentDraft('amendment'); });
 
     await act(async () => {
-      await result.current.handleAmendmentSubmit({ explanationOfChange: 'Real correction reason', clinicianName: 'Dr. Notified', method: 'phone' as any });
+      await result.current.handleAmendmentSubmit({ explanationOfChange: 'Real correction reason', clinicianName: 'Dr. Notified', method: 'phone' as any, reasonId: 'AMEND_DIAG' });
     });
 
     expect(amendmentService.captureFields).toHaveBeenCalled();
@@ -433,7 +433,7 @@ describe('useAmendmentWorkflow — handleAmendmentSubmit', () => {
     await act(async () => { await result.current.openAmendmentDraft('addendum'); });
 
     await act(async () => {
-      await result.current.handleAmendmentSubmit({ addendumTitle: 'New finding', explanationOfChange: 'Additional info' });
+      await result.current.handleAmendmentSubmit({ addendumTitle: 'New finding', explanationOfChange: 'Additional info', reasonId: 'ADD_IHC' });
     });
 
     expect(amendmentService.release).toHaveBeenCalled();
@@ -449,9 +449,46 @@ describe('useAmendmentWorkflow — handleAmendmentSubmit', () => {
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, setShowAmendmentModal, amendmentMode: 'addendum' })));
     await act(async () => { await result.current.openAmendmentDraft('addendum'); });
 
-    await act(async () => { await result.current.handleAmendmentSubmit({ explanationOfChange: 'x' }); });
+    await act(async () => { await result.current.handleAmendmentSubmit({ explanationOfChange: 'x', reasonId: 'ADD_IHC' }); });
 
     expect(result.current.amendmentSubmitError).toBe('Addendum requires a title describing what it contains.');
     expect(setShowAmendmentModal).not.toHaveBeenCalledWith(false);
+  });
+
+  describe('real audit logging - previously entirely absent from this flow, per direct guidance\u2019s own follow-up on provenance & auditability', () => {
+    it('openAmendmentDraft logs amendment_draft_opened with the real reportInstanceId/specimenId', async () => {
+      const { amendmentService } = await import('@/services');
+      vi.mocked(amendmentService.startDraft).mockResolvedValueOnce({
+        ok: true, data: { id: 'amend-1', sequenceNumber: 1, reportInstanceId: 'SR-1', specimenId: 'sp-A' },
+      } as any);
+      const log = vi.fn();
+      const caseData = makeTestCase({ synopticReports: [{ instanceId: 'SR-1', specimenId: 'sp-A', answers: {} }] as any });
+      const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, log, amendmentMode: 'addendum' })));
+
+      await act(async () => { await result.current.openAmendmentDraft('addendum'); });
+
+      expect(log).toHaveBeenCalledWith('amendment_draft_opened', expect.objectContaining({
+        amendmentId: 'amend-1', type: 'addendum', reportInstanceId: 'SR-1', specimenId: 'sp-A',
+      }));
+    });
+
+    it('the single-stage addendum release path logs amendment_released with the real, resolved record\u2019s own reportInstanceId/specimenId', async () => {
+      const { amendmentService } = await import('@/services');
+      vi.mocked(amendmentService.release).mockResolvedValueOnce({
+        ok: true, data: { type: 'addendum', reportInstanceId: 'SR-1', specimenId: 'sp-A' },
+      } as any);
+      const log = vi.fn();
+      const caseData = makeTestCase({ synopticReports: [{ instanceId: 'SR-1', specimenId: 'sp-A', answers: {} }] as any });
+      const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, log, amendmentMode: 'addendum' })));
+      await act(async () => { await result.current.openAmendmentDraft('addendum'); });
+
+      await act(async () => {
+        await result.current.handleAmendmentSubmit({ addendumTitle: 'New finding', explanationOfChange: 'Additional info', reasonId: 'ADD_IHC' });
+      });
+
+      expect(log).toHaveBeenCalledWith('amendment_released', expect.objectContaining({
+        type: 'addendum', reportInstanceId: 'SR-1', specimenId: 'sp-A',
+      }));
+    });
   });
 });

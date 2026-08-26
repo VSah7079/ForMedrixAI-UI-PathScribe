@@ -192,6 +192,44 @@ export interface StainOrder {
    *  as every other real disposal record in this app. */
   disposedAt?: string;
   disposedBy?: string;
+  /** Real, per direct guidance's own template-and-override design:
+   *  "copy the default probe set onto the individual accession record
+   *  upon creation, but allow authorized users... to add, remove, or
+   *  swap [targets] dynamically." Only meaningful when this order's
+   *  own StainType.category is 'Molecular' - populated from that
+   *  StainType's defaultTargets at real order time, then freely
+   *  editable here without ever changing the dictionary entry's own
+   *  default array. Real target count (selectedTargets.length) is
+   *  what calculateMolecularUnits.ts actually bills against - never
+   *  the dictionary's own default count once an order exists. */
+  selectedTargets?: import('@/types/billing/MolecularBillingRule').MolecularTarget[];
+}
+
+/** Real, shared shape for a stain-attributed applied or rejected
+ *  ancillary code - mirrors the shape already used by
+ *  services/billing/codeMapTable.ts's own unappliedSuggestionSources,
+ *  so a pending suggestion and its eventual applied/rejected outcome
+ *  carry the exact same real stain reference throughout. */
+/** Real, per direct guidance's own detailed spec - explicit, never
+ *  inferred from whether microscopicDescription text happens to be
+ *  present (that check breaks down for mixed-complexity cases and
+ *  misclassifies a complex specimen the pathologist hasn't written up
+ *  yet). GROSS_ONLY maps unambiguously to CPT 88300 - the one
+ *  universal gross-only code, safe for this app to apply
+ *  automatically. GROSS_AND_MICRO covers CPT 88302-88309, which
+ *  genuinely vary by specimen type/complexity - this app never
+ *  guesses which one, see SpecimenEntry.microUpgradeBaseCptCode's own
+ *  doc comment. */
+export type SpecimenComplexity = 'GROSS_ONLY' | 'GROSS_AND_MICRO';
+
+export interface AppliedBlockCode {
+  code: string;
+  /** The real StainOrder.id this code was applied/rejected for.
+   *  Optional - a code not tied to any one specific stain (e.g. a
+   *  molecular test on the block as a whole) stays a real, valid
+   *  block-level entry rather than being forced into an attribution
+   *  that doesn't apply. */
+  stainOrderId?: string;
 }
 
 export interface HistologyBlock {
@@ -210,13 +248,31 @@ export interface HistologyBlock {
    * case from the LIS at accessioning).
    */
   lisRequestStatus?: 'pending' | 'confirmed' | 'rejected';
-  /** Real fix, Phase 1 of specimen/block-level CPT association:
-   *  ancillary CPT codes (special stains, IHC) are tied to the specific
-   *  block they were performed on, not the specimen as a whole - a
-   *  specimen can have some blocks with IHC ordered and others without.
-   *  Bare code strings, matching Specimen.coding.cpt's own shape and
-   *  what computeWorkRvuForCodes already expects. */
-  coding?: { cpt?: string[] };
+  /** Real fix, Phase 2 of specimen/block-level CPT association: each
+   *  applied/rejected ancillary code now carries the real stain
+   *  (StainOrder.id) it belongs to, not just the block - per direct
+   *  requirement, since the stain, not the block, is the actual
+   *  billable unit for ancillary codes (a block is just a physical
+   *  grouping of stains, not itself a billing entity). stainOrderId
+   *  is optional: a code genuinely not tied to any one stain (e.g. a
+   *  molecular test run on the block as a whole) can still be applied
+   *  at the block level as a real, deliberate fallback, not every
+   *  code has to be forced into stain attribution.
+   *
+   *  rejectedCpt: real, per direct requirement - a pathologist must be
+   *  able to approve OR reject an AI-suggested ancillary code at
+   *  sign-out, not just apply it. Since suggestions are computed live
+   *  from the block's current stains (suggestBlockAncillaryCptCodes),
+   *  a rejected code would otherwise silently reappear on the very
+   *  next recompute with no memory that it was already declined. This
+   *  field is that memory - computeNewSuggestionsWithSources excludes
+   *  anything listed here from a block's real, remaining
+   *  unappliedSuggestions. Now stain-attributed too: rejecting one
+   *  stain's suggestion no longer silently suppresses a different,
+   *  still-pending stain's suggestion of the same code value - a real
+   *  bug the old flat string[] shape had, since there was no way to
+   *  tell which specific stain a rejection was actually for. */
+  coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] };
   /**
    * Which processing pathway this block came from, if generated from a
    * multi-pathway Protocol (services/protocols/IProtocolService.ts) —
@@ -439,8 +495,24 @@ export interface Specimen {
    *  not one shared bucket. Bare code strings (not full MedicalCode
    *  objects), matching what
    *  services/billing/codeMapTable.ts's computeWorkRvuForCodes already
-   *  expects. */
-  coding?: { cpt?: string[] };
+   *  expects.
+   *
+   *  Real, per direct guidance's own follow-up on structured linkage:
+   *  the referring clinician's order-level Order.icd10Codes captures
+   *  the real, original, pre-examination clinical indication for the
+   *  whole order - genuinely case-wide by its own nature (one order,
+   *  one clinical request). But the real, final, post-examination
+   *  diagnosis a pathologist actually confirms often differs per
+   *  specimen (a 5-polyp colonoscopy case can have one specimen read
+   *  as a tubular adenoma and another as hyperplastic, each needing
+   *  its own real ICD-10 for accurate billing) - the same real
+   *  reasoning as CPT above, applied to diagnosis codes. coding.icd10
+   *  is that same real, per-specimen linkage - optional, additive;
+   *  every real charge-building path falls back to the existing,
+   *  case-wide Order.icd10Codes when a specimen has none of its own,
+   *  so nothing already working changes unless a real,
+   *  specimen-specific code is actually assigned. */
+  coding?: { cpt?: string[]; icd10?: { code: string; description: string }[] };
   /** Specimen letter or number (A, B, C…) */
   label: string;
   /** Human-readable description ("Left breast biopsy") */
@@ -506,6 +578,17 @@ export interface Specimen {
    * this field existed.
    */
   specimenDictionaryEntryId?: string;
+  /** Real, per direct guidance's own detailed spec - explicit
+   *  declaration, not inferred. Defaulted from the linked
+   *  SpecimenEntry.defaultComplexity when a dictionary entry is first
+   *  selected (SpecimenEditModal.tsx), then freely overridable per
+   *  specimen (a mixed-complexity case - e.g. a colon resection
+   *  needing full micro alongside an incidental gallbladder handled
+   *  gross-only - genuinely needs this at the specimen level, not the
+   *  case level). Undefined for a specimen with no dictionary link
+   *  and no manual declaration yet - callers should not assume
+   *  GROSS_ONLY from absence. */
+  complexity?: SpecimenComplexity;
   /** Real feature, per direct follow-up: "Is there any reason to
    *  block Material location and tracking on PS-49?" See
    *  MaterialLocation's own doc comment (Material.ts) for the full

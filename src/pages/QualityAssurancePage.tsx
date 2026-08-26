@@ -35,7 +35,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import '../pathscribe.css';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -55,8 +55,47 @@ import { FppeTrackingTab } from '@/components/QualityAssurance/FppeTrackingTab';
 import { DriftCorrectionTab } from '@/components/QualityAssurance/DriftCorrectionTab';
 import { PatientMatchReviewSection } from '@/components/QualityAssurance/PatientMatchReviewSection';
 import { exportQaReportRows } from '@/components/QualityAssurance/qaReportUtils';
+import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
+import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
+import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
+import { correctServiceCharge } from '@/services/billing/correctServiceCharge';
+import { mockCaseService } from '@/services/cases/mockCaseService';
+import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
+import { isCaseSignedOutForBilling } from '@/services/billing/isCaseSignedOutForBilling';
+import type { ReasonDictionaryEntry } from '@/types/reasons/ReasonDictionaryEntry';
+import { auditService } from '@/services';
+import type { BillingDeficiencyRecord, BillingDeficiencyType } from '@/types/billing/BillingDeficiencyRecord';
+import type { CodeReviewPoolEntry } from '@/types/billing/CodeReviewPoolEntry';
 
-type Tab = 'case-specimen' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'access-requests';
+type Pillar = 'operations' | 'financials' | 'capa';
+// Real, per direct guidance: "CAPA Engine only ever sees things once
+// they've been escalated or closed" - Operations owns the raw,
+// still-open deficiency list; CAPA Engine only sees items once a
+// corrective action has actually been taken ('pending-verification',
+// now surfaced here as 'escalated') or fully closed. Deliberately not
+// a genuinely new status - 'pending-verification' already meant
+// exactly this (a corrective action taken, awaiting a real
+// effectiveness check), just previously shown alongside 'open' items
+// in the same tab. This tab split is what changed, not the lifecycle
+// itself.
+type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review';
+
+// Real, per direct guidance on the QA reorganization: which tabs
+// belong to which pillar. Operations = the raw deficiency list plus
+// every existing Clinical Quality Metrics tab, matching the reference
+// document's own Operations definition almost verbatim. CAPA Engine =
+// governance over what's already been escalated or closed (see Tab's
+// own comment above). Financials now shows real BillingDeficiencyRecord
+// entries (Trigger A/B, raised at sign-out) - "Billing & Coding
+// Deficiencies" from the reference document's own Section 1. "Payer &
+// Pre-Auth Audits" from that same section stays deliberately absent -
+// no real detection mechanism for those exists yet, and fabricating
+// empty tabs for them would misrepresent what this pillar actually does.
+const PILLAR_TABS: Record<Pillar, Tab[]> = {
+  operations: ['case-specimen', 'intraop-linkage', 'discordance', 'countersign', 'fppe', 'drift-correction', 'patient-match-review', 'access-requests'],
+  capa: ['escalated', 'closed', 'reviews'],
+  financials: ['financials-open', 'financials-resolved', 'financials-code-review'],
+};
 
 const formatTimestamp = (iso?: string) => {
   if (!iso) return '—';
@@ -75,11 +114,12 @@ const isOverdue = (iso?: string) => !!iso && new Date(iso).getTime() < Date.now(
 const ResolveModal: React.FC<{
   deficiency: SpecimenDeficiency;
   resolutionTypes: ResolutionType[];
-  onResolve: (resolutionTypeId: string, correctiveAction: string, preventiveAction: string, verificationDueDate: string) => void;
+  onResolve: (resolutionTypeId: string, correctiveAction: string, rootCause: string, preventiveAction: string, verificationDueDate: string) => void;
   onClose: () => void;
 }> = ({ deficiency, resolutionTypes, onResolve, onClose }) => {
   const [resolutionTypeId, setResolutionTypeId] = useState(resolutionTypes[0]?.id ?? '');
   const [correctiveAction, setCorrectiveAction] = useState('');
+  const [rootCause, setRootCause] = useState('');
   const [preventiveAction, setPreventiveAction] = useState('');
   const defaultDue = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   const [verificationDueDate, setVerificationDueDate] = useState(defaultDue);
@@ -87,14 +127,14 @@ const ResolveModal: React.FC<{
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Corrective Action</div>
+        <div className="ps-ms-header">Escalate to CAPA</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
             {deficiency.specimenLabel ? `Specimen ${deficiency.specimenLabel}, ` : ''}case {deficiency.caseId} — {deficiency.comment || 'no additional detail recorded'}
           </p>
           <p className="ps-fixgate-intro">
-            This moves to <strong>Pending Verification</strong>, not Closed — someone still needs to come back and
-            confirm the corrective action actually worked.
+            This moves to <strong>Pending Verification</strong> in CAPA Engine, not Closed — someone still needs to
+            come back and confirm the corrective action actually worked.
           </p>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="resolve-resolution-type">Resolution Type <span className="ps-conf-required">*</span></label>
@@ -106,6 +146,11 @@ const ResolveModal: React.FC<{
             <label className="ps-conf-label" htmlFor="resolve-corrective-action">Corrective Action <span className="ps-conf-required">*</span></label>
             <textarea id="resolve-corrective-action" className="ps-conf-input ps-conf-textarea" value={correctiveAction} onChange={e => setCorrectiveAction(e.target.value)}
               placeholder="What was actually done to fix this specific occurrence?" />
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="resolve-root-cause">Root Cause <span className="ps-conf-required">*</span></label>
+            <textarea id="resolve-root-cause" className="ps-conf-input ps-conf-textarea" value={rootCause} onChange={e => setRootCause(e.target.value)}
+              placeholder="Why did this actually happen — the real, underlying cause, not just what you did about it" />
           </div>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="resolve-preventive-action">Preventive Action (optional)</label>
@@ -120,9 +165,58 @@ const ResolveModal: React.FC<{
         <div className="ps-ms-footer">
           <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="ps-conf-btn-primary"
-            onClick={() => onResolve(resolutionTypeId, correctiveAction, preventiveAction, new Date(verificationDueDate).toISOString())}
-            disabled={!resolutionTypeId || !correctiveAction.trim()}>
-            Move to Pending Verification
+            onClick={() => onResolve(resolutionTypeId, correctiveAction, rootCause, preventiveAction, new Date(verificationDueDate).toISOString())}
+            disabled={!resolutionTypeId || !correctiveAction.trim() || !rootCause.trim()}>
+            Escalate to CAPA
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Contain modal — Immediate Containment, resolves an existing open ────────
+// ── deficiency straight to Closed, no root cause, nothing to verify later ───
+
+const ContainModal: React.FC<{
+  deficiency: SpecimenDeficiency;
+  resolutionTypes: ResolutionType[];
+  onContain: (resolutionTypeId: string, resolutionComment: string) => void;
+  onClose: () => void;
+}> = ({ deficiency, resolutionTypes, onContain, onClose }) => {
+  const [resolutionTypeId, setResolutionTypeId] = useState(resolutionTypes[0]?.id ?? '');
+  const [resolutionComment, setResolutionComment] = useState('');
+
+  return (
+    <div className="ps-ms-overlay">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">Immediate Containment</div>
+        <div className="ps-ms-body">
+          <p className="ps-fixgate-intro">
+            {deficiency.specimenLabel ? `Specimen ${deficiency.specimenLabel}, ` : ''}case {deficiency.caseId} — {deficiency.comment || 'no additional detail recorded'}
+          </p>
+          <p className="ps-fixgate-intro">
+            This moves straight to <strong>Closed</strong> — no root cause, no later verification. Use this for a
+            quick, contained fix; if this needs a real root-cause analysis, use <strong>Escalate to CAPA</strong> instead.
+          </p>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="contain-resolution-type">Resolution Type <span className="ps-conf-required">*</span></label>
+            <select id="contain-resolution-type" className="ps-conf-select" value={resolutionTypeId} onChange={e => setResolutionTypeId(e.target.value)}>
+              {resolutionTypes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="contain-comment">What was done <span className="ps-conf-required">*</span></label>
+            <textarea id="contain-comment" className="ps-conf-input ps-conf-textarea" value={resolutionComment} onChange={e => setResolutionComment(e.target.value)}
+              placeholder="What was actually done to fix this specific occurrence?" />
+          </div>
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-primary"
+            onClick={() => onContain(resolutionTypeId, resolutionComment)}
+            disabled={!resolutionTypeId || !resolutionComment.trim()}>
+            Close — Contained
           </button>
         </div>
       </div>
@@ -173,19 +267,277 @@ const VerifyModal: React.FC<{
   );
 };
 
+// ── Resolve billing deficiency modal — the four real resolution paths ───────
+// from the original Trigger A/B design discussion's own governance
+// section: code correction, charge reversal, billing-admin override, or
+// a physician's clinical addendum.
+
+const RESOLUTION_REASON_LABEL: Record<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>, string> = {
+  CODE_CORRECTED: 'Code corrected',
+  CHARGE_REVERSED: 'Charge reversed',
+  APPROVED_BY_BILLING_ADMIN: 'Approved by billing admin (override)',
+  PHYSICIAN_ADDENDUM_ADDED: 'Physician addendum added',
+};
+
+const ResolveBillingDeficiencyModal: React.FC<{
+  deficiency: BillingDeficiencyRecord;
+  onResolve: (
+    resolutionReasonCode: BillingDeficiencyRecord['resolutionReasonCode'],
+    correctedCptCode?: string,
+    postSignoutContext?: { reasonId: string; comment: string }
+  ) => void;
+  onClose: () => void;
+}> = ({ deficiency, onResolve, onClose }) => {
+  const [reasonCode, setReasonCode] = useState<BillingDeficiencyRecord['resolutionReasonCode']>('CODE_CORRECTED');
+  const [correctedCptCode, setCorrectedCptCode] = useState('');
+  // Real, per direct guidance's own follow-up: billing is one of the
+  // few things that can genuinely happen after sign-out, and when it
+  // does, a real reason + comment is required - not just a background
+  // audit log entry. isSignedOut starts undefined (genuinely unknown
+  // until the real case status loads) rather than defaulting to
+  // false, so the gate can't be silently skipped by a race between
+  // this load and the Resolve button becoming clickable.
+  const [isSignedOut, setIsSignedOut] = useState<boolean | undefined>(undefined);
+  const [reasonOptions, setReasonOptions] = useState<ReasonDictionaryEntry[]>([]);
+  const [postSignoutReasonId, setPostSignoutReasonId] = useState('');
+  const [postSignoutComment, setPostSignoutComment] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    mockCaseService.getCase(deficiency.caseId).then(c => {
+      if (cancelled) return;
+      setIsSignedOut(!!c && isCaseSignedOutForBilling(c.status));
+    });
+    mockReasonDictionaryService.getAll('POST_SIGNOUT_BILLING_CHANGE').then(res => {
+      if (cancelled) return;
+      if (res.ok) setReasonOptions(res.data.filter(r => r.status === 'Active'));
+    });
+    return () => { cancelled = true; };
+  }, [deficiency.caseId]);
+
+  // Real, per direct report: CODE_CORRECTED used to just be a label -
+  // resolving with it never actually changed the underlying charge.
+  // Only meaningful when this deficiency is tied to one real charge
+  // (chargeRecordId) - a case-wide deficiency (e.g. missing ICD-10)
+  // has no single charge to correct here.
+  const needsCorrectedCode = reasonCode === 'CODE_CORRECTED' && !!deficiency.chargeRecordId;
+  const needsPostSignoutContext = needsCorrectedCode && isSignedOut === true;
+  const canResolve =
+    (!needsCorrectedCode || correctedCptCode.trim().length > 0) &&
+    (!needsPostSignoutContext || (postSignoutReasonId !== '' && postSignoutComment.trim().length > 0)) &&
+    isSignedOut !== undefined;
+
+  return (
+    <div className="ps-ms-overlay">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">Resolve Billing Deficiency</div>
+        <div className="ps-ms-body">
+          <p className="ps-fixgate-intro">case {deficiency.caseId} — {deficiency.auditorNotes}</p>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="resolve-billing-reason">Resolution Reason <span className="ps-conf-required">*</span></label>
+            <select id="resolve-billing-reason" className="ps-conf-select" value={reasonCode} onChange={e => setReasonCode(e.target.value as BillingDeficiencyRecord['resolutionReasonCode'])}>
+              {(Object.keys(RESOLUTION_REASON_LABEL) as Array<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>>).map(k => (
+                <option key={k} value={k}>{RESOLUTION_REASON_LABEL[k]}</option>
+              ))}
+            </select>
+          </div>
+          {needsCorrectedCode && (
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="resolve-billing-corrected-code">Corrected CPT Code <span className="ps-conf-required">*</span></label>
+              <input
+                id="resolve-billing-corrected-code"
+                className="ps-conf-input"
+                value={correctedCptCode}
+                onChange={e => setCorrectedCptCode(e.target.value)}
+                placeholder="e.g. 88305"
+              />
+              <p className="ps-billing-reason-hint">
+                Real, per direct fix — the original charge will be reversed with a credit and a new charge
+                created with this code, both permanently recorded on the case's own billing ledger.
+              </p>
+            </div>
+          )}
+          {needsPostSignoutContext && (
+            <>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="resolve-billing-postsignout-reason">
+                  Reason for post-sign-out change <span className="ps-conf-required">*</span>
+                </label>
+                <select
+                  id="resolve-billing-postsignout-reason"
+                  className="ps-conf-select"
+                  value={postSignoutReasonId}
+                  onChange={e => setPostSignoutReasonId(e.target.value)}
+                >
+                  <option value="">— Select —</option>
+                  {reasonOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+                <p className="ps-billing-reason-hint">
+                  This case has already signed out. Billing is one of the few things that can still
+                  change afterward, but it needs a real, documented reason.
+                </p>
+              </div>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="resolve-billing-postsignout-comment">Comment <span className="ps-conf-required">*</span></label>
+                <textarea
+                  id="resolve-billing-postsignout-comment"
+                  className="ps-conf-textarea"
+                  value={postSignoutComment}
+                  onChange={e => setPostSignoutComment(e.target.value)}
+                  placeholder="What changed and why — permanently attached to the credit and the corrected charge."
+                />
+              </div>
+            </>
+          )}
+          {reasonCode === 'CODE_CORRECTED' && !deficiency.chargeRecordId && (
+            <p className="ps-billing-reason-hint">
+              This deficiency isn't tied to one specific charge — no charge correction to apply here.
+            </p>
+          )}
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="ps-conf-btn-primary"
+            disabled={!canResolve}
+            onClick={() => onResolve(
+              reasonCode,
+              needsCorrectedCode ? correctedCptCode.trim() : undefined,
+              needsPostSignoutContext ? { reasonId: postSignoutReasonId, comment: postSignoutComment.trim() } : undefined
+            )}
+          >
+            Resolve
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Review code review pool entry modal — the billing specialist's real
+// review outcome, per Trigger C. NO_ISSUE_FOUND needs no further input.
+// DEFICIENCY_RAISED requires selecting which of the real deficiency
+// types was actually found, plus real auditor notes - the same
+// requirement Trigger A/B's own automated records already carry.
+
+const DEFICIENCY_TYPE_LABEL: Record<BillingDeficiencyType, string> = {
+  UNSUPPORTED_CPT_LEVEL: 'Unsupported CPT level',
+  MISSING_DIAGNOSTIC_ICD10: 'Missing diagnostic ICD-10',
+  NCCI_BUNDLING_VIOLATION: 'NCCI bundling violation',
+  UNATTACHED_ANCILLARY_ORDER: 'Unattached ancillary order',
+  MODIFIER_MISMATCH: 'Modifier mismatch (26/TC)',
+  ZERO_FEE_MAPPING_ERROR: 'Zero-fee mapping error',
+};
+
+const ReviewPoolEntryModal: React.FC<{
+  entry: CodeReviewPoolEntry;
+  onReview: (outcome: 'NO_ISSUE_FOUND' | 'DEFICIENCY_RAISED', deficiencyType?: BillingDeficiencyType, auditorNotes?: string) => void;
+  onClose: () => void;
+}> = ({ entry, onReview, onClose }) => {
+  const [outcome, setOutcome] = useState<'NO_ISSUE_FOUND' | 'DEFICIENCY_RAISED'>('NO_ISSUE_FOUND');
+  const [deficiencyType, setDeficiencyType] = useState<BillingDeficiencyType>('UNSUPPORTED_CPT_LEVEL');
+  const [auditorNotes, setAuditorNotes] = useState('');
+  const canSubmit = outcome === 'NO_ISSUE_FOUND' || auditorNotes.trim().length > 0;
+
+  return (
+    <div className="ps-ms-overlay">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">Review Code Review Pool Entry</div>
+        <div className="ps-ms-body">
+          <p className="ps-fixgate-intro">
+            case {entry.caseId} — {entry.source === 'MANUAL' ? `flagged by ${entry.flaggedByName ?? 'staff'}` : 'random sample'}
+            {entry.notes ? `: ${entry.notes}` : ''}
+          </p>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Review Outcome <span className="ps-conf-required">*</span></label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className={outcome === 'NO_ISSUE_FOUND' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('NO_ISSUE_FOUND')}>No Issue Found</button>
+              <button className={outcome === 'DEFICIENCY_RAISED' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('DEFICIENCY_RAISED')}>Raise Billing Deficiency</button>
+            </div>
+          </div>
+          {outcome === 'DEFICIENCY_RAISED' && (
+            <>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="pool-deficiency-type">Deficiency Type <span className="ps-conf-required">*</span></label>
+                <select id="pool-deficiency-type" className="ps-conf-select" value={deficiencyType} onChange={e => setDeficiencyType(e.target.value as BillingDeficiencyType)}>
+                  {(Object.keys(DEFICIENCY_TYPE_LABEL) as BillingDeficiencyType[]).map(k => (
+                    <option key={k} value={k}>{DEFICIENCY_TYPE_LABEL[k]}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="pool-auditor-notes">Auditor Notes <span className="ps-conf-required">*</span></label>
+                <textarea id="pool-auditor-notes" className="ps-conf-input ps-conf-textarea" value={auditorNotes} onChange={e => setAuditorNotes(e.target.value)}
+                  placeholder="What did you actually find during review?" />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-primary" disabled={!canSubmit} onClick={() => onReview(outcome, outcome === 'DEFICIENCY_RAISED' ? deficiencyType : undefined, outcome === 'DEFICIENCY_RAISED' ? auditorNotes.trim() : undefined)}>
+            Submit Review
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const QualityAssurancePage: React.FC = () => {
   const navigate = useNavigate();
-  const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Quality Assurance', '/quality-assurance'); }, [pushCrumb]);
+  const location = useLocation();
+  const { crumbs, setCrumbs } = useBreadcrumb();
   const { user } = useAuth();
+  // Real, per direct request: "the crumb should take me back to the
+  // Financials area" - same real ?section= deep-link pattern already
+  // established in Config/System/index.tsx, applied here so the
+  // breadcrumb path itself remembers which pillar was active, not
+  // just a fixed '/quality-assurance' that always lands on Operations.
+  const [pillar, setPillar] = useState<Pillar>(() => {
+    const p = new URLSearchParams(location.search).get('pillar') as Pillar | null;
+    return p && p in PILLAR_TABS ? p : 'operations';
+  });
+  useEffect(() => {
+    const path = `/quality-assurance?pillar=${pillar}`;
+    // Real fix, found via direct verification: pushCrumb only
+    // de-dupes on an EXACT path match, so calling it again with a
+    // different pillar in the path appended a second, duplicate
+    // "Quality Assurance" crumb instead of updating the existing
+    // one - confirmed live, clicking the crumb landed back on the
+    // stale, first-mounted pillar rather than the current one.
+    // Updates the existing entry's path in place instead.
+    const idx = crumbs.findIndex(c => c.label === 'Quality Assurance');
+    if (idx === -1) {
+      setCrumbs([...crumbs, { label: 'Quality Assurance', path }]);
+    } else if (crumbs[idx].path !== path) {
+      const next = [...crumbs];
+      next[idx] = { label: 'Quality Assurance', path };
+      setCrumbs(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pillar]);
+  // Re-sync if the URL changes after mount (e.g. a deep link arriving
+  // via browser back/forward, not just initial load).
+  useEffect(() => {
+    const p = new URLSearchParams(location.search).get('pillar') as Pillar | null;
+    if (p && p in PILLAR_TABS && p !== pillar) setPillar(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
   const [tab, setTab] = useState<Tab>('case-specimen');
   const [deficiencies, setDeficiencies] = useState<SpecimenDeficiency[]>([]);
   const [deficiencyTypes, setDeficiencyTypes] = useState<DeficiencyType[]>([]);
   const [resolutionTypes, setResolutionTypes] = useState<ResolutionType[]>([]);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [containingId, setContainingId] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [managementReviews, setManagementReviews] = useState<ManagementReview[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [billingDeficiencies, setBillingDeficiencies] = useState<BillingDeficiencyRecord[]>([]);
+  const [resolvingBillingDeficiencyId, setResolvingBillingDeficiencyId] = useState<string | null>(null);
+  const [failedDlqCount, setFailedDlqCount] = useState(0);
+  const [codeReviewPool, setCodeReviewPool] = useState<CodeReviewPoolEntry[]>([]);
+  const [reviewingPoolEntryId, setReviewingPoolEntryId] = useState<string | null>(null);
   // Deep-link support (?open=<deficiencyId>) — a real gap found while
   // tracing whether Contribution Dashboard's "My Quality Flags" widget
   // actually closes the loop on a flagged deficiency. It didn't: it
@@ -199,6 +551,9 @@ const QualityAssurancePage: React.FC = () => {
   const loadAll = () => {
     specimenDeficiencyService.getAll().then(res => { if (res.ok) setDeficiencies(res.data); });
     managementReviewService.getAll().then(res => { if (res.ok) setManagementReviews(res.data); });
+    mockBillingDeficiencyService.getAll().then(res => { if (res.ok) setBillingDeficiencies(res.data); });
+    mockOutboundChargeQueueService.getFailed().then(res => { if (res.ok) setFailedDlqCount(res.data.length); });
+    mockCodeReviewPoolService.getAll().then(res => { if (res.ok) setCodeReviewPool(res.data); });
   };
   useEffect(() => {
     loadAll();
@@ -212,7 +567,9 @@ const QualityAssurancePage: React.FC = () => {
     if (!openId) return;
     const target = deficiencies.find(d => d.id === openId);
     if (!target) return; // stale/invalid link — no record silently shown, no crash either
-    setTab(target.status === 'closed' ? 'closed' : 'case-specimen');
+    if (target.status === 'open') { setPillar('operations'); setTab('case-specimen'); }
+    else if (target.status === 'pending-verification') { setPillar('capa'); setTab('escalated'); }
+    else { setPillar('capa'); setTab('closed'); }
     setHighlightId(target.id);
     // Scroll the row into view once the right tab has rendered it.
     setTimeout(() => {
@@ -235,7 +592,7 @@ const QualityAssurancePage: React.FC = () => {
   // Same shared exportQaReportRows utility the other 5 QA report tabs
   // already use, for consistency, not a separate one-off CSV path.
   const exportActiveQueue = () => {
-    const rows = activeItems.map(d => ({
+    const rows = activeItemsForTab.map(d => ({
       'Case': d.caseId,
       'Specimen': d.specimenLabel ?? 'Case-level',
       'Status': d.status === 'open' ? 'Open' : 'Pending Verification',
@@ -279,24 +636,33 @@ const QualityAssurancePage: React.FC = () => {
     () => deficiencies.filter(d => d.status === tab).sort((a, b) => b.raisedAt.localeCompare(a.raisedAt)),
     [deficiencies, tab]
   );
-  // The combined Case-Specimen Deficiency tab — open and
-  // pending-verification together (still separate, real statuses;
-  // this just stops splitting them across two different tabs), grouped
-  // by level and sorted by accession/case number within each group,
-  // per how Pete actually wants to scan this list — case-level issues
-  // together, specimen-level issues together, ordered the same way the
-  // rest of the app orders cases.
-  const activeItems = useMemo(
-    () => deficiencies.filter(d => d.status === 'open' || d.status === 'pending-verification'),
+  // Real, per direct guidance: split what was one combined "active"
+  // view into the two real pillars now own separately - Operations
+  // sees only genuinely open, unaddressed issues; CAPA Engine sees
+  // only what's already been escalated (a corrective action taken,
+  // awaiting effectiveness verification). Same real statuses as
+  // before, just no longer shown together in one tab.
+  const openItems = useMemo(
+    () => deficiencies.filter(d => d.status === 'open'),
     [deficiencies]
   );
+  const escalatedItems = useMemo(
+    () => deficiencies.filter(d => d.status === 'pending-verification'),
+    [deficiencies]
+  );
+  // Whichever of the two real, split lists the active tab actually
+  // needs - case-specimen (Operations) wants openItems, escalated
+  // (CAPA Engine) wants escalatedItems. Grouped by level and sorted by
+  // case number, same real UX Pete asked for originally, now applied
+  // to each pillar's own real slice rather than one merged list.
+  const activeItemsForTab = tab === 'escalated' ? escalatedItems : openItems;
   const caseLevelActive = useMemo(
-    () => activeItems.filter(d => !d.specimenId).sort((a, b) => a.caseId.localeCompare(b.caseId)),
-    [activeItems]
+    () => activeItemsForTab.filter(d => !d.specimenId).sort((a, b) => a.caseId.localeCompare(b.caseId)),
+    [activeItemsForTab]
   );
   const specimenLevelActive = useMemo(
-    () => activeItems.filter(d => !!d.specimenId).sort((a, b) => a.caseId.localeCompare(b.caseId)),
-    [activeItems]
+    () => activeItemsForTab.filter(d => !!d.specimenId).sort((a, b) => a.caseId.localeCompare(b.caseId)),
+    [activeItemsForTab]
   );
   const openCount = deficiencies.filter(d => d.status === 'open').length;
   const pendingCount = deficiencies.filter(d => d.status === 'pending-verification').length;
@@ -306,6 +672,108 @@ const QualityAssurancePage: React.FC = () => {
     () => deficiencies.filter(d => d.status === 'closed' && !d.managementReviewId),
     [deficiencies]
   );
+
+  // Real, per direct guidance: OPEN/UNDER_REVIEW are both "still needs
+  // attention" for this list - UNDER_REVIEW isn't reachable via any
+  // real UI action yet (no triage/assignment step built), but the
+  // status exists on the real type and a record could theoretically
+  // arrive in that state, so it's grouped here rather than silently
+  // dropped from both tabs.
+  const billingDeficienciesOpen = useMemo(
+    () => billingDeficiencies.filter(d => d.status === 'OPEN' || d.status === 'UNDER_REVIEW'),
+    [billingDeficiencies]
+  );
+  const billingDeficienciesResolved = useMemo(
+    () => billingDeficiencies.filter(d => d.status === 'RESOLVED' || d.status === 'OVERRIDDEN_WITH_JUSTIFICATION'),
+    [billingDeficiencies]
+  );
+  const resolvingBillingDeficiency = billingDeficiencies.find(d => d.id === resolvingBillingDeficiencyId) ?? null;
+
+  const handleResolveBillingDeficiency = (
+    resolutionReasonCode: BillingDeficiencyRecord['resolutionReasonCode'],
+    correctedCptCode?: string,
+    postSignoutContext?: { reasonId: string; comment: string }
+  ) => {
+    if (!resolvingBillingDeficiencyId || !resolvingBillingDeficiency) return;
+    const resolvedBy = user?.id ?? 'unknown';
+
+    // Real fix, per direct report: CODE_CORRECTED used to only label
+    // the deficiency resolved without ever touching the actual,
+    // underlying charge. Real, shared orchestration
+    // (correctServiceCharge.ts) - extracted per direct correction that
+    // this "credit the old, charge the new" sequence is real business
+    // logic and doesn't belong inline in a page component. When the
+    // case has already signed out, per direct follow-up, both the
+    // credit and the new charge carry the real, required reason +
+    // comment.
+    const applyCorrection = async () => {
+      if (resolutionReasonCode !== 'CODE_CORRECTED' || !resolvingBillingDeficiency.chargeRecordId || !correctedCptCode) return;
+      const res = await correctServiceCharge(
+        resolvingBillingDeficiency.caseId, resolvingBillingDeficiency.chargeRecordId, correctedCptCode, resolvedBy, postSignoutContext
+      );
+      if (!res.ok) return;
+      const { original, corrected } = res.data;
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code corrected (QA resolution)',
+        detail: `${original.sourceLabel}: ${original.cptCode} \u2192 ${correctedCptCode} \u2014 real credit issued reversing charge ${original.id}, new charge ${corrected.id} created`
+          + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+        user: user?.name ?? resolvedBy,
+        caseId: resolvingBillingDeficiency.caseId,
+        confidence: null,
+      });
+    };
+
+    applyCorrection()
+      .catch(e => console.error('[PathScribe] Code correction failed (deficiency resolution still proceeds):', e))
+      .then(() => mockBillingDeficiencyService.resolve(resolvingBillingDeficiencyId, { resolutionReasonCode, resolvedBy }))
+      .then(() => { setResolvingBillingDeficiencyId(null); loadAll(); });
+  };
+
+  // Real, per Trigger C (manual QA billing audits): pending entries
+  // from the billing review pool - both MANUAL (flagged via Request
+  // Colleague Review's own Code Review type) and, later,
+  // RANDOM_SAMPLE sources both land here undifferentiated in the UI,
+  // since a billing specialist reviews either the same way.
+  const codeReviewPending = useMemo(
+    () => codeReviewPool.filter(e => e.status === 'PENDING_REVIEW'),
+    [codeReviewPool]
+  );
+  const reviewingPoolEntry = codeReviewPool.find(e => e.id === reviewingPoolEntryId) ?? null;
+
+  // Real, per direct guidance: a billing specialist's actual review
+  // outcome. When a real deficiency is found, raises the real,
+  // permanent BillingDeficiencyRecord first (raisedByTrigger:
+  // 'MANUAL_BILLING_AUDIT', same real record type Trigger A/B
+  // produce), then links its real id back onto the pool entry - never
+  // two independent, drifting records of the same finding.
+  const handleReviewPoolEntry = async (
+    outcome: 'NO_ISSUE_FOUND' | 'DEFICIENCY_RAISED',
+    deficiencyType?: BillingDeficiencyType,
+    auditorNotes?: string
+  ) => {
+    if (!reviewingPoolEntry) return;
+    let raisedDeficiencyId: string | undefined;
+    if (outcome === 'DEFICIENCY_RAISED' && deficiencyType && auditorNotes) {
+      const raised = await mockBillingDeficiencyService.raise({
+        caseId: reviewingPoolEntry.caseId,
+        deficiencyType,
+        severity: 'COMPLIANCE_WARNING',
+        raisedByTrigger: 'MANUAL_BILLING_AUDIT',
+        auditorNotes,
+        createdBy: user?.id ?? 'unknown',
+      });
+      if (raised.ok) raisedDeficiencyId = raised.data.id;
+    }
+    await mockCodeReviewPoolService.review(reviewingPoolEntry.id, {
+      reviewOutcome: outcome,
+      reviewedBy: user?.id ?? 'unknown',
+      reviewedByName: user?.name,
+      raisedDeficiencyId,
+    });
+    setReviewingPoolEntryId(null);
+    loadAll();
+  };
 
   // Trend: deficiencies closed per month, last 6 months — the actual
   // point of doing a Management Review as a batch rather than per-item
@@ -333,14 +801,22 @@ const QualityAssurancePage: React.FC = () => {
   }, [deficiencies]);
 
   const resolvingItem = deficiencies.find(d => d.id === resolvingId) ?? null;
+  const containingItem = deficiencies.find(d => d.id === containingId) ?? null;
   const verifyingItem = deficiencies.find(d => d.id === verifyingId) ?? null;
 
-  const handleResolve = (resolutionTypeId: string, correctiveAction: string, preventiveAction: string, verificationDueDate: string) => {
+  const handleResolve = (resolutionTypeId: string, correctiveAction: string, rootCause: string, preventiveAction: string, verificationDueDate: string) => {
     if (!resolvingId) return;
     specimenDeficiencyService.resolve(resolvingId, {
-      resolutionTypeId, correctiveAction, preventiveAction: preventiveAction || undefined,
+      resolutionTypeId, correctiveAction, rootCause, preventiveAction: preventiveAction || undefined,
       resolvedBy: user?.id ?? 'unknown', verificationDueDate,
     }).then(() => { setResolvingId(null); loadAll(); });
+  };
+
+  const handleContain = (resolutionTypeId: string, resolutionComment: string) => {
+    if (!containingId) return;
+    specimenDeficiencyService.containImmediately(containingId, {
+      resolutionTypeId, resolutionComment, resolvedBy: user?.id ?? 'unknown',
+    }).then(() => { setContainingId(null); loadAll(); });
   };
 
   const handleVerify = (outcome: 'effective' | 'recurred', comment: string) => {
@@ -357,7 +833,7 @@ const QualityAssurancePage: React.FC = () => {
   };
 
   const columnsFor = (t: Tab) => {
-    if (t === 'case-specimen') return ['Status', 'Case', 'Specimen', 'Issue', 'Detail', 'When', 'Actions'];
+    if (t === 'case-specimen' || t === 'escalated') return ['Status', 'Case', 'Specimen', 'Issue', 'Detail', 'When', 'Actions'];
     return ['Case', 'Specimen', 'Issue', 'Resolution', 'Verified', 'Closed'];
   };
 
@@ -368,9 +844,11 @@ const QualityAssurancePage: React.FC = () => {
       <div className="ps-defic-page-header">
         <h1 className="ps-defic-page-title">✓ Quality Assurance</h1>
         <p className="ps-defic-page-subtitle">
-          Nonconformance tracking (Deficiencies), independent of case status — a corrective action doesn't close
-          this out by itself, it moves to Pending Verification until someone actually confirms it worked — plus
-          department-wide Intraoperative Linkage and Discordance & Reconciliation reporting.
+          Three real pillars. Operations tracks nonconformances and Clinical Quality metrics — Frozen Linkage,
+          Discordance &amp; Reconciliation, Countersign Turnaround, Credentialing Review, and more. Financials
+          tracks billing/coding deficiencies raised automatically at case sign-out. CAPA Engine governs the
+          corrective-action lifecycle across both — a correction doesn't close out by itself, it's escalated here
+          until someone actually confirms it worked, with periodic management review.
         </p>
       </div>
 
@@ -384,7 +862,7 @@ const QualityAssurancePage: React.FC = () => {
           pattern used below for the table/reviews block, rather than a
           negative check, so a future new tab can't silently fall through
           into this again. */}
-      {(tab === 'case-specimen' || tab === 'closed' || tab === 'reviews') && (
+      {pillar === 'capa' && (
         <div className="ps-defic-trend-card">
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={trendData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -422,9 +900,26 @@ const QualityAssurancePage: React.FC = () => {
           on the container (.ps-qa-tab-tiles) is the real fix itself —
           tiles stack onto additional rows instead of requiring
           horizontal scrolling once they don't all fit on one line. */}
+      <div className="ps-auditlog-tabswitch">
+        {([
+          { key: 'operations', label: 'Operations' },
+          { key: 'financials', label: 'Financials' },
+          { key: 'capa', label: 'CAPA Engine' },
+        ] as const).map(p => (
+          <button
+            key={p.key}
+            className={`ps-auditlog-tabswitch-btn${pillar === p.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+            onClick={() => { setPillar(p.key); setTab(PILLAR_TABS[p.key][0] ?? 'case-specimen'); }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       <div className="ps-qa-tab-tiles">
         {([
-          { key: 'case-specimen', label: '⚠️ Deficiencies', count: openCount + pendingCount, color: '#EF4444', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
+          { key: 'case-specimen', label: '⚠️ Deficiencies', count: openCount, color: '#EF4444', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
+          { key: 'escalated', label: '🚩 Escalated to CAPA', count: pendingCount, color: '#f59e0b', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
           { key: 'closed', label: '✓ Closed', count: closedCount, color: '#10B981', sublabel: undefined },
           { key: 'reviews', label: '📋 Mgmt Reviews', count: managementReviews.length, color: '#536EEA', sublabel: undefined },
           { key: 'intraop-linkage', label: '🔬 Frozen Linkage', count: undefined, color: '#0891B2', sublabel: undefined },
@@ -434,7 +929,10 @@ const QualityAssurancePage: React.FC = () => {
           { key: 'drift-correction', label: '🔄 Post-Final Drift', count: undefined, color: '#EC4899', sublabel: undefined },
           { key: 'patient-match-review', label: '🪪 Patient Match Review', count: undefined, color: '#53E2EA', sublabel: undefined },
           { key: 'access-requests', label: '🔑 Access Requests', count: undefined, color: '#94a3b8', sublabel: undefined },
-        ] as const).map(t => {
+          { key: 'financials-open', label: '💲 Billing Deficiencies', count: billingDeficienciesOpen.length, color: '#EF4444', sublabel: undefined },
+          { key: 'financials-resolved', label: '✓ Resolved', count: billingDeficienciesResolved.length, color: '#10B981', sublabel: undefined },
+          { key: 'financials-code-review', label: '🔍 Code Review Pool', count: codeReviewPending.length, color: '#8B5CF6', sublabel: undefined },
+        ] as const).filter(t => (PILLAR_TABS[pillar] as readonly Tab[]).includes(t.key)).map(t => {
           const isActive = tab === t.key;
           return (
             <button
@@ -460,7 +958,131 @@ const QualityAssurancePage: React.FC = () => {
             </button>
           );
         })}
+        {pillar === 'financials' && (
+          // Real, per direct guidance: read-only visibility into the
+          // Outbound Charge DLQ (Configuration → Financial & Revenue
+          // Lookups) from right here, rather than merging that
+          // mechanical retry-queue into this clinical-judgment-based
+          // QA module. Navigates to Configuration, not a tab switch -
+          // this tile has no real tab of its own on this page.
+          <button
+            className="ps-wl-filter-tile"
+            title="View failed outbound charge dispatches in Configuration"
+            onClick={() => navigate('/configuration?tab=system&section=outbound_charge_dlq')}
+            style={{ '--tile-bg': '#f59e0b0d', '--tile-border': '#f59e0b2e', '--tile-shadow': 'none' } as React.CSSProperties}
+          >
+            <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>📮 Failed Dispatches</div>
+            <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#f59e0b' } as React.CSSProperties}>{failedDlqCount}</div>
+            <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#f59e0b', '--tile-sublabel-opacity': 0.75 } as React.CSSProperties}>in Config →</div>
+          </button>
+        )}
       </div>
+
+      {pillar === 'financials' && tab === 'financials-code-review' && (
+        <div className="ps-conf-table-wrap">
+          <div className="ps-conf-table-scroll">
+            <table className="ps-conf-table">
+              <thead className="ps-conf-thead-sticky">
+                <tr>
+                  <th className="ps-conf-th">Case</th>
+                  <th className="ps-conf-th">Source</th>
+                  <th className="ps-conf-th">Flagged By</th>
+                  <th className="ps-conf-th">Notes</th>
+                  <th className="ps-conf-th">Flagged</th>
+                  <th className="ps-conf-th">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {codeReviewPending.map(e => (
+                  <tr key={e.id} className="ps-conf-tr">
+                    <td className="ps-conf-td">
+                      <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${e.caseId}/synoptic`)}>{e.caseId}</button>
+                    </td>
+                    <td className="ps-conf-td">{e.source === 'MANUAL' ? 'Manual' : 'Random sample'}</td>
+                    <td className="ps-conf-td">{e.flaggedByName ?? '—'}</td>
+                    <td className="ps-conf-td"><div className="ps-specreq-meta">{e.notes ?? '—'}</div></td>
+                    <td className="ps-conf-td">{formatTimestamp(e.flaggedAt)}</td>
+                    <td className="ps-conf-td">
+                      <button className="ps-conf-btn-primary" onClick={() => setReviewingPoolEntryId(e.id)}>Review</button>
+                    </td>
+                  </tr>
+                ))}
+                {codeReviewPending.length === 0 && (
+                  <tr><td className="ps-conf-empty-row" colSpan={6}>No cases pending code review.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {pillar === 'financials' && tab !== 'financials-code-review' && (
+        <>
+        <div className="ps-qa-tab-toolbar">
+          <button className="ps-conf-btn-secondary" onClick={() => exportQaReportRows(
+            (tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).map(d => ({
+              'Case': d.caseId,
+              'Type': d.deficiencyType,
+              'Severity': d.severity,
+              'Trigger': d.raisedByTrigger,
+              'Notes': d.auditorNotes,
+              'Raised': d.createdAt,
+              'Resolution': d.resolutionReasonCode ?? '',
+              'Resolved': d.resolvedAt ?? '',
+            })),
+            `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.xlsx`
+          )}>Export</button>
+        </div>
+        <div className="ps-conf-table-wrap">
+          <div className="ps-conf-table-scroll">
+            <table className="ps-conf-table">
+              <thead className="ps-conf-thead-sticky">
+                <tr>
+                  {(tab === 'financials-open'
+                    ? ['Case', 'Type', 'Severity', 'Trigger', 'Notes', 'Raised', 'Actions']
+                    : ['Case', 'Type', 'Severity', 'Resolution', 'Resolved']
+                  ).map(h => <th key={h} className="ps-conf-th">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {(tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).map(d => (
+                  <tr key={d.id} className="ps-conf-tr">
+                    <td className="ps-conf-td">
+                      <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
+                    </td>
+                    <td className="ps-conf-td">{d.deficiencyType}</td>
+                    <td className="ps-conf-td">{d.severity}</td>
+                    {tab === 'financials-open' ? (
+                      <>
+                        <td className="ps-conf-td">{d.raisedByTrigger}</td>
+                        <td className="ps-conf-td"><div className="ps-specreq-meta">{d.auditorNotes}</div></td>
+                        <td className="ps-conf-td">{formatTimestamp(d.createdAt)}</td>
+                        <td className="ps-conf-td">
+                          <button className="ps-conf-btn-primary" onClick={() => setResolvingBillingDeficiencyId(d.id)}>Resolve</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="ps-conf-td">{d.resolutionReasonCode}</td>
+                        <td className="ps-conf-td">{formatTimestamp(d.resolvedAt)}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {(tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).length === 0 && (
+                  <tr><td className="ps-conf-empty-row" colSpan={tab === 'financials-open' ? 7 : 5}>
+                    No {tab === 'financials-open' ? 'open' : 'resolved'} billing deficiencies.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
+      )}
+
+      {pillar !== 'financials' && (
+      <>
 
       {tab === 'intraop-linkage' && <IntraopLinkageTab />}
       {tab === 'discordance' && <ReconciliationTab />}
@@ -479,13 +1101,13 @@ const QualityAssurancePage: React.FC = () => {
         </div>
       )}
 
-      {(tab === 'case-specimen' || tab === 'closed') && (
+      {(tab === 'case-specimen' || tab === 'escalated' || tab === 'closed') && (
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={tab === 'case-specimen' ? exportActiveQueue : exportClosed}>Export</button>
+          <button className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>Export</button>
         </div>
       )}
 
-      {(tab === 'case-specimen' || tab === 'closed') ? (
+      {(tab === 'case-specimen' || tab === 'escalated' || tab === 'closed') ? (
         <div className="ps-conf-table-wrap">
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
@@ -493,7 +1115,7 @@ const QualityAssurancePage: React.FC = () => {
                 <tr>{columnsFor(tab).map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
               </thead>
               <tbody>
-                {tab === 'case-specimen' && (() => {
+                {(tab === 'case-specimen' || tab === 'escalated') && (() => {
                   // Shared row renderer — status (open vs pending-
                   // verification) now varies per row within one table,
                   // not per tab, since both statuses live here together.
@@ -527,7 +1149,10 @@ const QualityAssurancePage: React.FC = () => {
                       </td>
                       <td className="ps-conf-td">
                         {d.status === 'open'
-                          ? <button className="ps-conf-btn-primary" onClick={() => setResolvingId(d.id)}>Take Corrective Action</button>
+                          ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button className="ps-conf-btn-secondary" onClick={() => setContainingId(d.id)}>Immediate Containment</button>
+                              <button className="ps-conf-btn-primary" onClick={() => setResolvingId(d.id)}>Escalate to CAPA</button>
+                            </div>
                           : <button className="ps-conf-btn-primary" onClick={() => setVerifyingId(d.id)}>Verify Effectiveness</button>}
                       </td>
                     </tr>
@@ -537,11 +1162,11 @@ const QualityAssurancePage: React.FC = () => {
                       <tr className="ps-defic-group-header"><td colSpan={7}>Case-Level ({caseLevelActive.length})</td></tr>
                       {caseLevelActive.length > 0
                         ? caseLevelActive.map(renderActiveRow)
-                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No open case-level deficiencies.</td></tr>}
+                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No {tab === 'escalated' ? 'escalated' : 'open'} case-level deficiencies.</td></tr>}
                       <tr className="ps-defic-group-header"><td colSpan={7}>Specimen-Level ({specimenLevelActive.length})</td></tr>
                       {specimenLevelActive.length > 0
                         ? specimenLevelActive.map(renderActiveRow)
-                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No open specimen-level deficiencies.</td></tr>}
+                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No {tab === 'escalated' ? 'escalated' : 'open'} specimen-level deficiencies.</td></tr>}
                     </>
                   );
                 })()}
@@ -598,12 +1223,23 @@ const QualityAssurancePage: React.FC = () => {
           </div>
         </div>
       )}
+      </>
+      )}
 
       {resolvingItem && (
         <ResolveModal deficiency={resolvingItem} resolutionTypes={resolutionTypes} onResolve={handleResolve} onClose={() => setResolvingId(null)} />
       )}
+      {containingItem && (
+        <ContainModal deficiency={containingItem} resolutionTypes={resolutionTypes} onContain={handleContain} onClose={() => setContainingId(null)} />
+      )}
       {verifyingItem && (
         <VerifyModal deficiency={verifyingItem} onVerify={handleVerify} onClose={() => setVerifyingId(null)} />
+      )}
+      {resolvingBillingDeficiency && (
+        <ResolveBillingDeficiencyModal deficiency={resolvingBillingDeficiency} onResolve={handleResolveBillingDeficiency} onClose={() => setResolvingBillingDeficiencyId(null)} />
+      )}
+      {reviewingPoolEntry && (
+        <ReviewPoolEntryModal entry={reviewingPoolEntry} onReview={handleReviewPoolEntry} onClose={() => setReviewingPoolEntryId(null)} />
       )}
       {showReviewModal && (
         <ManagementReviewModal

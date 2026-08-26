@@ -200,14 +200,14 @@ describe('useSpecimenBlockManagement — handleUpdateBlock', () => {
     const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ setCaseData })));
 
     await act(async () => {
-      await result.current.handleUpdateBlock('SP-2', 'BLK-3', { status: 'Exhausted', coding: { cpt: ['88305'] } });
+      await result.current.handleUpdateBlock('SP-2', 'BLK-3', { status: 'Exhausted', coding: { cpt: [{ code: '88305' }] } });
     });
 
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     const [, patch] = vi.mocked(caseRouter.updateCase).mock.calls[0];
     const updatedBlock = (patch as any).specimens.find((s: any) => s.id === 'SP-2').blocks[0];
     expect(updatedBlock.status).toBe('Exhausted');
-    expect(updatedBlock.coding.cpt).toEqual(['88305']);
+    expect(updatedBlock.coding.cpt).toEqual([{ code: '88305' }]);
   });
 });
 

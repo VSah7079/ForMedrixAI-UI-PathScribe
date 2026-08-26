@@ -14,6 +14,14 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   { id: 'def-label-mismatch', name: 'Label Mismatch', description: 'Container/slide label does not match the requisition.', status: 'Active', level: 'specimen' },
   { id: 'def-container-damaged', name: 'Container Damaged', description: 'Specimen container arrived broken, leaking, or otherwise compromised.', status: 'Active', level: 'specimen' },
   { id: 'def-insufficient-volume', name: 'Insufficient Volume', description: 'Fluid/tissue quantity received is inadequate for the ordered testing.', status: 'Active', level: 'specimen' },
+  // Real, per direct follow-up: "if I was to create a CAPA I might
+  // want to capture the information" - a DLQ dispatch failure
+  // (OutboundChargeQueueEntry, status FAILED) that's systemic or
+  // recurring enough to warrant real corrective/preventive action
+  // review, not just a one-off retry. Level 'case', not 'specimen' -
+  // a dispatch failure is a billing-transmission concern tied to the
+  // case's charges as a whole, not any one specimen's tissue handling.
+  { id: 'def-outbound-dispatch-failure', name: 'Outbound Billing Dispatch Failure', description: 'A charge dispatch to the external RCM system failed and was judged worth systemic CAPA review, not just a one-off retry.', status: 'Active', level: 'case' },
   // Real feature, per direct follow-up: "an immediate Tissue
   // Discrepancy QA Flag is raised before sectioning... Is the
   // discrepancy being tracked in the Quality Assurance Module?"

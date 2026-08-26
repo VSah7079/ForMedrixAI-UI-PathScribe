@@ -592,6 +592,19 @@ export interface Case {
   originSiteId?: string;
   originEnterpriseId: string;
   isReferenceLabCase?: boolean;
+  /** Real, per PathScribe Interface Specification v1.2 §2.6 (patient
+   *  data minimization) - THIS case's own real
+   *  resolveOrCreatePatient() outcome at accession, not the patient
+   *  identity's permanent origin (MasterPatientRecord.establishedVia
+   *  is patient-level and never changes after first creation - a
+   *  later case for an already-known patient is a genuine 'matched'
+   *  event for THAT case, even though the underlying identity itself
+   *  was originally 'created' by an earlier, different case). Optional
+   *  since cases accessioned before this field existed won't have it -
+   *  callers should treat a missing value as 'full' scope (the safer
+   *  of the two mistakes, same reasoning §2.6 itself uses for
+   *  'ambiguous'), never assume 'reference' from absence. */
+  patientMatchOutcome?: 'matched' | 'created' | 'ambiguous';
 
   patient: Patient;
   /** Real fix, per direct follow-up on the rest of Phase 0: the real,

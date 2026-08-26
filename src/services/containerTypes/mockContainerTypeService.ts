@@ -60,6 +60,22 @@ const SEED_CONTAINER_TYPES: ContainerType[] = [
     systemLogicNotes: 'Routes the order to automated slide preparation instruments and reflex molecular testing (e.g. HPV co-testing).',
     status: 'Active',
   },
+  // Real, per direct guidance: distinct from the generic LBC Vial
+  // above, not a duplicate - "cataloged as an approved Collection
+  // Container & Preservative Media... Order entry forms require this
+  // designation so the accessioning workflow knows which processing
+  // instrument (e.g., ThinPrep Processor) to route the specimen to."
+  // A generic LBC Vial entry can't distinguish ThinPrep's own
+  // processing instrument from SurePath's separate, different one.
+  {
+    id: 'thinprep-vial',
+    name: 'ThinPrep Vial (PreservCyt)',
+    description: 'Hologic ThinPrep collection vial (PreservCyt solution) — routes specifically to the ThinPrep Processor, distinct from other liquid-based cytology systems (e.g. SurePath).',
+    category: 'cytology',
+    aplisMapping: 'Gynecologic (Pap) — Liquid-Based, ThinPrep Method',
+    systemLogicNotes: 'Routes the order to the ThinPrep Processor specifically. Supports reflex molecular testing (e.g. HPV co-testing) from the same vial.',
+    status: 'Active',
+  },
   {
     id: 'fna-tube',
     name: 'FNA Tube',

@@ -39,6 +39,20 @@ export interface IRvuCodeMapService {
    *  version is active at a time. Does not affect historical resolution
    *  (getVersionEffectiveAt) at all, which is date-based, not
    *  active-flag-based - activating a version only changes what NEW
-   *  calculations default to. */
+   *  calculations default to. Real, per direct follow-up: only ever
+   *  called internally by approveVersion below now - a version is
+   *  never activated except through the real approval gate. */
   activateVersion(versionId: string): Promise<ServiceResult<RvuTableVersion>>;
+
+  /** Real, per direct follow-up: "we just need to track the changes
+   *  so we know who is responsible and have it go through the
+   *  approval process." Mirrors mockModifierDictionaryService.ts's
+   *  own approveVersion exactly - a different, real reviewer than the
+   *  one who created this version must approve it before it becomes
+   *  the real, active table. Hard-enforced here, not just in the UI. */
+  approveVersion(versionId: string, reviewedBy: string): Promise<ServiceResult<RvuTableVersion>>;
+
+  /** Same real, hard-enforced dual-control gate as approveVersion.
+   *  Requires a real rejection reason - never activates. */
+  rejectVersion(versionId: string, reviewedBy: string, rejectionReason: string): Promise<ServiceResult<RvuTableVersion>>;
 }

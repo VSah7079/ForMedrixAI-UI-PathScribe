@@ -33,26 +33,15 @@ export type SnomedFilter = 'all' | 'morphology' | 'anatomy' | 'specimen' | 'orga
 // endpoint has been retired and returns 404 for all queries.
 // UTS 'approximate' search type gives the best substring/partial word matching.
 
-// Deliberately NO hardcoded fallback here. A checked-in API key is a real
-// credential leak (visible to anyone with repo access, past or future,
-// regardless of any later fix) — same reasoning as never committing a
-// .env file. If VITE_UMLS_KEY isn't set, this throws immediately and
-// loudly at call time rather than silently degrading or (worse) silently
-// using a shared, exposed default key. Set VITE_UMLS_KEY in .env locally
-// and in your deployment platform's environment variable settings.
-function getUmlsApiKey(): string {
-  const key = import.meta.env.VITE_UMLS_KEY;
-  if (!key) {
-    throw new Error(
-      '[codeSearchService] VITE_UMLS_KEY is not set. SNOMED/ICD-O search ' +
-      'requires a UMLS API key — see https://uts.nlm.nih.gov/uts/ to ' +
-      'obtain one, then set VITE_UMLS_KEY in your .env file.'
-    );
-  }
-  return key;
-}
-
-const UTS_SEARCH = 'https://uts-ws.nlm.nih.gov/rest/search/current';
+// Real fix, found via direct feedback and a live 401 trace: this
+// previously called uts-ws.nlm.nih.gov directly from the browser,
+// which the real, external UTS service blocks via CORS - confirmed
+// live, not assumed. A correct, server-side proxy already exists for
+// exactly this (vite.config.ts's own '/api/terminology/umls' route,
+// which injects the real API key server-side from env.UMLS_API_KEY -
+// no VITE_ prefix, deliberately never exposed to the browser) - this
+// search code just never used it. Routing through it here instead.
+const UTS_SEARCH = '/api/terminology/umls/search/current';
 
 const SNOMED_FILTER_KEYWORDS: Record<SnomedFilter, string[]> = {
   all:        [],
@@ -76,7 +65,6 @@ async function searchSnomed(
       sabs:         'SNOMEDCT_US',
       returnIdType: 'code',
       pageSize:     String(maxResults),
-      apiKey:       getUmlsApiKey(),
     });
 
     const res = await fetch(`${UTS_SEARCH}?${params}`);
@@ -105,7 +93,15 @@ async function searchSnomed(
     return mapped;
   } catch (err) {
     console.warn('[codeSearchService] SNOMED search failed:', err);
-    return [];
+    // Real fix, per direct feedback: "I searched for Breast and it
+    // didn't find any codes which surprised me." A failed request
+    // (missing/misconfigured API key, network error, CORS) looked
+    // identical to a real, genuine "no matches" result - both
+    // silently returned []. Re-throwing here lets the real caller
+    // show a distinct "search unavailable" message instead of
+    // implying the term itself has no matches, which was actively
+    // misleading for a term as common as "Breast."
+    throw new Error(`SNOMED search is currently unavailable — ${err instanceof Error ? err.message : 'unknown error'}`);
   }
 }
 
@@ -137,7 +133,15 @@ async function searchIcd10(query: string, maxResults = 20): Promise<CodeResult[]
     }));
   } catch (err) {
     console.warn('[codeSearchService] ICD-10 search failed:', err);
-    return [];
+    // Real fix, per direct feedback: "I searched for Breast and it
+    // didn't find any codes which surprised me." A failed request
+    // (missing/misconfigured API key, network error, CORS) looked
+    // identical to a real, genuine "no matches" result - both
+    // silently returned []. Re-throwing here lets the real caller
+    // show a distinct "search unavailable" message instead of
+    // implying the term itself has no matches, which was actively
+    // misleading for a term as common as "Breast."
+    throw new Error(`ICD-10 search is currently unavailable — ${err instanceof Error ? err.message : 'unknown error'}`);
   }
 }
 
@@ -169,7 +173,15 @@ async function searchIcd11(query: string, maxResults = 20): Promise<CodeResult[]
     }));
   } catch (err) {
     console.warn('[codeSearchService] ICD-11 search failed:', err);
-    return [];
+    // Real fix, per direct feedback: "I searched for Breast and it
+    // didn't find any codes which surprised me." A failed request
+    // (missing/misconfigured API key, network error, CORS) looked
+    // identical to a real, genuine "no matches" result - both
+    // silently returned []. Re-throwing here lets the real caller
+    // show a distinct "search unavailable" message instead of
+    // implying the term itself has no matches, which was actively
+    // misleading for a term as common as "Breast."
+    throw new Error(`ICD-11 search is currently unavailable — ${err instanceof Error ? err.message : 'unknown error'}`);
   }
 }
 
@@ -202,7 +214,15 @@ async function searchLoinc(query: string, maxResults = 20): Promise<CodeResult[]
     }));
   } catch (err) {
     console.warn('[codeSearchService] LOINC search failed:', err);
-    return [];
+    // Real fix, per direct feedback: "I searched for Breast and it
+    // didn't find any codes which surprised me." A failed request
+    // (missing/misconfigured API key, network error, CORS) looked
+    // identical to a real, genuine "no matches" result - both
+    // silently returned []. Re-throwing here lets the real caller
+    // show a distinct "search unavailable" message instead of
+    // implying the term itself has no matches, which was actively
+    // misleading for a term as common as "Breast."
+    throw new Error(`LOINC search is currently unavailable — ${err instanceof Error ? err.message : 'unknown error'}`);
   }
 }
 
@@ -219,7 +239,6 @@ async function searchIcdo(query: string, maxResults = 20): Promise<CodeResult[]>
       sabs:         'SNOMEDCT_US',
       returnIdType: 'code',
       pageSize:     String(maxResults),
-      apiKey:       getUmlsApiKey(),
     });
 
     const res = await fetch(`${UTS_SEARCH}?${params}`);
@@ -239,7 +258,15 @@ async function searchIcdo(query: string, maxResults = 20): Promise<CodeResult[]>
       }));
   } catch (err) {
     console.warn('[codeSearchService] ICD-O search failed:', err);
-    return [];
+    // Real fix, per direct feedback: "I searched for Breast and it
+    // didn't find any codes which surprised me." A failed request
+    // (missing/misconfigured API key, network error, CORS) looked
+    // identical to a real, genuine "no matches" result - both
+    // silently returned []. Re-throwing here lets the real caller
+    // show a distinct "search unavailable" message instead of
+    // implying the term itself has no matches, which was actively
+    // misleading for a term as common as "Breast."
+    throw new Error(`ICD-O search is currently unavailable — ${err instanceof Error ? err.message : 'unknown error'}`);
   }
 }
 

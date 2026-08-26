@@ -29,6 +29,12 @@ export interface IAmendmentService {
     type: AmendmentType;
     authoringPathologist: { userId: string; userName: string };
     triggeredByLisNotice?: boolean;
+    /** Real, per direct guidance's own follow-up on structured
+     *  linkage - see AmendmentRecord.reportInstanceId's own doc
+     *  comment for the full reasoning. Optional, same posture as the
+     *  record field itself. */
+    reportInstanceId?: string;
+    specimenId?: string;
   }): Promise<ServiceResult<AmendmentRecord>>;
 
   /** Stage 1 of the amendment/correction pipeline — fires when "Amend" or
@@ -51,6 +57,11 @@ export interface IAmendmentService {
      *  at Stage 1, before the template unlocks for editing. There's no
      *  reliable way to recover it later. */
     originalReportSnapshot: unknown;
+    /** Real, per direct guidance's own detailed post-sign-out revision
+     *  taxonomy - required for every real AmendmentType, this record's
+     *  own AmendmentRecord.reasonId doc comment for the full
+     *  reasoning. */
+    reasonId: string;
   }): Promise<ServiceResult<AmendmentRecord>>;
 
   /** Stage 2 — fires at actual re-sign-out (amendment) or immediately
@@ -64,5 +75,10 @@ export interface IAmendmentService {
     explanationOfChange?: string;
     notification?: ClinicalNotification;
     body: string;
+    /** Real, per direct guidance - required for the addendum single-
+     *  stage path (this is the only call for those); already captured
+     *  in Stage 1 for amendment/correction, so optional here for
+     *  those - same pattern explanationOfChange above already uses. */
+    reasonId?: string;
   }): Promise<ServiceResult<AmendmentRecord>>;
 }

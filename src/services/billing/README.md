@@ -125,6 +125,16 @@ Direct question: "is there a reason we do not have a way to add a RVU code outsi
 
 `RvuCodeMapSection.tsx` gained a real `EntryModal` (add/edit/duplicate all route through it, reusing the exact `ps-ms-overlay`/`ps-ms-modal` pattern already proven in `BillingDictionarySection.tsx`), a real "+ Add Code" button, and real per-row "Edit"/"Duplicate" actions in the active-version table. All three compute a real, new entries array from the current active version's own entries and call the same `createVersion` + `activateVersion` pair the upload flow already uses — no second, parallel write path. The active-version table also now shows an honest "Unverified" label (matching Billing Dictionary's own convention) for any entry with no `workRvu`, rather than a bare blank.
 
+## Known, disclosed gap: MatrixBlock (Biopsy Array) cases have zero billing coverage today
+
+Found via direct user feedback on `BillingReviewPanel.tsx` ("how will this work in Biopsy Array?"), then traced through the real code before being written up here — not theoretical.
+
+`computeCaseCodingSummary()` (this folder's own real entry point for the whole AI Billing Code Review system) takes only `specimens` and walks each one's own `blocks[]`. A Biopsy Array (`types/case/MatrixBlock.ts`, `useSpecimenBlockManagement.ts`'s `handleCreateBiopsyArray`) is a genuinely different real structure — multiple specimens' tissue sharing one physical cassette, represented as a single `MatrixBlock` living in its own case-level `caseData.matrixBlocks[]` array, with each participating specimen only holding a reference (`Specimen.matrixBlockIds`), not an owned block record. The stains that would drive ancillary billing suggestions (IHC-FIRST, special stains, etc.) live on the `MatrixBlock`'s own `slides[]`, which this function never looks at.
+
+**Real, concrete impact**: for any specimen participating in a Biopsy Array, `computeCaseCodingSummary()` — and therefore `BillingReviewPanel.tsx` entirely — silently shows nothing. No pending suggestions, no applied codes, no indication anything is missing. Not a display bug in the panel; the underlying data this whole system is built on genuinely never reaches a `MatrixBlock`.
+
+**Deliberately not fixed yet** — this isn't a small patch. A real fix needs an actual billing-expert decision on how ancillary stains on one shared, multi-specimen block should attribute for billing purposes (one code per specimen? one shared code? something else CMS-specific?), not just a mechanical "also read `matrixBlocks`" change. Tracked as a real Jira bug once that guidance comes back — see that ticket for the concrete next steps once scoped.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

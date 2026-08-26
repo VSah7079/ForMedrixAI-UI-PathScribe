@@ -323,7 +323,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
 
   it('flags the real soft-warning condition: ancillary code present, base code missing', () => {
     const result = computeCaseCodingSummary(
-      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-1', label: 'A1', coding: { cpt: ['88312'] } }] }],
+      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-1', label: 'A1', coding: { cpt: [{ code: '88312' }] } }] }],
       stainTypes,
     );
     expect(result[0].hasBaseCode).toBe(false);
@@ -352,7 +352,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
     const result = computeCaseCodingSummary(
       [
         { id: 'sp-1', label: 'A', coding: { cpt: ['88305'] } },
-        { id: 'sp-2', label: 'B', blocks: [{ id: 'blk-2', label: 'B1', coding: { cpt: ['88342'] } }] },
+        { id: 'sp-2', label: 'B', blocks: [{ id: 'blk-2', label: 'B1', coding: { cpt: [{ code: '88342' }] } }] },
       ],
       stainTypes,
     );
@@ -386,6 +386,45 @@ describe('resolveSpecimenDictionaryBaseCptCode — real fix: uses a real coder-c
   it('returns null when the specimen links to an entry id that genuinely doesn\'t exist in the dictionary', () => {
     const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'not-a-real-entry' }, entries);
     expect(result).toBeNull();
+  });
+
+  // Real, per direct guidance's own complexity spec (Specimen.complexity,
+  // SpecimenEntry.defaultComplexity/microUpgradeBaseCptCode).
+  describe('real complexity override behavior', () => {
+    const gallbladder = { id: 'gb', defaultBaseCptCode: '88300', defaultComplexity: 'GROSS_ONLY' as const };
+    const gallbladderWithUpgrade = { id: 'gb-upgrade', defaultBaseCptCode: '88300', defaultComplexity: 'GROSS_ONLY' as const, microUpgradeBaseCptCode: '88304' };
+    const colon = { id: 'colon', defaultBaseCptCode: '88309', defaultComplexity: 'GROSS_AND_MICRO' as const };
+    const noComplexityEntry = { id: 'legacy', defaultBaseCptCode: '88305' };
+
+    it('no complexity declared on the specimen at all - exact prior behavior, the dictionary\'s own default code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb' }, [gallbladder]);
+      expect(result).toBe('88300');
+    });
+
+    it('specimen complexity matches the dictionary\'s own default - not a real override, same code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb', complexity: 'GROSS_ONLY' }, [gallbladder]);
+      expect(result).toBe('88300');
+    });
+
+    it('real downgrade to GROSS_ONLY (from a GROSS_AND_MICRO default) always resolves to the one universal 88300 code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'colon', complexity: 'GROSS_ONLY' }, [colon]);
+      expect(result).toBe('88300');
+    });
+
+    it('real upgrade to GROSS_AND_MICRO with a real, coder-configured upgrade code resolves to it', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb-upgrade', complexity: 'GROSS_AND_MICRO' }, [gallbladderWithUpgrade]);
+      expect(result).toBe('88304');
+    });
+
+    it('real upgrade to GROSS_AND_MICRO with NO configured upgrade code honestly returns null, never a guessed micro-level code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb', complexity: 'GROSS_AND_MICRO' }, [gallbladder]);
+      expect(result).toBeNull();
+    });
+
+    it('specimen declares a complexity but the dictionary entry has none configured - falls back to the entry\'s own default code, no override logic applies', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'legacy', complexity: 'GROSS_AND_MICRO' }, [noComplexityEntry]);
+      expect(result).toBe('88305');
+    });
   });
 });
 

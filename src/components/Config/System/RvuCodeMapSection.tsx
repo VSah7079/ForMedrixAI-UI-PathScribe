@@ -24,12 +24,22 @@ import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
 import type { RvuTableVersion, BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
-import { parseRvuUploadRows, type ParsedRvuUploadRow } from '@/services/billing/codeMapTable';
+import { parseRvuUploadRows, validateCodeLevel, inferLevelFromDescription, BILLING_TYPE_LABEL, type ParsedRvuUploadRow } from '@/services/billing/codeMapTable';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 
+// Real fix, per direct guidance's own follow-up on dictionary
+// licensing: this previously embedded what reads as real, verbatim
+// AMA CPT descriptive text directly in source AND in a real,
+// downloadable file every admin who clicks "Download Template"
+// receives - exactly the PS-92 gap (codeMapTable.ts's own header)
+// this table's real seed data was already fixed for, missed here.
+// Synthetic description text now, matching that same, established
+// "Code {code} — {Level} Level" format - the real code numbers stay
+// accurate (numbers alone aren't licensed content), only the
+// human-readable description is synthetic.
 const TEMPLATE_EXAMPLE_ROWS = [
-  { Code: '88305', Description: 'Surgical pathology, gross and microscopic examination (Level IV)', WorkRVU: 0.73 },
-  { Code: '88307', Description: 'Surgical pathology, gross and microscopic examination (Level V)',  WorkRVU: 1.55 },
+  { Code: '88305', Description: 'Code 88305 — Specimen Level', WorkRVU: 0.73 },
+  { Code: '88307', Description: 'Code 88307 — Specimen Level', WorkRVU: 1.55 },
 ];
 
 function formatDate(iso: string): string {
@@ -62,6 +72,8 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
   const [code, setCode] = useState(isDuplicate ? '' : seed?.code ?? '');
   const [description, setDescription] = useState(seed?.description ?? '');
   const [billingCode, setBillingCode] = useState(isDuplicate ? '' : seed?.billingCode ?? '');
+  const [level, setLevel] = useState<BillingDictionaryEntry['level']>(seed?.level ?? 'stain');
+  const [billingType, setBillingType] = useState<BillingDictionaryEntry['billingType']>(seed?.billingType ?? 'Global');
   const [hcpcsCode, setHcpcsCode] = useState(seed?.hcpcsCode ?? '');
   const [workRvu, setWorkRvu] = useState(seed?.workRvu?.toString() ?? '');
   const [rvuPe, setRvuPe] = useState(seed?.rvuPe?.toString() ?? '');
@@ -76,12 +88,21 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
       code: code.trim(),
       billingCode: billingCode.trim(),
       description: description.trim() || code.trim(),
+      level,
+      billingType,
       hcpcsCode: hcpcsCode.trim() || undefined,
       workRvu: workRvu.trim() ? Number(workRvu) : undefined,
       rvuPe: rvuPe.trim() ? Number(rvuPe) : undefined,
       rvuMp: rvuMp.trim() ? Number(rvuMp) : undefined,
     });
   };
+
+  // Real, advisory-only check (see codeMapTable.ts's own
+  // validateCodeLevel) - never blocks saving, since a real code can
+  // legitimately not match the pattern (e.g. 88311 decalcification,
+  // confirmed via direct research not to state its own billing unit
+  // in its description text at all).
+  const levelWarning = description.trim() ? validateCodeLevel({ description: description.trim(), level }) : null;
 
   return (
     <div className="ps-ms-overlay ps-ms-overlay--top-align">
@@ -101,6 +122,30 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">Description</label>
             <input className="ps-conf-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Real, human-readable description" />
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Level <span className="ps-conf-required">*</span></label>
+            <select className="ps-conf-input" value={level} onChange={e => setLevel(e.target.value as BillingDictionaryEntry['level'])}>
+              <option value="specimen">Specimen — primary diagnostic work</option>
+              <option value="block">Block — tissue processing &amp; preparation</option>
+              <option value="stain">Stain — staining, recuts &amp; analytical procedures</option>
+              <option value="decant">Decant — decanted fluid/slide work</option>
+            </select>
+            {levelWarning && <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>⚠ {levelWarning}</p>}
+          </div>
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">
+              Component Type <span className="ps-conf-required">*</span>{' '}
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1px solid #64748b', color: '#94a3b8', fontSize: 10, fontWeight: 700, cursor: 'help', verticalAlign: 'middle' }}
+                title={`Which biller performs this work, and therefore when its charge releases: ${BILLING_TYPE_LABEL.TC} at specimen grossing complete, ${BILLING_TYPE_LABEL['26']}/${BILLING_TYPE_LABEL.Global} at case signout.`}
+              >i</span>
+            </label>
+            <select className="ps-conf-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingDictionaryEntry['billingType'])}>
+              <option value="TC">{BILLING_TYPE_LABEL.TC}</option>
+              <option value="26">{BILLING_TYPE_LABEL['26']}</option>
+              <option value="Global">{BILLING_TYPE_LABEL.Global}</option>
+            </select>
           </div>
           <div className="ps-conf-form-row--3">
             <div className="ps-conf-form-field">
@@ -125,7 +170,7 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
         <div className="ps-ms-footer">
           <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="ps-conf-btn-primary" disabled={busy} onClick={handleSave}>
-            {busy ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Code'}
+            {busy ? 'Submitting…' : 'Submit for Approval'}
           </button>
         </div>
       </div>
@@ -155,7 +200,6 @@ const RvuCodeMapSection: React.FC = () => {
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadLabel, setUploadLabel] = useState('');
   const [uploadEffectiveDate, setUploadEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [activateOnSave, setActivateOnSave] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Real, per direct question: single-entry add/edit/duplicate state —
@@ -183,18 +227,7 @@ const RvuCodeMapSection: React.FC = () => {
 
   const activeVersion = versions.find(v => v.isActive) ?? null;
   const olderVersions = versions.filter(v => !v.isActive);
-
-  const handleActivate = async (versionId: string) => {
-    setBusy(true);
-    const res = await mockRvuCodeMapService.activateVersion(versionId);
-    setBusy(false);
-    if (res.ok === false) {
-      setToast(res.error);
-    } else {
-      setToast(`"${res.data.label}" is now the active version.`);
-      refresh();
-    }
-  };
+  const pendingCount = versions.filter(v => v.approvalStatus === 'PENDING_APPROVAL').length;
 
   // ── Single-entry add / edit / duplicate ──────────────────────────────────
   // Real, per direct question — the same real createVersion the upload
@@ -226,10 +259,9 @@ const RvuCodeMapSection: React.FC = () => {
       setToast(res.error);
       return;
     }
-    await mockRvuCodeMapService.activateVersion(res.data.id);
     setEntryBusy(false);
     setEntryModalState(null);
-    setToast(`"${entry.code}" ${isEdit ? 'updated' : 'added'} and activated.`);
+    setToast(`"${entry.code}" submitted for approval — see Pending Billing Rule Approvals.`);
     refresh();
   };
 
@@ -281,7 +313,27 @@ const RvuCodeMapSection: React.FC = () => {
     // real admin to configure it manually afterward - not built here,
     // since inferring which uploaded codes need one isn't something
     // this app should guess at.
-    const entriesWithBillingCode: BillingDictionaryEntry[] = uploadPreview.map(row => ({ ...row, billingCode: row.code }));
+    // Real, disclosed limitation: a bulk CSV upload is a generic CMS
+    // RVU spreadsheet, not pathology-specific data - it has no level
+    // column at all. Uses the same real text-pattern signal as the
+    // advisory validator where it matches; falls back to 'specimen'
+    // (the least-wrong default for a general RVU table, and matches
+    // this app's own existing base-code family) only when it doesn't.
+    // Not a confident classification - a real admin should review
+    // uploaded rows' levels afterward, same as the billingCode
+    // indirection noted just above.
+    // Same honest-default posture for billingType: a generic CMS
+    // upload has no TC/26/Global column either. Defaults to 'Global'
+    // (the most common real-world case - one biller performs both
+    // components) rather than guessing TC or 26 specifically, since a
+    // wrong TC/26 guess would release a charge at the wrong real-world
+    // moment - same "admin should review afterward" disclosure as level.
+    const entriesWithBillingCode: BillingDictionaryEntry[] = uploadPreview.map(row => ({
+      ...row,
+      billingCode: row.code,
+      level: inferLevelFromDescription(row.description) ?? 'specimen',
+      billingType: 'Global',
+    }));
     const res = await mockRvuCodeMapService.createVersion({
       label: uploadLabel.trim() || uploadFileName,
       effectiveDate: new Date(uploadEffectiveDate).toISOString(),
@@ -296,11 +348,8 @@ const RvuCodeMapSection: React.FC = () => {
       return;
     }
 
-    if (activateOnSave) {
-      await mockRvuCodeMapService.activateVersion(res.data.id);
-    }
     setBusy(false);
-    setToast(`"${res.data.label}" saved${activateOnSave ? ' and activated' : ''}.`);
+    setToast(`"${res.data.label}" submitted for approval — see Pending Billing Rule Approvals.`);
     setUploadPreview(null);
     setUploadFileName('');
     setUploadLabel('');
@@ -329,7 +378,7 @@ const RvuCodeMapSection: React.FC = () => {
           </p>
         </div>
         <div className="ps-specdict-header-actions">
-          <button className="ps-conf-btn-primary" onClick={() => setEntryModalState({})}>+ Add Code</button>
+          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setEntryModalState({})}>+ Add Code</button>
           <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
           <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
           <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx"
@@ -338,6 +387,11 @@ const RvuCodeMapSection: React.FC = () => {
       </div>
 
       {toast && <div className="ps-conf-section-subtitle" style={{ color: '#10b981', fontWeight: 600 }}>{toast}</div>}
+      {pendingCount > 0 && (
+        <p className="ps-billing-reason-hint">
+          {pendingCount} version{pendingCount !== 1 ? 's' : ''} pending approval — see Pending Billing Rule Approvals.
+        </p>
+      )}
 
       {/* ── Active version — front and center ── */}
       {activeVersion ? (
@@ -393,7 +447,12 @@ const RvuCodeMapSection: React.FC = () => {
                       {v.sourceFileName && <> · from {v.sourceFileName}</>}
                     </div>
                   </div>
-                  <button className="ps-conf-btn-row" disabled={busy} onClick={() => handleActivate(v.id)}>Activate</button>
+                  <span className="ps-billing-reason-hint">
+                    {v.approvalStatus === 'PENDING_APPROVAL' ? 'Pending approval'
+                      : v.approvalStatus === 'REJECTED' ? `Rejected${v.rejectionReason ? ` — ${v.rejectionReason}` : ''}`
+                      : v.approvalStatus === 'APPROVED' ? 'Approved (superseded)'
+                      : '—'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -417,11 +476,11 @@ const RvuCodeMapSection: React.FC = () => {
               Effective date
               <input type="date" value={uploadEffectiveDate} onChange={e => setUploadEffectiveDate(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px' }} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginTop: '18px' }}>
-              <input type="checkbox" checked={activateOnSave} onChange={e => setActivateOnSave(e.target.checked)} />
-              Activate immediately
-            </label>
           </div>
+          <p className="ps-billing-reason-hint">
+            This version will be submitted for approval — a different, real reviewer must approve it before it
+            replaces the active table. See Pending Billing Rule Approvals.
+          </p>
 
           <div className="ps-conf-table-wrap" style={{ maxHeight: '240px', overflowY: 'auto' }}>
             <table className="ps-conf-table">
@@ -440,7 +499,7 @@ const RvuCodeMapSection: React.FC = () => {
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             <button className="ps-conf-btn-primary" disabled={busy || uploadPreview.length === 0} onClick={handleApplyUpload}>
-              {busy ? 'Saving…' : `Save Version (${uploadPreview.length} codes)`}
+              {busy ? 'Submitting…' : `Submit for Approval (${uploadPreview.length} codes)`}
             </button>
             <button className="ps-conf-btn-row" onClick={() => { setUploadPreview(null); setUploadError(null); }}>Cancel</button>
           </div>

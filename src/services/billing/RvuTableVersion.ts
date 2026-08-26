@@ -34,6 +34,19 @@
 export interface BillingDictionaryEntry {
   code: string;
   description: string;
+  /** Real, per direct requirement: the real billing unit this code
+   *  attaches to - a specimen's own primary diagnostic work, a
+   *  block's own processing/preparation, or a specific stain's own
+   *  staining/analytical procedure. Hand-tagged per entry, not
+   *  auto-derived from description text - this dictionary is a small,
+   *  deliberately curated example set (no CPT license - see PS-92),
+   *  not a general classifier meant to cover hundreds of codes, so
+   *  each new entry gets the same one-at-a-time verification as its
+   *  RVU data. See codeMapTable.ts's own validateCodeLevel for the
+   *  real, but only advisory, text-pattern sanity check against this
+   *  field - it warns on a mismatch, it never assigns the level
+   *  itself. */
+  level: 'specimen' | 'block' | 'stain' | 'decant';
   /** Optional (was required) - per direct guidance, a real code this
    *  app knows about but hasn't yet verified a current RVU for (e.g.
    *  88341/88331/88332/88344 as of this change - see this file's own
@@ -85,6 +98,25 @@ export interface BillingDictionaryEntry {
    *  downstream billing system; it doesn't decide modifier rules
    *  itself. */
   modifier?: string;
+  /** Real, required per Epic: PathScribe Outbound Billing & Charge
+   *  Event Engine, User Story 1 - which real-world biller performs
+   *  the billable work this code represents, and therefore when its
+   *  charge should actually release. 'TC' (technical component, e.g.
+   *  slide prep/staining) releases at specimen-grossing-complete;
+   *  '26' (professional component, e.g. the pathologist's own
+   *  interpretation) and 'Global' (combined TC+26, one biller does
+   *  both) release at case signout - see
+   *  BILLING_TYPE_DEFAULT_TRIGGER below for the real mapping this
+   *  drives. Every active entry needs one (validated on save in the
+   *  admin dictionary screen) - there's no meaningful default to
+   *  infer, since getting this wrong means a charge fires at the
+   *  wrong real-world moment. Stored as a short, stable code
+   *  ('TC'/'26'/'Global'), matching the existing modifier field's own
+   *  '-TC'/'-26' convention just above - see BILLING_TYPE_LABEL
+   *  (codeMapTable.ts) for the real, deliberately explicit display
+   *  label ("26 Prof.", not a bare "26") used anywhere this shows in
+   *  the UI. */
+  billingType: 'TC' | '26' | 'Global';
 }
 
 /** @deprecated Renamed to BillingDictionaryEntry - kept as a type
@@ -115,6 +147,20 @@ export interface RvuTableVersion {
    *  they were actually finalized. */
   isActive: boolean;
   entries: BillingDictionaryEntry[];
+  /** Real, per direct follow-up: "we just need to track the changes
+   *  so we know who is responsible and have it go through the
+   *  approval process." Mirrors ModifierTableVersion's own
+   *  approvalStatus exactly. Optional and undefined for the initial
+   *  seed and any version that predates this feature. Critically,
+   *  getVersionEffectiveAt() below excludes PENDING_APPROVAL/REJECTED
+   *  versions from its own candidates - a submitted-but-not-yet-
+   *  approved version must never be resolved against for a real
+   *  historical RVU calculation. */
+  approvalStatus?: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  submittedForApprovalBy?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
 }
 
 /** Real fix, the actual reason this needed to be versioned: resolves
@@ -128,6 +174,14 @@ export function resolveVersionEffectiveAt(versions: RvuTableVersion[], isoDate: 
   const target = new Date(isoDate).getTime();
   if (isNaN(target)) return null;
   const candidates = versions
+    // Real, per direct follow-up: a version submitted for approval
+    // but not yet reviewed - or rejected outright - must never be
+    // resolved against for a real historical calculation, even if its
+    // own effectiveDate would otherwise make it the best match.
+    // Undefined approvalStatus (the seed, or any version predating
+    // this feature) is treated as eligible, same honest "no approval
+    // history to fail" posture used elsewhere in this app.
+    .filter(v => v.approvalStatus !== 'PENDING_APPROVAL' && v.approvalStatus !== 'REJECTED')
     .filter(v => new Date(v.effectiveDate).getTime() <= target)
     .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
   return candidates[0] ?? null;

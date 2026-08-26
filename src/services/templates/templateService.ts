@@ -30,6 +30,14 @@ import { fromLegacyName, formatFullDisplayName } from '../../utils/personName';
 
 export type TemplateStatus = LifecycleState | 'deprecated';
 
+/** Real, per direct guidance - mirrors protocolShared.tsx's own
+ *  isDiagnosticProtocol() exactly (default true when unset - the same
+ *  "effectively all CAP/RCPath/diagnostic-Custom protocols" reasoning
+ *  applies here). Use this rather than reading .isDiagnostic directly. */
+export function isTemplateDiagnostic(t: Pick<TemplateSummary, 'isDiagnostic'>): boolean {
+  return t.isDiagnostic !== false;
+}
+
 export interface TemplateSummary {
   id:           string;
   name:         string;
@@ -44,6 +52,13 @@ export interface TemplateSummary {
   updatedAt:    string;
   submittedAt?: string;
   publishedAt?: string;
+  /** Real, per direct guidance - whether this protocol's answers are
+   *  real diagnostic content (post-microscopy) as opposed to
+   *  procedural/Grossing checklist data. Mirrors
+   *  Protocol.isDiagnostic exactly - undefined here means the same
+   *  thing it means there (defaults true; use isTemplateDiagnostic()
+   *  below rather than reading this directly). */
+  isDiagnostic?: boolean;
 }
 
 export interface TemplateDetail extends TemplateSummary {
@@ -243,6 +258,7 @@ export async function getTemplate(id: string): Promise<TemplateDetail> {
       createdAt: '2024-01-01',
       updatedAt: '2024-01-01',
       template:  storedTemplate,
+      isDiagnostic: tpl.isDiagnostic,
     };
   }
 
@@ -265,6 +281,7 @@ export async function getTemplate(id: string): Promise<TemplateDetail> {
     updatedAt:   entry.lastModified,
     reviewNote:  entry.reviewNote,
     template,
+    isDiagnostic: entry.isDiagnostic,
   };
 
   // â”€â”€ REAL â”€â”€

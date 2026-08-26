@@ -12,8 +12,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import '../../../pathscribe.css';
 import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
+import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
+import type { MolecularTarget } from '@/types/billing/MolecularBillingRule';
 import type { CasePriority } from '@/services/cases/ICaseService';
-import { suggestSpecimenAncillaryCptCodes, computeNewSuggestions } from '@/services/billing/codeMapTable';
+import { suggestSpecimenAncillaryCptCodes, computeNewSuggestionsWithSources } from '@/services/billing/codeMapTable';
 import { UNSTAINED_LABEL } from '@/types/case/Specimen';
 import { findForeignIdCollision } from '@/utils/foreignIdCollision';
 import type { ForeignIdCollision } from '@/utils/foreignIdCollision';
@@ -59,8 +61,9 @@ const RESTAIN_REASONS = [
 // ── a live Stain Dictionary can run to hundreds of entries. ─────────────────
 const StainMultiSelect: React.FC<{
   stainTypes: StainType[];
-  stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected' }[];
-  onChange: (stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected' }[]) => void;
+  stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[] }[];
+  onChange: (stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[] }[]) => void;
+  masterTargets: MolecularTarget[];
   /** Real feature, per direct feedback: "I was trying to Add a
    *  Unstained slide, but did not see it in the drop down list."
    *  Unstained stays deliberately out of the real Stain Dictionary —
@@ -70,7 +73,9 @@ const StainMultiSelect: React.FC<{
    *  everything else. Optional: only shown when the caller (a block
    *  that isn't cancelled) actually offers spare creation. */
   onCreateSpare?: () => void;
-}> = ({ stainTypes, stains, onChange, onCreateSpare }) => {
+}> = ({ stainTypes, stains, onChange, masterTargets, onCreateSpare }) => {
+  const [editingTargetsForId, setEditingTargetsForId] = useState<string | null>(null);
+  const [targetSearchQuery, setTargetSearchQuery] = useState('');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -99,8 +104,19 @@ const StainMultiSelect: React.FC<{
   const showUnstainedOption = !!onCreateSpare && (!q || 'unstained'.includes(q) || 'spare'.includes(q));
 
   const add = (s: StainType) => {
-    onChange([...stains, { id: `stain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, stainName: s.name, status: 'Pending Cut' }]);
+    onChange([...stains, {
+      id: `stain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, stainName: s.name, status: 'Pending Cut',
+      // Real, per direct guidance's own template-and-override design:
+      // "copy the default probe set onto the individual accession
+      // record upon creation." Only meaningful for a real Molecular
+      // stain - a copy, not a live reference, so editing it here never
+      // touches this StainType's own dictionary default.
+      selectedTargets: s.category === 'Molecular' && s.defaultTargets ? s.defaultTargets.map(t => ({ ...t })) : undefined,
+    }]);
     setQuery('');
+  };
+  const updateTargets = (id: string, targets: MolecularTarget[]) => {
+    onChange(stains.map(s => s.id === id ? { ...s, selectedTargets: targets } : s));
   };
   const remove = (id: string) => onChange(stains.filter(s => s.id !== id));
 
@@ -111,6 +127,16 @@ const StainMultiSelect: React.FC<{
           {stains.map(s => (
             <span key={s.id} className="ps-protocol-stainselect-chip">
               {s.stainName}
+              {s.selectedTargets && (
+                <button
+                  type="button"
+                  onClick={() => setEditingTargetsForId(editingTargetsForId === s.id ? null : s.id)}
+                  title="Edit targets for this order"
+                  style={{ marginLeft: 5, fontSize: 10, color: '#a78bfa', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: 999, padding: '1px 6px', cursor: 'pointer' }}
+                >
+                  {s.selectedTargets.length} target{s.selectedTargets.length === 1 ? '' : 's'}
+                </button>
+              )}
               {/* Real feature, per the Hybrid Request-Driven Workflow
                   spec's "Optimistic / 'Pending' State": renders the
                   instant a stain/IHC request is made, confirmed or
@@ -127,6 +153,55 @@ const StainMultiSelect: React.FC<{
           ))}
         </div>
       )}
+      {editingTargetsForId && (() => {
+        const editingStain = stains.find(s => s.id === editingTargetsForId);
+        if (!editingStain) return null;
+        const currentTargets = editingStain.selectedTargets ?? [];
+        return (
+          <div style={{ padding: 10, marginBottom: 8, background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', marginBottom: 6 }}>
+              Targets for {editingStain.stainName}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {currentTargets.map(t => (
+                <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px', borderRadius: 999, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', fontSize: 12, color: '#a78bfa' }}>
+                  {t.symbol}{t.detail ? ` (${t.detail})` : ''}
+                  <button
+                    type="button"
+                    onClick={() => updateTargets(editingStain.id, currentTargets.filter(x => x.id !== t.id))}
+                    style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
+                    aria-label={`Remove ${t.symbol}`}
+                  >×</button>
+                </span>
+              ))}
+              {currentTargets.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>No targets selected — this order will not produce a real charge until at least one is added.</span>}
+            </div>
+            <input
+              className="ps-conf-input"
+              placeholder="Search targets to add (e.g. TP53, MYC)…"
+              value={targetSearchQuery}
+              onChange={e => setTargetSearchQuery(e.target.value)}
+            />
+            {targetSearchQuery.trim() && (
+              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+                {masterTargets
+                  .filter(t => !currentTargets.some(x => x.id === t.id))
+                  .filter(t => t.symbol.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()) || t.detail?.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()))
+                  .slice(0, 20)
+                  .map(t => (
+                    <div key={t.id} onMouseDown={() => { updateTargets(editingStain.id, [...currentTargets, t]); setTargetSearchQuery(''); }}
+                      style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>
+                      <strong>{t.symbol}</strong>{t.detail ? <span style={{ color: '#64748b' }}> — {t.detail}</span> : null}
+                    </div>
+                  ))}
+              </div>
+            )}
+            <div style={{ textAlign: 'right', marginTop: 8 }}>
+              <button type="button" className="ps-conf-btn-secondary" onClick={() => { setEditingTargetsForId(null); setTargetSearchQuery(''); }}>Done</button>
+            </div>
+          </div>
+        );
+      })()}
       <input
         className="ps-conf-input"
         placeholder="Search stains to add — name or category…"
@@ -255,11 +330,12 @@ interface Props {
 const BlockCptSuggestion: React.FC<{
   specimenId: string;
   block: any;
-  allSuggestedCodes: string[];
+  allSuggestedSources: { code: string; stainOrderId?: string }[];
   onUpdateBlock: (specimenId: string, blockId: string, changes: Partial<any>) => void;
-}> = ({ specimenId, block, allSuggestedCodes, onUpdateBlock }) => {
-  const appliedCodes: string[] = block.coding?.cpt ?? [];
-  const newSuggestions = computeNewSuggestions(appliedCodes, allSuggestedCodes);
+}> = ({ specimenId, block, allSuggestedSources, onUpdateBlock }) => {
+  const appliedCodes: { code: string; stainOrderId?: string }[] = block.coding?.cpt ?? [];
+  const rejectedCodes: { code: string; stainOrderId?: string }[] = block.coding?.rejectedCpt ?? [];
+  const newSuggestions = computeNewSuggestionsWithSources(appliedCodes, allSuggestedSources, rejectedCodes);
 
   if (appliedCodes.length === 0 && newSuggestions.length === 0) return null;
 
@@ -270,11 +346,11 @@ const BlockCptSuggestion: React.FC<{
   return (
     <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 8 }}>
       {appliedCodes.length > 0 && (
-        <div>Applied ancillary codes: <strong>{appliedCodes.join(', ')}</strong></div>
+        <div>Applied ancillary codes: <strong>{appliedCodes.map(c => c.code).join(', ')}</strong></div>
       )}
       {newSuggestions.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>Suggested from this block's stains: <strong>{newSuggestions.join(', ')}</strong></span>
+          <span>Suggested from this block's stains: <strong>{newSuggestions.map(s => s.code).join(', ')}</strong></span>
           <button className="ps-btn-secondary" onClick={handleApply} style={{ fontSize: 11, padding: '2px 8px' }}>
             Apply
           </button>
@@ -466,8 +542,10 @@ const RestainControl: React.FC<{
 
 export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePriority, fullAccession, onUpdateBlock, onUpdateDecant, onPrintDecantContainerLabel, onSendStainOrder, onCancelBlock, onCreateSpareSlide, onOrderRestain, onClose, initialFocusBlockId, initialFocusDecantId }) => {
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
+  const [masterTargets, setMasterTargets] = useState<MolecularTarget[]>([]);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
+    mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(t => t.active)); });
   }, []);
 
   // Real feature, per direct follow-up: "Additional Requirements for
@@ -513,10 +591,10 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
       if (!bySpecimen.has(specimenId)) bySpecimen.set(specimenId, []);
       bySpecimen.get(specimenId)!.push({ blockId: block.id, stains: block.stains ?? [] });
     }
-    const result = new Map<string, string[]>();
+    const result = new Map<string, { code: string; stainOrderId?: string }[]>();
     for (const specimenBlocks of bySpecimen.values()) {
-      for (const { blockId, suggestions } of suggestSpecimenAncillaryCptCodes(specimenBlocks, stainTypes)) {
-        result.set(blockId, suggestions);
+      for (const { blockId, sources } of suggestSpecimenAncillaryCptCodes(specimenBlocks, stainTypes)) {
+        result.set(blockId, sources);
       }
     }
     return result;
@@ -893,6 +971,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       stainTypes={stainTypes}
                       stains={(block.stains ?? []).filter((s: any) => s.stainName !== UNSTAINED_LABEL)}
                       onChange={stains => handleStainsChange(specimenId, block, [...stains, ...(block.stains ?? []).filter((s: any) => s.stainName === UNSTAINED_LABEL)])}
+                      masterTargets={masterTargets}
                       onCreateSpare={() => onCreateSpareSlide(specimenId, block.id)}
                     />
                     {/* Real feature, per direct confirmation: spares
@@ -938,7 +1017,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                 <BlockCptSuggestion
                   specimenId={specimenId}
                   block={block}
-                  allSuggestedCodes={suggestionsByBlockId.get(block.id) ?? []}
+                  allSuggestedSources={suggestionsByBlockId.get(block.id) ?? []}
                   onUpdateBlock={onUpdateBlock}
                 />
                 <CancelBlockControl
@@ -1049,6 +1128,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       stainTypes={stainTypes}
                       stains={decant.stains ?? []}
                       onChange={stains => handleDecantStainsChange(specimenId, decant, stains)}
+                      masterTargets={masterTargets}
                     />
                   </div>
                 ))}

@@ -82,6 +82,23 @@
   --ps-conf-red:        #ef4444;
 }
 
+/* Real fix, per direct report: "the css for the calendar object is
+   dark and can't be seen in the date fields." Confirmed directly: the
+   proven fix already established elsewhere in this app
+   (.ps-auditlog-select--date, .ps-input-dark's own documented
+   reasoning above) is color-scheme: dark alone - no separate
+   ::-webkit-calendar-picker-indicator filter needed. Most real date
+   inputs app-wide (.ps-conf-input, several inline-styled ones,
+   confirmed via a direct sweep) never had this set at all, so their
+   native calendar icon rendered as the browser's own default dark
+   glyph - invisible against this app's own dark input backgrounds -
+   and their popup calendar used the browser's light-mode default
+   instead of a real, readable dark one. Applied globally, to every
+   real date input regardless of which class it uses, since this is a
+   universal HTML input type, not a component-specific concern - a
+   future date input gets this for free too. */
+input[type="date"] { color-scheme: dark; }
+
 /* ============================================================
    KEYFRAME ANIMATIONS
    Defined here so they are always parsed before first use.
@@ -1586,7 +1603,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-msg-footer-deleteall-btn--centered { display: block; margin: 0 auto; }
 .ps-msg-footer-empty-row { display: flex; justify-content: center; }
 .ps-msg-footer-normal-row { display: flex; align-items: center; gap: 8px; }
-.ps-msg-footer-normal-row .ps-msg-search { flex: 1; }
+.ps-msg-footer-normal-row .ps-msg-search { flex: 1; min-width: 0; }
 
 .ps-msg-compose-icon-btn { background: none; border: none; cursor: pointer; color: #0891B2; display: flex; align-items: center; padding: 5px; border-radius: 6px; transition: background 0.15s; }
 .ps-msg-compose-icon-btn:hover:not(:disabled) { background: rgba(8,145,178,0.12); }
@@ -3489,6 +3506,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-msg-search svg { color: var(--msg-muted); flex-shrink: 0; }
 .ps-msg-search input {
   flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   outline: none;
@@ -10106,6 +10124,27 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Real fix, per direct report: CaseBillingAuditTrailSection.tsx's own
+   search-and-lookup row was previously wrapped in .ps-conf-form-row -
+   a 2-column, equal-width CSS grid meant for form field pairs
+   (Effective From / Change Reason elsewhere), not a search-input-plus-
+   buttons row. With 3 real children (input, Look Up, Print/Export)
+   crammed into 2 equal grid columns, the Look Up button was forced to
+   fill an entire 50%-width column instead of sizing to its own
+   content - same real flex-row fix as .ps-order-lookup-search-row
+   above, scoped here since .ps-conf-search's own default width: 100%
+   needs overriding to grow correctly as a flex sibling instead. */
+.ps-billing-audit-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ps-billing-audit-search-row .ps-conf-search {
+  flex: 1;
+  width: auto;
+  min-width: 0;
 }
 
 .ps-order-lookup-search-input {
@@ -17378,6 +17417,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   font-size: 14px;
 }
 
+/* Real, per direct correction: extracted from inline styles in
+   PostSignoutBillingChangeModal.tsx / QualityAssurancePage.tsx's
+   ResolveBillingDeficiencyModal - no business logic or ad-hoc styling
+   belongs inline in UI code. */
+.ps-billing-postsignout-overlay { z-index: 9500; }
+.ps-billing-reason-hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+.ps-billing-applied-row-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
 .ps-conf-textarea {
   resize: vertical;
   min-height: 60px;
@@ -17490,6 +17537,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-conf-row-actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* Status dot + text — used for Active/Inactive/Unverified everywhere */
@@ -22147,22 +22195,70 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
-/* Real fix: overflow-x: auto on this bar's button row can render a
-   persistent, always-visible native scrollbar track on some
-   Windows/Chrome setups (OS "always show scrollbars" setting, or even
-   a pixel or two of overflow from font-rendering differences) —
-   showing up as an unexplained thin gray bar near the end of the row,
-   even though the row essentially never actually needs to scroll in
-   practice. Scroll capability stays as a safety net for very narrow
-   windows; the scrollbar itself is hidden so it never looks like a
-   rendering glitch when it isn't meaningfully needed. */
+/* Real fix, per direct follow-up: this row's real content (Launch EMR
+   through Codes) can genuinely overflow its available width at common
+   laptop viewport widths (confirmed directly: 843px of real buttons in
+   a 586px box at 1366px viewport) - a real, substantial overflow, not
+   the trivial 1-2px font-rendering artifact the scrollbar-hiding rule
+   below was originally built for. With the scrollbar hidden, that real
+   overflow was invisible and undiscoverable - the last visible button
+   simply got clipped mid-render with no indication more existed,
+   reading as broken/overlapping buttons rather than "scroll for more."
+   Removed the hiding rule entirely rather than trying to thread a
+   "only hide small overflow" needle in CSS (not really possible) -
+   the app's own already-established global scrollbar style just above
+   (::-webkit-scrollbar) is deliberately thin (6px) and low-opacity, so
+   even the original trivial-overflow case stays visually unobtrusive
+   without needing a special override here at all. */
+
+/* Real fix, per direct follow-up - see BottomActionBar.tsx's own comment
+   at this element's usage for the full reasoning: overlay-style
+   scrollbars (macOS, most Linux desktops, headless Chrome) reserve no
+   layout space and stay invisible without an active hover/scroll, so
+   the re-enabled scrollbar above alone doesn't help a static view.
+   Fades to this bar's own real, solid background color (#0d1829), not
+   a transparent-to-transparent gradient - a gradient alone wouldn't
+   visually obscure the button underneath, it needs to blend into a
+   real, matching solid color to actually read as "content trails off
+   here, scroll for more." */
+.ps-bottombar-fade {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 28px;
+  background: linear-gradient(to right, transparent, #0d1829);
+  pointer-events: none;
+}
+
+/* Real, per direct correction ("no inline CSS in UI code") - the
+   scroll-arrow affordance for a genuinely overflowing bottom action
+   bar. Every value here is static (never varies per-render/per-prop),
+   so per the Internal Team Guide's own CSS convention (4.3) this
+   belongs here, not inline. */
+.ps-bottombar-scroll-wrapper { position: relative; min-width: 0; flex-shrink: 1; }
 .ps-bottombar-scroll {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* legacy Edge/IE */
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  min-width: 0;
+  padding: 10px 2px;
 }
-.ps-bottombar-scroll::-webkit-scrollbar {
-  display: none; /* Chrome/Safari/Edge (Chromium) */
+.ps-bottombar-scroll-arrow {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 22px;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
 }
+.ps-bottombar-scroll-arrow--left  { left: 0;  background: linear-gradient(to left, transparent, #0d1829 60%); }
+.ps-bottombar-scroll-arrow--right { right: 0; background: linear-gradient(to right, transparent, #0d1829 60%); }
 
 /* ─────────────────────────────────────────────────────────────────────────
    Manage Reprints modal (ManageReprintsModal.tsx)
@@ -22902,7 +22998,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 /* ── Quality Assurance tab tiles (reuses .ps-wl-filter-tile itself,
    same real pattern as .ps-batch-stage-tiles above — just a new
    container to lay them out here) ── */
-.ps-qa-tab-tiles { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; margin-bottom: 20px; }
+.ps-qa-tab-tiles { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; margin-bottom: 20px; }
 
 
 .ps-batch-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }

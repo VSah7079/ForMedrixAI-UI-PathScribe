@@ -267,6 +267,14 @@ rather than left uncovered. Grouped by real, related concern.
   NHS number, would we do the same approach there?" Deliberately not
   the same mechanism as `isoDateForSearch.ts` below — a genuinely
   different normalization problem.
+- **`normalizeOrderCode.ts`** (+ `normalizeOrderCode.test.ts`) — **NEW.** Order-type-mapping
+  work, extending the existing Specimen Code Crosswalk
+  (`services/orderIntake`'s own `SpecimenCodeCrosswalkEntry`) with
+  real multi-coding-system matching. Same safe-normalization posture
+  as `normalizeIdForSearch.ts` just above (strips formatting noise
+  only, never resolves genuine ambiguity) — trims, uppercases, strips
+  punctuation, collapses whitespace, so cosmetically different
+  transcriptions of the same real order code compare equal.
 - **`isoDateForSearch.ts`** (+ `isoDateForSearch.test.ts`) — real fix: the Accession omnibox
   search used to hardcode US-style mm/dd/yyyy for DOB matching
   (`isoDateToMDY.ts`'s own header wrongly claimed "no locale awareness
@@ -393,3 +401,31 @@ convention of grouping by concern — they're the original, individual
 per-file review. New entries since Aug 2026 are grouped, per the same
 discipline `hooks/README.md` and `services/README.md` use for their
 own later additions.*
+
+### Configuration page scroll reset
+
+- **`resetConfigScroll.ts`** (+ `.test.ts`) — real bug found and
+  fixed, per direct report: "when changing across the different
+  config/system settings, the page does[n't] begin at the top, so you
+  have to scroll up to see the add button and column headers."
+  `.ps-cfgpage-scroll` (confirmed via its own `overflow-y: auto`) is
+  the real, single, shared scroll container for the whole
+  Configuration page — but two of the three real state changes that
+  can switch what's displayed (`Config/System/index.tsx` and
+  `Config/Integrations/index.tsx`'s own internal `setActive`) happen
+  two component levels below it, so a prop couldn't reach it without
+  a larger refactor. Kept as a small, direct
+  `document.querySelector('.ps-cfgpage-scroll')` lookup rather than
+  that refactor — a real, singular, well-known container, not a
+  fragile guess at an arbitrary selector. Wired into every real
+  trigger path: `pages/ConfigurationPage.tsx`'s own top-level
+  `handleTabChange`, both System's and Integrations' sidebar clicks,
+  both tabs' URL-deep-link `useEffect`, and System's
+  voice-navigation event listener — five call sites, not just the one
+  originally noticed. Verified live, every path independently, with a
+  forced-scrollable viewport and a confirmed non-zero scroll position
+  before each switch (re-did two of these after a first attempt gave
+  a false-looking "already zero" result that turned out to mean the
+  content wasn't tall enough to scroll at all, not that the fix
+  worked) — see `pages/README.md`'s own `ConfigurationPage.tsx` entry
+  for the fuller account.

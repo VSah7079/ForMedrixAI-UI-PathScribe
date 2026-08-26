@@ -22,6 +22,7 @@ import type { IntraoperativeEntry, IntraopSpecimen, MilestoneEntry, MatchCandida
 import type { IIntraoperativeService } from './IIntraoperativeService';
 import { caseRouter } from '../cases/CaseRouter';
 import { mockAuditService } from '../auditlog/mockAuditService';
+import { mockCriticalResultNotificationService } from '../clinical/mockCriticalResultNotificationService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
 import { mockLocationService } from '../locations/mockLocationService';
 
@@ -240,7 +241,29 @@ const MERGED_TAT_SEED: IntraoperativeEntry[] = Array.from({ length: 18 }, (_, i)
   } as IntraoperativeEntry;
 });
 
-const load    = (): IntraoperativeEntry[] => storageGet<IntraoperativeEntry[]>(STORAGE_KEY, [...SEED_ENTRIES, ...MERGED_TAT_SEED]);
+// Real fix, found via a direct crash report: "Cannot read properties
+// of undefined (reading 'length')" in IntraopQueuePage.tsx's
+// PreparationLogger, at specimen.preparations.length. Confirmed root
+// cause: preparations is declared required on IntraopSpecimen, but its
+// own doc comment already predicted the real gap - "genuinely empty
+// for a specimen where nothing has been logged yet, or for legacy
+// sessions created before this field existed." Real, existing
+// localStorage data saved before this field was ever added loads back
+// in via storageGet exactly as it was saved - genuinely missing the
+// property, not just an empty array - and every consumer that trusted
+// the type's "always present" promise (this file's own line 571
+// included - spreading it would throw a different, but equally real,
+// "undefined is not iterable" error) crashes on it. Normalized once,
+// here, for every specimen on every load, rather than patching each
+// individual consumer - the type's own promise becomes actually true
+// at runtime instead of just on paper.
+const load = (): IntraoperativeEntry[] => {
+  const entries = storageGet<IntraoperativeEntry[]>(STORAGE_KEY, [...SEED_ENTRIES, ...MERGED_TAT_SEED]);
+  return entries.map(entry => ({
+    ...entry,
+    specimens: entry.specimens.map(sp => ({ ...sp, preparations: sp.preparations ?? [] })),
+  }));
+};
 const persist = (data: IntraoperativeEntry[]) => storageSet(STORAGE_KEY, data);
 
 const ok  = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data  });
@@ -625,6 +648,28 @@ export const mockIntraoperativeService: IIntraoperativeService = {
       caseId,
       confidence: null, // AuditLog.confidence is specifically for AI confidence % — this is a deterministic match algorithm, not an AI model; the descriptive high/medium confidence lives in `detail` instead
     }).catch(() => {}); // never block the merge itself on an audit-log write failure
+
+    // Real, per direct guidance's own follow-up: closes the confirmed
+    // gap where this session's own real verbalReportLog (the surgeon
+    // was called about frozen findings) was captured at the bench but
+    // never carried forward into the real case's own permanent
+    // record - previously lost the moment merge() completed. Only
+    // fires when a real note was actually recorded (session-level,
+    // per IntraoperativeEntry.verbalReportLog's own doc comment - one
+    // callback covers every specimen in the session, not a
+    // per-specimen record) - a session where nothing was ever said
+    // has nothing to migrate, and this is not the place to fabricate
+    // one. Best-effort, same real "never block the merge itself"
+    // posture as the audit log call above.
+    if (entries[idx].verbalReportLog) {
+      await mockCriticalResultNotificationService.migrateIntraopVerbalReport({
+        caseId,
+        surgeon: entries[idx].surgeon,
+        note: entries[idx].verbalReportLog.note,
+        notifiedAt: entries[idx].verbalReportLog.timestamp,
+        notifiedBy: entries[idx].performedBy,
+      }).catch(() => {});
+    }
 
     return ok({ ...entries[idx] });
   },

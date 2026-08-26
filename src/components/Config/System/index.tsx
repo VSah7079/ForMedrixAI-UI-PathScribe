@@ -20,7 +20,12 @@ import RetentionSection          from './RetentionSection';
 import GoverningBodiesSection    from './GoverningBodiesSection';
 import DelegationTypeSection     from './DelegationTypeSection';
 import RvuCodeMapSection         from './RvuCodeMapSection';
+import NcciEditRulesSection      from './NcciEditRulesSection';
+import DftExportPreviewSection   from './DftExportPreviewSection';
 import BillingDictionarySection  from './BillingDictionarySection';
+import PendingApprovalSection from './PendingApprovalSection';
+import ModifierDictionarySection from './ModifierDictionarySection';
+import BillingTypeTriggerSection from './BillingTypeTriggerSection';
 import ParticipationTypesSection from './ParticipationTypesSection';
 import SessionSecuritySection    from './SessionSecuritySection';
 import ContributionSettingsSection from './ContributionSettingsSection';
@@ -52,7 +57,12 @@ type SystemSection =
   | 'governing_bodies'
   | 'delegation_types'
   | 'rvu_code_map'
+  | 'ncci_edit_rules'
+  | 'dft_export_preview'
   | 'billing_dictionary'
+  | 'billing_type_triggers'
+  | 'pending_approvals'
+  | 'modifier_dictionary'
   | 'participation_types'
   | 'print_settings'
   | 'printer_profiles';
@@ -77,11 +87,12 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
 
   // ── Lab Materials & Workflows ──
   { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
-  { id: 'stains',              emoji: '🧪', label: 'Stain Dictionary'      , group: 'Lab Materials & Workflows' },
+  { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
   { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
   { id: 'cassette_colors',     emoji: '🎨', label: 'Cassette Colors'       , group: 'Lab Materials & Workflows' },
   { id: 'cassette_routing_rules', emoji: '🧊', label: 'Cassette Routing Rules', group: 'Lab Materials & Workflows' },
   { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
+  { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Lab Materials & Workflows' },
 
   // ── Clinical Lookups ──
   { id: 'specimen_categories', emoji: '🗂️', label: 'Specimen Categories'   , group: 'Clinical Lookups' },
@@ -92,8 +103,12 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
 
   // ── Financial & Revenue Lookups ──
   { id: 'billing_dictionary',  emoji: '💲', label: 'Billing Dictionary (Charge Capture)', group: 'Financial & Revenue Lookups' },
+  { id: 'modifier_dictionary', emoji: '🏷️', label: 'CPT Modifier Dictionary', group: 'Financial & Revenue Lookups' },
+  { id: 'pending_approvals', emoji: '✅', label: 'Pending Billing Rule Approvals', group: 'Financial & Revenue Lookups' },
+  { id: 'billing_type_triggers', emoji: '🚦', label: 'Charge Release Triggers (TC/26/Global)', group: 'Financial & Revenue Lookups' },
   { id: 'rvu_code_map',        emoji: '📈', label: 'RVU Code Map (Productivity)', group: 'Financial & Revenue Lookups' },
-  { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Financial & Revenue Lookups' },
+  { id: 'ncci_edit_rules',     emoji: '🚫', label: 'NCCI Edit Rules (Bundling)', group: 'Financial & Revenue Lookups' },
+  { id: 'dft_export_preview',  emoji: '📄', label: 'Billing Export Preview', group: 'Financial & Revenue Lookups' },
 
   // ── Administration & Compliance ──
   { id: 'fonts',               emoji: '🔤', label: 'Approved Fonts'        , group: 'Administration & Compliance' },
@@ -166,7 +181,12 @@ const SystemTab: React.FC = () => {
       case 'governing_bodies':    return <GoverningBodiesSection isSuperAdmin={true} />;
       case 'delegation_types':    return <DelegationTypeSection />;
       case 'billing_dictionary':  return <BillingDictionarySection />;
+      case 'pending_approvals': return <PendingApprovalSection />;
+      case 'modifier_dictionary': return <ModifierDictionarySection />;
+      case 'billing_type_triggers': return <BillingTypeTriggerSection />;
       case 'rvu_code_map':        return <RvuCodeMapSection />;
+      case 'ncci_edit_rules':     return <NcciEditRulesSection />;
+      case 'dft_export_preview':  return <DftExportPreviewSection />;
       case 'participation_types': return <ParticipationTypesSection />;
       case 'session_security':    return <SessionSecuritySection />;
       case 'contribution_settings': return <ContributionSettingsSection />;

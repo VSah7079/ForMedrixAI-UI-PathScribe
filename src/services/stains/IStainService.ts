@@ -20,8 +20,9 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { ServiceResult, ID } from '../types';
+import type { MolecularTarget, CptMappingRule, MolecularMethodology } from '@/types/billing/MolecularBillingRule';
 
-export type StainCategory = 'Routine' | 'Special Stain' | 'IHC' | 'Immunofluorescence' | 'Molecular' | 'Other';
+export type StainCategory = 'Routine' | 'Special Stain' | 'IHC' | 'Immunofluorescence' | 'Molecular' | 'Cytology' | 'Other';
 
 export interface StainType {
   id: ID;
@@ -80,6 +81,21 @@ export interface StainType {
    * suggestAncillaryCodesForStains (services/billing/codeMapTable.ts).
    */
   excludeFromIhcSequenceCounting?: boolean;
+  /** Real, per direct guidance ("the stain dictionary could also store
+   *  process requests like FISH... build for general molecular
+   *  pathology out of the box") - only meaningful when category is
+   *  'Molecular'. The real, default target set this test starts with
+   *  when ordered (e.g. HER2 FISH defaults to [ERBB2, CEP17]) - copied
+   *  onto the real order at order time (StainOrder.selectedTargets),
+   *  then freely editable there; this dictionary entry's own array
+   *  never changes when an individual order's targets are adjusted. */
+  defaultTargets?: MolecularTarget[];
+  /** Real, per direct guidance's own worked CPT logic - only
+   *  meaningful when category is 'Molecular'. How StainOrder.
+   *  selectedTargets.length resolves to real billingCode(s)+units -
+   *  see calculateMolecularUnits.ts. */
+  billingRule?: CptMappingRule;
+  methodology?: MolecularMethodology;
   /** Rough turnaround estimate — informational only, not a hard TAT rule
    *  (that's TATConfigSection's job, a separate, already-built system;
    *  this is just a per-stain default hint shown at order time). */

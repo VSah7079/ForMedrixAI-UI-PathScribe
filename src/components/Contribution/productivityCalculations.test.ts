@@ -138,8 +138,8 @@ describe('computeRvuSummary — real fix: replaces the entirely hardcoded demoRv
       id: 'v1', label: 'Test Version', effectiveDate: '2026-01-01T00:00:00.000Z',
       uploadedAt: '2026-01-01T00:00:00.000Z', uploadedBy: 'admin', isActive: true,
       entries: [
-        { code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73 },
-        { code: '88304', billingCode: '88304', description: 'Level III', workRvu: 0.21 },
+        { code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73, level: 'specimen' as const, billingType: 'Global' as const },
+        { code: '88304', billingCode: '88304', description: 'Level III', workRvu: 0.21, level: 'specimen' as const, billingType: 'Global' as const },
       ],
       ...over,
     };
@@ -173,8 +173,8 @@ describe('computeRvuSummary — real fix: replaces the entirely hardcoded demoRv
   it('real, critical regression test, per direct follow-up: a case whose Block.coding.cpt carries a billingCode label ("IHC-FIRST") — what BlockStainEditorModal.tsx actually writes now, post Charge Capture rewire — still resolves against the SAME RvuTableVersion.entries via the dual-key (code + billingCode) lookup, not just the old raw-CPT ("88342") form', () => {
     const versionWithBillingCodes = makeVersion({
       entries: [
-        { code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73 },
-        { code: '88342', billingCode: 'IHC-FIRST', description: 'IHC first single antibody stain', workRvu: 0.68 },
+        { code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73, level: 'specimen' as const, billingType: 'Global' as const },
+        { code: '88342', billingCode: 'IHC-FIRST', description: 'IHC first single antibody stain', workRvu: 0.68, level: 'stain' as const, billingType: 'Global' as const },
       ],
     });
     const oldStyleCase = makeCaseWithCpt({ cptCodes: ['88342'] }); // historical case data, written before the rewire
@@ -200,7 +200,7 @@ describe('computeRvuSummary — real fix: replaces the entirely hardcoded demoRv
       diagnostic: { finalizedBy: 'user-1', issuedDate: localIso(2026, 5, 1) },
       specimens: [{
         id: 'sp-0', coding: { cpt: ['88305'] },
-        blocks: [{ id: 'blk-0', coding: { cpt: ['IHC-FIRST', 'SPECIAL-STAIN'] } }],
+        blocks: [{ id: 'blk-0', coding: { cpt: [{ code: 'IHC-FIRST' }, { code: 'SPECIAL-STAIN' }] } }],
       }],
     } as any;
     const summary = computeRvuSummary([realCase], 'user-1', versionsRes.data, 'America/Phoenix', localNow(2026, 5, 15));
@@ -217,8 +217,8 @@ describe('computeRvuSummary — real fix: replaces the entirely hardcoded demoRv
   });
 
   it('resolves the real, HISTORICALLY effective version for a case, not whichever version is active today', () => {
-    const oldVersion = makeVersion({ id: 'old', effectiveDate: '2025-01-01T00:00:00.000Z', entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.75 }] });
-    const newVersion = makeVersion({ id: 'new', effectiveDate: '2026-04-01T00:00:00.000Z', entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73 }] });
+    const oldVersion = makeVersion({ id: 'old', effectiveDate: '2025-01-01T00:00:00.000Z', entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.75, level: 'specimen' as const, billingType: 'Global' as const }] });
+    const newVersion = makeVersion({ id: 'new', effectiveDate: '2026-04-01T00:00:00.000Z', entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73, level: 'specimen' as const, billingType: 'Global' as const }] });
     // A real case finalized BEFORE the new version's real effective date.
     const cases = [makeCaseWithCpt({ cptCodes: ['88305'], diagnostic: { finalizedBy: 'user-1', issuedDate: localIso(2026, 1, 1) } })];
     const summary = computeRvuSummary(cases, 'user-1', [oldVersion, newVersion], 'America/Phoenix', localNow(2026, 5, 15));
@@ -266,7 +266,7 @@ describe('computeMonthlyRvu — real fix: replaces the entirely hardcoded demoRv
     return {
       id: 'v1', label: 'Test Version', effectiveDate: '2020-01-01T00:00:00.000Z',
       uploadedAt: '2020-01-01T00:00:00.000Z', uploadedBy: 'admin', isActive: true,
-      entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73 }],
+      entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 0.73, level: 'specimen' as const, billingType: 'Global' as const }],
       ...over,
     };
   }
@@ -319,7 +319,7 @@ describe('computePeerRvuStats — real fix: replaces the entirely hardcoded demo
     return {
       id: 'v1', label: 'Test Version', effectiveDate: '2020-01-01T00:00:00.000Z',
       uploadedAt: '2020-01-01T00:00:00.000Z', uploadedBy: 'admin', isActive: true,
-      entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 1 }],
+      entries: [{ code: '88305', billingCode: '88305', description: 'Level IV', workRvu: 1, level: 'specimen' as const, billingType: 'Global' as const }],
     };
   }
 

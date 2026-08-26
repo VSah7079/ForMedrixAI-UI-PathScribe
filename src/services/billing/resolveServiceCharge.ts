@@ -64,6 +64,12 @@ export interface ServiceChargeResolutionContext {
    *  a few milliseconds. Distinct from dateOfService above - a case
    *  can be resolved today for a date of service weeks ago. */
   resolvedAt?: string;
+  /** Real, per direct guidance's own follow-up: only meaningful when
+   *  this charge is being created on a case whose real status is
+   *  already finalized/pending-release/closed - see
+   *  PostSignoutChangeContext's own doc comment below for the full
+   *  reasoning. Undefined for every normal, pre-signout charge. */
+  postSignoutContext?: PostSignoutChangeContext;
 }
 
 /** Real, deterministic id, per this file's own header - reprocessing
@@ -105,6 +111,7 @@ export function resolveServiceCharge(
   return {
     id: buildServiceChargeId(ctx, billingCode),
     caseId: ctx.caseId,
+    transactionType: 'charge',
     sourceLevel: ctx.sourceLevel,
     sourceLabel: ctx.sourceLabel,
     specimenId: ctx.specimenId,
@@ -113,8 +120,22 @@ export function resolveServiceCharge(
     sequencePosition: ctx.sequencePosition,
     cptCode: rule.cpt,
     cptDescription: rule.description,
+    level: rule.level,
+    billingType: rule.billingType,
     hcpcsCode: rule.hcpcsCode,
-    modifier: undefined, // real, honest gap: modifiersAllowed is an informational reference list of commonly-associated modifiers, not a decision about which ONE applies to this specific charge — nothing in this app yet decides that, so nothing is auto-assigned here
+    // Real, per direct follow-up ("CPT modifier auto-append" gap):
+    // the -TC/-26 suffix is a deterministic, universal AMA/CMS
+    // convention tied directly to billingType, not a per-charge
+    // judgment call - TC always takes -TC, 26 always takes -26,
+    // Global takes neither (it's the combined service, billed as the
+    // base code with no component suffix). Genuinely distinct from
+    // modifiersAllowed (CPT Modifier Dictionary) - that's an
+    // informational reference list of modifiers *commonly associated*
+    // with a code (e.g. -59, -XE for a distinct procedure), never a
+    // decision about which one applies; this is the one, real
+    // modifier every component-billed charge always gets, decided
+    // here, deterministically, at resolution time.
+    modifier: rule.billingType === 'TC' ? '-TC' : rule.billingType === '26' ? '-26' : undefined,
     rvuWork: rule.rvuWork,
     rvuPe: rule.rvuPe,
     rvuMp: rule.rvuMp,
@@ -132,6 +153,93 @@ export function resolveServiceCharge(
     reportVersionRecordId: ctx.reportVersionRecordId,
     resolvedAt: ctx.resolvedAt ?? new Date().toISOString(),
     resolvedBy: ctx.resolvedBy,
+    postSignoutChangeReasonId: ctx.postSignoutContext?.reasonId,
+    postSignoutChangeComment: ctx.postSignoutContext?.comment,
+  };
+}
+
+/** Real feature, per direct requirement: "we need a mechanism to send
+ *  a credit transaction on billing that gets changed ... a credit
+ *  transaction for the code removed." Deliberately NOT a call back
+ *  into resolveServiceCharge with the same billingCode - a credit
+ *  must reverse exactly what was actually charged, and the Billing
+ *  Dictionary may have a newer version active by the time something
+ *  gets removed (a client could have edited the RVU in between - see
+ *  direct follow-up: "I anticipate the client to add/edit RVU values
+ *  to fit their organization needs"). Copies the original record's
+ *  own resolved cptCode/rvuWork/etc. verbatim instead, so the credit
+ *  and the charge it reverses always net to exactly zero, regardless
+ *  of what the dictionary says today. */
+/** Real, per direct guidance's own follow-up: only meaningful when a
+ *  credit/correction is being created on a case whose real status is
+ *  already finalized/pending-release/closed - the real, selected
+ *  reason (ReasonDictionaryEntry, category:
+ *  'POST_SIGNOUT_BILLING_CHANGE') plus the required comment a billing
+ *  specialist actually wrote. Optional and trailing on both functions
+ *  below so every existing, real call site (the normal, pre-signout
+ *  credit flow in SynopticReportPage.tsx's recordCreditTransaction)
+ *  stays completely unaffected. */
+export interface PostSignoutChangeContext {
+  reasonId: string;
+  comment: string;
+}
+
+export function reverseServiceCharge(
+  original: ServiceChargeRecord,
+  reversedBy: string,
+  reversedAt?: string,
+  postSignoutContext?: PostSignoutChangeContext
+): ServiceChargeRecord {
+  return {
+    ...original,
+    id: `crd-${original.id}`,
+    transactionType: 'credit',
+    reversesTransactionId: original.id,
+    resolvedAt: reversedAt ?? new Date().toISOString(),
+    resolvedBy: reversedBy,
+    postSignoutChangeReasonId: postSignoutContext?.reasonId,
+    postSignoutChangeComment: postSignoutContext?.comment,
+  };
+}
+
+/** Real, per direct guidance: completes the "credit transaction for
+ *  the code removed and then a new billable charge for the new one"
+ *  pattern this file's own header describes - reverseServiceCharge
+ *  above only ever built the credit half. Built specifically for the
+ *  CODE_CORRECTED billing deficiency resolution path
+ *  (QualityAssurancePage.tsx), where a billing specialist has
+ *  determined the original resolved cptCode was wrong and knows the
+ *  real, correct one - not a re-resolution against the Billing
+ *  Dictionary (this file's own header explains why that would be
+ *  wrong: the dictionary may have changed since the original charge).
+ *
+ *  cptDescription is deliberately left undefined, never copied from
+ *  the original (which described the OLD, wrong code) or fabricated
+ *  for the new one - an honest gap a real coder's own system fills in
+ *  downstream, same posture as every other "don't guess" convention
+ *  in this codebase. billingCode/ruleVersion/siteId are kept from the
+ *  original - this is still conceptually the same billing item, only
+ *  its resolved CPT was wrong; resolvedBy (a real user id, not
+ *  'system') is what honestly marks this as a human correction, same
+ *  distinction this type's own header already establishes elsewhere. */
+export function buildCorrectedServiceCharge(
+  original: ServiceChargeRecord,
+  correctedCptCode: string,
+  correctedBy: string,
+  correctedAt?: string,
+  postSignoutContext?: PostSignoutChangeContext
+): ServiceChargeRecord {
+  return {
+    ...original,
+    id: `corr-${original.id}-${Date.now()}`,
+    transactionType: 'charge',
+    reversesTransactionId: undefined,
+    cptCode: correctedCptCode,
+    cptDescription: undefined,
+    postSignoutChangeReasonId: postSignoutContext?.reasonId,
+    postSignoutChangeComment: postSignoutContext?.comment,
+    resolvedAt: correctedAt ?? new Date().toISOString(),
+    resolvedBy: correctedBy,
   };
 }
 

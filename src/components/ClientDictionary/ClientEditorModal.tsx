@@ -107,6 +107,7 @@ const blank = (): FacilityInput => ({
   internalAiOrchestratorEnabled: null,
   internalAiModelId: null,
   idleTimeoutMinutesOverride: null,
+  codeReviewSamplingRatePercent: null,
   releaseBufferOverride: null,
 });
 
@@ -810,6 +811,27 @@ className="ps-modal-close"
                     <option value="30">30 minutes</option>
                     <option value="60">60 minutes</option>
                   </select>
+                </Field>
+                <Field label="Code review random sampling rate">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    style={INPUT}
+                    placeholder="No random sampling"
+                    value={form.codeReviewSamplingRatePercent ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set("codeReviewSamplingRatePercent", v === '' ? null : Math.max(0, Math.min(100, Number(v))));
+                    }}
+                    onFocus={onF} onBlur={onB}
+                  />
+                  <p className="ps-billing-reason-hint">
+                    Real percentage of this lab's own signed-out cases randomly routed to the Code Review Pool
+                    (Quality Assurance → Financials) for a billing specialist's review. Blank means no random
+                    sampling. Independent of manual case flagging — a case can land in the pool either way.
+                  </p>
                 </Field>
               </div>
 

@@ -146,6 +146,19 @@ const CASE_KEYS = [
   'lis_amendment_notices',
   'intraop_entries',
   'pathscribe_drafts',
+  // Real fix, found ahead of a live demo: the Charge Capture ledger
+  // (mockServiceChargeService.ts) is real, per-case transactional data
+  // - confirmed billing codes generate real charges here, and deleted
+  // codes generate real credits - exactly the same "accumulates during
+  // demo usage, must reset with the case" shape as discordance_records/
+  // amendment_records above. Was missing entirely: a second demo run
+  // on the same seed case would have shown stale charges/credits left
+  // over from the first. Deliberately NOT resetting
+  // 'billing_rule_versions_v1' here - that's the admin-configured
+  // Billing Dictionary itself (RVU values, coding rules), the same
+  // kind of long-lived configuration as the Stain Dictionary, not
+  // per-case data that should be wiped on every reset.
+  'pathscribe_service_charges',
 ];
 
 const FLAG_KEYS = [

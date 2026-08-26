@@ -48,6 +48,14 @@ const versionLabel = (indexFromOriginal: number, total: number): string => {
 interface InstanceGroup {
   instanceId: string;
   templateId?: string;
+  /** Real, per direct guidance's own follow-up on the addendum-to-
+   *  report-section display gap: each instance's own real specimen
+   *  label ("Specimen A: Left breast lumpectomy"), when resolvable -
+   *  a case with multiple, independently-amended reports previously
+   *  showed the exact same generic "AMENDED DIAGNOSIS" header for
+   *  each one, with no way to tell them apart. Undefined only when
+   *  the real specimen genuinely can't be resolved (never fabricated). */
+  specimenLabel?: string;
   amendments: AmendmentRecord[]; // released, sorted ascending by initiatedAt
   columns: Record<string, unknown>[]; // ascending: Original -> ... -> Most Recent
 }
@@ -110,7 +118,9 @@ const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<strin
   return (
     <div className="ps-amendment-status-row">
       <div className="ps-amendment-narrative-header-row">
-        <p className="ps-amendment-narrative-header">AMENDED DIAGNOSIS [Timestamp: {formatDateTime(latest.releasedAt)}]</p>
+        <p className="ps-amendment-narrative-header">
+          AMENDED DIAGNOSIS{group.specimenLabel ? ` \u2014 ${group.specimenLabel}` : ''} [Timestamp: {formatDateTime(latest.releasedAt)}]
+        </p>
         <button type="button" className="ps-amendment-collapse-toggle" onClick={() => setCollapsed(c => !c)}>
           {collapsed ? '▸ Show details' : '▾ Collapse'}
         </button>
@@ -164,7 +174,7 @@ const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<strin
   );
 };
 
-export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?: any[] }> = ({ caseId, synopticReports }) => {
+export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?: any[]; specimens?: { id: string; label: string; description?: string }[] }> = ({ caseId, synopticReports, specimens }) => {
   const [amendments, setAmendments] = useState<AmendmentRecord[]>([]);
   const [versions, setVersions] = useState<ReportVersionRecord[]>([]);
 
@@ -218,7 +228,22 @@ export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?
       ];
     }
 
-    return { instanceId, templateId: liveInstance?.templateId, amendments: sorted, columns };
+    return {
+      instanceId,
+      templateId: liveInstance?.templateId,
+      // Real, per direct guidance's own follow-up: the instance's own
+      // real specimenId (SynopticReportInstance.specimenId, already
+      // present on every real synopticReports entry) resolved against
+      // the real, given specimens list. Undefined, never fabricated,
+      // when either piece of real data is missing.
+      specimenLabel: (() => {
+        const specimenId = liveInstance?.specimenId;
+        const sp = specimenId ? specimens?.find(s => s.id === specimenId) : undefined;
+        return sp ? `${sp.label}${sp.description ? `: ${sp.description}` : ''}` : undefined;
+      })(),
+      amendments: sorted,
+      columns,
+    };
   });
 
   const totalAmendments = amendments.length;

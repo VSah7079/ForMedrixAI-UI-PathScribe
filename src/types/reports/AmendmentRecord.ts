@@ -55,6 +55,33 @@ export interface AmendmentRecord {
   id: string;
   caseId: string;
   type: AmendmentType;
+  /** Real, per direct guidance's own follow-up on structured linkage:
+   *  which real SynopticReportInstance (and, via that instance's own
+   *  specimenId, which real specimen) this amendment/addendum actually
+   *  applies to - previously entirely absent, even though
+   *  useAmendmentWorkflow.ts's own openAmendmentDraft already has this
+   *  exact context (activeReportInstanceId) available at the moment a
+   *  draft is created. Optional since a case-level amendment (no
+   *  single report instance it's scoped to) is still real and valid -
+   *  never fabricated when the real context isn't genuinely known. */
+  reportInstanceId?: string;
+  /** Denormalized alongside reportInstanceId, same real posture as
+   *  sourceLabel elsewhere in this app - a display convenience so a
+   *  real amendment list doesn't need to re-resolve the specimen from
+   *  the report instance every render, not a second source of truth
+   *  (reportInstanceId is authoritative; this is derived from it at
+   *  the moment of creation and never re-derived afterward). */
+  specimenId?: string;
+  /** Real, per direct guidance's own detailed post-sign-out revision
+   *  taxonomy: a structured reason code (ReasonDictionaryEntry.id,
+   *  category matching this record's own `type` uppercased -
+   *  'addendum'->'ADDENDUM', 'amendment'->'AMENDMENT',
+   *  'correction'->'CORRECTION') paired with explanationOfChange's own
+   *  required free text, not a replacement for it. Required for every
+   *  real AmendmentType per that same guidance - addenda included,
+   *  not just amendment/correction, which is why this lives here
+   *  rather than under the amendment-specific fields below. */
+  reasonId?: string;
   /** Per-case, per-type sequence — "Addendum 1", "Addendum 2", etc.
    *  Amendments don't customarily get numbered the same way in most
    *  LISs (each one supersedes for notification purposes), but the

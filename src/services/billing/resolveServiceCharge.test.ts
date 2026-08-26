@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { resolveServiceCharge, resolveServiceCharges } from './resolveServiceCharge';
+import { resolveServiceCharge, resolveServiceCharges, reverseServiceCharge, buildCorrectedServiceCharge } from './resolveServiceCharge';
+import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
 
 const versions: BillingRuleVersion[] = [
-  { billingCode: 'IHC-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88342', description: 'Immunohistochemistry, first single antibody stain', rvuWork: 0.68, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
-  { billingCode: 'IHC-ADDL', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88341', description: 'Immunohistochemistry, each additional single antibody stain', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' }, // honest, disclosed RVU gap
-  { billingCode: 'SPECIAL-STAIN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88312', description: 'Special stain (group 1), including interpretation', rvuWork: 0.53, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+  { billingCode: 'IHC-FIRST', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88342', description: 'Immunohistochemistry, first single antibody stain', rvuWork: 0.68, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+  { billingCode: 'IHC-ADDL', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88341', description: 'Immunohistochemistry, each additional single antibody stain', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' }, // honest, disclosed RVU gap
+  { billingCode: 'SPECIAL-STAIN', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88312', description: 'Special stain (group 1), including interpretation', rvuWork: 0.53, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
 ];
 
 const baseCtx = {
@@ -21,7 +22,7 @@ describe('resolveServiceCharge — real, permanent snapshot, resolved once again
   it('resolves a real billingCode to its full, real CPT/description/RVU snapshot for the given date of service', () => {
     const result = resolveServiceCharge('IHC-FIRST', versions, baseCtx);
     expect(result).toMatchObject({
-      billingCode: 'IHC-FIRST',
+      billingCode: 'IHC-FIRST', level: 'specimen', billingType: 'Global',
       cptCode: '88342',
       cptDescription: 'Immunohistochemistry, first single antibody stain',
       rvuWork: 0.68,
@@ -94,8 +95,8 @@ describe('resolveServiceCharge — real, permanent snapshot, resolved once again
 describe('resolveServiceCharge — real, two-tier site scoping and suppressionAdvisory carry-through, per direct, explicit guidance', () => {
   const siteScopedVersions: BillingRuleVersion[] = [
     ...versions,
-    { billingCode: 'IHC-FIRST', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', siteId: 'site-MRI', cpt: '88342', description: 'Immunohistochemistry, first single antibody stain', rvuWork: 0.75, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
-    { billingCode: 'SPECIAL-STAIN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', siteId: 'site-MRI', cpt: '88312', description: 'Special stain (group 1), including interpretation', rvuWork: 0.53, suppressionAdvisory: 'Bundled into base fee per local payer contract — do not bill separately', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+    { billingCode: 'IHC-FIRST', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', siteId: 'site-MRI', cpt: '88342', description: 'Immunohistochemistry, first single antibody stain', rvuWork: 0.75, createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+    { billingCode: 'SPECIAL-STAIN', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', siteId: 'site-MRI', cpt: '88312', description: 'Special stain (group 1), including interpretation', rvuWork: 0.53, suppressionAdvisory: 'Bundled into base fee per local payer contract — do not bill separately', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
   ];
 
   it('a real site override, when it exists for the given siteId, is used over the enterprise-wide rule', () => {
@@ -164,5 +165,134 @@ describe('resolveServiceCharges — real batch resolution with honest gap report
   it('handles an empty batch without throwing', () => {
     const result = resolveServiceCharges([], versions, baseCtx);
     expect(result).toEqual({ charges: [], unresolvedBillingCodes: [] });
+  });
+});
+
+describe('reverseServiceCharge — real, exact reversal of an actual prior charge', () => {
+  const original: ServiceChargeRecord = {
+    id: 'chg-88305-1', caseId: 'CASE-1', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'A', specimenId: 'sp-1',
+    billingCode: 'GROSS-STD', cptCode: '88305', level: 'specimen', billingType: 'Global',
+    ruleVersion: 2, resolvedAt: '2026-08-01T00:00:00.000Z', resolvedBy: 'system',
+  };
+
+  it('produces a real credit copying the original\'s resolved values verbatim, not re-resolving them', () => {
+    const credit = reverseServiceCharge(original, 'user-billing-1');
+    expect(credit.transactionType).toBe('credit');
+    expect(credit.cptCode).toBe('88305');
+    expect(credit.ruleVersion).toBe(2);
+    expect(credit.reversesTransactionId).toBe('chg-88305-1');
+    expect(credit.resolvedBy).toBe('user-billing-1');
+  });
+
+  it('the credit gets a real, distinct id from the original charge', () => {
+    const credit = reverseServiceCharge(original, 'user-billing-1');
+    expect(credit.id).not.toBe(original.id);
+  });
+
+  it('uses a real, explicit reversedAt when given, rather than always defaulting to now', () => {
+    const credit = reverseServiceCharge(original, 'user-billing-1', '2026-08-10T00:00:00.000Z');
+    expect(credit.resolvedAt).toBe('2026-08-10T00:00:00.000Z');
+  });
+});
+
+describe('buildCorrectedServiceCharge — the real CODE_CORRECTED fix: an actual new charge, not just a resolved label', () => {
+  const original: ServiceChargeRecord = {
+    id: 'chg-88307-1', caseId: 'CASE-1', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'A', specimenId: 'sp-1',
+    billingCode: 'GROSS-COMPLEX', cptCode: '88307', cptDescription: 'Complex gross exam', level: 'specimen', billingType: 'Global',
+    ruleVersion: 2, resolvedAt: '2026-08-01T00:00:00.000Z', resolvedBy: 'system',
+  };
+
+  it('produces a real, new charge (not a credit) carrying the real, corrected cptCode', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1');
+    expect(corrected.transactionType).toBe('charge');
+    expect(corrected.cptCode).toBe('88305');
+    expect(corrected.reversesTransactionId).toBeUndefined();
+  });
+
+  it('never carries forward the old code\'s own cptDescription - that described the wrong code', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1');
+    expect(corrected.cptDescription).toBeUndefined();
+  });
+
+  it('marks resolvedBy as the real, human corrector - never system, honestly distinguishing a manual correction', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1');
+    expect(corrected.resolvedBy).toBe('user-billing-1');
+  });
+
+  it('gets a real, distinct id from the original - never collides with it or with a credit\'s own id scheme', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1');
+    const credit = reverseServiceCharge(original, 'user-billing-1');
+    expect(corrected.id).not.toBe(original.id);
+    expect(corrected.id).not.toBe(credit.id);
+  });
+
+  it('preserves billingCode/ruleVersion/siteId from the original - still the same billing item, only its resolved CPT was wrong', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1');
+    expect(corrected.billingCode).toBe('GROSS-COMPLEX');
+    expect(corrected.ruleVersion).toBe(2);
+  });
+
+  it('uses a real, explicit correctedAt when given, rather than always defaulting to now', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-billing-1', '2026-08-12T00:00:00.000Z');
+    expect(corrected.resolvedAt).toBe('2026-08-12T00:00:00.000Z');
+  });
+});
+
+describe('reverseServiceCharge / buildCorrectedServiceCharge — real post-signout change context', () => {
+  const original: ServiceChargeRecord = {
+    id: 'chg-postsignout-1', caseId: 'CASE-1', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'A', specimenId: 'sp-1',
+    billingCode: 'GROSS-COMPLEX', cptCode: '88307', level: 'specimen', billingType: 'Global',
+    ruleVersion: 1, resolvedAt: '2026-08-01T00:00:00.000Z', resolvedBy: 'system',
+  };
+  const context = { reasonId: 'psbc-coding-error', comment: 'Payer rejected 88307 for this specimen type.' };
+
+  it('reverseServiceCharge carries the real postSignoutChangeReasonId/Comment when given', () => {
+    const credit = reverseServiceCharge(original, 'user-1', undefined, context);
+    expect(credit.postSignoutChangeReasonId).toBe('psbc-coding-error');
+    expect(credit.postSignoutChangeComment).toBe('Payer rejected 88307 for this specimen type.');
+  });
+
+  it('reverseServiceCharge never fabricates this context when none is given - the normal, pre-signout path', () => {
+    const credit = reverseServiceCharge(original, 'user-1');
+    expect(credit.postSignoutChangeReasonId).toBeUndefined();
+    expect(credit.postSignoutChangeComment).toBeUndefined();
+  });
+
+  it('buildCorrectedServiceCharge carries the real postSignoutChangeReasonId/Comment when given', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-1', undefined, context);
+    expect(corrected.postSignoutChangeReasonId).toBe('psbc-coding-error');
+    expect(corrected.postSignoutChangeComment).toBe('Payer rejected 88307 for this specimen type.');
+  });
+
+  it('buildCorrectedServiceCharge never fabricates this context when none is given', () => {
+    const corrected = buildCorrectedServiceCharge(original, '88305', 'user-1');
+    expect(corrected.postSignoutChangeReasonId).toBeUndefined();
+    expect(corrected.postSignoutChangeComment).toBeUndefined();
+  });
+});
+
+describe('resolveServiceCharge — real, per direct follow-up: CPT modifier auto-append (-TC/-26)', () => {
+  const modifierVersions: BillingRuleVersion[] = [
+    { billingCode: 'GROSS-TC', level: 'specimen', billingType: 'TC', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88305', description: 'Technical component', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+    { billingCode: 'INTERP-26', level: 'specimen', billingType: '26', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88305', description: 'Professional component', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+    { billingCode: 'COMBINED-GLOBAL', level: 'specimen', billingType: 'Global', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88305', description: 'Global (combined)', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system' },
+  ];
+
+  it('a TC (Technical Component) charge is automatically appended with -TC', () => {
+    const result = resolveServiceCharge('GROSS-TC', modifierVersions, baseCtx);
+    expect(result?.modifier).toBe('-TC');
+  });
+
+  it('a 26 (Professional Component) charge is automatically appended with -26', () => {
+    const result = resolveServiceCharge('INTERP-26', modifierVersions, baseCtx);
+    expect(result?.modifier).toBe('-26');
+  });
+
+  it('a Global (combined) charge gets no modifier at all - not -TC, not -26, not fabricated', () => {
+    const result = resolveServiceCharge('COMBINED-GLOBAL', modifierVersions, baseCtx);
+    expect(result?.modifier).toBeUndefined();
   });
 });

@@ -31,8 +31,11 @@ import {
 import { mockPatientIndexService } from '../services/patients/mockPatientIndexService';
 import { listOrganisations } from '../services/organisation/organisationService';
 import { formatAuditTimestamp } from '../utils/formatDate';
+import { downloadCSV, buildMetaHeader } from '../utils/csvExport';
+import BillingLogsSection from './BillingLogsSection';
+import OutboundDlqSection from './OutboundDlqSection';
 
-type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality';
+type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality' | 'financial';
 
 // ── Quality Assurance groups ─────────────────────────────────────────────────
 // Every tabbed item group from the Quality Assurance working queue
@@ -111,40 +114,6 @@ function getDateThreshold(range: string, timezone: string): Date | null {
   // eslint-disable-next-line no-restricted-properties -- Same real justification as the '7days' case above.
   if (range === '90days') { d.setDate(d.getDate() - 90); return d; }
   return null;
-}
-
-function downloadCSV(csvContent: string, filename: string) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-function buildMetaHeader(
-  reportType: string,
-  requestedBy: string,
-  filters: Record<string, string>,
-  rowCount: number
-): string {
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
-  const filterStr = Object.entries(filters)
-    .filter(([, v]) => v && v !== 'all')
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(' | ') || 'None';
-  return [
-    `${esc('PathScribe AI — System Audit Log Export')}`,
-    `${esc('NOTICE: For authorised audit and compliance purposes only. Do not distribute.')}`,
-    `${esc('No direct patient identifiers included (HIPAA / GDPR / Privacy Act compliant).')}`,
-    ``,
-    `"Report Type",${esc(reportType)}`,
-    `"Exported At",${esc(now)}`,
-    `"Requested By",${esc(requestedBy)}`,
-    `"Active Filters",${esc(filterStr)}`,
-    `"Total Records",${esc(String(rowCount))}`,
-    ``,
-  ].join('\n');
 }
 
 function exportAuditCSV(rows: AuditLog[], requestedBy: string, filters: Record<string, string>) {
@@ -276,6 +245,7 @@ const AuditLogPage: React.FC = () => {
   const [managementReviews,   setManagementReviews]   = useState<ManagementReview[]>([]);
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
   const [activeTab,       setActiveTab]       = useState<ActiveTab>('audit');
+  const [financialSubTab, setFinancialSubTab] = useState<'billing_logs' | 'outbound_dlq'>('billing_logs');
   const [searchParams] = useSearchParams();
 
   // Real feature, per direct confirmation: a high-priority message
@@ -294,6 +264,7 @@ const AuditLogPage: React.FC = () => {
     if (landingOnInterfaces) setActiveTab('interfaces');
     else if (tabParam === 'errors') setActiveTab('errors');
     else if (tabParam === 'quality') setActiveTab('quality');
+    else if (tabParam === 'financial') setActiveTab('financial');
     // Real feature, per direct follow-up: "how would I see a report
     // that shows all the tracking events for a case?" — same real
     // deep-link pattern immediately above, extended with a ?search=
@@ -583,13 +554,13 @@ const AuditLogPage: React.FC = () => {
               )}
             </div>
             <div className="ps-auditlog-tabswitch">
-              {(['audit', 'errors', 'interfaces', 'quality'] as const).map(tab => (
+              {(['audit', 'errors', 'interfaces', 'quality', 'financial'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`ps-auditlog-tabswitch-btn${activeTab === tab ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
                 >
-                  {tab === 'audit' ? '📋 Audit Log' : tab === 'errors' ? '⚠️ Error Log' : tab === 'interfaces' ? '🔌 Interface Log' : '✓ Quality Assurance'}
+                  {tab === 'audit' ? '📋 Audit Log' : tab === 'errors' ? '⚠️ Error Log' : tab === 'interfaces' ? '🔌 Interface Log' : tab === 'quality' ? '✓ Quality Assurance' : '🧾 Financial'}
                   {tab === 'errors' && openErrors > 0 && <span className="ps-auditlog-tabswitch-badge">{openErrors}</span>}
                   {tab === 'interfaces' && pendingInterfaceCount > 0 && <span className="ps-auditlog-tabswitch-badge">{pendingInterfaceCount}</span>}
                   {tab === 'quality' && openQualityCount > 0 && <span className="ps-auditlog-tabswitch-badge">{openQualityCount}</span>}
@@ -986,6 +957,28 @@ const AuditLogPage: React.FC = () => {
               </div>
               </div>{/* end ps-table-scroll-wrap */}
               <div className="ps-auditlog-count-footer">Showing {filteredQualityLogs.length} of {normalizedQualityRecords.length} {GROUP_LABELS[qualityGroup].toLowerCase()} records</div>
+            </>
+          )}
+
+          {/* ── FINANCIAL TAB ── */}
+          {activeTab === 'financial' && (
+            <>
+              <div className="ps-auditlog-tabswitch" style={{ marginBottom: 16 }}>
+                {([
+                  { key: 'billing_logs' as const, label: 'Billing Logs' },
+                  { key: 'outbound_dlq' as const, label: 'Outbound DLQ' },
+                ]).map(t => (
+                  <button
+                    key={t.key}
+                    className={`ps-auditlog-tabswitch-btn${financialSubTab === t.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+                    onClick={() => setFinancialSubTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {financialSubTab === 'billing_logs' && <BillingLogsSection />}
+              {financialSubTab === 'outbound_dlq' && <OutboundDlqSection />}
             </>
           )}
         </main>

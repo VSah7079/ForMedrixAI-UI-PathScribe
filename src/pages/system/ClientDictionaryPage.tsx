@@ -19,14 +19,16 @@
 
 import { useState, useEffect } from "react";
 import '../../pathscribe.css';
-import { facilityService } from "../../services";
+import { facilityService, auditService } from "../../services";
 import { checkClientReferences } from "../../services/referenceCheck/referenceCheckService";
 import ConfirmModal from "../../components/Common/ConfirmModal";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Facility as Client, FacilityInput } from "../../services/facilities/IFacilityService";
 import { ClientEditorModal } from "../../components/ClientDictionary/ClientEditorModal";
 import { ClientTable } from "../../components/ClientDictionary/ClientTable";
 
 export const ClientDictionaryPage = () => {
+  const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -52,6 +54,24 @@ export const ClientDictionaryPage = () => {
 
   const handleSave = async (input: FacilityInput) => {
     if (editingClient) {
+      // Real, per direct guidance's own follow-up on the broader
+      // provenance & auditability sweep: found via direct check to
+      // have zero audit trail anywhere in this save path - scoped
+      // specifically to the one real, billing-relevant field here
+      // (random-sampling code review rate), not every other,
+      // unrelated facility setting this same generic save handles -
+      // that broader gap is real but genuinely out of scope for a
+      // billing-focused sweep.
+      if ((editingClient.codeReviewSamplingRatePercent ?? null) !== (input.codeReviewSamplingRatePercent ?? null)) {
+        auditService.logEvent({
+          type: 'user',
+          event: 'Code review random sampling rate changed',
+          detail: `${editingClient.name}: ${editingClient.codeReviewSamplingRatePercent ?? 'none'} \u2192 ${input.codeReviewSamplingRatePercent ?? 'none'}`,
+          user: user?.name ?? 'unknown',
+          caseId: null,
+          confidence: null,
+        });
+      }
       const res = await facilityService.update(editingClient.id, input);
       if (res.ok) setClients(prev => prev.map(c => c.id === res.data.id ? res.data : c));
     } else {

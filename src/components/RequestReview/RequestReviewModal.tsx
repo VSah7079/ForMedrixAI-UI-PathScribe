@@ -29,6 +29,7 @@ import { userService, subspecialtyService } from '@/services';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { ServiceResult } from '@/services/types';
 import { getStaffSubspecialtyDisplay } from '@/utils/staffSubspecialties';
+import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
 
 interface ReviewerOption { id: string; name: string; role: string; }
 
@@ -48,6 +49,12 @@ const NOTE_TYPES = [
   { value: 'consultation',         label: 'Consultation'         },
   { value: 'clinical_observation', label: 'Clinical Observation' },
   { value: 'second_opinion',       label: 'Second Opinion'       },
+  // Real, per direct guidance: reuses this same modal/entry point
+  // rather than a new button on an already-crowded page. Routes to
+  // the real billing review pool (mockCodeReviewPoolService.ts,
+  // Trigger C) instead of a colleague - every branch below that reads
+  // noteType checks for this value specifically.
+  { value: 'code_review',          label: 'Code Review'          },
 ];
 
 const avatarInitials = (name: string) =>
@@ -103,10 +110,26 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
   );
 
   const selected = reviewers.find(r => r.id === selectedId);
-  const canSend  = !!selectedId;
+  const isCodeReview = noteType === 'code_review';
+  const canSend  = isCodeReview ? true : !!selectedId;
 
   const handleSend = async () => {
-    if (!canSend || !selected) return;
+    if (!canSend) return;
+    if (isCodeReview) {
+      setStatus('sending');
+      await mockCodeReviewPoolService.create({
+        caseId,
+        caseLabel,
+        source: 'MANUAL',
+        flaggedBy: fromUserId,
+        flaggedByName: fromUserName,
+        notes: message.trim() || undefined,
+      });
+      setStatus('sent');
+      onSent?.();
+      return;
+    }
+    if (!selected) return;
     setStatus('sending');
 
     const typeLabel = NOTE_TYPES.find(t => t.value === noteType)?.label ?? 'Review';
@@ -182,11 +205,19 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>Review request sent</div>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
-                <strong style={{ color: '#94a3b8' }}>{selected?.name}</strong> has been sent a message with a link to case <strong style={{ color: '#94a3b8' }}>{caseId}</strong>.
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+                {isCodeReview ? 'Case sent to Code Review' : 'Review request sent'}
               </div>
-              <div style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>They can open the case and leave an internal note when reviewed.</div>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                {isCodeReview ? (
+                  <>Case <strong style={{ color: '#94a3b8' }}>{caseId}</strong> has been added to the billing review pool.</>
+                ) : (
+                  <><strong style={{ color: '#94a3b8' }}>{selected?.name}</strong> has been sent a message with a link to case <strong style={{ color: '#94a3b8' }}>{caseId}</strong>.</>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>
+                {isCodeReview ? 'A billing specialist will review it in Quality Assurance — this does not block sign-out.' : 'They can open the case and leave an internal note when reviewed.'}
+              </div>
             </div>
             <button onClick={onClose} style={{ marginTop: 8, padding: '8px 24px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: 8, color: '#8B5CF6', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               Close
@@ -211,7 +242,16 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
               </div>
             </div>
 
-            {/* Colleague picker */}
+            {isCodeReview ? (
+              /* Real, per direct guidance: no colleague to pick for
+                 Code Review - it routes to the billing review pool,
+                 not a person. */
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M20 12V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8"/><path d="M18 21v-6M15 18h6"/></svg>
+                <span style={{ fontSize: 12, color: '#a7f3d0' }}>Routes to the billing review pool, not a colleague — a billing specialist reviews it in Quality Assurance.</span>
+              </div>
+            ) : (
+            /* Colleague picker */
             <div>
               <div className="fm-eyebrow">Send To</div>
               <input
@@ -250,6 +290,7 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
                 ))}
               </div>
             </div>
+            )}
 
             {/* Optional note */}
             <div>
@@ -266,7 +307,9 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
             {/* Info notice */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)', borderRadius: 8 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style={{ fontSize: 11, color: '#a78bfa' }}>This does not transfer case ownership. The colleague will receive a message with a link to the case report.</span>
+              <span style={{ fontSize: 11, color: '#a78bfa' }}>
+                {isCodeReview ? 'This does not block sign-out. The case can be signed out normally regardless of review status.' : 'This does not transfer case ownership. The colleague will receive a message with a link to the case report.'}
+              </span>
             </div>
 
             {/* Actions */}

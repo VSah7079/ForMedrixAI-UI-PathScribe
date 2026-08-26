@@ -518,14 +518,14 @@ const PREPARATION_TYPES: PreparationType[] = ['frozen_block', 'touch_prep', 'squ
  *  both touch preps AND multiple frozen blocks). Stays visible/
  *  re-usable after logging — a real bench workflow may add
  *  preparations progressively, not all in one submission. */
-const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void }> = ({ sessionId, specimen, onLogged }) => {
+const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void; voiceEligible: boolean }> = ({ sessionId, specimen, onLogged, voiceEligible }) => {
   const [type, setType] = useState<PreparationType>('frozen_block');
   const [blockCount, setBlockCount] = useState('1');
   const [busy, setBusy] = useState(false);
 
-  const handleLog = async () => {
+  const handleLog = useCallback(async (loggedType: PreparationType) => {
     setBusy(true);
-    const count = type === 'frozen_block' ? Math.max(1, Number(blockCount) || 1) : 1;
+    const count = loggedType === 'frozen_block' ? Math.max(1, Number(blockCount) || 1) : 1;
     for (let i = 0; i < count; i++) {
       // Sequential, not parallel — each real call needs the PRIOR
       // call's own persisted state (via generatePreparationIdentifier's
@@ -533,7 +533,7 @@ const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen
       // firing these concurrently would race and could produce
       // duplicate identifiers.
       // eslint-disable-next-line no-await-in-loop
-      await intraoperativeService.addPreparationOutput(sessionId, specimen.id, type);
+      await intraoperativeService.addPreparationOutput(sessionId, specimen.id, loggedType);
     }
     // Real, deliberate: also logs the corresponding workflow milestone
     // on the FIRST real output of that type only — preserves the
@@ -542,20 +542,47 @@ const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen
     // creating a redundant milestone entry for every additional block.
     const hasTouchPrepStep = specimen.milestones.some(m => m.milestone === 'touch_prep_performed' || m.milestone === 'touch_prep_skipped');
     const hasFrozenCut = specimen.milestones.some(m => m.milestone === 'frozen_section_cut');
-    if (type === 'touch_prep' && !hasTouchPrepStep) {
+    if (loggedType === 'touch_prep' && !hasTouchPrepStep) {
       await intraoperativeService.addMilestone(sessionId, specimen.id, 'touch_prep_performed');
-    } else if (type === 'frozen_block' && !hasFrozenCut) {
+    } else if (loggedType === 'frozen_block' && !hasFrozenCut) {
       await intraoperativeService.addMilestone(sessionId, specimen.id, 'frozen_section_cut');
     }
     setBusy(false);
     onLogged();
-  };
+  }, [sessionId, specimen, blockCount, onLogged]);
+
+  // Real, per direct guidance: voice logs exactly ONE real output per
+  // utterance, never parsing a spoken count — "log a frozen block" said
+  // twice produces two real, correctly-sequenced blocks (FS-A1, FS-A2),
+  // same as tapping the button twice. Reuses the two REAL,
+  // already-defined action ids/trigger phrases from the action registry
+  // (INTRAOP_FROZEN_SECTION_CUT: "frozen section cut" etc.,
+  // INTRAOP_TOUCH_PREP_PERFORMED: "touch prep performed" etc.) rather
+  // than inventing new ones for these two types — the existing phrases
+  // already say exactly what's needed. Three genuinely new action ids
+  // added for the three preparation types with no existing analog.
+  // Gated on voiceEligible (single-specimen session only) - see this
+  // file's own comment at the real entry.specimens.map call site for
+  // why: a bare spoken phrase can't disambiguate which specimen when
+  // more than one could be listening.
+  useEffect(() => {
+    if (!voiceEligible) return;
+    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+      if (busy) return;
+      if (actionId === 'INTRAOP_FROZEN_SECTION_CUT') handleLog('frozen_block');
+      else if (actionId === 'INTRAOP_TOUCH_PREP_PERFORMED') handleLog('touch_prep');
+      else if (actionId === 'INTRAOP_LOG_SQUASH_PREP') handleLog('squash_prep');
+      else if (actionId === 'INTRAOP_LOG_CYTOLOGY_FLUID') handleLog('cytology_fluid');
+      else if (actionId === 'INTRAOP_LOG_GROSS_ONLY') handleLog('gross_only');
+    });
+    return unsubscribe;
+  }, [voiceEligible, busy, handleLog]);
 
   return (
     <div className="ps-intraop-action-block">
-      {specimen.preparations.length > 0 && (
+      {(specimen.preparations ?? []).length > 0 && (
         <div className="ps-intraop-timeline">
-          {specimen.preparations.map(p => (
+          {(specimen.preparations ?? []).map(p => (
             <div key={p.id} className="ps-intraop-timeline-row">
               <span className="ps-intraop-timeline-dot" />
               <span className="ps-intraop-timeline-label">{PREPARATION_TYPE_LABEL[p.type]} — {p.identifier}</span>
@@ -577,39 +604,87 @@ const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen
           </div>
         )}
       </div>
-      <button className="ps-conf-btn-primary" disabled={busy} onClick={handleLog}>
+      <button className="ps-conf-btn-primary" disabled={busy} onClick={() => handleLog(type)}>
         Log {type === 'frozen_block' ? `${Math.max(1, Number(blockCount) || 1)} Frozen Block${Number(blockCount) === 1 ? '' : 's'}` : PREPARATION_TYPE_LABEL[type]}
       </button>
+      {voiceEligible && (
+        <p className="ps-intraop-gate-note">
+          Voice: "frozen section cut" / "touch prep performed" logs one real output — repeat to log another. Block Count above is for tap/type entry only.
+        </p>
+      )}
     </div>
   );
 };
 
 // ─── Milestone action controls — per specimen, not per session ────────────────
-const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void }> = ({ sessionId, specimen, onLogged }) => {
+const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void; voiceEligible: boolean }> = ({ sessionId, specimen, onLogged, voiceEligible }) => {
   const [quickGrossDraft, setQuickGrossDraft] = useState('');
   const [showSkipMenu, setShowSkipMenu] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { startDictation, phase, dictationTarget } = useVoice();
+  const [grossFocused, setGrossFocused] = useState(false);
 
   const hasGrossLogged = specimen.milestones.some(m => m.milestone === 'gross_logged') && !!specimen.quickGrossDictation?.trim();
   const hasTouchPrepStep = specimen.milestones.some(m => m.milestone === 'touch_prep_performed' || m.milestone === 'touch_prep_skipped');
 
-  const log = async (milestone: MilestoneType, skipReason?: SkipReason, skipReasonNote?: string, quickGrossText?: string) => {
+  const log = useCallback(async (milestone: MilestoneType, skipReason?: SkipReason, skipReasonNote?: string, quickGrossText?: string) => {
     setBusy(true);
     const res = await intraoperativeService.addMilestone(sessionId, specimen.id, milestone, skipReason, skipReasonNote, quickGrossText);
     setBusy(false);
     if (res.ok) { onLogged(); setShowSkipMenu(false); setQuickGrossDraft(''); }
-  };
+  }, [sessionId, specimen.id, onLogged]);
+
+  // Real dictation for this specimen's own Quick Gross field — same
+  // real mechanism (startDictation/dictationTarget) already used for
+  // the session-creation form's own fields, scoped here to THIS
+  // specimen's local quickGrossDraft instead. Explicit focus-then-
+  // speak, same as that existing usage — never ambiguous regardless of
+  // how many specimens are in the session, unlike the discrete voice
+  // actions below.
+  useEffect(() => {
+    if (phase !== 'dictate' || dictationTarget || !grossFocused) return;
+    startDictation({
+      fieldId: `quickGross-${specimen.id}`,
+      label: 'Quick Gross',
+      context: 'gross description, blocks frozen, orientation',
+      onText: (text: string, isInterim?: boolean) => {
+        if (isInterim) return;
+        setQuickGrossDraft(prev => (prev ? `${prev} ${text}`.trim() : text.trim()));
+      },
+    });
+  }, [phase, dictationTarget, grossFocused, specimen.id, startDictation]);
+
+  // Real, discrete voice actions for the touch prep gate — reuses the
+  // two REAL, already-defined action ids (INTRAOP_TOUCH_PREP_PERFORMED,
+  // INTRAOP_TOUCH_PREP_SKIP) that already had real voiceTriggers
+  // defined in the action registry but were never actually listened
+  // for anywhere in this page - confirmed directly before wiring this.
+  // Skip defaults to 'direct_to_frozen' - the one skip reason already
+  // present as one of INTRAOP_TOUCH_PREP_SKIP's own real trigger
+  // phrases ("direct to frozen"); the tap-based Skip Reason menu
+  // remains available for any other reason. Gated on voiceEligible -
+  // same reasoning as PreparationLogger's own listener.
+  useEffect(() => {
+    if (!voiceEligible || hasTouchPrepStep) return;
+    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+      if (busy) return;
+      if (actionId === 'INTRAOP_TOUCH_PREP_PERFORMED') log('touch_prep_performed');
+      else if (actionId === 'INTRAOP_TOUCH_PREP_SKIP') log('touch_prep_skipped', 'direct_to_frozen');
+    });
+    return unsubscribe;
+  }, [voiceEligible, hasTouchPrepStep, busy, log]);
 
   if (!hasGrossLogged) {
     return (
       <div className="ps-intraop-action-block">
         <label className="ps-conf-label">Quick Gross — dimensions, blocks frozen, orientation</label>
         <textarea className="ps-conf-input ps-conf-textarea" value={quickGrossDraft} onChange={e => setQuickGrossDraft(e.target.value)}
+          onFocus={() => setGrossFocused(true)} onBlur={() => setGrossFocused(false)}
           placeholder="e.g. Received a 2.5 cm core of tan-pink tissue. Block FS1 cut from fatty margin. Superior suture placed by surgeon." />
         <button className="ps-conf-btn-primary" disabled={busy || !quickGrossDraft.trim()} onClick={() => log('gross_logged', undefined, undefined, quickGrossDraft)}>
           Log Quick Gross
         </button>
-        <p className="ps-intraop-gate-note">Required before Touch Prep or Frozen Section can be logged — no override.</p>
+        <p className="ps-intraop-gate-note">Required before Touch Prep or Frozen Section can be logged — no override. Focus this field and press the mic to dictate.</p>
       </div>
     );
   }
@@ -625,6 +700,7 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
             onPick={(reason, note) => log('touch_prep_skipped', reason, note)}
           />
         )}
+        {voiceEligible && <p className="ps-intraop-gate-note">Voice: "touch prep performed" or "skip touch prep" (defaults to direct-to-frozen).</p>}
       </div>
     );
   }
@@ -635,7 +711,7 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
   // guidance. Stays available for repeated use, not a one-shot terminal
   // state — a real bench workflow may log additional preparations
   // (another block, a second touch prep) over time.
-  return <PreparationLogger sessionId={sessionId} specimen={specimen} onLogged={onLogged} />;
+  return <PreparationLogger sessionId={sessionId} specimen={specimen} onLogged={onLogged} voiceEligible={voiceEligible} />;
 };
 
 // ─── Merge modal ────────────────────────────────────────────────────────────
@@ -706,7 +782,7 @@ const MergeModal: React.FC<{
 };
 
 // ─── Specimen card — one per specimen, nested inside the session's entry card ──
-const SpecimenCard: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onRefresh: () => void }> = ({ sessionId, specimen, onRefresh }) => (
+const SpecimenCard: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onRefresh: () => void; voiceEligible: boolean }> = ({ sessionId, specimen, onRefresh, voiceEligible }) => (
   <div className="ps-intraop-specimen-card">
     <div className="ps-intraop-specimen">{specimen.specimenLabel}</div>
 
@@ -727,7 +803,7 @@ const SpecimenCard: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onR
       </div>
     )}
 
-    <MilestoneActions sessionId={sessionId} specimen={specimen} onLogged={onRefresh} />
+    <MilestoneActions sessionId={sessionId} specimen={specimen} onLogged={onRefresh} voiceEligible={voiceEligible} />
 
     {specimen.preliminaryCytologyDictation && (
       <div className="ps-intraop-note">
@@ -801,8 +877,20 @@ const EntryCard: React.FC<{
       <button className="ps-conf-btn-primary" onClick={onMergeClick}>Merge Mobile Intake Data</button>
     </div>
 
+    {/* Real, deliberate scope boundary: discrete voice-triggered
+        actions (touch prep / preparation logging) are only enabled
+        when this session has exactly one specimen — the same
+        never-ambiguous-target principle already established for
+        INTRAOP_LOG_SURGEON_REPORT above. A multi-specimen session
+        (a real, working case — see intraop-002's own seed data) stays
+        tap-only for these actions; there's no reliable way to know
+        which specimen a bare spoken phrase like "frozen section cut"
+        should apply to when more than one could be listening.
+        Dictation (Quick Gross) is unaffected by this — it's
+        explicit focus-then-speak, never ambiguous regardless of
+        specimen count. */}
     {entry.specimens.map(spec => (
-      <SpecimenCard key={spec.id} sessionId={entry.id} specimen={spec} onRefresh={onRefresh} />
+      <SpecimenCard key={spec.id} sessionId={entry.id} specimen={spec} onRefresh={onRefresh} voiceEligible={entry.specimens.length === 1} />
     ))}
 
     {entry.verbalReportLog ? (

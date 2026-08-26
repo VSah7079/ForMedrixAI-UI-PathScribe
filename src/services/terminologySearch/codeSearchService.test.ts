@@ -25,7 +25,16 @@ describe('searchCodes("CPT", ...) — real fix: replaces the permanent, document
   });
 
   it('filters by description text too, not just the code itself', async () => {
-    const results = await searchCodes('CPT', 'immunohistochemistry');
+    // Real fix, found while unifying two previously-duplicate billing
+    // dictionaries: this used to search for "immunohistochemistry" -
+    // that stopped matching once CODE_MAP_TABLE's own descriptions
+    // became synthetic ("Code 88342 — Stain Level") per direct
+    // guidance on PS-92 (no real AMA CPT text in this table at all).
+    // Real, honest trade-off of that change: searching by medical
+    // terminology no longer works, only by code number or the
+    // synthetic level phrase itself - this test now verifies the
+    // latter, which is what the description field actually contains.
+    const results = await searchCodes('CPT', 'stain level');
     expect(results.some(r => r.code === '88342')).toBe(true);
   });
 
