@@ -42,6 +42,63 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
     id: 'def-missing-fixation-time', name: 'Missing Fixation Time', status: 'Active', level: 'specimen',
     description: 'Specimen type requires cold-ischemia/fixation timing (CAP/ASCO biomarker guidance, e.g. breast ER/PR/HER2) but no fixative-added time has been documented. Blocks case sign-out until resolved — see Resolution Types for the three legitimate ways to resolve it (documented, estimated, or confirmed unrecoverable).',
   },
+  // Real, per direct guidance's own cross-jurisdiction pre-analytic
+  // compliance research (UKAS ISO 15189 Clause 7.2, CAP/CLIA
+  // Sec 493.1241, RCPath, EU IVDR/ISO 15189, IANZ AS ISO 15189:2022,
+  // KAZA/KSP/KSLM, NATA/NPAAC — see resolvePreAnalyticDateGateConfig.ts
+  // for the full per-country citation and text). Real, per direct
+  // guidance's own explicit correction: this is a genuine Pre-Analytic
+  // Non-Conformity, left OPEN (raised via raise(), never
+  // raiseAndResolve()) so it actually reaches Operations/CAPA Engine
+  // review — deliberately NOT treated as an instant, closed
+  // documentation event the way def-missing-fixation-time's
+  // "unrecoverable" path is. Per direct guidance: "Datix / Incident
+  // Logging ... trigger the CAPA tracking without delaying necessary
+  // patient care beyond reason" — the case itself un-blocks immediately
+  // via the administrative-override date, but the underlying
+  // non-conformity stays open for real corrective/preventive review,
+  // same posture as def-outbound-dispatch-failure above.
+  {
+    id: 'def-missing-preanalytic-date', name: 'Missing Pre-Analytic Date (Collection/Receipt)', status: 'Active', level: 'specimen',
+    description: 'Specimen is missing its required collection and/or laboratory-receipt date/time. Every real jurisdiction PathScribe serves treats this as a hard block on report authorization (see resolvePreAnalyticDateGateConfig.ts) — resolved via a real, audited administrative-override date, never a silent default. Left OPEN, not auto-closed: this is a genuine Pre-Analytic Non-Conformity warranting real corrective/preventive review, not just a one-off documentation fix.',
+  },
+  // Real, per direct guidance's own explicit correction: a real,
+  // Engine-reported block loss or damage was previously only ever
+  // reflected in the block's own status field and a dispatch-history
+  // display — never a real, tracked CAPA record, despite being a
+  // genuine, often clinically significant non-conformity (potentially
+  // unrecoverable diagnostic material — arguably more severe than a
+  // missing timestamp). Same real "left OPEN, not raiseAndResolve"
+  // posture as def-missing-preanalytic-date above, for the same
+  // reason: this warrants real corrective/preventive review, not an
+  // instant, closed documentation event. Two distinct types (not one
+  // generic "block exception"), matching this dictionary's own
+  // existing precedent of specific, analytics-friendly types
+  // (def-tissue-discrepancy vs def-insufficient-volume, rather than
+  // one generic "specimen problem") — a lab genuinely wants to know
+  // "how many blocks did we lose this quarter" separately from "how
+  // many arrived damaged."
+  {
+    id: 'def-block-lost', name: 'Block Lost', status: 'Active', level: 'specimen',
+    description: 'A histology block was reported lost by the Cassette Engine — the block, and any diagnostic material in it, is genuinely unaccounted for. Real, open CAPA record, not just a status flag — the physical loss already happened regardless of any downstream workflow, and warrants real root-cause review (was this a real process gap, a one-off, a pattern at one site).',
+  },
+  {
+    id: 'def-block-damaged', name: 'Block Damaged', status: 'Active', level: 'specimen',
+    description: 'A histology block was reported damaged by the Cassette Engine — the block exists but its diagnostic integrity may be compromised. Real, open CAPA record, same reasoning as Block Lost above.',
+  },
+  // Real, per direct guidance's own explicit symmetry decision: a
+  // complete cassette dispatch failure (CassetteDispatchOutcomeEventPayload
+  // outcome === 'error' — corrected from an earlier, non-real 'failed'
+  // value) prevents physical specimen container preparation entirely,
+  // genuinely blocking real bench flow — the same real category of
+  // non-conformity as a lost/damaged block, not merely logged history
+  // the way a routine fallback_used outcome is (that stays
+  // history-only, per direct guidance's own explicit decision — see
+  // cassette-dispatch-outcome.ts's own comment on this exact split).
+  {
+    id: 'def-cassette-dispatch-failure', name: 'Cassette Dispatch Failure', status: 'Active', level: 'specimen',
+    description: 'A cassette dispatch request to the Cassette Engine failed completely (outcome: error) — no cassette was produced at all, blocking real bench/grossing flow. Real, open CAPA record, not just a logged history entry — a complete failure warrants real root-cause review the way a mere fallback color substitution does not.',
+  },
 ];
 
 const load    = () => storageGet<DeficiencyType[]>('pathscribe_deficiency_types', SEED_DEFICIENCY_TYPES);

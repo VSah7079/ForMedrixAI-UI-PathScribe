@@ -21,8 +21,116 @@ const err   = <T>(error: string): ServiceResult<T> => ({ ok: false, error });
 const delay = () => new Promise(r => setTimeout(r, 30));
 
 function loadAll(): ServiceChargeRecord[] {
-  return storageGet<ServiceChargeRecord[]>(STORAGE_KEY, []);
+  return storageGet<ServiceChargeRecord[]>(STORAGE_KEY, SEED_SERVICE_CHARGES);
 }
+
+// Real, per direct request ahead of the Billing expert meeting — this
+// service had zero seed data (unlike mockSpecimenDeficiencyService.ts's
+// own established "seed a few representative examples" pattern), so
+// the Financials pillar and any billing-transaction view showed
+// nothing at all on a fresh session. Attached to S26-4403 (real seed
+// case: right upper lobe lobectomy, 3 specimens), using real CPT/RVU
+// values already in mockBillingRuleService.ts's own dictionary — no
+// invented codes or fabricated RVU numbers.
+//
+// Deliberately tells a complete, realistic story across all three real
+// concerns a billing expert would want to see:
+//   1. The full Four-Eyes approval pipeline, represented at every real
+//      stage at once — DRAFT (Specimen C), PENDING_APPROVAL (Specimen
+//      B), APPROVED (Specimen A's IHC), EXPORTED (Specimen A's base
+//      histology) — not just one static example.
+//   2. A real credit + rebill correction, per this file's own header
+//      ("never edit history, only add a new record") and
+//      ServiceChargeRecord.ts's own direct requirement quote: "a
+//      credit transaction for the code removed and then a new
+//      billable charge for the new one... All must be audited." Uses
+//      a real, realistic error (an IHC stain originally miscounted as
+//      the second in sequence — IHC-ADDL/88341 — corrected to the
+//      first — IHC-FIRST/88342 — a genuinely common real coding
+//      mistake, not a contrived example), tied to a real
+//      ReasonDictionaryEntry (psbc-coding-error).
+//   3. Real, honest RVU data — rvuPe/rvuMp are left undefined
+//      wherever mockBillingRuleService.ts's own dictionary entry only
+//      has rvuWork populated, matching that file's own disclosed
+//      "RVU intentionally left unset for the client to configure"
+//      posture rather than fabricating full RVU triads.
+const SEED_SERVICE_CHARGES: ServiceChargeRecord[] = [
+  // ── Specimen A — base histology, full lifecycle: EXPORTED ──────────────────
+  {
+    id: 'chg-S26-4403-A-88307', caseId: 'S26-4403', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'A', specimenId: 'S26-4403-SP-1',
+    billingCode: '88307', cptCode: '88307', cptDescription: 'Level VI Surgical Pathology, gross and microscopic examination',
+    level: 'specimen', billingType: 'Global', rvuWork: 1.55,
+    ruleVersion: 1, ruleSetId: 'BILLRULE-88307-1',
+    resolvedAt: '2026-08-25T14:32:00.000Z', resolvedBy: 'PATH-UK-002',
+    approvalStatus: 'EXPORTED', draftedBy: 'PATH-UK-002', draftedAt: '2026-08-25T14:32:00.000Z',
+    approvedBy: 'PATH-001', approvedAt: '2026-08-25T16:10:00.000Z',
+  },
+  // ── Specimen A — IHC, real credit + rebill correction ───────────────────────
+  // Originally billed as the second IHC in sequence (IHC-ADDL); a QA
+  // audit found it was genuinely the first real IHC stain performed on
+  // this specimen — corrected to IHC-FIRST. Both the original charge
+  // and its exact reversal stay on record, per this file's own
+  // append-only header.
+  {
+    id: 'chg-S26-4403-A-IHC-ADDL', caseId: 'S26-4403', transactionType: 'charge',
+    sourceLevel: 'block', sourceLabel: 'A1', specimenId: 'S26-4403-SP-1',
+    billingCode: 'IHC-ADDL', cptCode: '88341', cptDescription: 'Immunohistochemistry, each additional antibody',
+    sequencePosition: 2,
+    level: 'stain', billingType: 'Global',
+    ruleVersion: 1,
+    resolvedAt: '2026-08-25T14:40:00.000Z', resolvedBy: 'system',
+    approvalStatus: 'EXPORTED', draftedBy: 'system', draftedAt: '2026-08-25T14:40:00.000Z',
+    approvedBy: 'PATH-001', approvedAt: '2026-08-25T16:10:00.000Z',
+  },
+  {
+    id: 'crd-chg-S26-4403-A-IHC-ADDL', caseId: 'S26-4403', transactionType: 'credit',
+    reversesTransactionId: 'chg-S26-4403-A-IHC-ADDL',
+    sourceLevel: 'block', sourceLabel: 'A1', specimenId: 'S26-4403-SP-1',
+    billingCode: 'IHC-ADDL', cptCode: '88341', cptDescription: 'Immunohistochemistry, each additional antibody',
+    sequencePosition: 2,
+    level: 'stain', billingType: 'Global',
+    ruleVersion: 1,
+    resolvedAt: '2026-08-27T09:15:00.000Z', resolvedBy: 'PATH-001',
+    postSignoutChangeReasonId: 'psbc-coding-error',
+    postSignoutChangeComment: 'QA audit (2026-08-27) confirmed this was the first IHC stain performed on block A1, not the second — no prior IHC-FIRST charge existed on this specimen. Reversing 88341 (additional) and rebilling as 88342 (first). See chg-S26-4403-A-IHC-FIRST.',
+    approvalStatus: 'EXPORTED', draftedBy: 'PATH-001', draftedAt: '2026-08-27T09:15:00.000Z',
+    approvedBy: 'PATH-UK-002', approvedAt: '2026-08-27T09:40:00.000Z',
+  },
+  {
+    id: 'chg-S26-4403-A-IHC-FIRST', caseId: 'S26-4403', transactionType: 'charge',
+    sourceLevel: 'block', sourceLabel: 'A1', specimenId: 'S26-4403-SP-1',
+    billingCode: 'IHC-FIRST', cptCode: '88342', cptDescription: 'Immunohistochemistry, first antibody',
+    sequencePosition: 1,
+    level: 'stain', billingType: '26', modifier: '-26', rvuWork: 0.68,
+    ruleVersion: 1, ruleSetId: 'BILLRULE-IHC-FIRST-1',
+    resolvedAt: '2026-08-27T09:15:00.000Z', resolvedBy: 'PATH-001',
+    postSignoutChangeReasonId: 'psbc-coding-error',
+    postSignoutChangeComment: 'Rebill for the reversed IHC-ADDL charge above — corrected sequence position (1st IHC stain, not 2nd). Professional component only (-26); the referring site\u2019s own lab performed the technical component.',
+    approvalStatus: 'APPROVED', draftedBy: 'PATH-001', draftedAt: '2026-08-27T09:15:00.000Z',
+    approvedBy: 'PATH-UK-002', approvedAt: '2026-08-27T09:40:00.000Z',
+  },
+  // ── Specimen B — base histology, sitting in the Four-Eyes queue ─────────────
+  {
+    id: 'chg-S26-4403-B-88305', caseId: 'S26-4403', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'B', specimenId: 'S26-4403-SP-2',
+    billingCode: '88305', cptCode: '88305', cptDescription: 'Level IV Surgical Pathology, gross and microscopic examination',
+    level: 'specimen', billingType: 'Global', rvuWork: 0.73,
+    ruleVersion: 1, ruleSetId: 'BILLRULE-88305-1',
+    resolvedAt: '2026-08-27T08:05:00.000Z', resolvedBy: 'PATH-UK-002',
+    approvalStatus: 'PENDING_APPROVAL', draftedBy: 'PATH-UK-002', draftedAt: '2026-08-27T08:05:00.000Z',
+  },
+  // ── Specimen C — base histology, drafted, not yet submitted ─────────────────
+  {
+    id: 'chg-S26-4403-C-88305', caseId: 'S26-4403', transactionType: 'charge',
+    sourceLevel: 'specimen', sourceLabel: 'C', specimenId: 'S26-4403-SP-3',
+    billingCode: '88305', cptCode: '88305', cptDescription: 'Level IV Surgical Pathology, gross and microscopic examination',
+    level: 'specimen', billingType: 'Global', rvuWork: 0.73,
+    ruleVersion: 1, ruleSetId: 'BILLRULE-88305-1',
+    resolvedAt: '2026-08-27T08:06:00.000Z', resolvedBy: 'PATH-UK-002',
+    approvalStatus: 'DRAFT', draftedBy: 'PATH-UK-002', draftedAt: '2026-08-27T08:06:00.000Z',
+  },
+];
 
 /** Real, per direct guidance's own established migration posture -
  *  the one, real place every consumer (export gating, UI display)

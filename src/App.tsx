@@ -42,6 +42,7 @@ const QualityAssurancePage = lazy(() => import("./pages/QualityAssurancePage"));
 const BatchManagementPage = lazy(() => import("./pages/BatchManagement/BatchManagementPage"));
 const DisposalQueuePage = lazy(() => import("./pages/BatchManagement/DisposalQueuePage"));
 const PendingBatchQueuePage = lazy(() => import("./pages/BatchManagement/PendingBatchQueuePage"));
+const EngraverMonitorPage = lazy(() => import("./pages/BatchManagement/EngraverMonitorPage"));
 const IntraopQueuePage = lazy(() => import("./pages/IntraopQueuePage"));
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"));
 const ConfigurationPage = lazy(() => import("./pages/ConfigurationPage"));
@@ -127,6 +128,7 @@ const App: React.FC = () => (
                           <Route path="/batch-management" element={<BatchManagementPage />} />
                           <Route path="/batch-management/disposal" element={<DisposalQueuePage />} />
                           <Route path="/batch-management/pending-load" element={<PendingBatchQueuePage />} />
+                          <Route path="/batch-management/engraver-monitor" element={<EngraverMonitorPage />} />
                           <Route path="/intraop-queue" element={<IntraopQueuePage />} />
                           <Route path="/search" element={<SearchPage />} />
                           <Route path="/audit" element={<AuditLogPage />} />

@@ -198,6 +198,43 @@ audit logging, and a few smaller single-purpose hooks.
   internals rather than deeply interleaved with them — lower risk than
   modifying that existing, working system.
 
+## Cassette Engine integration (Aug 2026)
+
+- **`usePendingEngineNotifications.ts`** — real, poll-based delivery of
+  real, backend-raised Engine events (`api/webhooks/engine/` — see
+  that folder's own README) to whichever technician's browser
+  currently has the relevant case open. Poll, not `onSnapshot` —
+  deliberate, matching this app's own existing convention (confirmed
+  directly: no real-time Firestore listener exists anywhere else in
+  this codebase). Dispatches by real event type: `cassette-dispatch-outcome`
+  goes to the existing, unchanged `processCassetteDispatchOutcomeEvent`
+  (the same function the Dev Tools "Sim" button already calls — that
+  event never mutates a case, so one function safely serves both real
+  and simulated flows). `block-exception`/`material-location` go to
+  two new, deliberately notification-*only* siblings
+  (`notifyBlockExceptionApplied`/`notifyMaterialLocationApplied`,
+  `services/hl7/`) — **never** the mutation-performing
+  `processBlockExceptionEvent`/`processMaterialLocationEvent` — because
+  the real backend webhook has already applied that mutation
+  server-side by the time a notification record exists to poll for;
+  calling the mutating function here too would silently apply the
+  same real change a second time.
+
+  **Real, security-driven rewrite, mid-session**: originally marked a
+  notification "done" by writing `consumed: true` back to Firestore
+  from the client SDK. Removed entirely after direct review found this
+  app has no real, server-verifiable session anywhere (`AuthContext.tsx`
+  is a custom, `localStorage`-backed mock) — a Firestore rule can't
+  distinguish a legitimate technician's write from anyone else's
+  without one, so `pending_engine_notifications` needed to become
+  `allow write: if false` for every real client. Replaced with a
+  client-side-only `lastPolledAt` cursor (`where('createdAt', '>',
+  lastPolledAt)`), advanced to when each poll *started*, not when it
+  finished, so a notification created mid-poll isn't silently skipped.
+  Real, disclosed consequence: nothing ever marks a document "done"
+  anymore, so `pending_engine_notifications` grows unbounded until a
+  real, separate, Admin-SDK-only cleanup job exists (not built).
+
 ## Real findings this pass, ranked by severity
 
 1. **Draft recovery completely non-functional** (`useDraftCache.ts`) —

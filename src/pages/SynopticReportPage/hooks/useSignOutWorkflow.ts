@@ -54,6 +54,7 @@ import { mockReportReleaseService } from '@/services/reportRelease/mockReportRel
 import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
 import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
+import type { BillingDeficiencyType, BillingDeficiencySeverity } from '@/types/billing/BillingDeficiencyRecord';
 import { checkSignOutBillingDeficiencies } from '@/services/billing/checkSignOutBillingDeficiencies';
 import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
 import type { CriticalFindingFlag } from '@/services/clinical/detectCriticalFindings';
@@ -68,6 +69,7 @@ import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBill
 import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 import { sendEmail } from '@/services/communications/notificationService';
 import type { FixativeGateSpecimen } from '../modals/FixativeTimeGateModal';
+import type { PreAnalyticDateGateSpecimen } from '../modals/PreAnalyticDateGateModal';
 import { PreFinalisationModal, type SynopticForReview } from '../modals/PreFinalisationModal';
 import { getFieldLabel, type ReportingStandard } from '@/utils/synopticFieldLabels';
 import { getTemplate } from '@/services/templates/templateService';
@@ -113,6 +115,7 @@ interface UseSignOutWorkflowParams {
   countersignFeedback: string;
   specimenDictionary: SpecimenEntry[];
   setFixativeGateSpecimens: (specs: FixativeGateSpecimen[] | null) => void;
+  setPreAnalyticDateGateSpecimens: (specs: PreAnalyticDateGateSpecimen[] | null) => void;
   setPendingFinalizeArgs: (args: string[]) => void;
   synopticPanelRef: MutableRefObject<RightSynopticPanelHandle | null>;
   /** Real fix, per direct product decision: navigates the pathologist
@@ -143,12 +146,33 @@ interface UseSignOutWorkflowParams {
   log: (event: string, detail: Record<string, unknown>) => void;
 }
 
+// Real, per direct guidance's own severity categorization for each real
+// Trigger A-F: NCCI bundling is a genuinely never-bypassable rejection
+// risk. Missing ICD-10 and a wrong/omitted TC/26 modifier are both
+// real, well-known claim-rejection causes in practice - CRITICAL_REJECTION_RISK,
+// not merely a warning. An unattached ancillary order and a specimen
+// billed above its own configured default are both real, but
+// genuinely could be legitimate - COMPLIANCE_WARNING, routed to QA for
+// a human judgment call, never auto-rejected. A $0.00 fee-schedule
+// mapping gap is real, uncollected revenue, not a compliance/rejection
+// risk at all - REVENUE_LEAKAGE, the one real trigger that
+// legitimately uses this severity.
+const BILLING_DEFICIENCY_SEVERITY: Record<BillingDeficiencyType, BillingDeficiencySeverity> = {
+  UNSUPPORTED_CPT_LEVEL: 'COMPLIANCE_WARNING',
+  NCCI_BUNDLING_VIOLATION: 'CRITICAL_REJECTION_RISK',
+  MISSING_DIAGNOSTIC_ICD10: 'CRITICAL_REJECTION_RISK',
+  UNATTACHED_ANCILLARY_ORDER: 'COMPLIANCE_WARNING',
+  MODIFIER_MISMATCH: 'CRITICAL_REJECTION_RISK',
+  ZERO_FEE_MAPPING_ERROR: 'REVENUE_LEAKAGE',
+};
+
 export function useSignOutWorkflow({
   caseData, setCaseData, signingUser, showToast, activeReportInstanceId,
   knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
   generateReportPdfSnapshot, isOrchestrationMode, orchSections,
   setCaseSigned, setShowSignOutModal, setPendingReconciliation,
   countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
+  setPreAnalyticDateGateSpecimens,
   setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
   setActiveSpecimenId, setActiveReportType,
   setShowAmendmentModal, setShowFinalizeModal, openAmendmentDraft,
@@ -548,9 +572,12 @@ export function useSignOutWorkflow({
   const [showCriticalFindingsModal, setShowCriticalFindingsModal] = useState(false);
   const [acknowledgedCritical,    setAcknowledgedCritical]    = useState(false);
 
-  // Real, shared detection step for Trigger A (UNSUPPORTED_CPT_LEVEL)
-  // and Trigger B (NCCI_BUNDLING_VIOLATION) - read-only, never raises
-  // or persists anything itself. Two real callers: previewBillingWarnings
+  // Real, shared detection step for Trigger A (UNSUPPORTED_CPT_LEVEL),
+  // Trigger B (NCCI_BUNDLING_VIOLATION), Trigger C
+  // (MISSING_DIAGNOSTIC_ICD10), Trigger D (UNATTACHED_ANCILLARY_ORDER),
+  // Trigger E (MODIFIER_MISMATCH), and Trigger F
+  // (ZERO_FEE_MAPPING_ERROR) - read-only, never raises or persists
+  // anything itself. Two real callers: previewBillingWarnings
   // (below, via handleRequestFinalize - the actual "pathologist
   // attempts signature" moment, per Trigger A's own trigger event) and
   // finalizeCase's own real, post-commit raise immediately below.
@@ -563,8 +590,25 @@ export function useSignOutWorkflow({
     if (!chargesRes.ok || !ncciRes.ok) return [];
     const specimens = (caseData.specimens ?? []).map((sp: Specimen) => ({
       id: sp.id, label: sp.label, specimenDictionaryEntryId: sp.specimenDictionaryEntryId,
+      // Real, per Trigger C's own fallback: the specimen's own
+      // coding.icd10 override, when it has one.
+      icd10: (sp as any).coding?.icd10,
     }));
-    return checkSignOutBillingDeficiencies(chargesRes.data, specimens, specimenDictionary, ncciRes.data);
+    // Real, case-wide ICD-10 fallback - same real field
+    // validateChargeMetadata.ts already checks at dispatch time; this
+    // surfaces the same real gap earlier, at sign-out.
+    const caseIcd10Codes = (caseData.order as any)?.icd10Codes ?? [];
+    // Real, per Trigger D's own BlockForCheck shape - every real block
+    // across every specimen, keyed by id, so a 'stain'-level charge's
+    // own blockId resolves directly without a second, specimen-scoped
+    // lookup.
+    const blocksById = new Map<string, { id: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; stains: { lisRequestStatus?: 'pending' | 'confirmed' | 'rejected' }[] }>();
+    (caseData.specimens ?? []).forEach((sp: Specimen) => {
+      (sp.blocks ?? []).forEach(b => {
+        blocksById.set(b.id, { id: b.id, lisRequestStatus: b.lisRequestStatus, stains: (b.stains ?? []).map(s => ({ lisRequestStatus: s.lisRequestStatus })) });
+      });
+    });
+    return checkSignOutBillingDeficiencies(chargesRes.data, specimens, specimenDictionary, ncciRes.data, caseIcd10Codes, blocksById);
   }, [caseData, specimenDictionary]);
 
   // Real, per direct guidance's own revised PS-105 scope: the actual
@@ -652,6 +696,36 @@ export function useSignOutWorkflow({
     if (!finalizeDecision.granted) {
       showToast(finalizeDecision.reason);
       return false;
+    }
+
+    // ── Pre-analytic date gate — hard block, per direct guidance's own
+    // cross-jurisdiction compliance research (UKAS ISO 15189 Clause 7.2,
+    // CAP/CLIA § 493.1241, RCPath, EU IVDR/ISO 15189, IANZ AS ISO
+    // 15189:2022, KAZA/KSP/KSLM, NATA/NPAAC — every real jurisdiction
+    // this app targets is a hard block here, never merely advisory; see
+    // resolvePreAnalyticDateGateConfig.ts for the full per-country
+    // citation/label/disclaimer). Checked BEFORE the fixation-time gate
+    // below — basic accession date/time is more foundational than
+    // biomarker-specific fixation timing, and there's no reason to walk
+    // someone through a narrower clinical gate before the more basic
+    // pre-analytic one. Both dates (collection AND laboratory receipt)
+    // are independently required per direct guidance's own UKAS Clause
+    // 7.2 research — a specimen missing either one blocks here.
+    const preAnalyticBlockingSpecimens: PreAnalyticDateGateSpecimen[] = (caseData.specimens ?? [])
+      .filter((sp: Specimen) => (!sp.collectedAt && !sp.collectedAtAdministrativeOverride)
+        || (!sp.receivedAt && !sp.receivedAtAdministrativeOverride))
+      .map((sp: Specimen) => ({
+        specimenId: sp.id,
+        label: sp.label,
+        description: sp.description,
+        missingCollectedAt: !sp.collectedAt && !sp.collectedAtAdministrativeOverride,
+        missingReceivedAt: !sp.receivedAt && !sp.receivedAtAdministrativeOverride,
+      }));
+
+    if (preAnalyticBlockingSpecimens.length > 0) {
+      setPreAnalyticDateGateSpecimens(preAnalyticBlockingSpecimens);
+      setPendingFinalizeArgs(excludedInstanceIds);
+      return false; // abort — do not finalize until the gate is resolved
     }
 
     // ── Fixation-time gate — hard block, per the design decision this was
@@ -759,7 +833,7 @@ export function useSignOutWorkflow({
           caseId: caseData.id,
           chargeRecordId: f.chargeRecordId,
           deficiencyType: f.deficiencyType,
-          severity: f.deficiencyType === 'NCCI_BUNDLING_VIOLATION' ? 'CRITICAL_REJECTION_RISK' : 'COMPLIANCE_WARNING',
+          severity: BILLING_DEFICIENCY_SEVERITY[f.deficiencyType],
           raisedByTrigger: f.deficiencyType === 'NCCI_BUNDLING_VIOLATION' ? 'AUTO_NCCI_CHECK' : 'AUTO_CROSSWALK_CHECK',
           auditorNotes: f.auditorNotes,
           createdBy: 'system',
@@ -854,7 +928,7 @@ export function useSignOutWorkflow({
       showToast('Finalization failed — please try again');
       return false;
     }
-  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
+  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
 
   // Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
   // into handleRequestFinalize." Genuinely case-wide, unlike

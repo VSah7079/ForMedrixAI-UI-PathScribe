@@ -111,6 +111,9 @@ import type { CaseComment } from '@/types/case/CaseComment';
 import { specimenDeficiencyService } from '@/services';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { FixativeTimeGateModal, type FixativeGateSpecimen, type FixativeResolution } from './modals/FixativeTimeGateModal';
+import { PreAnalyticDateGateModal, type PreAnalyticDateGateSpecimen, type PreAnalyticDateResolution } from './modals/PreAnalyticDateGateModal';
+import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
+import { resolvePreAnalyticDateGateConfig } from '@/services/billing/resolvePreAnalyticDateGateConfig';
 import SynopticSidebar    from '../../components/Synoptic/SynopticSidebar';
 import { useDirtyState } from '@/contexts/DirtyStateContext';
 import { useLogout } from '@/hooks/useLogout';
@@ -445,6 +448,11 @@ const SynopticReportPage: React.FC = () => {
   // ── Fixation-time signout gate ──────────────────────────────────────────────
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
   const [fixativeGateSpecimens, setFixativeGateSpecimens] = useState<FixativeGateSpecimen[] | null>(null);
+  // ── Pre-analytic date (collection/receipt) signout gate — real, per
+  // direct guidance's own cross-jurisdiction compliance research. Same
+  // real "own state, threaded through the sign-out hook" shape as
+  // fixativeGateSpecimens above.
+  const [preAnalyticDateGateSpecimens, setPreAnalyticDateGateSpecimens] = useState<PreAnalyticDateGateSpecimen[] | null>(null);
   // Remembers what finalizeCase was originally called with, so once the
   // gate is resolved we can retry with the exact same arguments rather
   // than losing e.g. which synoptic instances were excluded.
@@ -1293,6 +1301,39 @@ const SynopticReportPage: React.FC = () => {
     const sp = caseData?.specimens?.find(s => s.id === specimenId);
     const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
     if (!caseData?.id || !sp) return;
+
+    // Real, per direct guidance's own recommended fallback hierarchy:
+    // Date Collected (default) -> Date Received/Accessioned (fallback
+    // if Date Collected is null). Real fix, per direct correction: this
+    // used to fall straight to "now" whenever receivedAt was missing,
+    // which could silently resolve against the wrong billing rule
+    // version with no error raised. Per direct guidance's own explicit
+    // CAP/CLIA (§ 493.1241, COM.06100/COM.06200) correction: a
+    // placeholder/best-effort date must never be used to push a charge
+    // through either, even once the pre-analytic date gate
+    // (useSignOutWorkflow.ts) has already let the case itself sign out
+    // on a formally-documented administrative override. When neither a
+    // real collectedAt nor receivedAt exists, this specimen's billing
+    // is genuinely NOT resolved here — same honest "never fabricate,
+    // report the gap" posture resolveServiceCharge already uses for an
+    // unrecognized billingCode/date. The real, open SpecimenDeficiency
+    // already raised in handlePreAnalyticDateGateContinue is where this
+    // gap lives until a real date is recovered; re-triggering charge
+    // capture after that correction is a real, disclosed follow-up gap
+    // — not built here.
+    const dateOfService = sp.collectedAt ?? sp.receivedAt;
+    if (!dateOfService) {
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code NOT charged — pre-analytic date unresolved',
+        detail: `${block ? `${sp.label}${block.label}` : sp.label}: ${code} withheld — neither Date Collected nor Date Received is available (administrative override in effect). See open Pre-Analytic Date deficiency for this specimen.`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+      return;
+    }
+
     const versionsRes = await mockBillingRuleService.getAll();
     if (!versionsRes.ok) return;
     const charge = resolveServiceCharge(code, versionsRes.data, {
@@ -1301,11 +1342,7 @@ const SynopticReportPage: React.FC = () => {
       sourceLabel: block ? `${sp.label}${block.label}` : sp.label,
       specimenId,
       blockId,
-      // Real, deliberate choice: the specimen's own real receivedAt as
-      // date of service, not "now" - a billing decision made today
-      // still concerns clinical work actually performed on the real
-      // date the specimen was received, not the date it was reviewed.
-      dateOfService: sp.receivedAt ?? new Date().toISOString(),
+      dateOfService,
       resolvedBy: signingUser?.id ?? 'unknown',
       postSignoutContext,
     });
@@ -1988,6 +2025,18 @@ const SynopticReportPage: React.FC = () => {
         if (cfg.ok) watermarkText = cfg.data.watermarkText;
       }
 
+      // Real, per direct guidance's own cross-jurisdiction pre-analytic
+      // compliance research — same real, honest "sent for the separate
+      // PDF service to draw, can't verify it does" posture as
+      // watermarkText above. See generateReportPdfSnapshot's own
+      // identical computation for the full reasoning.
+      const usedPreAnalyticOverride = (caseData.specimens ?? []).some(
+        (sp: any) => sp.collectedAtAdministrativeOverride || sp.receivedAtAdministrativeOverride
+      );
+      const preAnalyticDisclaimerText = usedPreAnalyticOverride
+        ? resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country).disclaimerText
+        : undefined;
+
       const payload = {
         templateName: resolvedTemplateName,
         resolvedBy,
@@ -2021,6 +2070,9 @@ const SynopticReportPage: React.FC = () => {
         // absent (not sent as an empty string) for any case that isn't
         // 'pending-release'.
         watermarkText,
+        // Genuinely absent unless a real administrative override was
+        // used on this case — see this block's own comment above.
+        preAnalyticDisclaimerText,
       };
 
       const resp = await fetch(REPORT_PDF_ENDPOINT, {
@@ -2608,6 +2660,22 @@ const SynopticReportPage: React.FC = () => {
         if (cfg.ok) watermarkText = cfg.data.watermarkText;
       }
 
+      // Real, per direct guidance's own cross-jurisdiction pre-analytic
+      // compliance research: a mandatory report disclaimer is required
+      // whenever any specimen on this case was signed out on an
+      // administrative-override date (see PreAnalyticDateGateModal /
+      // resolvePreAnalyticDateGateConfig.ts). Same honest posture as
+      // watermarkText above - this app sends the real, resolved,
+      // jurisdiction-specific text to the separate PDF rendering
+      // service, but can't itself verify that service actually draws
+      // it onto the page.
+      const usedPreAnalyticOverride = (caseData.specimens ?? []).some(
+        (sp: any) => sp.collectedAtAdministrativeOverride || sp.receivedAtAdministrativeOverride
+      );
+      const preAnalyticDisclaimerText = usedPreAnalyticOverride
+        ? resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country).disclaimerText
+        : undefined;
+
       const payload = {
         templateName: resolvedTemplateName,
         resolvedBy,
@@ -2636,6 +2704,9 @@ const SynopticReportPage: React.FC = () => {
         // absent (not sent as an empty string) for any case that isn't
         // 'pending-release'.
         watermarkText,
+        // Genuinely absent unless a real administrative override was
+        // used on this case — see this block's own comment above.
+        preAnalyticDisclaimerText,
       };
       const resp = await fetch(REPORT_PDF_ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -3088,6 +3159,7 @@ const SynopticReportPage: React.FC = () => {
     generateReportPdfSnapshot, isOrchestrationMode, orchSections,
     setCaseSigned, setShowSignOutModal, setPendingReconciliation,
     countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
+    setPreAnalyticDateGateSpecimens,
     setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
     setActiveSpecimenId, setActiveReportType,
     setShowAmendmentModal, setShowFinalizeModal, openAmendmentDraft,
@@ -3173,6 +3245,83 @@ const SynopticReportPage: React.FC = () => {
       if (succeeded) await releasePendingAmendmentOrAddendum();
     })();
   }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setFixativeGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, finalizeCase, releasePendingAmendmentOrAddendum]);
+
+  // Real, per direct guidance's own cross-jurisdiction pre-analytic
+  // compliance research — same shape as handleFixativeGateContinue
+  // above, for PreAnalyticDateGateModal. Genuinely different in one
+  // way: a specimen resolved via administrative override raises a
+  // real, OPEN SpecimenDeficiency (raise(), never raiseAndResolve()) —
+  // this is a Pre-Analytic Non-Conformity warranting real
+  // corrective/preventive review, not an instant, closed documentation
+  // event. See def-missing-preanalytic-date's own doc comment.
+  const handlePreAnalyticDateGateContinue = useCallback(async (resolutions: PreAnalyticDateResolution[]) => {
+    if (!caseData) return;
+    const org = getOrganisationByHospitalId(caseData.originHospitalId);
+    const gateConfig = resolvePreAnalyticDateGateConfig(org?.country);
+
+    const patchedSpecimens = (caseData.specimens ?? []).map((sp: any) => {
+      const res = resolutions.find(r => r.specimenId === sp.id);
+      if (!res) return sp;
+      return {
+        ...sp,
+        ...(res.collectedAt ? { collectedAt: res.collectedAt } : {}),
+        ...(res.collectedAtAdministrativeOverride ? { collectedAtAdministrativeOverride: true } : {}),
+        ...(res.receivedAt ? { receivedAt: res.receivedAt } : {}),
+        ...(res.receivedAtAdministrativeOverride ? { receivedAtAdministrativeOverride: true } : {}),
+        ...(res.overrideComment ? { preAnalyticDateOverrideComment: res.overrideComment } : {}),
+      };
+    });
+
+    try {
+      await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, specimens: patchedSpecimens } as typeof prev) : prev);
+
+      // Real, OPEN SpecimenDeficiency per specimen that used an
+      // administrative override on either date — deliberately left
+      // open (not raiseAndResolve) so it reaches Operations/CAPA
+      // Engine review, matching def-outbound-dispatch-failure's own
+      // precedent. Fire-and-forget-adjacent: awaited here so a failure
+      // is at least logged, but never blocks the actual sign-out this
+      // gate already cleared.
+      await Promise.all(resolutions
+        .filter(res => res.collectedAtAdministrativeOverride || res.receivedAtAdministrativeOverride)
+        .map(res => {
+          const sp = caseData.specimens?.find((s: any) => s.id === res.specimenId);
+          if (!sp) return Promise.resolve();
+          const overriddenFields = [
+            res.collectedAtAdministrativeOverride ? 'collection' : null,
+            res.receivedAtAdministrativeOverride ? 'laboratory receipt' : null,
+          ].filter(Boolean).join(' and ');
+          return specimenDeficiencyService.raise({
+            caseId: caseData.id,
+            specimenId: res.specimenId,
+            specimenLabel: sp.label,
+            deficiencyTypeId: 'def-missing-preanalytic-date',
+            comment: `Specimen ${sp.label}: ${overriddenFields} date/time not recoverable at sign-out. Administrative override "${gateConfig.administrativeOverrideLabel}" applied per ${gateConfig.standardReference}. Reason: ${res.overrideComment ?? ''}`,
+            raisedBy: signingUser?.id ?? 'unknown',
+          }).catch(err => console.error('[PreAnalyticDateGate] Failed to raise deficiency:', err));
+        }));
+
+      showToast('Pre-analytic dates recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[PreAnalyticDateGate] Failed to persist resolutions:', err);
+      showToast('Could not save pre-analytic dates — please try again');
+      return;
+    }
+
+    setPreAnalyticDateGateSpecimens(null);
+    const args = pendingFinalizeArgs;
+    setPendingFinalizeArgs([]);
+    (async () => {
+      const succeeded = await finalizeCase(args);
+      if (succeeded) await releasePendingAmendmentOrAddendum();
+    })();
+  }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setPreAnalyticDateGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, finalizeCase, releasePendingAmendmentOrAddendum]);
 
   // Previously an anonymous inline closure on AddCodeModal's
   // onAddToSpecimens JSX prop — merges new ICD/SNOMED/CPT codes into the
@@ -4555,6 +4704,15 @@ const SynopticReportPage: React.FC = () => {
           specimens={fixativeGateSpecimens}
           onCancel={() => { setFixativeGateSpecimens(null); setPendingFinalizeArgs([]); }}
           onContinue={handleFixativeGateContinue}
+        />
+      )}
+
+      {preAnalyticDateGateSpecimens && caseData && (
+        <PreAnalyticDateGateModal
+          specimens={preAnalyticDateGateSpecimens}
+          config={resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country)}
+          onCancel={() => { setPreAnalyticDateGateSpecimens(null); setPendingFinalizeArgs([]); }}
+          onContinue={handlePreAnalyticDateGateContinue}
         />
       )}
 

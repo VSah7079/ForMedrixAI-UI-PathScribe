@@ -74,6 +74,23 @@ export interface IResolutionTypeService {
 export interface SpecimenDeficiency {
   id: ID;
   caseId: string;
+  /** Real, per direct guidance's own decision ahead of the Firestore
+   *  CAPA foundation build: added now, deliberately optional — making
+   *  this required would break every existing raise()/raiseAndResolve()
+   *  call site across the app (fixative-time gate, tissue discrepancy,
+   *  pre-analytic date gate, dictionary-mismatch), none of which
+   *  currently populate it. Real, going forward: every NEW real write
+   *  (especially FirestoreSpecimenDeficiencyService's own and any real
+   *  backend-raised deficiency) should populate this — retrofitting a
+   *  scoping field onto already-written Firestore documents later is
+   *  real, avoidable migration work this app doesn't have yet, so this
+   *  is added before the first real document exists, not after. */
+  organisationId?: string;
+  /** Same real reasoning as organisationId above — optional for the
+   *  same existing-call-site reason, but a specimen deficiency is
+   *  usually resolvable to a real Site via its own case's
+   *  originSiteId/originHospitalId when a caller has that context. */
+  siteId?: string;
   /**
    * Optional as of a previous pass — not every real deficiency is tied
    * to one specific specimen. "Missing Requisition" is the clearest
@@ -193,6 +210,13 @@ export interface SpecimenDeficiency {
  */
 export interface ManagementReview {
   id: ID;
+  /** Same real reasoning as SpecimenDeficiency.organisationId — added
+   *  now, before the Firestore CAPA foundation build, so real reviews
+   *  are scoped from their first real write rather than retrofitted
+   *  later. Deliberately no siteId here — ISO 15189 Management Review
+   *  is a lab/organisation-level activity by nature, and a real review
+   *  can legitimately span multiple sites within one organisation. */
+  organisationId?: string;
   reviewedBy: string;
   reviewedAt: string;
   /** Which closed deficiencies were included in this review's scope. */

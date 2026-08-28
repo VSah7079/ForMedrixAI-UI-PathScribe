@@ -274,6 +274,29 @@ const BatchManagementPage: React.FC = () => {
                 {'\u00A0'}
               </div>
             </button>
+            {/* Real feature, per direct guidance's own confirmed
+                architectural verdict on the Engraver Monitor
+                requirement (Option 3: thin, read-only status surface).
+                Same real, distinct-tile-navigates-to-its-own-page
+                pattern as Disposal/Pending Load above. */}
+            <button
+              className="ps-wl-filter-tile"
+              title="Engraver Monitor — real, high-level engraver device status from the Cassette Engine"
+              onClick={() => navigate('/batch-management/engraver-monitor')}
+              style={{
+                '--tile-bg': '#38bdf80d', '--tile-border': '#38bdf82e', '--tile-shadow': 'none',
+              } as React.CSSProperties}
+            >
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+                Engraver Monitor
+              </div>
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#38bdf8' } as React.CSSProperties}>
+                🖨️
+              </div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#38bdf8', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+                {'\u00A0'}
+              </div>
+            </button>
           </div>
 
           <div className="ps-batch-toolbar">

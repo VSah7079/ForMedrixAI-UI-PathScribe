@@ -18,7 +18,45 @@ const SEED_VERSION: ModifierTableVersion = {
   entries: DEFAULT_CPT_MODIFIERS,
 };
 
-const load    = (): ModifierTableVersion[] => storageGet<ModifierTableVersion[]>(STORAGE_KEY, [SEED_VERSION]);
+// Real, per direct request ahead of the Billing expert meeting - a
+// realistic PENDING_APPROVAL example for the "Pending Dictionary
+// Updates" queue (zero seed data confirmed directly, same real gap as
+// mockBillingRuleService.ts's own). Demonstrates the real BYOL
+// (bring-your-own-license) import path this file's own header
+// describes - licenseStatus: 'licensed', awaiting a different real
+// reviewer's approval before it ever replaces the active, synthetic
+// table above.
+//
+// Real, deliberate copyright care: even for a demo, this does NOT use
+// real AMA CPT modifier description text - that stays genuinely
+// copyrighted regardless of framing. The descriptions below are
+// short, generic, widely-known functional labels (the kind used
+// across any general medical billing reference, e.g. "26 =
+// professional component"), not verbatim official AMA language - only
+// covers a few real, commonly-referenced modifiers, not a full
+// licensed import, since fabricating a complete, convincing 15-entry
+// "real" table risks reading as more authoritative than it is.
+const SEED_PENDING_LICENSED_VERSION: ModifierTableVersion = {
+  id: 'modifier-v-seed-2026-pending',
+  label: 'AMA CPT Modifiers — 2026 quarterly import (sample)',
+  effectiveDate: '2026-09-01T00:00:00.000Z',
+  uploadedAt: '2026-08-26T13:20:00.000Z',
+  uploadedBy: 'PATH-UK-002',
+  isActive: false,
+  licenseStatus: 'licensed',
+  sourceFileName: 'ama-cpt-modifiers-2026-q3-sample.xlsx',
+  approvalStatus: 'PENDING_APPROVAL',
+  submittedForApprovalBy: 'PATH-UK-002',
+  entries: [
+    { code: '26', description: 'Professional component only (interpretation/report)' },
+    { code: 'TC', description: 'Technical component only (equipment/facility)' },
+    { code: '59', description: 'Distinct procedural service (separate from other same-day work)' },
+    { code: '91', description: 'Repeat clinical diagnostic laboratory test' },
+    { code: '22', description: 'Increased procedural service (significantly greater work than usual)' },
+  ],
+};
+
+const load    = (): ModifierTableVersion[] => storageGet<ModifierTableVersion[]>(STORAGE_KEY, [SEED_VERSION, SEED_PENDING_LICENSED_VERSION]);
 const persist = (versions: ModifierTableVersion[]) => storageSet(STORAGE_KEY, versions);
 
 const ok  = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data });

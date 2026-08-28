@@ -25,8 +25,7 @@
 
 import { caseRouter } from '../cases/CaseRouter';
 import { ConcurrencyConflictError } from '../cases/ConcurrencyConflictError';
-import type { Case } from '@/types/case/Case';
-import type { Specimen, HistologyBlock } from '@/types/case/Specimen';
+import { applyBlockException } from './blockExceptionMutation';
 import type { BlockExceptionEventPayload } from '@/types/events/BlockExceptionEventPayload';
 
 export interface ProcessBlockExceptionEventResult {
@@ -49,14 +48,6 @@ export interface ProcessBlockExceptionEventResult {
 // real follow-up work if this ever needs to survive a page reload.
 const processedMessageIds = new Set<string>();
 
-function findBlock(caseData: Case, specimenLetter: string, blockNumber: string): { specimen: Specimen; block: HistologyBlock } | undefined {
-  for (const specimen of caseData.specimens ?? []) {
-    if (specimen.label !== specimenLetter) continue;
-    const block = (specimen.blocks ?? []).find(b => b.label === blockNumber);
-    if (block) return { specimen, block };
-  }
-  return undefined;
-}
 
 /**
  * Applies an already-translated block exception event to the real
@@ -88,23 +79,19 @@ export async function processBlockExceptionEvent(payload: BlockExceptionEventPay
     return { messageId: payload.messageId, outcome: 'case-not-found', reason: `No case found for '${lookupId}'.` };
   }
 
-  const found = findBlock(caseData, payload.specimenLetter, payload.blockNumber);
+  const found = applyBlockException(caseData.specimens ?? [], {
+    specimenLetter: payload.specimenLetter,
+    blockNumber: payload.blockNumber,
+    status: payload.status,
+    note: payload.note,
+    reportedAt: payload.reportedAt,
+    timestamp: payload.timestamp,
+  });
   if (!found) {
     return { messageId: payload.messageId, outcome: 'block-not-found', reason: `Case ${caseData.id} has no block ${payload.specimenLetter}${payload.blockNumber}.` };
   }
 
-  const { specimen, block } = found;
-  const updatedSpecimens = (caseData.specimens ?? []).map(sp =>
-    sp.id !== specimen.id ? sp : {
-      ...sp,
-      blocks: (sp.blocks ?? []).map(b => b.id !== block.id ? b : {
-        ...b,
-        status: payload.status,
-        exceptionNote: payload.note ?? b.exceptionNote,
-        exceptionReportedAt: payload.reportedAt ?? payload.timestamp,
-      }),
-    }
-  );
+  const { specimens: updatedSpecimens, blockId } = found;
 
   try {
     await caseRouter.updateCase(caseData.id, { specimens: updatedSpecimens });
@@ -126,7 +113,7 @@ export async function processBlockExceptionEvent(payload: BlockExceptionEventPay
   }
 
   processedMessageIds.add(payload.messageId);
-  return { messageId: payload.messageId, outcome: 'applied', caseId: caseData.id, blockId: block.id };
+  return { messageId: payload.messageId, outcome: 'applied', caseId: caseData.id, blockId };
 }
 
 /** Test-only reset — processedMessageIds is a real, deliberate

@@ -47,6 +47,7 @@ import type {
   SpecimenDeficiency, DeficiencyType, ResolutionType, ManagementReview,
 } from '@/services/deficiencies/IDeficiencyService';
 import { ManagementReviewModal } from './modals/ManagementReviewModal';
+import { fetchGlobalDeficiencies } from '@/services/deficiencies/fetchGlobalDeficiencies';
 import { IntraopLinkageTab } from '@/components/QualityAssurance/IntraopLinkageTab';
 import { ReconciliationTab } from '@/components/QualityAssurance/ReconciliationTab';
 import { CountersignTurnaroundTab } from '@/components/QualityAssurance/CountersignTurnaroundTab';
@@ -526,6 +527,17 @@ const QualityAssurancePage: React.FC = () => {
   }, [location.search]);
   const [tab, setTab] = useState<Tab>('case-specimen');
   const [deficiencies, setDeficiencies] = useState<SpecimenDeficiency[]>([]);
+  // Real, per direct guidance's own decision: which currently-displayed
+  // deficiency ids came from the real, new Firestore foundation
+  // (fetchGlobalDeficiencies.ts) rather than mockSpecimenDeficiencyService.ts's
+  // own localStorage. Tracked separately rather than tagging
+  // SpecimenDeficiency itself with a UI-only field. Real, per direct
+  // guidance's own Step 3: now used to route
+  // handleResolve/handleContain/handleVerify below to the real
+  // /api/qa/deficiencies/* endpoints for a Firestore-sourced record, vs
+  // the existing mock service for everything else — the two are
+  // genuinely separate backing stores with no shared write path.
+  const [firestoreDeficiencyIds, setFirestoreDeficiencyIds] = useState<Set<string>>(new Set());
   const [deficiencyTypes, setDeficiencyTypes] = useState<DeficiencyType[]>([]);
   const [resolutionTypes, setResolutionTypes] = useState<ResolutionType[]>([]);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -549,7 +561,25 @@ const QualityAssurancePage: React.FC = () => {
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
   const loadAll = () => {
-    specimenDeficiencyService.getAll().then(res => { if (res.ok) setDeficiencies(res.data); });
+    // Real, per direct guidance's own Step 2: merges the mock
+    // service's own real records with the real, new Firestore
+    // foundation (fetchGlobalDeficiencies.ts) into the same list — the
+    // two are genuinely disjoint id spaces (mock ids are
+    // 'def-' + Date.now(); Firestore auto-ids are random strings), so
+    // no real collision/dedup concern. Real, deliberate .catch(): a
+    // failure reading the new, still-early Firestore collection (e.g.
+    // a real composite-index-not-yet-created error on first real use)
+    // must never take down the whole page's real, working mock-service
+    // data — this is additive, not a replacement, and stays that way
+    // until Step 3's real lifecycle endpoints exist.
+    Promise.all([
+      specimenDeficiencyService.getAll(),
+      fetchGlobalDeficiencies().catch(err => { console.error('[QualityAssurancePage] fetchGlobalDeficiencies failed', err); return []; }),
+    ]).then(([mockRes, firestoreDefs]) => {
+      const mockDefs = mockRes.ok ? mockRes.data : [];
+      setDeficiencies([...mockDefs, ...firestoreDefs]);
+      setFirestoreDeficiencyIds(new Set(firestoreDefs.map(d => d.id)));
+    });
     managementReviewService.getAll().then(res => { if (res.ok) setManagementReviews(res.data); });
     mockBillingDeficiencyService.getAll().then(res => { if (res.ok) setBillingDeficiencies(res.data); });
     mockOutboundChargeQueueService.getFailed().then(res => { if (res.ok) setFailedDlqCount(res.data.length); });
@@ -804,26 +834,61 @@ const QualityAssurancePage: React.FC = () => {
   const containingItem = deficiencies.find(d => d.id === containingId) ?? null;
   const verifyingItem = deficiencies.find(d => d.id === verifyingId) ?? null;
 
+  // Real, per direct guidance's own Step 3: real /api/qa/deficiencies/*
+  // endpoints now exist for a Firestore-sourced (Engine-raised)
+  // deficiency — these three handlers branch on
+  // firestoreDeficiencyIds (set in loadAll() above), calling the real
+  // endpoint for those and leaving the existing, working mock-service
+  // path untouched for everything else. This is what makes the
+  // disabled-button state from Step 2 no longer needed for a
+  // Firestore-sourced record — the real action now actually works.
   const handleResolve = (resolutionTypeId: string, correctiveAction: string, rootCause: string, preventiveAction: string, verificationDueDate: string) => {
     if (!resolvingId) return;
+    const resolvedBy = user?.id ?? 'unknown';
+    const done = () => { setResolvingId(null); loadAll(); };
+    if (firestoreDeficiencyIds.has(resolvingId)) {
+      fetch('/api/qa/deficiencies/resolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deficiencyId: resolvingId, resolutionTypeId, correctiveAction, rootCause, preventiveAction: preventiveAction || undefined, resolvedBy, verificationDueDate }),
+      }).then(done);
+      return;
+    }
     specimenDeficiencyService.resolve(resolvingId, {
       resolutionTypeId, correctiveAction, rootCause, preventiveAction: preventiveAction || undefined,
-      resolvedBy: user?.id ?? 'unknown', verificationDueDate,
-    }).then(() => { setResolvingId(null); loadAll(); });
+      resolvedBy, verificationDueDate,
+    }).then(done);
   };
 
   const handleContain = (resolutionTypeId: string, resolutionComment: string) => {
     if (!containingId) return;
+    const resolvedBy = user?.id ?? 'unknown';
+    const done = () => { setContainingId(null); loadAll(); };
+    if (firestoreDeficiencyIds.has(containingId)) {
+      fetch('/api/qa/deficiencies/contain', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deficiencyId: containingId, resolutionTypeId, resolutionComment, resolvedBy }),
+      }).then(done);
+      return;
+    }
     specimenDeficiencyService.containImmediately(containingId, {
-      resolutionTypeId, resolutionComment, resolvedBy: user?.id ?? 'unknown',
-    }).then(() => { setContainingId(null); loadAll(); });
+      resolutionTypeId, resolutionComment, resolvedBy,
+    }).then(done);
   };
 
   const handleVerify = (outcome: 'effective' | 'recurred', comment: string) => {
     if (!verifyingId) return;
+    const verifiedBy = user?.id ?? 'unknown';
+    const done = () => { setVerifyingId(null); loadAll(); };
+    if (firestoreDeficiencyIds.has(verifyingId)) {
+      fetch('/api/qa/deficiencies/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deficiencyId: verifyingId, outcome, comment, verifiedBy }),
+      }).then(done);
+      return;
+    }
     specimenDeficiencyService.verifyEffectiveness(verifyingId, {
-      outcome, comment, verifiedBy: user?.id ?? 'unknown',
-    }).then(() => { setVerifyingId(null); loadAll(); });
+      outcome, comment, verifiedBy,
+    }).then(done);
   };
 
   const handleSubmitReview = (deficiencyIds: string[], findings: string) => {

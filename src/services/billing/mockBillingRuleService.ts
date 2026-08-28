@@ -94,6 +94,17 @@ const SEED_VERSIONS: BillingRuleVersion[] = [
   { billingCode: 'PAP-THINPREP', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '88175', description: 'Code 88175 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, liquid-based Pap (ThinPrep), automated screening with manual review', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search. One of several real, valid liquid-based codes (88142/88143 manual screening, 88174/88175 automated) depending on the lab\'s own screening workflow - confirm against your actual workflow before relying on this default. RVU intentionally left unset.' },
   { billingCode: 'HPV-HIGHRISK-SCREEN', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '87624', description: 'Code 87624 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, high-risk HPV types, pooled result - billed when only the screen is performed', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search (revised 2025 CPT set). RVU intentionally left unset.' },
   { billingCode: 'HPV-GENOTYPING', version: 1, effectiveFrom: '2026-01-01', effectiveTo: null, status: 'ACTIVE', cpt: '87625', description: 'Code 87625 — Specimen Level', level: 'specimen', billingType: 'Global', quantityRules: 'per specimen, HPV types 16/18 (includes 45 if performed) - individually reported, real reflex test following a positive 87624 screen', country: 'US', createdAt: '2026-01-01T00:00:00.000Z', createdBy: 'system-seed', notes: 'Synthetic description per PS-92; real code verified via direct search. Honest, disclosed limitation: this app has no real, conditional result-based billing logic yet - see the "HPV High-Risk Screening with Reflex Genotyping" Diagnostic Assay entry\'s own notes for how the reflex portion is (and is not yet) handled.' },
+  // Real, per direct request ahead of the Billing expert meeting - a
+  // realistic PENDING_APPROVAL example (Pending Billing Rule
+  // Approvals had zero seed data, confirmed directly). A plausible
+  // annual RVU update to an EXISTING, active code (88307 v1 stays
+  // ACTIVE and resolvable throughout - this v2 draft is not yet
+  // resolvable by resolveBillingRuleAt, per this file's own real
+  // PENDING_APPROVAL semantics), submitted by one real user, awaiting
+  // a different real reviewer. Honest, explicit disclosure: the RVU
+  // delta below is illustrative for the demo, not a verified real
+  // 2027 CMS Physician Fee Schedule figure - see notes.
+  { billingCode: '88307', version: 2, effectiveFrom: '2027-01-01', effectiveTo: null, status: 'PENDING_APPROVAL', cpt: '88307', description: 'Code 88307 — Specimen Level', rvuWork: 1.58, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-08-20T09:00:00.000Z', createdBy: 'PATH-UK-002', changeReason: 'Illustrative example ahead of the annual CMS Physician Fee Schedule update cycle (final rule typically released in November for the following year) - RVU delta shown is for demo purposes only, not a verified real 2027 figure.', submittedForApprovalBy: 'PATH-UK-002', submittedForApprovalAt: '2026-08-20T09:00:00.000Z' },
 ];
 
 const load    = (): BillingRuleVersion[] => storageGet<BillingRuleVersion[]>(STORAGE_KEY, SEED_VERSIONS);

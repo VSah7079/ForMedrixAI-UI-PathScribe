@@ -180,7 +180,7 @@ const NcciEditRulesSection: React.FC = () => {
         </p>
       )}
 
-      <div className="ps-qa-tab-toolbar">
+      <div className="ps-conf-row-actions">
         <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
         <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
         <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={handleFileSelect} />

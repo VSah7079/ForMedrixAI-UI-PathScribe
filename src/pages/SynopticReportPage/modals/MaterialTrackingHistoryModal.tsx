@@ -38,6 +38,9 @@ import {
   resolveDecantDisplayId, resolveDecantSlideDisplayId,
   resolveAliquotDisplayId, resolveDecantAliquotDisplayId,
 } from '@/utils/materialDisplayId';
+import { fetchDispatchHistoryForCase, type DispatchHistoryEntry } from '@/services/engravers/fetchDispatchHistoryForCase';
+import { mockCassetteColorService } from '@/services/cassetteColors/mockCassetteColorService';
+import DispatchHistoryTimeline from '../components/DispatchHistoryTimeline';
 
 interface MaterialTrackingHistoryModalProps {
   caseData: Case;
@@ -499,6 +502,24 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
     window.print();
   };
 
+  // Real, per direct guidance's own Clinical Job History spec —
+  // case-level dispatch/exception history, additive to this modal's
+  // existing per-item MaterialLocation timeline above. See
+  // DispatchHistoryTimeline.tsx's own header for why this is case-
+  // level rather than wired into the existing per-node selection —
+  // the underlying event data has no block-level identifier to match
+  // against a specific tree node.
+  const [dispatchHistory, setDispatchHistory] = useState<DispatchHistoryEntry[]>([]);
+  const [colorNames, setColorNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetchDispatchHistoryForCase(caseData.id).then(setDispatchHistory).catch(err => {
+      console.error('[MaterialTrackingHistoryModal] failed to load dispatch history', err);
+    });
+    mockCassetteColorService.getAll().then(res => {
+      if (res.ok) setColorNames(Object.fromEntries(res.data.map(c => [c.key, c.displayName])));
+    });
+  }, [caseData.id]);
+
   return ReactDOM.createPortal(
     <div className="ps-overlay ps-mth-overlay" onClick={onClose}>
       <div className="ps-modal-dark ps-mth-modal ps-mth-print-area" onClick={e => e.stopPropagation()}>
@@ -521,6 +542,19 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
             onChange={e => setQuery(e.target.value)}
           />
           {query && <span className="ps-mth-search-count">{visibleItems.length} of {flatItems.length} items match</span>}
+        </div>
+
+        {/* Real, per direct guidance's own Clinical Job History spec —
+            case-level cassette dispatch/exception history, additive to
+            the existing per-item tree below. Screen-only, same real
+            "hidden on print, print gets its own comprehensive section"
+            posture as the split-pane view below — see this section's
+            own print-only counterpart further down. */}
+        <div className="ps-mth-dispatch-history-section" style={{ padding: '0 16px 12px', maxHeight: 220, overflowY: 'auto' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8899aa', marginBottom: 8 }}>
+            🖨️ Cassette Dispatch &amp; Block Exception History
+          </div>
+          <DispatchHistoryTimeline entries={dispatchHistory} colorNames={colorNames} />
         </div>
 
         {/* Real, interactive split-pane view — screen only, hidden on
@@ -551,6 +585,13 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
           ) : (
             flatItems.map(item => <PrintNode key={item.id} item={item} />)
           )}
+          {/* Real, per direct guidance's own Clinical Job History spec
+              — same case-level history as the screen-only section
+              above, included in the printed comprehensive record too. */}
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #444' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Cassette Dispatch &amp; Block Exception History</div>
+            <DispatchHistoryTimeline entries={dispatchHistory} colorNames={colorNames} />
+          </div>
         </div>
       </div>
     </div>,

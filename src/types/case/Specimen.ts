@@ -548,6 +548,35 @@ export interface Specimen {
   receivedAt?: string;
   /** When the specimen was collected (if known) */
   collectedAt?: string;
+  /**
+   * Real, per direct guidance's own cross-jurisdiction pre-analytic
+   * compliance research (resolvePreAnalyticDateGateConfig.ts) - true
+   * only when receivedAt was never genuinely recoverable and a real,
+   * audited administrative override (e.g. "Date Not Provided" — the
+   * exact label is jurisdiction-specific, see that file) was applied
+   * via PreAnalyticDateGateModal at sign-out, instead of receivedAt
+   * itself. Deliberately a separate flag rather than writing a
+   * sentinel string into receivedAt - receivedAt stays a real
+   * ISO-date-or-undefined field everywhere else in this app; a
+   * consumer must check this flag to render the real, localized
+   * override label instead of treating an empty receivedAt as a
+   * plain data gap. Same "companion flag, never fabricate the value
+   * itself" posture as SpecimenProcessing.processedAtIsEstimated.
+   */
+  receivedAtAdministrativeOverride?: boolean;
+  /** Same real override posture as receivedAtAdministrativeOverride
+   *  above, for collectedAt specifically - both dates are
+   *  independently required per direct guidance's own UKAS ISO 15189
+   *  Clause 7.2 research ("date and time of collection AND laboratory
+   *  receipt"), so either one can be missing and separately overridden. */
+  collectedAtAdministrativeOverride?: boolean;
+  /** Required free-text reason captured at the moment either override
+   *  above was applied (PreAnalyticDateGateModal) - the real, audited
+   *  justification for why neither a documented nor estimated date
+   *  was possible. Shared between both override flags since a
+   *  specimen missing both dates at once still only needs one real
+   *  explanation, not two duplicate comments. */
+  preAnalyticDateOverrideComment?: string;
   /** Flags applied to this specimen */
   specimenFlags?: SpecimenFlag[];
   /**

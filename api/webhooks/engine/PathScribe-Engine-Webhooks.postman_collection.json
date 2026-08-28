@@ -1,0 +1,283 @@
+{
+  "info": {
+    "name": "PathScribe Engine Webhooks",
+    "description": "Manual verification suite for /api/webhooks/engine/* against vercel dev (http://localhost:3000) or a Vercel staging preview URL. Set the collection variables baseUrl and apiKey before running (Collection > Variables tab, or a Postman Environment). apiKey must match the real ENGINE_WEBHOOK_SECRET configured on whichever deployment you're pointing at.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiKey", "value": "REPLACE_WITH_REAL_ENGINE_WEBHOOK_SECRET" }
+  ],
+  "item": [
+    {
+      "name": "Cassette Dispatch Outcome",
+      "item": [
+        {
+          "name": "Auth Guard Failure (no x-api-key) -> 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/webhooks/engine/cassette-dispatch-outcome",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-cdo-noauth-001\",\n  \"caseId\": \"S26-4403\",\n  \"requestedColorKey\": \"COLOR_BIOPSY\",\n  \"outcome\": \"fallback_used\",\n  \"reportedAt\": \"2026-08-27T12:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Malformed Payload (bad outcome) -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/cassette-dispatch-outcome",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-cdo-badpayload-001\",\n  \"caseId\": \"S26-4403\",\n  \"requestedColorKey\": \"COLOR_BIOPSY\",\n  \"outcome\": \"INVALID_STATUS\",\n  \"reportedAt\": \"2026-08-27T12:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Happy Path Dispatch -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/cassette-dispatch-outcome",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-cdo-happy-001\",\n  \"caseId\": \"S26-4403\",\n  \"specimenLabel\": \"A\",\n  \"requestedColorKey\": \"COLOR_BIOPSY\",\n  \"actualColorKey\": \"COLOR_WHITE\",\n  \"outcome\": \"fallback_used\",\n  \"message\": \"Hopper empty (Postman manual test)\",\n  \"reportedAt\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Redelivery (same messageId as Happy Path) -> 200 already-processed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/cassette-dispatch-outcome",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-cdo-happy-001\",\n  \"caseId\": \"S26-4403\",\n  \"requestedColorKey\": \"COLOR_BIOPSY\",\n  \"actualColorKey\": \"COLOR_WHITE\",\n  \"outcome\": \"fallback_used\",\n  \"reportedAt\": \"2026-08-27T12:00:00.000Z\"\n}"
+            }
+          },
+          "description": "Run the Happy Path request first. This request reuses the exact same messageId — response should say status: already-processed, and processed_messages should still show exactly one document for postman-cdo-happy-001."
+        }
+      ]
+    },
+    {
+      "name": "Block Exception",
+      "item": [
+        {
+          "name": "Auth Guard Failure (no x-api-key) -> 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/webhooks/engine/block-exception",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-be-noauth-001\",\n  \"accessionNumber\": \"S26-4403\",\n  \"specimenLetter\": \"A\",\n  \"blockNumber\": \"1\",\n  \"status\": \"Lost\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Malformed Payload (bad status) -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/block-exception",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-be-badpayload-001\",\n  \"accessionNumber\": \"S26-4403\",\n  \"specimenLetter\": \"A\",\n  \"blockNumber\": \"1\",\n  \"status\": \"INVALID_STATUS\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          },
+          "description": "Check the integration_errors collection afterward for a real PAYLOAD_VALIDATION_FAILED entry with accessionNumber S26-4403."
+        },
+        {
+          "name": "Case Not Found -> 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/block-exception",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-be-notfound-001\",\n  \"accessionNumber\": \"DOES-NOT-EXIST-999\",\n  \"specimenLetter\": \"A\",\n  \"blockNumber\": \"1\",\n  \"status\": \"Lost\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          },
+          "description": "Confirm the cases collection is unmutated and check integration_errors is NOT written for this (404 is a real, valid outcome for a well-formed payload — not a validation failure)."
+        },
+        {
+          "name": "Happy Path (replace accessionNumber with a real case) -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/block-exception",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-be-happy-001\",\n  \"accessionNumber\": \"REPLACE_WITH_A_REAL_ACCESSION\",\n  \"specimenLetter\": \"A\",\n  \"blockNumber\": \"1\",\n  \"status\": \"Damaged\",\n  \"note\": \"Postman manual test\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          },
+          "description": "Replace accessionNumber and blockNumber with a real case/block from your own test data before running. Verify the block's status genuinely changed via the app UI afterward."
+        }
+      ]
+    },
+    {
+      "name": "Material Location",
+      "item": [
+        {
+          "name": "Auth Guard Failure (no x-api-key) -> 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/webhooks/engine/material-location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-ml-noauth-001\",\n  \"accessionNumber\": \"S26-4403\",\n  \"specimenLetter\": \"A\",\n  \"target\": { \"level\": \"specimen\" },\n  \"location\": \"Grossing\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Malformed Payload (missing specimenLetter, non-matrix target) -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/material-location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-ml-badpayload-001\",\n  \"accessionNumber\": \"S26-4403\",\n  \"target\": { \"level\": \"specimen\" },\n  \"location\": \"Grossing\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Case Not Found -> 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/material-location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-ml-notfound-001\",\n  \"accessionNumber\": \"DOES-NOT-EXIST-999\",\n  \"specimenLetter\": \"A\",\n  \"target\": { \"level\": \"specimen\" },\n  \"location\": \"Grossing\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Happy Path (matrix_block, no specimenLetter needed) -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/material-location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-ml-happy-001\",\n  \"accessionNumber\": \"REPLACE_WITH_A_REAL_ACCESSION\",\n  \"target\": { \"level\": \"matrix_block\", \"matrixBlockId\": \"REPLACE_WITH_A_REAL_MATRIX_BLOCK_ID\" },\n  \"location\": \"Sectioning\",\n  \"action\": \"Postman manual test\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"sourceSystem\": \"OTHER\"\n}"
+            }
+          },
+          "description": "Demonstrates the matrix_block target level, which deliberately needs no specimenLetter at all. Replace accessionNumber/matrixBlockId with real values first."
+        }
+      ]
+    },
+    {
+      "name": "Engraver Status",
+      "item": [
+        {
+          "name": "Auth Guard Failure (no x-api-key) -> 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/webhooks/engine/engraver-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-es-noauth-001\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"organisationId\": \"ORG-TEST\",\n  \"deviceId\": \"ENG-TEST-01\",\n  \"status\": \"online\",\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Malformed Payload (bad supplyWarnings code) -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/engraver-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-es-badpayload-001\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"organisationId\": \"ORG-TEST\",\n  \"deviceId\": \"ENG-TEST-01\",\n  \"status\": \"warning\",\n  \"supplyWarnings\": [{ \"code\": \"NOT_A_REAL_CODE\" }],\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Happy Path (warning, supply low) -> 200 applied",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/engraver-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-es-happy-001\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"organisationId\": \"ORG-TEST\",\n  \"deviceId\": \"ENG-TEST-01\",\n  \"deviceName\": \"Grossing Bench 01\",\n  \"status\": \"warning\",\n  \"supplyWarnings\": [{ \"code\": \"CASSETTE_SUPPLY_LOW\", \"colorKey\": \"COLOR_BIOPSY\" }],\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          },
+          "description": "Check the Engraver Monitor page (Batch Management) afterward — ENG-TEST-01 should appear with a Warning badge and \"Blue Low\" (COLOR_BIOPSY resolves to Blue)."
+        },
+        {
+          "name": "Stale Telemetry (older timestamp than Happy Path) -> 200 stale-ignored",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/engraver-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-es-stale-001\",\n  \"timestamp\": \"2026-08-27T11:00:00.000Z\",\n  \"organisationId\": \"ORG-TEST\",\n  \"deviceId\": \"ENG-TEST-01\",\n  \"status\": \"online\",\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          },
+          "description": "Run Happy Path (timestamp 12:00) first. This request has an earlier timestamp (11:00) — response should say status: stale-ignored, and the engraver_devices document should still show the Happy Path's warning status, not this one's online status."
+        },
+        {
+          "name": "Redelivery (same messageId as Happy Path) -> 200 already-processed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/webhooks/engine/engraver-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"postman-es-happy-001\",\n  \"timestamp\": \"2026-08-27T12:00:00.000Z\",\n  \"organisationId\": \"ORG-TEST\",\n  \"deviceId\": \"ENG-TEST-01\",\n  \"status\": \"online\",\n  \"sourceSystem\": \"Postman manual test\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

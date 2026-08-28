@@ -1,0 +1,117 @@
+// firestore.rules.engine-webhooks.txt
+// ─────────────────────────────────────────────────────────────────────────────
+// Real, per direct guidance's own security review — rules for the four
+// NEW collections this session's Engine webhook work introduced:
+// processed_messages, integration_errors, engraver_devices,
+// pending_engine_notifications.
+//
+// This is a FRAGMENT, deliberately meant to be merged into this
+// project's real, existing firestore.rules (which lives at the repo
+// root and was never part of what's been uploaded to me this session -
+// same blind spot as package.json/vite.config.ts/api/ before those
+// were explicitly shared). Do not deploy this file standalone; it has
+// no `rules_version` or `service cloud.firestore { match /databases/... }`
+// wrapper of its own, since a real project can only have ONE such
+// wrapper, and this project already has one.
+//
+// Real, deliberate exclusion: the `cases` collection is NOT covered
+// here. This app's real, existing client-side write path for cases
+// (caseRouter.updateCase() -> FirestoreCaseService.ts) is the live
+// write mechanism for the entire app's core pathology workflow -
+// sign-out, block edits, amendments, everything a pathologist does in
+// the UI. Any rule change to that collection has to account for every
+// real, legitimate client write across the whole app, which is
+// genuinely outside what this session's Engine webhook work can
+// responsibly assess. applyEngineCaseUpdate.ts (this session's own
+// case-mutation path) uses the Admin SDK exclusively - it bypasses
+// these rules entirely regardless of what `cases`' own rule ends up
+// being, so nothing here needs to grant or restrict it any access.
+//
+// Real, foundational precondition, confirmed directly this session:
+// this app has NO real Firebase Authentication wired in anywhere
+// (AuthContext.tsx is a custom, localStorage-backed mock; zero calls
+// to signInWithEmailAndPassword/signInAnonymously/getAuth() exist in
+// the whole codebase). PRODUCTION_MIGRATION.md's own checklist lists
+// "Ensure Firebase Auth is initialised" as a still-to-do step, not a
+// completed one. Every rule below is written accordingly - none of
+// them gate on request.auth, since request.auth is always null for
+// every real request this app makes today. Once real Firebase Auth
+// (or some other server-verifiable session mechanism) exists, these
+// should be revisited - particularly engraver_devices and
+// pending_engine_notifications, which currently allow open reads
+// specifically BECAUSE there's no real identity to check yet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+    // ── Engine webhook internal collections - Admin SDK only ────────────────
+    // Nothing in src/ ever reads or writes these directly; every real
+    // access goes through api/webhooks/engine/_lib/*.ts, which uses
+    // firebase-admin and bypasses these rules entirely. Locking client
+    // access to `false` costs nothing real and closes a real, open door.
+    match /processed_messages/{messageId} {
+      allow read, write: if false;
+    }
+
+    match /integration_errors/{errorId} {
+      allow read, write: if false;
+    }
+
+    // ── Engraver Monitor's own read surface ──────────────────────────────────
+    // fetchEngraverDevices.ts (src/services/engravers/) reads this
+    // collection directly via the client SDK - real, legitimate, and
+    // the only real client access this collection needs. Real,
+    // disclosed tradeoff: `allow read: if true` is open to anyone who
+    // can reach this Firestore project at all, since there's no real
+    // identity to check yet - device status/warnings are coarse and
+    // carry no patient data (EngraverStatusEventPayload.ts's own
+    // header), which is a real, deliberate reason this is a lower-risk
+    // open read than pending_engine_notifications below, not an
+    // oversight. Revisit once real auth exists.
+    match /engraver_devices/{deviceId} {
+      allow read: if true;
+      allow write: if false; // upsertEngraverStatus.ts (Admin SDK) is the only real writer
+    }
+
+    // ── Pending Engine notifications - real, disclosed PHI exposure ─────────
+    // usePendingEngineNotifications.ts (src/hooks/) reads this
+    // collection via the client SDK and NEVER writes to it (see that
+    // file's own header for why the write was removed this session).
+    // Real, IMPORTANT distinction from engraver_devices above: this
+    // collection's own documents carry a real caseId, and the
+    // block-exception/material-location payloads nested inside can
+    // carry real accession numbers - genuinely more sensitive than a
+    // coarse device status. `allow read: if true` here is the same
+    // real, disclosed tradeoff as above (no real identity to check
+    // yet), but the actual exposure is real PHI-adjacent identifiers,
+    // not just equipment status - this is the single most important
+    // rule to revisit the moment real Firebase Auth (or an equivalent
+    // server-verifiable session) exists, ahead of engraver_devices.
+    match /pending_engine_notifications/{notificationId} {
+      allow read: if true;
+      allow write: if false; // the three engine webhook endpoints (Admin SDK) are the only real writers
+    }
+
+    // ── Specimen deficiencies (CAPA) - real Firestore foundation ─────────────
+    // Real, per direct guidance's own decision: the first piece of a
+    // genuine, Firestore-backed CAPA data layer, alongside
+    // raiseSpecimenDeficiency.ts (Admin SDK, backend-only),
+    // fetchSpecimenDeficienciesForCase.ts (client SDK, per-case,
+    // read-only), and fetchGlobalDeficiencies.ts (client SDK, the
+    // cross-case Operations/CAPA Engine queue QualityAssurancePage.tsx
+    // needs, also read-only).
+    // Real, deliberate scope: read-only for the client, same as every
+    // other rule in this fragment - `allow write: if false` here does
+    // NOT yet cover the real, legitimate client actions a QA reviewer
+    // needs (resolve/containImmediately/verifyEffectiveness/
+    // raiseAndResolve) - those still run entirely against
+    // mockSpecimenDeficiencyService.ts's own localStorage today, a
+    // real, separate system this rule doesn't touch. Whether that
+    // lifecycle ever needs its own real backend endpoints (the same
+    // "no server-verifiable identity yet" question already raised for
+    // pending_engine_notifications, but higher-stakes here - this is
+    // real, compliance-relevant CAPA data, not transient notification
+    // bookkeeping) is a real, NOT-yet-decided question - see this
+    // session's own open flag on it.
+    match /specimen_deficiencies/{deficiencyId} {
+      allow read: if true;
+      allow write: if false; // raiseSpecimenDeficiency.ts (Admin SDK) is the only real writer today
+    }

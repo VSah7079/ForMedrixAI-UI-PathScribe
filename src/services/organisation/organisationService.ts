@@ -69,7 +69,15 @@ export interface Organisation {
    *  AccessionPage.tsx now reads from instead of hardcoding either one.
    */
   enterpriseId:  string;
-  country:       'UK' | 'US' | 'AU' | 'CA';
+  /** Real, per direct guidance's own cross-jurisdiction pre-analytic
+   *  compliance research (resolvePreAnalyticDateGateConfig.ts) - widened
+   *  from the original 'UK' | 'US' | 'AU' | 'CA' to cover every real
+   *  market PathScribe targets. 'EU' is a deliberate, single generic
+   *  bucket per direct guidance's own table (one combined "European
+   *  Union" row spanning COFRAC/DAkkS/ENAC, not per-member-state) -
+   *  narrower to a specific EU country only if a real, later need for
+   *  that granularity is confirmed. */
+  country:       'UK' | 'US' | 'AU' | 'CA' | 'EU' | 'NZ' | 'KR';
   locale:        string;
   timezone:      string;
   contractStart: string;

@@ -81,6 +81,7 @@ function baseParams(overrides: Partial<Parameters<typeof useSignOutWorkflow>[0]>
     countersignFeedback: '',
     specimenDictionary: [],
     setFixativeGateSpecimens: vi.fn(),
+    setPreAnalyticDateGateSpecimens: vi.fn(),
     setPendingFinalizeArgs: vi.fn(),
     synopticPanelRef: { current: { validateRequired: vi.fn().mockReturnValue([]), getUncertainRequiredFields: vi.fn().mockReturnValue([]), getBlockingUnverifiedFields: vi.fn().mockReturnValue([]), sweepAndGetFinalState: vi.fn().mockReturnValue({ verificationSummary: {} }) } } as any,
     setAlertFieldId: vi.fn(),
@@ -284,11 +285,54 @@ describe('useSignOutWorkflow — finalizeCase', () => {
     expect(showToast).toHaveBeenCalledWith('No relationship to this case.');
   });
 
+  it('the pre-analytic date gate hard-blocks finalization when a specimen is missing collectedAt, and checks BEFORE the fixative-time gate', async () => {
+    const setPreAnalyticDateGateSpecimens = vi.fn();
+    const setFixativeGateSpecimens = vi.fn();
+    const setPendingFinalizeArgs = vi.fn();
+    const caseData = makeTestCase({
+      // Missing collectedAt only — receivedAt present. Also would
+      // separately trigger the fixative-time gate (no dictionary entry
+      // here, so it doesn't) — this isolates the pre-analytic gate.
+      specimens: [{ id: 'SP-1', label: 'A', description: 'Breast', receivedAt: '2026-01-01T01:00:00Z' }] as any,
+    });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, setPreAnalyticDateGateSpecimens, setFixativeGateSpecimens, setPendingFinalizeArgs })));
+
+    const succeeded = await act(async () => result.current.finalizeCase(['excluded-1']));
+
+    expect(succeeded).toBe(false);
+    expect(setPreAnalyticDateGateSpecimens).toHaveBeenCalledWith([
+      { specimenId: 'SP-1', label: 'A', description: 'Breast', missingCollectedAt: true, missingReceivedAt: false },
+    ]);
+    expect(setPendingFinalizeArgs).toHaveBeenCalledWith(['excluded-1']);
+    // Never reaches the fixative-time gate — the pre-analytic gate
+    // returns false first.
+    expect(setFixativeGateSpecimens).not.toHaveBeenCalled();
+  });
+
+  it('the pre-analytic date gate does NOT block a specimen with a real administrative-override flag set instead of a real date', async () => {
+    const setPreAnalyticDateGateSpecimens = vi.fn();
+    const caseData = makeTestCase({
+      specimens: [{
+        id: 'SP-1', label: 'A', description: 'Breast',
+        receivedAt: '2026-01-01T01:00:00Z',
+        collectedAtAdministrativeOverride: true,
+      }] as any,
+    });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, setPreAnalyticDateGateSpecimens })));
+
+    await act(async () => { await result.current.finalizeCase(); });
+
+    expect(setPreAnalyticDateGateSpecimens).not.toHaveBeenCalled();
+  });
+
   it('the fixative-time gate hard-blocks finalization for a specimen requiring it, and stores the pending args for after the gate resolves', async () => {
     const setFixativeGateSpecimens = vi.fn();
     const setPendingFinalizeArgs = vi.fn();
     const caseData = makeTestCase({
-      specimens: [{ id: 'SP-1', label: 'A', description: 'Breast', specimenDictionaryEntryId: 'entry-1', processing: {} }] as any,
+      // collectedAt/receivedAt both present — isolates this test to the
+      // fixative-time gate specifically, not the separate pre-analytic
+      // date gate (checked earlier in finalizeCase).
+      specimens: [{ id: 'SP-1', label: 'A', description: 'Breast', specimenDictionaryEntryId: 'entry-1', collectedAt: '2026-01-01T00:00:00Z', receivedAt: '2026-01-01T01:00:00Z', processing: {} }] as any,
     });
     const specimenDictionary = [{ id: 'entry-1', requireFixativeTimeBeforeSignout: true }] as any;
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, specimenDictionary, setFixativeGateSpecimens, setPendingFinalizeArgs })));
@@ -303,7 +347,7 @@ describe('useSignOutWorkflow — finalizeCase', () => {
   it('does NOT block a specimen that already has processedAt documented, even if its dictionary entry requires it', async () => {
     const setFixativeGateSpecimens = vi.fn();
     const caseData = makeTestCase({
-      specimens: [{ id: 'SP-1', specimenDictionaryEntryId: 'entry-1', processing: { processedAt: '2026-01-01T00:00:00Z' } }] as any,
+      specimens: [{ id: 'SP-1', specimenDictionaryEntryId: 'entry-1', collectedAt: '2026-01-01T00:00:00Z', receivedAt: '2026-01-01T01:00:00Z', processing: { processedAt: '2026-01-01T00:00:00Z' } }] as any,
     });
     const specimenDictionary = [{ id: 'entry-1', requireFixativeTimeBeforeSignout: true }] as any;
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, specimenDictionary, setFixativeGateSpecimens })));

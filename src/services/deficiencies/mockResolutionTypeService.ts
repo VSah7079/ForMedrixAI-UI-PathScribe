@@ -24,6 +24,17 @@ const SEED_RESOLUTION_TYPES: ResolutionType[] = [
     id: 'res-fixation-unrecoverable', name: 'Confirmed Unavailable \u2014 No Estimate Possible', status: 'Active',
     description: 'Neither a documented time nor a reasonable estimate could be established. Case proceeds to sign-out on this explicit, audited override \u2014 last resort, used only when Fixation Time Estimated genuinely isn\u2019t possible.',
   },
+  // Real, per direct guidance's own cross-jurisdiction pre-analytic
+  // compliance research — see resolvePreAnalyticDateGateConfig.ts and
+  // def-missing-preanalytic-date's own doc comment. This is the record
+  // of what happened at the moment of the administrative override
+  // (comparable to res-fixation-unrecoverable), NOT a closure of the
+  // underlying non-conformity — that record stays 'open' per direct
+  // guidance, for real corrective/preventive review later.
+  {
+    id: 'res-preanalytic-administrative-override', name: 'Administrative Override — Date Not Recoverable', status: 'Active',
+    description: 'The real collection and/or laboratory-receipt date/time could not be recovered. Report authorization proceeded on the jurisdiction\u2019s own designated administrative code, with the required disclaimer applied — per direct guidance\u2019s own per-country research (UKAS/RCPath, CAP/CLIA, EU IVDR/ISO 15189, IANZ, KAZA/KSP/KSLM, NATA/NPAAC).',
+  },
 ];
 
 const load    = () => storageGet<ResolutionType[]>('pathscribe_resolution_types', SEED_RESOLUTION_TYPES);

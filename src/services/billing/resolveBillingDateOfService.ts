@@ -69,8 +69,13 @@ export type BillingDosRule = 'COLLECTION_DATE' | 'SIGNOUT_DATE' | 'ACCESSION_DAT
 
 export interface BillingDosResolutionInput {
   /** Real Organisation.country. Undefined when genuinely unresolvable
-   *  (e.g. no real organisation context available) - never guessed. */
-  country?: 'US' | 'UK' | 'AU' | 'CA';
+   *  (e.g. no real organisation context available) - never guessed.
+   *  Widened alongside Organisation.country itself
+   *  (organisationService.ts) to cover every real market this app
+   *  targets - defaultRuleForCountry below only has real, confirmed
+   *  defaults for the original four; a genuinely new country falls
+   *  through its own switch default (COLLECTION_DATE), same as before. */
+  country?: 'US' | 'UK' | 'AU' | 'CA' | 'EU' | 'NZ' | 'KR';
   /** Real Site.billingDosRule, when a real site-level override has
    *  been explicitly configured - always wins over the country
    *  default below. */
