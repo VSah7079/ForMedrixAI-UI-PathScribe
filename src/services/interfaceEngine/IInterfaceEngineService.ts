@@ -5,16 +5,22 @@
 // trigger for a Category E OrderCreated event — not just the documented
 // payload shape, the real code that constructs and dispatches one.
 //
-// Real, honest limitation, matching the spec's own Appendix B item 6:
-// "PathScribe has no real backend today — everything is frontend,
-// mock-service-backed." There is no real /api/v1/... endpoint this can
-// actually POST to yet — that's real, separate backend infrastructure work.
-// mockInterfaceEngineService.ts simulates the dispatch (records what would
-// have been sent, for real inspection/testing) rather than pretending an
-// HTTP call happened. When the real backend exists, only this file's own
-// real implementation swaps — every real call site (AccessionPage.tsx)
-// stays the same, same interface/mock/real pattern already established
-// throughout this app's other services.
+// Real, per direct follow-up ("Address the fifth transaction type:
+// interfaceEngine's OrderCreated" — real outbound HTTP dispatch
+// transport, closing the gap this file's own header once described):
+// mockInterfaceEngineService.ts now genuinely dispatches, via the same
+// real, generic receiving endpoint every other real transaction type
+// in this app uses (receive_interface_message,
+// services/interfaceDispatch/dispatchInterfaceMessage.ts) — not a
+// separate, dedicated OrderCreated endpoint. The real, local
+// record-keeping this file already had (localStorage, idempotency on
+// messageId, listDispatchedEvents) stays exactly as it was — a real,
+// separate concern from whether the real dispatch itself succeeded,
+// same distinction every other real outbound queue in this app already
+// draws between "enqueued" and "sent." The interface itself is
+// unchanged in shape (still `postOrderCreated`/`listDispatchedEvents`)
+// — every real call site (AccessionPage.tsx) stays exactly the same,
+// per this file's own original design intent.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ServiceResult } from '../types';
@@ -99,12 +105,18 @@ export interface OrderCreationEventPayload {
 
 export interface IInterfaceEngineService {
   /**
-   * Dispatches a real Category E OrderCreated event. Real, honest
-   * "delivered" semantics: true only means the mock recorded it — see
-   * this file's own header comment for why there's genuinely no real
-   * transport yet.
+   * Dispatches a real Category E OrderCreated event.
+   *
+   * Real, per direct follow-up ("Address the fifth transaction type:
+   * interfaceEngine's OrderCreated" — real outbound HTTP dispatch
+   * transport): `delivered` now means what this field's own original
+   * doc comment always said it eventually should — a real dispatch to
+   * the real receiving endpoint (receive_interface_message,
+   * services/interfaceDispatch/dispatchInterfaceMessage.ts) genuinely
+   * succeeded, not just that the mock recorded it locally. `error` is
+   * present when `delivered` is false, naming the real reason.
    */
-  postOrderCreated(payload: OrderCreationEventPayload): Promise<ServiceResult<{ delivered: boolean }>>;
+  postOrderCreated(payload: OrderCreationEventPayload): Promise<ServiceResult<{ delivered: boolean; error?: string }>>;
 
   /** Real, dedicated inspection method — for tests and for a future real
    *  admin UI showing "what would have gone out." Returns every event

@@ -23,6 +23,8 @@ import { useAuditLog } from '@/components/Audit/useAuditLog';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogout } from '../../hooks/useLogout';
+import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
+import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { messageService } from '../../services';
 import { useMessaging } from '../../contexts/MessagingContext';
 import NavBar, { SystemInfoModal } from '../NavBar/NavBar';
@@ -796,6 +798,27 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     portalOpen, setPortalOpen,
   } = useMessaging();
 
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control is one of its central pillars. It has to be
+  // flawless"): 24 real messaging voice/keyboard actions (Reply,
+  // Delete, Compose, Send, Mark Urgent, and more) used
+  // category: VOICE_CONTEXT.MESSAGES, but confirmed directly — zero
+  // real components anywhere ever called
+  // setCurrentContext(VOICE_CONTEXT.MESSAGES), the same real bug
+  // class SynopticReportPage.tsx's own equivalent fix already
+  // resolved for the REPORTING/SYNOPTIC mismatch. The drawer's own
+  // real visibility state (portalOpen, from useMessaging() above) is
+  // exactly the right, existing signal — no new state needed, just
+  // the same one-line setCurrentContext pattern every other page
+  // already uses, applied to this drawer's own real open/close state
+  // instead of a page mount/unmount.
+  useEffect(() => {
+    if (portalOpen) {
+      mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.MESSAGES);
+      return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+    }
+  }, [portalOpen]);
+
 // ─── Drawers & Modals ──────────────────────────────────────────────────────
   const [aboutOpen, setAboutOpen]             = useState(false);
   const [systemInfoOpen, setSystemInfoOpen]   = useState(false);
@@ -1198,8 +1221,21 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     handleSend, handleSendNew, handleCloseDrawer, handleLogout,
   ]);
 
+ // Real, per direct UI-review follow-up ("Fix the root"): this
+ // element's own real, existing .ps-app-root CSS class already fully
+ // defines position/width/height/background/color/font-family — but
+ // the inline style previously here was silently overriding three of
+ // those five with different, worse values: background #020617 vs
+ // the CSS class's own var(--ps-navy-base) (#0b1120, the value
+ // several other pages' own competing backgrounds were actually
+ // trying to match); color #f1f5f9 vs var(--ps-text-primary)
+ // (#e2e8f0); and, most consequentially, a font-family stack that
+ // DROPPED 'Inter' entirely — every AppShell-wrapped page has been
+ // silently falling back to system fonts instead of this app's own
+ // intended typeface. Inline style removed entirely; the
+ // already-correct CSS class now genuinely takes effect.
  return (
-    <div className="ps-app-root" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', color: '#f1f5f9', background: '#020617', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+    <div className="ps-app-root">
       
       {/* ── NAVBAR ── */}
       {!hideNav && (

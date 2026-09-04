@@ -8,7 +8,7 @@ export interface Role {
   caseAccess: boolean;
   configAccess: boolean;
   /** When true, pathologists with this role may open cases where the patient
-   *  age is below the submitting client's pediatricAgeThreshold.
+   *  age is below the submitting facility's pediatricAgeThreshold.
    *  Defaults to false — must be explicitly granted by an administrator. */
   canViewPediatric: boolean;
   /**
@@ -24,7 +24,7 @@ export interface Role {
   canViewOrchestration: boolean;
   permissions: PermissionSet;
   builtIn: boolean;
-  clientIds?: string[];               // undefined / empty = all clients
+  facilityIds?: string[];             // undefined / empty = all facilities
   participationTypeIds?: string[];    // IDs from ParticipationTypesSection master list
 }
 export interface IRoleService {

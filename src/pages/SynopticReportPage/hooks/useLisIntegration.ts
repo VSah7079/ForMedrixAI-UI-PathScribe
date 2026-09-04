@@ -30,6 +30,9 @@ import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } 
 import type { CopilotReportInstance } from '../modals/CopilotReportViewModal';
 import { amendmentService, reportVersionService } from '@/services';
 import { lisAmendmentNoticeService, messageService } from '@/services';
+import { mockOutboundLisSyncQueueService } from '@/services/reports/mockOutboundLisSyncQueueService';
+import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
+import { dispatchInterfaceMessage } from '@/services/interfaceDispatch/dispatchInterfaceMessage';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { processBlockExceptionEvent } from '@/services/hl7/processBlockExceptionEvent';
 import { processMaterialLocationEvent } from '@/services/hl7/processMaterialLocationEvent';
@@ -74,6 +77,8 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     kind: 'block_recut' | 'stain' | 'cancel' | 'restain';
     specimenId: string;
     label: string;
+    matrixBlockId?: string;
+    targetSpecimenIds?: string[];
   }): Promise<{ ok: boolean }> => {
     await new Promise(resolve => setTimeout(resolve, 400)); // simulated round-trip
     return { ok: true };
@@ -134,6 +139,54 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     const fullPayloadText = `${embeddedHeader}\n\n${payload.payloadBody}`;
 
     await new Promise(resolve => setTimeout(resolve, 400)); // simulated round-trip
+
+    // Real, per direct guidance (gap #7 — "never brought up to the
+    // same honest 'real queue' standard as A08/A40/A47/ORU"): the
+    // payload-building logic above was always real and correct; only
+    // what happened next was fake — a setTimeout with no trace,
+    // returning {ok: true} unconditionally with nothing persisted
+    // anywhere. Now enqueues a real, queryable record of this real
+    // attempt (services/reports/mockOutboundLisSyncQueueService.ts),
+    // visible via the same real DLQ dashboard as every other outbound
+    // queue in this app (pages/OutboundInterfaceDlqSection.tsx).
+    // organisationId resolved from the real, already-known patient —
+    // same pattern already established for every other real
+    // outbound-queue enqueue in this app.
+    //
+    // Real, per direct follow-up ("do we implement... actual outbound
+    // HTTP dispatch transport"): real, immediate dispatch right here,
+    // not deferred to the DLQ's own Retry Dispatch/Dispatch Now — this
+    // is the one real moment fullPayloadText/embeddedHeader actually
+    // exist. payloadBody is a real, ephemeral parameter, never
+    // persisted anywhere; once this function returns, the real,
+    // complete payload is genuinely gone, and the DLQ's own
+    // buildPayload is deliberately null for this queue type precisely
+    // because of that (see OutboundInterfaceDlqSection.tsx's own
+    // header comment). Real, deliberate fire-and-forget — same real
+    // reasoning as the enqueue immediately below: a real, external
+    // network call must never gate or block a real, time-sensitive
+    // clinical action (sign-out/amendment release).
+    const patientRecord = caseData?.patient?.id ? await mockPatientIndexService.getById(caseData.patient.id) : null;
+    if (patientRecord) {
+      mockOutboundLisSyncQueueService.enqueue({
+        caseId: payload.caseId,
+        instanceId: payload.instanceId,
+        kind: payload.kind,
+        organisationId: patientRecord.organisationId,
+      }).then(async enqueueResult => {
+        if (!enqueueResult.ok) return;
+        const entry = enqueueResult.data;
+        const result = await dispatchInterfaceMessage(entry.id, 'LIS_SYNC', {
+          ...payload, transactionStatusFlag, embeddedHeader, fullPayloadText, timestamp,
+        });
+        if (result.ok) {
+          await mockOutboundLisSyncQueueService.markSent(entry.id);
+        } else {
+          await mockOutboundLisSyncQueueService.markFailed(entry.id, { errorCode: result.errorCode ?? 'DISPATCH_REJECTED', errorMessage: result.error ?? 'Unknown dispatch failure.', maxRetriesExceeded: false });
+        }
+      }).catch(e => console.error('[useLisIntegration] Real, non-blocking failure enqueueing/dispatching LIS sync record:', e));
+    }
+
     if (payload.kind === 'corrected' || payload.kind === 'corrected_with_addition') {
       window.dispatchEvent(new CustomEvent('PATHSCRIBE_LIS_SYNC_REQUIRED', { detail: { ...payload, transactionStatusFlag, embeddedHeader, fullPayloadText, timestamp } }));
     }

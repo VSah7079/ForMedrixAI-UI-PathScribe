@@ -5,13 +5,13 @@
 // Confirmed by direct investigation before building this: the report's
 // actual rendered default font (.rp-page's font-family in pathscribe.css)
 // was, until this feature, 100% hardcoded CSS with zero configuration
-// anywhere — not org-wide, not per-client, nothing. A per-template
+// anywhere — not org-wide, not per-facility, nothing. A per-template
 // override (ReportTemplate.documentStyle.body) already exists as the
 // next layer up; this file adds the missing layer beneath it.
 //
 // Same "null/unset = inherit" two-layer convention already used for
 // AI Orchestrator mode (see orchestratorModeConfig.ts, this file's own
-// direct model) and Client.tatFirstTouchHours/jurisdiction/etc.:
+// direct model) and Facility.tatFirstTouchHours/jurisdiction/etc.:
 //   1. ORG DEFAULT     — org-wide, admin-editable here, persisted to
 //      localStorage. Defaults to Arial/10pt per direct product decision
 //      if never explicitly set (fresh install) — not an arbitrary guess.
@@ -19,8 +19,8 @@
 //      template in the Template Assembly editor. Wins over the org
 //      default when set. Resolved directly in contextBuilder.ts, since
 //      that's where the real, resolved ReportTemplate is already in
-//      hand — no separate async lookup needed the way per-client
-//      settings require (this cascade has no client dimension).
+//      hand — no separate async lookup needed the way per-facility
+//      settings require (this cascade has no facility dimension).
 // A third layer — per-component labelConfig — already existed before
 // either of the above; it continues to win over both via ordinary CSS
 // inheritance (see ReportPreviewRenderer.tsx).

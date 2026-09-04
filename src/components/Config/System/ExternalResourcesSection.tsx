@@ -11,7 +11,7 @@
 // this feature — not a new name invented for this screen.
 //
 // Two real scope levels, same shape as this codebase's other org
-// -default + per-client-override settings (idle-session-timeout, the AI
+// -default + per-facility-override settings (idle-session-timeout, the AI
 // orchestrator toggle): 'enterprise' resources are visible to everyone
 // in the organisation; 'lab' resources layer on top, visible only at
 // the specific performing lab they're tied to. Per a direct requirement:
@@ -26,7 +26,7 @@ import React, { useEffect, useState } from 'react';
 import '../../../pathscribe.css';
 import { mockExternalResourceService } from '@/services/externalResources/mockExternalResourceService';
 import type { ExternalResource, ExternalResourceCategory, ExternalResourceScope } from '@/services/externalResources/IExternalResourceService';
-import type { Facility as Client } from '@/services/facilities/IFacilityService';
+import type { Facility } from '@/services/facilities/IFacilityService';
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import ConfirmModal from '../../Common/ConfirmModal';
@@ -43,17 +43,17 @@ interface DraftState {
   url: string;
   category: ExternalResourceCategory;
   scope: ExternalResourceScope;
-  clientId: string;
+  facilityId: string;
 }
 
-const emptyDraft: DraftState = { id: null, title: '', url: '', category: 'protocols', scope: 'enterprise', clientId: '' };
+const emptyDraft: DraftState = { id: null, title: '', url: '', category: 'protocols', scope: 'enterprise', facilityId: '' };
 
 const ExternalResourcesSection: React.FC = () => {
   const session = getSessionUser();
   const organisationId = session?.organisationId ?? '';
 
   const [resources, setResources] = useState<ExternalResource[]>([]);
-  const [labs, setLabs] = useState<Client[]>([]);
+  const [labs, setLabs] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<DraftState>(emptyDraft);
   const [showForm, setShowForm] = useState(false);
@@ -78,7 +78,7 @@ const ExternalResourcesSection: React.FC = () => {
 
   const openNewForm = () => { setDraft(emptyDraft); setError(null); setShowForm(true); };
   const openEditForm = (r: ExternalResource) => {
-    setDraft({ id: r.id, title: r.title, url: r.url, category: r.category, scope: r.scope, clientId: r.clientId ?? '' });
+    setDraft({ id: r.id, title: r.title, url: r.url, category: r.category, scope: r.scope, facilityId: r.facilityId ?? '' });
     setError(null);
     setShowForm(true);
   };
@@ -93,7 +93,7 @@ const ExternalResourcesSection: React.FC = () => {
       setError('Enter a valid URL, including https://');
       return;
     }
-    if (draft.scope === 'lab' && !draft.clientId) { setError('Select a performing lab for a lab-scoped resource.'); return; }
+    if (draft.scope === 'lab' && !draft.facilityId) { setError('Select a performing lab for a lab-scoped resource.'); return; }
 
     if (draft.id) {
       await mockExternalResourceService.update(draft.id, {
@@ -101,7 +101,7 @@ const ExternalResourcesSection: React.FC = () => {
         url: parsedUrl.toString(),
         category: draft.category,
         scope: draft.scope,
-        clientId: draft.scope === 'lab' ? draft.clientId : undefined,
+        facilityId: draft.scope === 'lab' ? draft.facilityId : undefined,
       });
     } else {
       await mockExternalResourceService.create({
@@ -110,7 +110,7 @@ const ExternalResourcesSection: React.FC = () => {
         category: draft.category,
         scope: draft.scope,
         organisationId,
-        clientId: draft.scope === 'lab' ? draft.clientId : undefined,
+        facilityId: draft.scope === 'lab' ? draft.facilityId : undefined,
       });
     }
     setShowForm(false);
@@ -124,7 +124,7 @@ const ExternalResourcesSection: React.FC = () => {
     loadResources();
   };
 
-  const labName = (clientId?: string) => labs.find(l => l.id === clientId)?.name ?? clientId ?? '—';
+  const labName = (facilityId?: string) => labs.find(l => l.id === facilityId)?.name ?? facilityId ?? '—';
 
   const grouped: Record<ExternalResourceCategory, ExternalResource[]> = { protocols: [], references: [], systems: [] };
   resources.forEach(r => grouped[r.category].push(r));
@@ -164,7 +164,7 @@ const ExternalResourcesSection: React.FC = () => {
                       <div style={{ fontSize: 13, color: '#e5e7eb', fontWeight: 600 }}>{r.title}</div>
                       <div style={{ fontSize: 11, color: '#6b7280' }}>{r.url}</div>
                       <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>
-                        {r.scope === 'enterprise' ? 'Enterprise-wide' : `Lab: ${labName(r.clientId)}`}
+                        {r.scope === 'enterprise' ? 'Enterprise-wide' : `Lab: ${labName(r.facilityId)}`}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -235,13 +235,13 @@ const ExternalResourcesSection: React.FC = () => {
               </div>
               {draft.scope === 'lab' && (
                 <div>
-                  <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }} htmlFor="extres-client">Performing Lab</label>
+                  <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }} htmlFor="extres-facility">Performing Lab</label>
                   <select
-                    id="extres-client"
+                    id="extres-facility"
                     className="ps-conf-select"
                     style={{ width: '100%' }}
-                    value={draft.clientId}
-                    onChange={e => setDraft(d => ({ ...d, clientId: e.target.value }))}
+                    value={draft.facilityId}
+                    onChange={e => setDraft(d => ({ ...d, facilityId: e.target.value }))}
                   >
                     <option value="">Select a lab…</option>
                     {labs.map(l => (

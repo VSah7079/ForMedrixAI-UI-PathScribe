@@ -9,13 +9,16 @@
  *   client  -- Client | undefined (undefined = add mode, Client = edit mode)
  *   onSave  -- (input: FacilityInput) => void — parent owns the actual
  *              facilityService.add/update call, same convention as
- *              PhysiciansSection.tsx / SpecimenCategoriesSection.tsx
+ *              PhysiciansSection.tsx / DepartmentsSection.tsx
  */
 
 import React, { useState, useEffect } from "react";
 import '../../pathscribe.css';
 import type { Facility, FacilityInput, FacilityRole } from "../../services/facilities/IFacilityService";
-import { FACILITY_ROLE_LABELS } from "../../services/facilities/IFacilityService";
+import { FACILITY_ROLE_LABELS, FACILITY_ROLE_TOOLTIPS } from "../../services/facilities/IFacilityService";
+import { mockPlaceOfServiceCodeService } from "../../services/billing/mockPlaceOfServiceCodeService";
+import IdentifierFormatsTab from "./IdentifierFormatsTab";
+import type { PlaceOfServiceCode } from "../../types/billing/PlaceOfServiceCode";
 import { JURISDICTION_LABELS, type Jurisdiction } from "../../types/systemConfig";
 import { SUFFIX_PRESETS, isPresetSuffix } from "../../utils/personName";
 import { getEligibleModelIdsForClient } from "../Config/AI/resolveClientAiModel";
@@ -29,7 +32,7 @@ interface ClientEditorModalProps {
   onClose: () => void;
   /** Existing facility to edit, or undefined to add a new one. Passed
    *  directly rather than a facilityId + internal lookup — matches
-   *  PhysiciansSection/SpecimenCategoriesSection's convention. */
+   *  PhysiciansSection/DepartmentsSection's convention. */
   client?: Facility;
   onSave: (input: FacilityInput) => void;
   /** Full facility list, used to populate the Parent Institution
@@ -65,7 +68,7 @@ const FACILITY_ROLE_ORDER: FacilityRole[] = [
   'internal_submitting_location',
   'internal_ordering_client',
   'external_ordering_client',
-  'hl7_routing_endpoint',
+  'specimen_acquisition',
 ];
 
 // ─── Blank form state ─────────────────────────────────────────────────────────
@@ -86,12 +89,6 @@ const blank = (): FacilityInput => ({
   fax: "",
   address: "",
   status: "Active",
-  hl7: {
-    sendingFacility: "pathscribe",
-    receivingFacility: "",
-    hl7Version: "2.5.1",
-    enabled: false,
-  },
   reporting: {
     reportFormat: "PDF",
     deliveryMethod: "Portal",
@@ -171,7 +168,7 @@ const onB = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLText
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = "general" | "hl7" | "reporting" | "tat" | "ai" | "locations";
+type Tab = "general" | "lis_integration" | "identifier_formats" | "reporting" | "tat" | "ai" | "locations";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -212,8 +209,35 @@ export const ClientEditorModal: React.FC<ClientEditorModalProps> = ({
   const set = (key: keyof FacilityInput, val: unknown) =>
     setForm((f) => ({ ...f, [key]: val }));
 
-  const setHL7 = (key: keyof Facility["hl7"], val: unknown) =>
-    setForm((f) => ({ ...f, hl7: { ...f.hl7, [key]: val } }));
+  // Real, per direct guidance: replaces the old setHL7 helper -
+  // FacilityHL7Settings (and hl7_routing_endpoint) are retired
+  // entirely, consolidated into FacilityInterfaceEngineConnection
+  // (Enterprise-only) and FacilityLisRouting (any facility, real
+  // override capability) - see IFacilityService.ts's own doc
+  // comments for the full account. Both fields are optional/nullable
+  // (undefined until an admin first configures them), unlike hl7/
+  // reporting above which were always-present objects - each helper
+  // seeds a real, sensible blank shape on first edit rather than
+  // spreading undefined.
+  const setInterfaceEngineConnection = (key: keyof Facility["interfaceEngineConnection"], val: unknown) =>
+    setForm((f) => ({
+      ...f,
+      interfaceEngineConnection: {
+        endpoint: "", lisOwnsStatuses: true, allowPathScribePostFinalActions: true,
+        ...(f.interfaceEngineConnection ?? {}),
+        [key]: val,
+      },
+    }));
+
+  const setLisRouting = (key: keyof Facility["lisRouting"], val: unknown) =>
+    setForm((f) => ({
+      ...f,
+      lisRouting: {
+        sendingFacilityId: "",
+        ...(f.lisRouting ?? {}),
+        [key]: val,
+      },
+    }));
 
   const setReporting = (key: keyof Facility["reporting"], val: unknown) =>
     setForm((f) => ({ ...f, reporting: { ...f.reporting, [key]: val } }));
@@ -241,7 +265,10 @@ export const ClientEditorModal: React.FC<ClientEditorModalProps> = ({
   // just ordering-client roles (confirmed against real data: a
   // performing-lab-only facility can carry real TAT targets).
   useEffect(() => {
-    if (tab === 'hl7' && !hasRole('hl7_routing_endpoint')) setTab('general');
+    // Real, per direct guidance: LIS Integration is no longer
+    // role-gated (matches Reporting/TAT below - real for any
+    // facility, not just ones holding a specific role), so no reset
+    // is needed for that tab anymore.
     if (tab === 'ai' && !hasRole('performing_lab')) setTab('general');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.roles]);
@@ -269,15 +296,34 @@ export const ClientEditorModal: React.FC<ClientEditorModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, client?.id, form.roles.includes('performing_lab')]);
 
+  // Real, new: the real, versioned CMS Place of Service dictionary
+  // (services/billing/mockPlaceOfServiceCodeService.ts). Deliberately
+  // NOT gated to hasRole('specimen_acquisition') the way eligibleModels
+  // above is gated to performing_lab - this is a small (52-entry),
+  // global reference list with no per-client scoping, so there's no
+  // real cost to loading it whenever the modal is open, and it's ready
+  // immediately if the admin checks Specimen Acquisition after opening.
+  const [posCodes, setPosCodes] = useState<PlaceOfServiceCode[]>([]);
+  useEffect(() => {
+    if (!isOpen) { setPosCodes([]); return; }
+    let cancelled = false;
+    (async () => {
+      const res = await mockPlaceOfServiceCodeService.getActiveCodes();
+      if (cancelled) return;
+      setPosCodes(res.ok ? res.data : []);
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
   // Real feature, per direct confirmation: "we will need to accept
   // PV1 HL7 data... Location / Rooms... naturally associated to the
-  // Facility." Real fix, per direct confirmation: no longer gated to
-  // hl7_routing_endpoint — a facility can want locations configured
-  // purely for manual accessioning (AccessionPage.tsx's own Location
-  // dropdown), independent of whether HL7 integration exists at all.
-  // Only meaningful once the facility has a real id (edit mode) — a
-  // brand-new, unsaved facility can't have locations attached to it
-  // yet.
+  // Facility." Real fix, per direct confirmation: never gated to any
+  // specific role — a facility can want locations configured purely
+  // for manual accessioning (AccessionPage.tsx's own Location
+  // dropdown), independent of whether LIS integration is configured
+  // at all. Only meaningful once the facility has a real id (edit
+  // mode) — a brand-new, unsaved facility can't have locations
+  // attached to it yet.
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const reloadLocations = async () => {
@@ -333,8 +379,15 @@ export const ClientEditorModal: React.FC<ClientEditorModalProps> = ({
     if (!form.assigningAuthority.trim()) e.assigningAuthority = "Assigning Authority is required";
     if (!form.email.trim() || !form.email.includes("@"))
       e.email = "Valid email required";
-    if (form.hl7.enabled && !form.hl7.receivingFacility.trim())
-      (e as Record<string, string>).hl7 = "Receiving facility is required when HL7 is enabled";
+    // Real, per direct guidance: replaces the old hl7.enabled-based
+    // check — presence of a real, configured object is the enabled
+    // signal now, not a separate boolean. interfaceEngineConnection
+    // is only ever set here when isEnterprise, so endpoint is the
+    // one real required field once an admin starts configuring it.
+    if (form.isEnterprise && form.interfaceEngineConnection && !form.interfaceEngineConnection.endpoint.trim())
+      (e as Record<string, string>).interfaceEngineConnection = "Endpoint is required once Interface Engine Connection is configured";
+    if (form.lisRouting && !form.lisRouting.sendingFacilityId.trim())
+      (e as Record<string, string>).lisRouting = "Sending Facility ID is required once LIS Routing is configured";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -385,9 +438,19 @@ className="ps-modal-close"
           </div>
           <div className="ps-client-editor-tabs">
             <button style={tabStyle("general")}   onClick={() => setTab("general")}>General</button>
-            {hasRole('hl7_routing_endpoint') && (
-              <button style={tabStyle("hl7")}        onClick={() => setTab("hl7")}>HL7 Integration</button>
-            )}
+            {/* Real, per direct guidance: never role-gated — LIS
+                routing metadata is real, potentially-relevant data
+                for any facility that sends messages toward the
+                shared Interface Engine connection, not just ones
+                holding a specific role. Interface Engine Connection
+                fields within this tab are still gated to isEnterprise
+                internally, since that half is deliberately
+                Enterprise-only. */}
+            <button style={tabStyle("lis_integration")} onClick={() => setTab("lis_integration")}>LIS Integration</button>
+            {/* Real, per direct guidance: same real move as LIS
+                Integration above - never role-gated, real for any
+                facility. */}
+            <button style={tabStyle("identifier_formats")} onClick={() => setTab("identifier_formats")}>Identifier Formats</button>
             {/* Real fix, per direct confirmation: not role-gated —
                 TAT/reporting apply to any facility that handles
                 cases, not just ordering-client roles. Confirmed
@@ -400,8 +463,8 @@ className="ps-modal-close"
             {hasRole('performing_lab') && (
               <button style={tabStyle("ai")}         onClick={() => setTab("ai")}>AI &amp; Performance</button>
             )}
-            {/* Real fix, per direct confirmation: no longer gated to
-                hl7_routing_endpoint — a facility can want its
+            {/* Real fix, per direct confirmation: never gated to any
+                specific role — a facility can want its
                 locations configured purely for manual accessioning
                 (AccessionPage.tsx's own Location dropdown), with no
                 HL7 integration involved at all. Still edit-mode only —
@@ -464,6 +527,7 @@ className="ps-modal-close"
                       <label
                         key={role}
                         htmlFor={`role-${role}`}
+                        title={FACILITY_ROLE_TOOLTIPS[role]}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
                           background: hasRole(role) ? 'rgba(8,145,178,0.12)' : 'rgba(255,255,255,0.03)',
@@ -487,6 +551,41 @@ className="ps-modal-close"
                     appear based on which roles are checked here.
                   </div>
                 </Field>
+                {hasRole('specimen_acquisition') && (
+                  <Field label="Place of Service Code">
+                    <select
+                      style={INPUT}
+                      value={form.placeOfServiceCodeId ?? ''}
+                      onChange={(e) => set("placeOfServiceCodeId", e.target.value || undefined)}
+                      onFocus={onF} onBlur={onB}
+                    >
+                      <option value="">Not set</option>
+                      {posCodes.map(c => (
+                        <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+                      The real, current CMS Place of Service code set — reflects the setting where the
+                      specimen is actually collected, not this facility's own performing-lab characteristics.
+                    </div>
+                  </Field>
+                )}
+                {hasRole('performing_lab') && (
+                  <Field label="CLIA / ISO Accreditation Number">
+                    <input
+                      style={INPUT}
+                      value={form.cliaOrIsoNumber ?? ''}
+                      onChange={(e) => set("cliaOrIsoNumber", e.target.value || undefined)}
+                      onFocus={onF} onBlur={onB}
+                      placeholder="e.g. 12D3456789 (US CLIA) or a UK/ISO accreditation number"
+                    />
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+                      Free text, not validated against a format — a real US CLIA number and a real UK/ISO
+                      accreditation number look genuinely different, and this app has no verified format spec
+                      for either to check against.
+                    </div>
+                  </Field>
+                )}
                 <Field label="Jurisdiction">
                   <select
                     style={INPUT}
@@ -510,6 +609,29 @@ className="ps-modal-close"
                     <option value="numeric-specimen">Specimen 1, 2, 3 / Block 1A, 1B, 1C</option>
                   </select>
                 </Field>
+                <Field label="Enterprise Institution">
+                  <label
+                    htmlFor="isEnterprise"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', width: 'fit-content',
+                      background: form.isEnterprise ? 'rgba(8,145,178,0.12)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${form.isEnterprise ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      id="isEnterprise"
+                      checked={!!form.isEnterprise}
+                      onChange={e => set("isEnterprise", e.target.checked || undefined)}
+                      style={{ width: 15, height: 15, accentColor: '#0891b2', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>This is a top-level Enterprise institution</span>
+                  </label>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+                    Only Enterprise-tagged facilities appear as selectable Parent Institutions below — keeps a
+                    real affiliate from accidentally pointing at another affiliate.
+                  </div>
+                </Field>
                 <Field label="Parent Institution">
                   <select
                     style={INPUT}
@@ -519,7 +641,7 @@ className="ps-modal-close"
                   >
                     <option value="">None — this is the top-level institution</option>
                     {allClients
-                      .filter(c => c.id !== client?.id)
+                      .filter(c => c.id !== client?.id && c.isEnterprise)
                       .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </Field>
@@ -587,61 +709,159 @@ className="ps-modal-close"
             </div>
           )}
 
-          {/* HL7 */}
-          {tab === "hl7" && (
+          {/* LIS Integration */}
+          {tab === "lis_integration" && (
             <div className="ps-client-editor-form">
-              <div style={SECTION}>HL7 Integration</div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)" }}>
-                <input
-                  type="checkbox"
-                  id="hl7-enabled"
-                  checked={form.hl7.enabled}
-                  onChange={(e) => setHL7("enabled", e.target.checked)}
-                  style={{ width: "16px", height: "16px", accentColor: "#0891b2", cursor: "pointer" }}
-                />
-                <label htmlFor="hl7-enabled" style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", cursor: "pointer" }}>
-                  Enable HL7 integration for this client
-                </label>
-              </div>
-
-              <div style={{ opacity: form.hl7.enabled ? 1 : 0.65, pointerEvents: form.hl7.enabled ? "auto" : "none" }}>
-                <div style={{ ...grid2, marginBottom: "12px" }}>
-                  <Field label="Sending Facility (MSH-4)">
-                    <input style={INPUT} value={form.hl7.sendingFacility} onChange={(e) => setHL7("sendingFacility", e.target.value)} onFocus={onF} onBlur={onB} placeholder="pathscribe" />
-                  </Field>
-                  <Field label="Receiving Facility (MSH-6)">
+              <div style={SECTION}>Interface Engine Connection</div>
+              {form.isEnterprise ? (
+                <>
+                  <p style={{ fontSize: "12px", color: "#94a3b8", margin: "0 0 12px" }}>
+                    Real, per direct architectural guidance: PathScribe maintains one physical connection to
+                    this Enterprise's own Interface Engine (Mirth, Rhapsody, etc.), which then routes/transforms
+                    to whichever real downstream LIS a given message actually belongs to. There is deliberately
+                    no per-facility version of this — a facility that needed a genuinely separate physical
+                    connection would be a different Enterprise, not an override of this one.
+                  </p>
+                  <div style={{ ...grid2, marginBottom: "12px" }}>
+                    <Field label="Interface Engine Endpoint">
+                      <input
+                        style={{ ...INPUT, borderColor: (errors as Record<string, string>).interfaceEngineConnection ? "#ef4444" : "rgba(255,255,255,0.1)" }}
+                        value={form.interfaceEngineConnection?.endpoint ?? ""}
+                        onChange={(e) => setInterfaceEngineConnection("endpoint", e.target.value)}
+                        onFocus={onF} onBlur={onB}
+                        placeholder="hl7://interface-engine.example.org:2575"
+                      />
+                      {(errors as Record<string, string>).interfaceEngineConnection && (
+                        <div className="ps-client-editor-field-error">
+                          {(errors as Record<string, string>).interfaceEngineConnection}
+                        </div>
+                      )}
+                    </Field>
+                    <Field label="HL7 Version">
+                      <select style={INPUT} value={form.interfaceEngineConnection?.hl7Version ?? "2.5.1"} onChange={(e) => setInterfaceEngineConnection("hl7Version", e.target.value)} onFocus={onF} onBlur={onB}>
+                        <option value="2.3">2.3</option>
+                        <option value="2.4">2.4</option>
+                        <option value="2.5">2.5</option>
+                        <option value="2.5.1">2.5.1</option>
+                        <option value="2.6">2.6</option>
+                      </select>
+                    </Field>
+                    <Field label="Auth Type">
+                      <select style={INPUT} value={form.interfaceEngineConnection?.authType ?? "none"} onChange={(e) => setInterfaceEngineConnection("authType", e.target.value)} onFocus={onF} onBlur={onB}>
+                        <option value="none">None</option>
+                        <option value="basic">Basic</option>
+                        <option value="oauth2">OAuth2</option>
+                        <option value="api_key">API Key</option>
+                      </select>
+                    </Field>
+                    <Field label="Credential Configured">
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "8px" }}>
+                        <input
+                          type="checkbox"
+                          id="credential-configured"
+                          checked={!!form.interfaceEngineConnection?.credentialConfigured}
+                          onChange={(e) => setInterfaceEngineConnection("credentialConfigured", e.target.checked)}
+                          style={{ width: "16px", height: "16px", accentColor: "#0891b2", cursor: "pointer" }}
+                        />
+                        <label htmlFor="credential-configured" style={{ fontSize: "13px", color: "#e2e8f0", cursor: "pointer" }}>
+                          A real credential has been provisioned for this connection
+                        </label>
+                      </div>
+                    </Field>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", marginBottom: "8px" }}>
                     <input
-                      style={{ ...INPUT, borderColor: (errors as Record<string, string>).hl7 ? "#ef4444" : "rgba(255,255,255,0.1)" }}
-                      value={form.hl7.receivingFacility}
-                      onChange={(e) => setHL7("receivingFacility", e.target.value)}
-                      onFocus={onF} onBlur={onB}
-                      placeholder="CLIENT_CODE"
+                      type="checkbox"
+                      id="lis-owns-statuses"
+                      checked={!!form.interfaceEngineConnection?.lisOwnsStatuses}
+                      onChange={(e) => setInterfaceEngineConnection("lisOwnsStatuses", e.target.checked)}
+                      style={{ width: "16px", height: "16px", accentColor: "#0891b2", cursor: "pointer" }}
                     />
-                    {(errors as Record<string, string>).hl7 && (
+                    <label htmlFor="lis-owns-statuses" style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", cursor: "pointer" }}>
+                      The connected LIS owns major case statuses
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <input
+                      type="checkbox"
+                      id="allow-post-final"
+                      checked={!!form.interfaceEngineConnection?.allowPathScribePostFinalActions}
+                      onChange={(e) => setInterfaceEngineConnection("allowPathScribePostFinalActions", e.target.checked)}
+                      style={{ width: "16px", height: "16px", accentColor: "#0891b2", cursor: "pointer" }}
+                    />
+                    <label htmlFor="allow-post-final" style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", cursor: "pointer" }}>
+                      Pathologists can initiate Addendum/Amendment directly in PathScribe
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: "12px 14px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "12px", color: "#94a3b8" }}>
+                  Only meaningful on an Enterprise institution. {form.parentId
+                    ? <>This facility inherits its connection from <strong>{allClients.find(c => c.id === form.parentId)?.name ?? "its Parent Institution"}</strong>.</>
+                    : "Set a Parent Institution on the General tab to inherit a real connection, or check Enterprise Institution to configure one directly."}
+                </div>
+              )}
+
+              <div style={{ ...SECTION, marginTop: "24px" }}>LIS Routing</div>
+              <p style={{ fontSize: "12px", color: "#94a3b8", margin: "0 0 12px" }}>
+                Real routing metadata sent alongside every message to the shared Interface Engine connection
+                above — never a new physical connection. The Interface Engine's own conditional routing rules
+                key off these identifiers to decide where a message actually needs to go.
+              </p>
+              {!form.isEnterprise && (
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", marginBottom: "12px" }}>
+                  <input
+                    type="checkbox"
+                    id="override-routing"
+                    checked={!!form.lisRouting}
+                    onChange={(e) => set("lisRouting", e.target.checked ? { sendingFacilityId: "" } : null)}
+                    style={{ width: "16px", height: "16px", accentColor: "#0891b2", cursor: "pointer" }}
+                  />
+                  <label htmlFor="override-routing" style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", cursor: "pointer" }}>
+                    Override Enterprise routing for this facility
+                  </label>
+                </div>
+              )}
+              {(form.isEnterprise || form.lisRouting) ? (
+                <div style={grid2}>
+                  <Field label="Sending Facility ID (MSH-4)">
+                    <input
+                      style={{ ...INPUT, borderColor: (errors as Record<string, string>).lisRouting ? "#ef4444" : "rgba(255,255,255,0.1)" }}
+                      value={form.lisRouting?.sendingFacilityId ?? ""}
+                      onChange={(e) => setLisRouting("sendingFacilityId", e.target.value)}
+                      onFocus={onF} onBlur={onB}
+                      placeholder="e.g. SURGI_CENTER_NORTH"
+                    />
+                    {(errors as Record<string, string>).lisRouting && (
                       <div className="ps-client-editor-field-error">
-                        {(errors as Record<string, string>).hl7}
+                        {(errors as Record<string, string>).lisRouting}
                       </div>
                     )}
                   </Field>
-                  <Field label="HL7 Version">
-                    <select style={INPUT} value={form.hl7.hl7Version} onChange={(e) => setHL7("hl7Version", e.target.value)} onFocus={onF} onBlur={onB}>
-                      <option value="2.3">2.3</option>
-                      <option value="2.4">2.4</option>
-                      <option value="2.5">2.5</option>
-                      <option value="2.5.1">2.5.1</option>
-                      <option value="2.6">2.6</option>
-                    </select>
+                  <Field label="Receiving Facility ID (MSH-6)">
+                    <input style={INPUT} value={form.lisRouting?.receivingFacilityId ?? ""} onChange={(e) => setLisRouting("receivingFacilityId", e.target.value)} onFocus={onF} onBlur={onB} placeholder="Optional" />
+                  </Field>
+                  <Field label="Outbound Channel Override" span>
+                    <input style={INPUT} value={form.lisRouting?.outboundChannelOverride ?? ""} onChange={(e) => setLisRouting("outboundChannelOverride", e.target.value)} onFocus={onF} onBlur={onB} placeholder="e.g. a distinct SFTP folder or local VPN listener — optional" />
                   </Field>
                 </div>
-              </div>
-
-              {!form.hl7.enabled && (
-                <div style={{ padding: "12px 14px", background: "rgba(245,158,11,0.06)", border: "1px solid #fde047", borderRadius: "8px", fontSize: "12px", color: "#92400e" }}>
-                  &#9888;&#65039; HL7 integration is disabled. Enable the toggle above to configure connection settings.
+              ) : (
+                <div style={{ padding: "12px 14px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "12px", color: "#94a3b8" }}>
+                  Not overridden — this facility sends {form.parentId
+                    ? <>{allClients.find(c => c.id === form.parentId)?.name ?? "its Parent Institution"}'s own default routing metadata</>
+                    : "its Enterprise parent's own default routing metadata"} unchanged.
                 </div>
               )}
             </div>
+          )}
+
+          {/* Identifier Formats */}
+          {tab === "identifier_formats" && (
+            <IdentifierFormatsTab
+              facility={form}
+              allFacilities={allClients}
+              onChange={(selection) => set("identifierFormats", selection)}
+            />
           )}
 
           {/* Reporting */}
@@ -944,11 +1164,10 @@ className="ps-modal-close"
           {/* Locations — real feature, per direct confirmation: "we
               will need to accept PV1 HL7 data, but I don't believe we
               have Location / Rooms defined in config. They would
-              naturally be associated to the Facility." Only reachable
-              when hl7_routing_endpoint is checked (see tab bar
-              above) — a facility only needs a Location dictionary if
-              it's actually sending/receiving HL7 messages carrying
-              PV1 segments. */}
+              naturally be associated to the Facility." Never gated to
+              any specific role (see tab bar above) — edit-mode only,
+              since a brand-new, unsaved facility can't have locations
+              attached to it yet. */}
           {tab === "locations" && (
             <div className="ps-client-editor-form">
               <div style={SECTION}>Locations</div>
@@ -1153,7 +1372,7 @@ className="ps-modal-close"
           >Cancel</button>
           <button
             onClick={handleSubmit}
-            style={{ padding: "9px 24px", borderRadius: "8px", border: "none", background: saved ? "#10b981" : "#0891b2", color: "#0f172a", fontWeight: 700, fontSize: "13px", cursor: "pointer", transition: "background 0.2s" }}
+            style={{ padding: "9px 24px", borderRadius: "8px", border: "none", background: saved ? "#10b981" : "#0891b2", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: "pointer", transition: "background 0.2s" }}
           >
             {saved ? "Saved" : isEdit ? "Save Changes" : "Add Facility"}
           </button>

@@ -22,6 +22,18 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   // a dispatch failure is a billing-transmission concern tied to the
   // case's charges as a whole, not any one specimen's tissue handling.
   { id: 'def-outbound-dispatch-failure', name: 'Outbound Billing Dispatch Failure', description: 'A charge dispatch to the external RCM system failed and was judged worth systemic CAPA review, not just a one-off retry.', status: 'Active', level: 'case' },
+  // Real, per direct guidance ("Any existing gaps to deal with?" —
+  // no DLQ/retry UI for the two real outbound patient-ADT/result
+  // queues built alongside billing's own): deliberately a SEPARATE,
+  // new type from def-outbound-dispatch-failure above, not a reuse of
+  // it — that one is explicitly billing/RCM-scoped in its own name and
+  // description, and labeling a patient-identity or pathology-result
+  // dispatch failure as a "Billing Dispatch Failure" would be
+  // factually wrong. Covers both real new queues (ADT^A08/A40/A47 and
+  // ORU^R01) under one type, matching the same "one cohesive outbound
+  // interface message domain" grouping OutboundMessagePreviewSection.tsx
+  // already established for all four transaction types together.
+  { id: 'def-outbound-interface-dispatch-failure', name: 'Outbound Interface Dispatch Failure', description: 'A patient-identity (ADT^A08/A40/A47) or pathology-result (ORU^R01) dispatch to the external interface engine failed and was judged worth systemic CAPA review, not just a one-off retry.', status: 'Active', level: 'case' },
   // Real feature, per direct follow-up: "an immediate Tissue
   // Discrepancy QA Flag is raised before sectioning... Is the
   // discrepancy being tracked in the Quality Assurance Module?"
@@ -98,6 +110,17 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   {
     id: 'def-cassette-dispatch-failure', name: 'Cassette Dispatch Failure', status: 'Active', level: 'specimen',
     description: 'A cassette dispatch request to the Cassette Engine failed completely (outcome: error) — no cassette was produced at all, blocking real bench/grossing flow. Real, open CAPA record, not just a logged history entry — a complete failure warrants real root-cause review the way a mere fallback color substitution does not.',
+  },
+  // Real, per direct guidance (PS-134, Sign-Out Guardrails + Secondary
+  // Review Routing): a pathologist-confirmed Critical/Malignant
+  // abnormal-detection finding (PS-129/PS-131) is routed here via the
+  // new QaActivityType's own capaTriggerRule
+  // (services/quality/mockQaActivityTypeService.ts) — the real,
+  // existing CAPA mechanism this ticket's own scope named directly,
+  // rather than a second, parallel review-routing system.
+  {
+    id: 'def-confirmed-high-risk-finding', name: 'Confirmed High-Risk/Critical Finding — Peer Review Required', status: 'Active', level: 'case',
+    description: 'A pathologist confirmed a Critical- or Malignant-severity abnormal-detection suggestion at sign-out (PS-129 discrete trigger or PS-131 AI-narrative finding). Real, open CAPA record — routes the case into the same Operations/CAPA queue every other deficiency uses, for a genuine peer/secondary review, not merely a logged history entry.',
   },
 ];
 

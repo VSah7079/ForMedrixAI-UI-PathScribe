@@ -24,7 +24,7 @@
 // still-fake data with no indication it wasn't addressed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ReconciliationRecord, DiscordanceDelta } from '@/types/quality/ReconciliationRecord';
+import type { QaActivityRecord, QaDiscordanceDelta } from '@/types/quality/QaActivityRecord';
 import type { AmendmentRecord } from '@/types/reports/AmendmentRecord';
 
 export type Severity = 'low' | 'medium' | 'high';
@@ -65,7 +65,7 @@ function formatShortDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const DELTA_LABELS: Record<DiscordanceDelta, string> = {
+const DELTA_LABELS: Record<QaDiscordanceDelta, string> = {
   upgrade:         'Upgraded',
   downgrade:        'Downgraded',
   minor_variance:  'Minor Variance',
@@ -75,9 +75,18 @@ const DELTA_LABELS: Record<DiscordanceDelta, string> = {
  *  'concordant' record is real evidence a check happened, per
  *  ReconciliationRecord's own design intent, but isn't itself a
  *  discordant case to flag here) and maps the real record shape onto
- *  what the UI already expects. */
+ *  what the UI already expects.
+ *
+ *  PS-113, Stage 4: migrated from ReconciliationRecord[] to
+ *  QaActivityRecord[] - frozenDx/finalDx now read from fieldValues
+ *  (activity-specific comparison data), not fixed top-level
+ *  properties. Callers are responsible for filtering to the real
+ *  Frozen vs Final activity type before calling this - this function
+ *  itself doesn't filter by activityTypeId, since a future caller
+ *  might reasonably want discordant cases across more than one real
+ *  review-with-outcome activity at once. */
 export function reconciliationRecordsToDiscordantCases(
-  records: ReconciliationRecord[],
+  records: QaActivityRecord[],
   now: Date = new Date()
 ): RealDiscordantCase[] {
   return records
@@ -85,8 +94,8 @@ export function reconciliationRecordsToDiscordantCases(
     .map(r => ({
       id:       r.id,
       caseType: r.caseType,
-      frozenDx: r.frozenDx,
-      finalDx:  r.finalDx,
+      frozenDx: String(r.fieldValues.frozenDx ?? ''),
+      finalDx:  String(r.fieldValues.finalDx ?? ''),
       delta:    r.delta ? DELTA_LABELS[r.delta] : 'Discordant',
       date:     formatShortDate(r.recordedAt),
       severity: r.severity ?? 'medium',
@@ -157,7 +166,20 @@ export interface TatEntryForResolution {
   type: string;
   targetHours: number;
   urgency: 'ROUTINE' | 'STAT' | null;
-  clientId: string | null;
+  facilityId: string | null;
+  /**
+   * Real, per direct guidance: a genuinely separate dimension from
+   * facilityId above, not a replacement for it — facilityId represents the
+   * ORDERING/REFERRING facility (who sent the case), performingLabFacilityId
+   * represents the real performing lab actually doing the work being
+   * measured. Both can independently apply: a performing lab's own
+   * general TAT policy, and a specific ordering client's own contractual
+   * TAT agreement (which may hold regardless of which internal lab
+   * within an Enterprise ends up performing the work). Resolved via
+   * resolvePerformingLabFacilityId() at the real call site, never a raw
+   * facilityId read.
+   */
+  performingLabFacilityId: string | null;
   specimenId: string | null;
   subspecialtyId: string | null;
   roleId: string | null;
@@ -165,26 +187,62 @@ export interface TatEntryForResolution {
 }
 
 export interface TatResolutionContext {
-  clientId?: string;
+  facilityId?: string;
+  performingLabFacilityId?: string;
   specimenId?: string;
   subspecialtyId?: string;
   urgency?: 'ROUTINE' | 'STAT';
 }
 
-/** Real fix: TATConfigSection.tsx's own specificityScore() is a display-
- *  sort helper for the admin UI, not a callable "resolve the real target
- *  for this case" function - that didn't exist anywhere before this.
- *  Same scoring weights as the admin UI's own hierarchy documentation
- *  (client=4, specimen/subspecialty=2, urgency/role=1), reused here for
- *  consistency rather than reinvented. */
-function specificityScore(e: TatEntryForResolution): number {
+/** Real, per direct guidance: exported and shared with
+ *  TATConfigSection.tsx's own admin-UI specificity display, rather than
+ *  two separate copies of the same weighting scheme that could silently
+ *  drift apart the moment either one gains a new dimension (which is
+ *  exactly what just happened here — performingLabFacilityId, added to
+ *  both real consumers from this one, single implementation). Same
+ *  scoring weights as the admin UI's own hierarchy documentation
+ *  (client=4, performing lab=4 — a genuine peer dimension, not
+ *  subordinate to client — specimen/subspecialty=2, urgency/role=1). */
+export function specificityScore(e: TatEntryForResolution): number {
   let score = 0;
-  if (e.clientId)       score += 4;
-  if (e.specimenId)     score += 2;
-  if (e.subspecialtyId) score += 2;
-  if (e.urgency)        score += 1;
-  if (e.roleId)         score += 1;
+  if (e.facilityId)              score += 4;
+  if (e.performingLabFacilityId) score += 4;
+  if (e.specimenId)             score += 2;
+  if (e.subspecialtyId)         score += 2;
+  if (e.urgency)                score += 1;
+  if (e.roleId)                 score += 1;
   return score;
+}
+
+/** Real, most-specific-wins resolution against actual TATEntry data -
+ *  null-valued dimensions on an entry mean "matches anything" for that
+ *  dimension. roleId is deliberately not matched here - case-level TAT
+ *  targets aren't role-scoped the way consultation-response ones would
+ *  be, so only role-agnostic (roleId: null) entries are eligible.
+ *  Returns null (not a fabricated default) when no real entry matches
+ *  at all - caller decides how to handle that honestly. */
+/** Real, per direct guidance: the actual winning-entry resolution,
+ *  extracted so a real consumer that needs to know WHICH entry won
+ *  (not just its targetHours) — TATConfigSection.tsx's own Resolution
+ *  Simulator — can call the exact same logic directly, rather than a
+ *  third, hand-maintained reimplementation that could (and, before
+ *  this fix, already did) silently disagree with the real resolver in
+ *  edge cases its own hardcoded priority list didn't cover. */
+export function resolveTatEntry(
+  entries: TatEntryForResolution[],
+  type: string,
+  context: TatResolutionContext
+): TatEntryForResolution | null {
+  const matching = entries.filter(e =>
+    e.active && e.type === type && e.roleId === null &&
+    (e.facilityId === null || e.facilityId === context.facilityId) &&
+    (e.performingLabFacilityId === null || e.performingLabFacilityId === context.performingLabFacilityId) &&
+    (e.specimenId === null || e.specimenId === context.specimenId) &&
+    (e.subspecialtyId === null || e.subspecialtyId === context.subspecialtyId) &&
+    (e.urgency === null || e.urgency === context.urgency)
+  );
+  if (matching.length === 0) return null;
+  return [...matching].sort((a, b) => specificityScore(b) - specificityScore(a))[0];
 }
 
 /** Real, most-specific-wins resolution against actual TATEntry data -
@@ -199,16 +257,7 @@ export function resolveTatTargetHours(
   type: string,
   context: TatResolutionContext
 ): number | null {
-  const matching = entries.filter(e =>
-    e.active && e.type === type && e.roleId === null &&
-    (e.clientId === null || e.clientId === context.clientId) &&
-    (e.specimenId === null || e.specimenId === context.specimenId) &&
-    (e.subspecialtyId === null || e.subspecialtyId === context.subspecialtyId) &&
-    (e.urgency === null || e.urgency === context.urgency)
-  );
-  if (matching.length === 0) return null;
-  const best = [...matching].sort((a, b) => specificityScore(b) - specificityScore(a))[0];
-  return best.targetHours;
+  return resolveTatEntry(entries, type, context)?.targetHours ?? null;
 }
 
 export interface RealTotalTatOutlier {
@@ -232,7 +281,20 @@ export interface CaseForTatCalc {
    *  of this file had it at the top level, which would have made every
    *  function depending on it silently find zero real cases, regardless
    *  of seed data quality. */
-  order?: { priority?: string; clientId?: string; receivedDate?: string; assignedTo?: string };
+  order?: { priority?: string; facilityId?: string; receivedDate?: string; assignedTo?: string };
+  /**
+   * Real, per direct guidance: this case's own real performing lab —
+   * genuinely distinct from order.facilityId above (the ordering/
+   * referring facility). Pre-resolved by the real caller (QualityTab.tsx)
+   * via resolvePerformingLabFacilityId(), once per distinct facility, not
+   * computed here — these are synchronous, pure calculation functions,
+   * and resolving a performing lab requires a real, async facility
+   * lookup. A case whose ordering facility itself has no resolvable
+   * performing lab correctly leaves this undefined, not defaulted to
+   * order.facilityId — that would silently conflate the two real,
+   * separate dimensions this fix exists to keep apart.
+   */
+  performingLabFacilityId?: string;
   specimens?: { description?: string }[];
   subspecialtyId?: string;
   /** Real fix: issuedDate genuinely lives under Case.diagnostic, not as
@@ -268,7 +330,8 @@ export function computeTotalCaseTatOutliers(
     const tatHrs = (issued - received) / (1000 * 60 * 60);
     const urgency: 'ROUTINE' | 'STAT' = c.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
     const target = resolveTatTargetHours(tatEntries, 'TOTAL_CASE', {
-      clientId:       c.order?.clientId,
+      facilityId:     c.order?.facilityId,
+      performingLabFacilityId: c.performingLabFacilityId,
       subspecialtyId: c.subspecialtyId,
       urgency,
     });
@@ -281,7 +344,7 @@ export function computeTotalCaseTatOutliers(
       tatHrs:             Math.round(tatHrs * 10) / 10,
       targetHrs:          target,
       overByHrs:          Math.round((tatHrs - target) * 10) / 10,
-      assigningAuthority: (c.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+      assigningAuthority: (c.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
       daysAgo:            daysAgo(c.diagnostic!.issuedDate!, now),
     });
   }
@@ -341,7 +404,8 @@ function computeGenericTatOutliers(
     const actualHrs = (end - start) / (1000 * 60 * 60);
     const urgency: 'ROUTINE' | 'STAT' = c.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
     const target = resolveTatTargetHours(tatEntries, tatType, {
-      clientId:       c.order?.clientId,
+      facilityId:     c.order?.facilityId,
+      performingLabFacilityId: c.performingLabFacilityId,
       subspecialtyId: c.subspecialtyId,
       urgency,
     });
@@ -354,7 +418,7 @@ function computeGenericTatOutliers(
       actualHrs:          Math.round(actualHrs * 10) / 10,
       targetHrs:          target,
       overByHrs:          Math.round((actualHrs - target) * 10) / 10,
-      assigningAuthority: (c.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+      assigningAuthority: (c.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
       daysAgo:            daysAgo(endIso, now),
     });
   }
@@ -469,7 +533,8 @@ export function computeFrozenSectionOutliers(
 
     const urgency: 'ROUTINE' | 'STAT' = c.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
     const target = resolveTatTargetHours(tatEntries, 'FROZEN_SECTION', {
-      clientId:       c.order?.clientId,
+      facilityId:     c.order?.facilityId,
+      performingLabFacilityId: c.performingLabFacilityId,
       subspecialtyId: c.subspecialtyId,
       urgency,
     });
@@ -491,7 +556,7 @@ export function computeFrozenSectionOutliers(
         actualHrs:          Math.round(actualHrs * 10) / 10,
         targetHrs:          target,
         overByHrs:          Math.round((actualHrs - target) * 10) / 10,
-        assigningAuthority: (c.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+        assigningAuthority: (c.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
         daysAgo:            daysAgo(sp.frozenDiagnosisRenderedAt, now),
       });
     }
@@ -541,7 +606,8 @@ export function computeColdIschemiaOutliers(
   for (const c of cases) {
     const urgency: 'ROUTINE' | 'STAT' = c.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
     const target = resolveTatTargetHours(tatEntries, 'COLD_ISCHEMIA', {
-      clientId:       c.order?.clientId,
+      facilityId:     c.order?.facilityId,
+      performingLabFacilityId: c.performingLabFacilityId,
       subspecialtyId: c.subspecialtyId,
       urgency,
     });
@@ -565,7 +631,7 @@ export function computeColdIschemiaOutliers(
         actualHrs:          Math.round(actualHrs * 100) / 100, // cold ischemia targets are sub-hour - keep 2 decimals
         targetHrs:          target,
         overByHrs:          Math.round((actualHrs - target) * 100) / 100,
-        assigningAuthority: (c.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+        assigningAuthority: (c.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
         daysAgo:            daysAgo(sp.processing.processedAt, now),
       });
     }
@@ -624,7 +690,8 @@ function resolveConsultTarget(
 ): number | null {
   const urgency: 'ROUTINE' | 'STAT' = c?.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
   return resolveTatTargetHours(tatEntries, type, {
-    clientId:       c?.order?.clientId,
+    facilityId:     c?.order?.facilityId,
+    performingLabFacilityId: c?.performingLabFacilityId,
     subspecialtyId: c?.subspecialtyId,
     urgency,
   });
@@ -664,7 +731,7 @@ export function computeConsultResponseOutliers(
       actualHrs:          Math.round(actualHrs * 10) / 10,
       targetHrs:          target,
       overByHrs:          Math.round((actualHrs - target) * 10) / 10,
-      assigningAuthority: (c?.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+      assigningAuthority: (c?.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
       daysAgo:            daysAgo(d.completedAt, now),
     });
   }
@@ -708,7 +775,7 @@ export function computeConsultAwaitingOutliers(
       actualHrs:          Math.round(actualHrs * 10) / 10,
       targetHrs:          target,
       overByHrs:          Math.round((actualHrs - target) * 10) / 10,
-      assigningAuthority: (c?.order?.clientId && clientNameById[c.order.clientId]) || 'Unknown',
+      assigningAuthority: (c?.order?.facilityId && clientNameById[c.order.facilityId]) || 'Unknown',
       daysAgo:            daysAgo(d.timestamp, now),
     });
   }
@@ -757,14 +824,23 @@ export function computeTatByClient(
   const rows: RealClientTatRow[] = [];
 
   for (const client of clients) {
-    const myCases = cases.filter(c => c.order?.clientId === client.id && c.order?.assignedTo === currentUserId);
+    const myCases = cases.filter(c => c.order?.facilityId === client.id && c.order?.assignedTo === currentUserId);
     if (myCases.length === 0) continue;
 
+    // Real, deliberate scope boundary: this is a per-ORDERING-CLIENT
+    // breakdown of the current user's own cases, not per-case TAT-
+    // breach detection — myCases can genuinely span more than one real
+    // performing lab (a pathologist working across facilities), so
+    // there's no single, well-defined performingLabFacilityId to
+    // resolve for the whole row the way there is for one specific
+    // case above. Left as client-only resolution; a real per-(client,
+    // performing lab) breakdown would need its own, separate grouping,
+    // not a silent guess at "the" lab for this row.
     const targetFirstTouch = resolveTatTargetHours(tatEntries, 'FIRST_TOUCH', {
-      clientId: client.id, specimenId: null, subspecialtyId: null, urgency: null,
+      facilityId: client.id, specimenId: null, subspecialtyId: null, urgency: null,
     });
     const targetTotal = resolveTatTargetHours(tatEntries, 'TOTAL_CASE', {
-      clientId: client.id, specimenId: null, subspecialtyId: null, urgency: null,
+      facilityId: client.id, specimenId: null, subspecialtyId: null, urgency: null,
     });
 
     let firstTouchSum = 0, firstTouchCount = 0, firstTouchBreaches = 0;

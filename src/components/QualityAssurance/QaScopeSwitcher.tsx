@@ -1,6 +1,6 @@
 // src/components/QualityAssurance/QaScopeSwitcher.tsx
 import React, { useEffect, useState } from 'react';
-import { mockFacilityService, type Facility as Client } from '@/services/facilities/mockFacilityService';
+import { mockFacilityService, type Facility } from '@/services/facilities/mockFacilityService';
 import { listOrganisations } from '@/services/organisation/organisationService';
 import type { Organisation } from '@/services/organisation/organisationService';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
@@ -41,10 +41,10 @@ const ORG_PREFIX = 'org:';
 const CLIENT_PREFIX = 'client:';
 
 export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClientIds }) => {
-  const [clients, setClients] = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   useEffect(() => {
-    mockFacilityService.getAll().then(res => { if (res.ok) setClients(res.data.filter(c => c.status === 'Active')); });
+    mockFacilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
     listOrganisations().then(orgs => setOrganisations(orgs.filter(o => o.active)));
   }, []);
 
@@ -55,9 +55,9 @@ export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClien
     ? organisations
     : organisations.filter(o => o.id === session?.organisationId);
 
-  const visibleClients = crossTenant || !visibleClientIds
-    ? clients
-    : clients.filter(c => visibleClientIds.includes(c.id));
+  const visibleFacilities = crossTenant || !visibleClientIds
+    ? facilities
+    : facilities.filter(c => visibleClientIds.includes(c.id));
 
   const currentValue =
     scope.level === 'enterprise' ? 'enterprise' :
@@ -86,9 +86,9 @@ export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClien
             ))}
           </optgroup>
         )}
-        {visibleClients.length > 0 && (
-          <optgroup label="By Referring Client">
-            {visibleClients.map(c => (
+        {visibleFacilities.length > 0 && (
+          <optgroup label="By Referring Facility">
+            {visibleFacilities.map(c => (
               <option key={c.id} value={`${CLIENT_PREFIX}${c.id}`}>{c.name} ({c.assigningAuthority})</option>
             ))}
           </optgroup>

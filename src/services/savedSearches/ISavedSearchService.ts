@@ -27,7 +27,7 @@ export interface CaseSearchFilters {
 export interface RefinedSearchFilters extends CaseSearchFilters {
   specimenTypes?: string[];
   physicianIds?: string[];
-  clientIds?: string[];
+  facilityIds?: string[];
   hasFlag?: string[];
   minConfidenceScore?: number;
 }

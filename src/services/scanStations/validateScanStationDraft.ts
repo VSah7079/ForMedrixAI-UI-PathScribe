@@ -12,6 +12,7 @@
 export interface ScanStationDraftValidationInput {
   name: string;
   barcodeCode: string;
+  facilityId: string;
   supportsPrinting: boolean;
   cassetteSlidePrinterProfileId?: string;
 }
@@ -19,6 +20,7 @@ export interface ScanStationDraftValidationInput {
 export interface ScanStationDraftValidationErrors {
   name?: string;
   barcodeCode?: string;
+  facilityId?: string;
   cassetteSlidePrinterProfileId?: string;
 }
 
@@ -38,6 +40,16 @@ export function validateScanStationDraft(draft: ScanStationDraftValidationInput)
   // this station at all.
   if (!draft.barcodeCode.trim()) {
     errors.barcodeCode = 'Required — this is what a printed station label encodes';
+  }
+
+  // Real, per direct guidance: facilityId genuinely had no validation
+  // at all before this — the free-text UI it used to pair with
+  // defaulted to a fake, always-non-empty 'lab-main' string, so an
+  // empty check would never have fired anyway. Now that the UI is a
+  // real dropdown with no default selection, this is a real, live
+  // rule, not a no-op.
+  if (!draft.facilityId.trim()) {
+    errors.facilityId = 'Required — which real performing lab this station physically sits in';
   }
 
   // Real, deliberate validation, per direct follow-up: "support both

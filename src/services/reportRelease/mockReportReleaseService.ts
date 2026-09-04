@@ -5,6 +5,7 @@ import { caseRouter } from '../cases/CaseRouter';
 import { mockAuditService } from '../auditlog/mockAuditService';
 import { facilityService } from '../index';
 import { resolvePerformingLabFacilityId } from '../facilities/IFacilityService';
+import { dispatchCaseInstances } from '../reports/dispatchCaseInstances';
 
 /** Real, sensible fallback if no org config has been saved yet — matches
  *  direct specification's own stated default (10 minutes, 1-30 range),
@@ -214,6 +215,19 @@ export const mockReportReleaseService: IReportReleaseService = {
         facilityId: current.originHospitalId,
         confidence: null,
       }).catch(() => {});
+
+      // Real, per direct guidance (the real, deferred ORU^R01 dispatch
+      // trigger this whole feature exists to protect): the actual
+      // moment a signed-out case's real result(s) finally go out —
+      // never before this. Fire-and-forget, deliberately never
+      // awaited: a real, external network dispatch attempt (each
+      // instance can take up to 15 real seconds to time out) must
+      // never delay this function's own, more time-sensitive job —
+      // flipping the real UI state from "buffered" to "released" for
+      // whoever's watching the countdown.
+      dispatchCaseInstances(caseId).catch(e =>
+        console.error('[reportRelease] Real, non-blocking failure dispatching case instances after release:', e)
+      );
 
       return { released: true };
     } catch (e) {

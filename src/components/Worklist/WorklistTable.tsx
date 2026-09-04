@@ -9,6 +9,7 @@ import { useSystemConfig } from "@/contexts/SystemConfigContext";
 import { getFacilityDateParts } from '@/utils/facilityTime';
 import { facilityService, auditService, specimenDeficiencyService, subspecialtyService, accessRequestService } from "@/services";
 import { sendAccessRequestToAdmins } from "@/utils/accessRequests";
+import { resolvePediatricAccess, resolveOrchestrationAccess } from "@/services/auth/caseAccessControl";
 import { useMessaging } from "@/contexts/MessagingContext";
 import { getOrganisationByHospitalId, getOrganisationShortName } from '../../services/organisation/organisationService';
 import { formatDate as formatDateLocale, localeForJurisdiction, formatAge } from '@/utils/formatDate';
@@ -204,8 +205,15 @@ const getSortValue = (c: Case, key: string): any => {
     case 'status':
       return c.status;
     case 'flagSeverity':
-      // Derived value: total number of flags
-      return (c.caseFlags?.length ?? 0) + (c.specimenFlags?.length ?? 0);
+      // Derived value: total number of flags. Real, confirmed fix
+      // (Jira PS-57): specimen-level flags now correctly aggregated
+      // from each specimen's own, nested specimenFlags — the case's
+      // own top-level specimenFlags field this used to read never
+      // reflected the real, live flag-application workflow (see
+      // renderFlags's own, fuller comment in the component body).
+      // Deleted (removed) flags excluded, same as everywhere else.
+      return (c.caseFlags?.filter(f => !f.deletedAt).length ?? 0)
+        + (c.specimens ?? []).reduce((n, sp) => n + (sp.specimenFlags?.filter(f => !f.deletedAt).length ?? 0), 0);
     default:
       return (c as any)[key];
   }
@@ -240,6 +248,14 @@ const getStatusStyle = (status: string) => {
     // SearchPage.tsx's STATUS_PILL_META, for cross-page consistency.
     case 'pending-release':
       return { bg: 'rgba(28,141,227,0.15)',   color: '#1C8DE3', border: 'rgba(28,141,227,0.3)'   }; // blue — matches HeaderBar's pending-release badge
+    // Real, per direct guidance ("Yes we should scope 'Return to
+    // Trainee'/'Reject with Notes'"): deep brown, deliberately NOT
+    // amber/orange — 'pending-review' immediately above already uses
+    // #F59E0B, and "Needs Review" vs. "Needs Revision" are close
+    // enough in wording that a close color too would compound the
+    // confusion, not just risk it.
+    case 'returned':
+      return { bg: 'rgba(120,53,15,0.15)',    color: '#78350F', border: 'rgba(120,53,15,0.3)'    }; // deep brown — matches WorklistPage's "Needs Revision" tile
     default:
       return { bg: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: 'rgba(255,255,255,0.1)' };
   }
@@ -253,15 +269,28 @@ const getStatusStyle = (status: string) => {
  * FlagChip: Renders a small badge with a flag icon.
  * isSpecimen = true renders a dashed flag icon.
  * isSpecimen = false renders a solid flag icon.
+ *
+ * Real, confirmed fix (Jira PS-57): flag is a real FlagInstance now —
+ * id/flagDefinitionId/appliedAt/source/deletedAt, none of the display
+ * fields (label/color/description) this component used to read
+ * directly off it. Resolves against flagDefById instead — the exact
+ * gap this component's own prior comment on flagDefinitions (below,
+ * at the props destructure) already flagged as real, separate
+ * follow-up work; this is that follow-up.
  */
-const FlagChip: React.FC<{ flag: any; isSpecimen?: boolean }> = React.memo(({ flag, isSpecimen }) => {
-  const palette = getFlagPalette(flag.color);
-  const label: string = flag.label || flag.name || flag.type || flag.color || 'Flag';
+const FlagChip: React.FC<{ flag: any; flagDefById: Map<string, Flag>; isSpecimen?: boolean }> = React.memo(({ flag, flagDefById, isSpecimen }) => {
+  const def = flagDefById.get(flag.flagDefinitionId);
+  // Real, honest gap: the real Flag/FlagDefinition catalog has no color
+  // field at all (confirmed directly) — getFlagPalette's own fallback
+  // below already handles this gracefully, not something to paper over
+  // with a field that was never real.
+  const palette = getFlagPalette(undefined);
+  const label: string = def?.name ?? flag.label ?? flag.name ?? 'Flag';
   
   return (
     <span
       className="wl-flag-chip"
-      title={`${isSpecimen ? 'Specimen' : 'Case'}: ${label}${flag.description ? ` — ${flag.description}` : ''}`}
+      title={`${isSpecimen ? 'Specimen' : 'Case'}: ${label}${def?.description ? ` — ${def.description}` : ''}`}
       style={{
         background: palette.bg, 
         border: `1px solid ${palette.border}`,
@@ -371,6 +400,25 @@ const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionTyp
 const UrgentDot: React.FC = React.memo(() => (
   <span title="Urgent Case (STAT)" className="wl-urgent-dot" />
 ));
+
+/**
+ * AbnormalDot: real, per direct guidance (PS-105) — a small, static
+ * indicator for a case's own real, pathologist-CONFIRMED
+ * abnormalDetectionStatus (never an unconfirmed AI/discrete-rule
+ * suggestion — that only ever exists transiently during the sign-out
+ * modal, never reaches here). One color per real severity level.
+ */
+const AbnormalDot: React.FC<{ severity: 'Abnormal' | 'Critical' | 'Malignant'; syntheticCoding?: { code: string; display: string }[] }> = React.memo(({ severity, syntheticCoding }) => {
+  // Real, per direct guidance: architecture-testing only — see
+  // resolveSyntheticCoding.ts's own header for the full safety
+  // reasoning. Appended to the tooltip only, purely for a QC tester to
+  // directly verify the confirmed-finding → coded-term pipeline
+  // actually worked — never rendered as if it were a real code.
+  const codingSuffix = syntheticCoding?.length
+    ? ` — ${syntheticCoding.map(c => `${c.code} (${c.display})`).join('; ')}`
+    : '';
+  return <span title={`${severity} finding confirmed at sign-out${codingSuffix}`} className={`wl-abnormal-dot--${severity}`} />;
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKLIST TABLE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,20 +437,21 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   onRowSelect,
   onFirstCaseId,
   onDisplayOrder,
-  // flagDefinitions is a real prop three callers (SearchPage, WorklistPage,
-  // SynopticReportPage) actively pass in, but nothing in this component
-  // reads it — likely orphaned when the Sidecar overlay (mentioned in
-  // renderFlag's own comment below) was removed. Not dead code to delete;
-  // flagged here rather than silently suppressed. If Computational-flag
-  // styling in renderFlag was the intended consumer, that's real,
-  // separate follow-up work.
-  flagDefinitions: _flagDefinitions = [],
+  // Real, confirmed fix (Jira PS-57): flagDefinitions is now used —
+  // see FlagChip's own comment above. Real, live catalog, same one
+  // SearchPage/WorklistPage/SynopticReportPage already fetch and pass
+  // down; this component just never resolved against it before.
+  flagDefinitions = [],
   forceCardView = false,
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { config } = useSystemConfig();
   const { reloadInbox } = useMessaging();
+  const flagDefById = React.useMemo(
+    () => new Map(flagDefinitions.map(f => [f.id, f])),
+    [flagDefinitions]
+  );
 
   // ── Restricted-pool awareness for the current user (real fix, from a
   //    direct product review: the worklist previously showed every pool's
@@ -467,7 +516,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // description now), and defMap had no other purpose.
 
   // ── Pediatric access state ──────────────────────────────────────────────
-  const [pedBlockedCase, setPedBlockedCase] = React.useState<{id:string;age:number;clientId?:string}|null>(null);
+  const [pedBlockedCase, setPedBlockedCase] = React.useState<{id:string;age:number;facilityId?:string}|null>(null);
 
   // Real feature, per direct follow-up: "Do we Track the request to
   // gain access?... Do we generate a ticket system that has its own
@@ -516,8 +565,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   const orchRequestSent = orchBlockedCase ? orchRequestedIds.has(orchBlockedCase.id) : false;
 
   const isOrchRestricted = React.useCallback((c: any): boolean => {
-    if ((c?.reportingMode) !== 'orchestrator') return false; // not an Orchestration case — no gate applies
-    return !((user as any)?.canViewOrchestration ?? false);
+    return !resolveOrchestrationAccess(user as any, c).granted;
   }, [user]);
 
   // Combined check used at every PHI-redaction point in the table/card
@@ -564,19 +612,13 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   }, [loadClientThresholds]);
 
   const isPedRestricted = React.useCallback((c: any): boolean => {
-    const clientId  = c?.order?.clientId;
-    const dob       = c?.patient?.dateOfBirth;
-    const threshold = clientId ? (clientThresholds[clientId] ?? null) : null;
-    if (!dob || threshold === null) return false; // client has no pediatric policy
-
-    const age = Math.floor((Date.now() - new Date(dob).getTime()) / 31557600000);
-    if (age >= threshold) return false; // not a pediatric patient
-
-    // Option C: user must be in the client's authorized pediatric pathologist list
-    const authorizedIds: string[] = clientId
-      ? ((clientThresholds as any)[`${clientId}_authorized`] ?? [])
-      : [];
-    return !authorizedIds.includes((user as any)?.id ?? '');
+    const clientId = c?.order?.facilityId;
+    const facility = clientId ? {
+      id: clientId,
+      pediatricAgeThreshold: clientThresholds[clientId] ?? null,
+      authorizedPediatricPathologistIds: (clientThresholds as any)[`${clientId}_authorized`] ?? [],
+    } : null;
+    return !resolvePediatricAccess(user as any, c, facility).granted;
   }, [user, clientThresholds]);
 
   // Pool cases: view-only/PHI-redacted for EVERYONE until actually
@@ -940,16 +982,22 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       const c = cases.find(c => c.id === id);
 
       // Pediatric restricted — show access modal instead of opening case
-      if (isPedRestricted(c as any)) {
+      const facilityIdForPedCheck = (c as any)?.order?.facilityId;
+      const pedFacility = facilityIdForPedCheck ? {
+        id: facilityIdForPedCheck,
+        pediatricAgeThreshold: clientThresholds[facilityIdForPedCheck] ?? null,
+        authorizedPediatricPathologistIds: (clientThresholds as any)[`${facilityIdForPedCheck}_authorized`] ?? [],
+      } : null;
+      const pedDecision = resolvePediatricAccess(user as any, c as any, pedFacility);
+      if (!pedDecision.granted) {
         const dob = (c as any)?.patient?.dateOfBirth;
         const age = dob ? Math.floor((Date.now()-new Date(dob).getTime())/31557600000) : 0;
-        const clientId = (c as any)?.order?.clientId;
-        setPedBlockedCase({ id, age, clientId });
+        setPedBlockedCase({ id, age, facilityId: facilityIdForPedCheck });
         // Audit: access denied event
         auditService.logEvent({
           type: 'system',
           event: 'Pediatric Access Denied',
-          detail: `Case ${id} opened by ${(user as any)?.name ?? 'Unknown'} — blocked: patient age ${age} below client pediatric threshold. User lacks canViewPediatric permission.`,
+          detail: `Case ${id} opened by ${(user as any)?.name ?? 'Unknown'} — blocked: ${pedDecision.reason}`,
           user: (user as any)?.name ?? 'Unknown',
           caseId: id,
           confidence: null,
@@ -1001,7 +1049,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       prefetchTemplateData(templateId);
       openCase(id);
     },
-    [cases, openCase, onRowSelect, onPoolCaseClick, isOrchRestricted, isPedRestricted, user]
+    [cases, openCase, onRowSelect, onPoolCaseClick, isOrchRestricted, isPedRestricted, user, clientThresholds]
   );
 // ─────────────────────────────────────────────────────────────────────────────
   // DISPLAY ROW GENERATION (Dividers + Virtualization)
@@ -1163,14 +1211,24 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // deletion). The pill's own tooltip now carries the description
   // that was the only real information the overlay ever added.
   const renderFlag = (appliedFlag: any, idx: number, isSpecimen: boolean) => {
-    return <FlagChip key={`flag-${appliedFlag.id ?? idx}-${idx}`} flag={appliedFlag} isSpecimen={isSpecimen} />;
+    return <FlagChip key={`flag-${appliedFlag.id ?? idx}-${idx}`} flag={appliedFlag} flagDefById={flagDefById} isSpecimen={isSpecimen} />;
   };
 
 
-  const renderFlags = (caseFlags: any[], specimenFlags: any[], _caseId: string) => {
+  // Real, confirmed fix (Jira PS-57): specimenFlags used to come from
+  // a top-level Case.specimenFlags field — confirmed directly, only
+  // ever populated by HeaderBar.tsx's LIS-sync path, never by the
+  // real flag-application workflow (FlagManagerModal/caseFlagsApi.ts),
+  // which has always written to each specimen's own, nested
+  // specimenFlags instead (the only real way to know which specimen a
+  // flag belongs to, since FlagInstance itself carries no specimenId).
+  // Aggregated here across all of the case's specimens. Deleted
+  // (removed) flags excluded on both sides — the old, wrong type had
+  // no real field for this at all.
+  const renderFlags = (caseFlags: any[], specimens: any[], _caseId: string) => {
     const allFlags = [
-      ...caseFlags.map(f => ({ f, isSpecimen: false })),
-      ...specimenFlags.map(f => ({ f, isSpecimen: true })),
+      ...caseFlags.filter(f => !f.deletedAt).map(f => ({ f, isSpecimen: false })),
+      ...specimens.flatMap((sp: any) => (sp.specimenFlags ?? []).filter((f: any) => !f.deletedAt).map((f: any) => ({ f, isSpecimen: true }))),
     ];
     return (
       <div className="wl-flags-wrap">
@@ -1274,6 +1332,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 const isUrgent = isUrgentCase(c);
                 const isRush = (c.order as any)?.priority === 'Rush';
                 const hasOpenDeficiency = caseIdsWithOpenDeficiency.has(c.id);
+                const abnormalSeverity = c.abnormalDetectionStatus?.severity;
                 const isSelected = selectedCaseId ? c.id === selectedCaseId : false;
                 const isRevisedFinalCard = hasDisplayableRevision(c.status, c.lastRevisionType);
                 const statusStyle = isRevisedFinalCard ? REVISION_ACCENT : getStatusStyle(c.status);
@@ -1296,6 +1355,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     <div className="wl-card__header">
                       <div className="wl-card__id-group">
                         {isUrgent && <UrgentDot />}
+                        {abnormalSeverity && <AbnormalDot severity={abnormalSeverity} syntheticCoding={c.syntheticAbnormalCoding} />}
                         {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title="Open specimen deficiency — see Deficiencies queue">⚠</span>}
                         <div>
                           {c.originHospitalId && c.originHospitalId !== 'HOSP-001' && (
@@ -1373,7 +1433,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           <div className="wl-card__field-sub" data-phi="dob">
                             {c.patient.sex?.charAt(0) ?? '—'}
                             {' · '}
-                            {formatDate(c.patient.dateOfBirth, c.order?.clientId)}
+                            {formatDate(c.patient.dateOfBirth, c.order?.facilityId)}
                             {' '}
                             ({c.patient.dateOfBirth ? formatAge(c.patient.dateOfBirth) : '—'})
                             <span className="wl-mrn-inline" data-phi="mrn">· MRN {c.patient.mrn ?? '—'}</span>
@@ -1384,7 +1444,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       {/* Accession + Physician */}
                       <div>
                         <div className="wl-card__field-label">Accession · Physician</div>
-                        <div className="wl-card__field-sub">{formatDate(c.order?.receivedDate, c.order?.clientId)}</div>
+                        <div className="wl-card__field-sub">{formatDate(c.order?.receivedDate, c.order?.facilityId)}</div>
                         <div className="wl-card__field-sub">
                           {c.order?.requestingProvider ?? '—'}
                         </div>
@@ -1414,11 +1474,11 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           rather than capping the flag count here, which
                           doesn't address a single long label and would
                           silently hide real flags beyond an arbitrary cutoff. */}
-                      {!isRestricted(c) && ((c.caseFlags?.length ?? 0) + (c.specimenFlags?.length ?? 0)) > 0 && (
+                      {!isRestricted(c) && ((c.caseFlags?.filter(f => !f.deletedAt).length ?? 0) + (c.specimens ?? []).reduce((n, sp) => n + (sp.specimenFlags?.filter(f => !f.deletedAt).length ?? 0), 0)) > 0 && (
                         <div className="wl-card__body-full">
                           <div className="wl-card__field-label">Flags</div>
                           <div className="wl-card__chips">
-                            {renderFlags(c.caseFlags ?? [], c.specimenFlags ?? [], c.id)}
+                            {renderFlags(c.caseFlags ?? [], c.specimens ?? [], c.id)}
                           </div>
                         </div>
                       )}
@@ -1573,6 +1633,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 const isUrgent = isUrgentCase(c);
                 const isRush   = (c.order as any)?.priority === 'Rush';
                 const hasOpenDeficiency = caseIdsWithOpenDeficiency.has(c.id);
+                const abnormalSeverity = c.abnormalDetectionStatus?.severity;
                 const isPool   = c.status === 'pool';
                 const isSelected = selectedCaseId ? c.id === selectedCaseId : false;
                 const isHovered = hoveredRow === c.id;
@@ -1595,6 +1656,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     <td className="wl-td-dot">
                       <div className="wl-td-dot-inner">
                         {isUrgent && <UrgentDot />}
+                        {abnormalSeverity && <AbnormalDot severity={abnormalSeverity} syntheticCoding={c.syntheticAbnormalCoding} />}
                         {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title="Open specimen deficiency — see Deficiencies queue">⚠</span>}
                       </div>
                     </td>
@@ -1653,7 +1715,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     {/* DOB */}
                     <td className="wl-td-dob" data-phi="dob">
                       {isRestricted(c) ? '—' : (
-                        <>{formatDate(c.patient.dateOfBirth, c.order?.clientId)}
+                        <>{formatDate(c.patient.dateOfBirth, c.order?.facilityId)}
                         <span className="wl-dob-age">({c.patient.dateOfBirth ? formatAge(c.patient.dateOfBirth) : '—'})</span></>
                       )}
                     </td>
@@ -1673,7 +1735,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                     {/* Accession date */}
                     <td className="wl-td-date">
-                      {formatDate(c.order?.receivedDate, c.order?.clientId)}
+                      {formatDate(c.order?.receivedDate, c.order?.facilityId)}
                     </td>
 
                     {/* Physician */}
@@ -1684,7 +1746,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     {/* Flags */}
                     <td className="wl-td">
                       <div className="wl-chips-wrap">
-                        {renderFlags(c.caseFlags ?? [], c.specimenFlags ?? [], c.id)}
+                        {renderFlags(c.caseFlags ?? [], c.specimens ?? [], c.id)}
                       </div>
                     </td>
 
@@ -1779,10 +1841,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     await sendAccessRequestToAdmins(
                       { id: (user as any).id, name: (user as any).name, organisationId: (user as any).organisationId },
                       `Pediatric Access Request — ${(user as any).name}`,
-                      `${(user as any).name} needs Pediatric Access for case ${pedBlockedCase.id} (patient age ${pedBlockedCase.age}).\n\nTo grant access:\n1. Go to Configuration → Facility Configuration\n2. Open the submitting facility for this case\n3. Add ${(user as any).name} to the Authorized Pediatric Pathologists list\n\nNote: Both the user-level Pediatric flag AND the facility authorization must be set for access to be granted.`,
-                      pedBlockedCase.clientId
-                        ? `/configuration?tab=integrations&section=clients&client=${pedBlockedCase.clientId}`
-                        : '/configuration?tab=integrations&section=clients',
+                      `${(user as any).name} needs Pediatric Access for case ${pedBlockedCase.id} (patient age ${pedBlockedCase.age}).\n\nTo grant access:\n1. Go to Configuration → System → Integrations → Facility Configuration\n2. Open the submitting facility for this case\n3. Add ${(user as any).name} to the Authorized Pediatric Pathologists list\n\nNote: Both the user-level Pediatric flag AND the facility authorization must be set for access to be granted.`,
+                      pedBlockedCase.facilityId
+                        ? `/configuration?tab=system&section=clients&client=${pedBlockedCase.facilityId}`
+                        : '/configuration?tab=system&section=clients',
                     );
                     markPedRequested(pedBlockedCase.id);
                     reloadInbox();
@@ -1859,7 +1921,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     await sendAccessRequestToAdmins(
                       { id: (user as any).id, name: (user as any).name, organisationId: (user as any).organisationId },
                       `Orchestration Access Request — ${(user as any).name}`,
-                      `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-client list.)`,
+                      `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-facility list.)`,
                       '/configuration?tab=system&section=staff',
                     );
                     markOrchRequested(orchBlockedCase.id);

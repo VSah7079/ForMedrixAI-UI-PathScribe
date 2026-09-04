@@ -16,18 +16,34 @@
 // session resolution caseAccessControl.ts uses, so there's one source of
 // truth for "what tenant is this session in," not two.
 //
+// Updated again — Phase 1 of the Organisation/Site -> Facility
+// migration (see caseAccessControl.ts's own updated header): shares
+// this file's original bug class, now fixed the same way —
+// organisationService.ts's own getHospitalIdForOrganisation() used the
+// same hardcoded, incomplete 4-entry legacyMap
+// getOrganisationByHospitalId() did (confirmed directly: real, live
+// seeded cases with originHospitalId 'HOSP-002'/'HOSP-003' were never
+// in it), silently defaulting an unmapped organisation's biometric
+// policy document to 'HOSP-001' — a real, different institution's
+// document, not this session's own. Resolves through the same real,
+// admin-editable Facility.legacyTenantIds bridge caseAccessControl.ts
+// now uses instead.
+//
 // TODO (unchanged): once real auth exists, resolve this from the
 // authenticated JWT's claims server-side, not from a client-readable
 // localStorage session object — same production caveat documented in
 // caseAccessControl.ts.
 
 import { getSessionUser } from './caseAccessControl';
-import { getHospitalIdForOrganisation } from '../organisation/organisationService';
+import { resolveTenantFacility, getLegacyHospitalIdForTenant } from './resolveTenantFacility';
+import { mockFacilityService } from '../facilities/mockFacilityService';
 
 export async function getInstitutionId(): Promise<string> {
   const session = getSessionUser();
-  const hospitalId = session?.organisationId
-    ? getHospitalIdForOrganisation(session.organisationId)
-    : null;
-  return hospitalId ?? 'HOSP-001';
+  if (!session?.organisationId) return 'HOSP-001';
+
+  const facilitiesRes = await mockFacilityService.getAll();
+  const enterpriseFacilities = facilitiesRes.ok ? facilitiesRes.data.filter(f => f.isEnterprise) : [];
+  const tenant = resolveTenantFacility(session.organisationId, enterpriseFacilities);
+  return getLegacyHospitalIdForTenant(tenant) ?? 'HOSP-001';
 }

@@ -11,15 +11,35 @@
 // Real fix, per direct reminder: "no business logic in the UI code and
 // no inline css." Rewritten to use real, named CSS classes throughout
 // (pathscribe.css) — no style={{...}} anywhere in this file.
+//
+// Real, Stage B addition, per direct guidance (Workstation & Hardware
+// redesign): Tier 2 — a real, per-facility override
+// (IFacilityPrintSettingsService.ts) — is live. With no facility
+// selected at the group level (selectedFacilityId undefined), this
+// screen behaves exactly as it always has: reads and edits the one,
+// real, global Tier 1 config directly. With a facility selected:
+//   - no override yet → the form shows the INHERITED, effective values
+//     read-only, with a banner making that inheritance explicit and a
+//     real "+ Create Facility Override" action — editing here would
+//     otherwise be genuinely ambiguous between "change the shared
+//     default for every facility" and "start a new override," so the
+//     UI never lets that ambiguity exist.
+//   - a real override exists → the form is editable again, now writing
+//     to that facility's own override record specifically, with a
+//     "Revert to System Default" action that deletes it outright.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
-import { printSettingsService } from '@/services/index';
+import { printSettingsService, facilityPrintSettingsService } from '@/services/index';
 import type { PrintSettingsConfig } from '@/services/printSettings/IPrintSettingsService';
+import type { FacilityPrintSettings } from '@/services/printSettings/IFacilityPrintSettingsService';
+import { resolveEffectivePrintSettings } from '@/services/printSettings/IFacilityPrintSettingsService';
 import { LABEL_SIZE_PRESETS } from '@/types/labels/LabelSizePreset';
 import type { LabelBarcodeSymbology } from '@/types/labels/LabelSizePreset';
 import { CONTAINER_TYPES } from '@/services/hardwareContainers/IHardwareContainerRegistryService';
+import { getActivePerformingLabs } from '@/utils/performingLabs';
+import type { Facility } from '@/services';
 
 const SYMBOLOGY_LABEL: Record<LabelBarcodeSymbology, string> = {
   code128: 'Code 128 (1D)',
@@ -27,31 +47,80 @@ const SYMBOLOGY_LABEL: Record<LabelBarcodeSymbology, string> = {
   datamatrix: 'DataMatrix (2D)',
 };
 
-const PrintSettingsSection: React.FC = () => {
-  const [config, setConfig] = useState<PrintSettingsConfig | null>(null);
+const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selectedFacilityId }) => {
+  const [globalConfig, setGlobalConfig] = useState<PrintSettingsConfig | null>(null);
+  const [facilityOverride, setFacilityOverride] = useState<FacilityPrintSettings | null>(null);
+  const [labs, setLabs] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
+
   useEffect(() => {
-    printSettingsService.get().then(res => {
-      if (res.ok) setConfig(res.data);
+    setLoading(true);
+    Promise.all([
+      printSettingsService.get(),
+      selectedFacilityId ? facilityPrintSettingsService.getForFacility(selectedFacilityId) : Promise.resolve({ ok: true, data: null } as const),
+    ]).then(([g, f]) => {
+      if (g.ok) setGlobalConfig(g.data);
+      if (f.ok) setFacilityOverride(f.data);
       setLoading(false);
     });
-  }, []);
+  }, [selectedFacilityId]);
+
+  const hasOverride = !!facilityOverride;
+  // Real, deliberate read model: the form always renders these
+  // EFFECTIVE values (global with the override merged on top, if any)
+  // regardless of which mode it's in — an admin viewing an inherited
+  // screen should see the real numbers that actually apply, not a
+  // blank slate.
+  const effective: PrintSettingsConfig | null = globalConfig
+    ? resolveEffectivePrintSettings(globalConfig, facilityOverride)
+    : null;
+
+  // Real, deliberate branch — see this file's own header for the full
+  // "why" behind read-only-when-inheriting.
+  const readOnly = !!selectedFacilityId && !hasOverride;
 
   const update = async (changes: Partial<PrintSettingsConfig>) => {
-    if (!config) return;
+    if (!effective || readOnly) return;
     setSaving(true);
-    const res = await printSettingsService.update(changes);
-    if (res.ok) setConfig(res.data);
+    if (selectedFacilityId) {
+      const res = await facilityPrintSettingsService.update(selectedFacilityId, changes);
+      if (res.ok) setFacilityOverride(res.data);
+    } else {
+      const res = await printSettingsService.update(changes);
+      if (res.ok) setGlobalConfig(res.data);
+    }
     setSaving(false);
   };
 
-  if (loading || !config) return (
+  const handleCreateOverride = async () => {
+    if (!selectedFacilityId || !globalConfig) return;
+    setSaving(true);
+    // Real, deliberate starting point: seeds the new override from the
+    // CURRENT global values (IFacilityPrintSettingsService.create's own
+    // doc comment explains why) — never an empty/partial record.
+    const res = await facilityPrintSettingsService.create(selectedFacilityId, { ...globalConfig });
+    if (res.ok) setFacilityOverride(res.data);
+    setSaving(false);
+  };
+
+  const handleRevertOverride = async () => {
+    if (!selectedFacilityId) return;
+    setSaving(true);
+    await facilityPrintSettingsService.remove(selectedFacilityId);
+    setFacilityOverride(null);
+    setSaving(false);
+  };
+
+  if (loading || !effective) return (
     <div className="ps-conf-loading">
       Loading print settings…
     </div>
   );
+
+  const facilityName = selectedFacilityId ? (labs.find(l => l.id === selectedFacilityId)?.name ?? selectedFacilityId) : '';
 
   return (
     <div className="ps-conf-page">
@@ -59,6 +128,23 @@ const PrintSettingsSection: React.FC = () => {
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
         Default label-printing behavior for this lab — individual accessioners can still override per action unless guardrails are enforced below.
       </p>
+
+      {selectedFacilityId && !hasOverride && (
+        <div className="ps-conf-callout-banner">
+          <span className="ps-conf-callout-banner-text">
+            ℹ️ Showing System Defaults. <strong>{facilityName}</strong> currently inherits global print settings.
+          </span>
+          <button className="ps-conf-callout-banner-link" onClick={handleCreateOverride} disabled={saving}>+ Create Facility Override</button>
+        </div>
+      )}
+      {selectedFacilityId && hasOverride && (
+        <div className="ps-conf-callout-banner">
+          <span className="ps-conf-callout-banner-text">
+            ✓ Facility override active for <strong>{facilityName}</strong>.
+          </span>
+          <button className="ps-conf-callout-banner-link" onClick={handleRevertOverride} disabled={saving}>Revert to System Default</button>
+        </div>
+      )}
 
       {/* ── Default Print Behavior ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
@@ -74,8 +160,9 @@ const PrintSettingsSection: React.FC = () => {
               <input
                 type="radio"
                 name="defaultPrintBehavior"
-                checked={config.defaultPrintBehavior === mode}
+                checked={effective.defaultPrintBehavior === mode}
                 onChange={() => update({ defaultPrintBehavior: mode })}
+                disabled={readOnly}
                 className="ps-conf-radio-input"
               />
               <span className="ps-conf-option-text">
@@ -98,8 +185,9 @@ const PrintSettingsSection: React.FC = () => {
             </div>
           </div>
           <label className="ps-conf-toggle-label-row">
-            <input type="checkbox" checked={config.enforceOnDemandGuardrails}
+            <input type="checkbox" checked={effective.enforceOnDemandGuardrails}
               onChange={e => update({ enforceOnDemandGuardrails: e.target.checked })}
+              disabled={readOnly}
               className="ps-conf-radio-input" />
             <span className="ps-conf-option-text">Enabled</span>
           </label>
@@ -118,8 +206,9 @@ const PrintSettingsSection: React.FC = () => {
             </div>
           </div>
           <label className="ps-conf-toggle-label-row">
-            <input type="checkbox" checked={config.requireScanVerificationBeforeNextBlock}
+            <input type="checkbox" checked={effective.requireScanVerificationBeforeNextBlock}
               onChange={e => update({ requireScanVerificationBeforeNextBlock: e.target.checked })}
+              disabled={readOnly}
               className="ps-conf-radio-input" />
             <span className="ps-conf-option-text">Enabled</span>
           </label>
@@ -135,8 +224,9 @@ const PrintSettingsSection: React.FC = () => {
           Physical label size for specimen container labels. Requisition labels always print full-page regardless of this setting.
         </div>
         <select
-          value={config.containerLabelPresetId}
+          value={effective.containerLabelPresetId}
           onChange={e => update({ containerLabelPresetId: e.target.value })}
+          disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
           {LABEL_SIZE_PRESETS.filter(p => p.id !== 'requisition_full_page_letter' && p.id !== 'requisition_full_page_a4').map(preset => (
@@ -154,8 +244,9 @@ const PrintSettingsSection: React.FC = () => {
           Applied to Batch Management's own Master Batch Barcode labels (New Container).
         </div>
         <select
-          value={config.containerBarcodeSymbology}
+          value={effective.containerBarcodeSymbology}
           onChange={e => update({ containerBarcodeSymbology: e.target.value as LabelBarcodeSymbology })}
+          disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
           {(Object.keys(SYMBOLOGY_LABEL) as LabelBarcodeSymbology[]).map(s => <option key={s} value={s}>{SYMBOLOGY_LABEL[s]}</option>)}
@@ -168,15 +259,16 @@ const PrintSettingsSection: React.FC = () => {
           Barcode Prefix Conventions
         </div>
         <div className="ps-conf-card-description">
-          Printed as {config.disposableBarcodePrefix || '…'}-{'{TYPE}'}-{'{YYYYMMDD}'}-{'{XXXX}'} on a new disposable label, or {config.rackBarcodePrefix || '…'}-{'{TYPE}'}-{'{NN}'} on a physical, laser-engraved reusable rack.
+          Printed as {effective.disposableBarcodePrefix || '…'}-{'{TYPE}'}-{'{YYYYMMDD}'}-{'{XXXX}'} on a new disposable label, or {effective.rackBarcodePrefix || '…'}-{'{TYPE}'}-{'{NN}'} on a physical, laser-engraved reusable rack.
         </div>
         <div className="ps-conf-prefix-row">
           <div>
             <label className="ps-conf-prefix-field-label">Disposable Label</label>
             <input
               className="ps-input-dark ps-conf-input-code"
-              value={config.disposableBarcodePrefix}
+              value={effective.disposableBarcodePrefix}
               onChange={e => update({ disposableBarcodePrefix: e.target.value.toUpperCase() })}
+              disabled={readOnly}
               maxLength={12}
             />
           </div>
@@ -184,8 +276,9 @@ const PrintSettingsSection: React.FC = () => {
             <label className="ps-conf-prefix-field-label">Reusable Rack</label>
             <input
               className="ps-input-dark ps-conf-input-code"
-              value={config.rackBarcodePrefix}
+              value={effective.rackBarcodePrefix}
               onChange={e => update({ rackBarcodePrefix: e.target.value.toUpperCase() })}
+              disabled={readOnly}
               maxLength={12}
             />
           </div>
@@ -212,8 +305,9 @@ const PrintSettingsSection: React.FC = () => {
         </div>
         <input
           className="ps-input-dark ps-conf-input-gtin"
-          value={config.gs1Gtin}
+          value={effective.gs1Gtin}
           onChange={e => update({ gs1Gtin: e.target.value })}
+          disabled={readOnly}
           placeholder="e.g. 00850000000000 (not yet registered)"
           maxLength={14}
         />
@@ -232,8 +326,9 @@ const PrintSettingsSection: React.FC = () => {
             <span className="ps-conf-container-type-label">{type}</span>
             <input
               className="ps-input-dark ps-conf-input-code"
-              value={config.containerTypeCodes[type]}
-              onChange={e => update({ containerTypeCodes: { ...config.containerTypeCodes, [type]: e.target.value.toUpperCase() } })}
+              value={effective.containerTypeCodes[type]}
+              onChange={e => update({ containerTypeCodes: { ...effective.containerTypeCodes, [type]: e.target.value.toUpperCase() } })}
+              disabled={readOnly}
               maxLength={8}
             />
           </div>

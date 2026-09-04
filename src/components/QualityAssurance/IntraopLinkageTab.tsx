@@ -58,7 +58,7 @@ export const IntraopLinkageTab: React.FC = () => {
       if (logsRes.ok) setMergeLogs(logsRes.data.filter(l => l.event === 'Intraop Entry Merged'));
       if (casesRes.ok) {
         const map: Record<string, string | undefined> = {};
-        casesRes.data.forEach((c) => { map[c.id] = c?.order?.clientId; });
+        casesRes.data.forEach((c) => { map[c.id] = c?.order?.facilityId; });
         setCaseClientById(map);
       }
       setLoading(false);

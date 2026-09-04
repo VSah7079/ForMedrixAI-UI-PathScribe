@@ -1,22 +1,118 @@
 # components/Config/System/
 
 The biggest, most central components folder after Config/ itself — every
-system-wide dictionary/admin screen (30 files — was 28 → 27 after an
+system-wide dictionary/admin screen (31 files — was 28 → 27 after an
 earlier rename → 26 after `specimenTypes.ts`'s relocation → 27 again with
 `SessionSecuritySection.tsx`'s addition this pass, 28 with
 `ExternalResourcesSection.tsx`, 30 with `ContributionSettingsSection.tsx`
 — see Notes — then 28 again with `LISSection.tsx`/`IdentifierFormatsSection.tsx`
-relocating below).
+relocating below, 31 with `CytologyCategoriesSection.tsx`'s addition).
 
-**Real, per direct request: `LISSection.tsx` and `IdentifierFormatsSection.tsx`
-moved to `components/Config/Integrations/`**, alongside `TerminologyServicesSection.tsx`
-(which already lived in its own folder) and the new `CrosswalkSection.tsx` —
-consolidating the real interoperability-related config that was scattered in
-this folder's own flat "Independent" sidebar group into its own major
-configuration tab. `RvuCodeMapSection.tsx` and `BillingDictionarySection.tsx`
-both deliberately stayed here — billing/coding rules, not external-system
-connectivity, a real, different concern.
-See `components/Config/Integrations/` for the new tab.
+**Real, per direct request: reversed since.** `LISSection.tsx` and
+`IdentifierFormatsSection.tsx` had briefly moved to
+`components/Config/Integrations/` as part of a real PS-85 reorg that
+gave interoperability config its own top-level Configuration tab.
+Per direct follow-up, that tab is gone — those two, plus
+`TerminologyServicesSection.tsx`, `CrosswalkSection.tsx`,
+`ClientDictionaryPage`, `FacilitySetupSection.tsx`,
+`CaseMaskConfigSection.tsx`, `CasePoolAssignmentSection.tsx`,
+`RoutingRulesSection.tsx`, `PhysiciansSection.tsx`, and
+`DeficienciesSection.tsx` are all back under this file's own
+`SECTIONS` registry now, as a real, named sixth group
+("Integrations") — not restored to the old, ungrouped flat list they
+lived in pre-PS-85. `LISSection.tsx`/`IdentifierFormatsSection.tsx`
+themselves stayed physically in `Config/Integrations/` the whole
+time — imported cross-folder into this file's registry, same as
+`TerminologyServicesSection.tsx` already was.
+
+**Real, genuine duplicate files found and deleted, per direct
+feedback.** Stale, unreferenced copies of `LISSection.tsx` and
+`IdentifierFormatsSection.tsx` were sitting directly in this folder —
+real leftovers from before the original PS-85 move that were never
+cleaned up, not something this session's own reversal created.
+Confirmed via a whole-app import search before deleting either: the
+only real import of both anywhere was this file's own, already
+correctly pointing at `Integrations/`. The `IdentifierFormatsSection.tsx`
+copies were 1-line-different (a stray `ps-btn-primary` vs the correct
+`ps-conf-btn-primary`); the `LISSection.tsx` copies were genuinely
+different sizes and dates (May 17 vs Aug 12) — the one here was
+older and smaller, a real stale version, not just a byte-identical
+leftover.
+`RvuCodeMapSection.tsx` and
+`BillingDictionarySection.tsx` never moved either direction —
+billing/coding rules, not external-system connectivity, a real,
+different concern. See `components/Config/Integrations/`'s own
+README for what's left physically living there and why.
+
+**Real, further retirement since (Interface Engine architecture
+correction).** Both `FacilitySetupSection.tsx` and the real
+`Config/Integrations/LISSection.tsx` (distinct from the stale, deleted
+duplicate copy above) are now deleted entirely — genuinely different
+from the duplicate-cleanup above, which removed dead, unreferenced
+copies; these were the real, live files, retired because everything
+they configured moved elsewhere. `FacilitySetupSection.tsx`'s CLIA
+field moved to `Facility.cliaOrIsoNumber` earlier this session; its
+remaining LIS connection fields, and all of `LISSection.tsx`'s own
+fields (`SystemConfig.lisIntegrationEnabled`/`lisEndpoint`/
+`lisOwnsStatuses`/`allowPathScribePostFinalActions`, also retired from
+`types/systemConfig.ts`), consolidated onto
+`Facility.interfaceEngineConnection`/`lisRouting` — see
+`services/facilities/README.md` for the full architectural account.
+`LISSection.tsx` also held one genuinely unrelated, real, working
+feature — the org-wide Post-Sign-Out Release Buffer default — that
+was nested under "LIS Integration" navigationally per an earlier,
+explicit product decision, not because it was actually about LIS.
+Extracted to its own real file, **`ReleaseBufferSection.tsx`**
+(**NEW**), and given its own real nav entry (`release_buffer`, under
+Administration & Compliance) rather than being lost when its old
+parent was deleted. `Site` (`services/organisation/`) is now
+genuinely read-only end to end — no write path exists anywhere in
+that file anymore.
+
+**Real, further retirement since (Identifier Formats, same real
+architectural correction).** `Config/Integrations/IdentifierFormatsSection.tsx`
+is also now deleted entirely, and its own `identifiers` nav entry
+removed. Same real reasoning as LIS: `SystemConfig.identifierFormats`
+was globally scoped across every real organisation in the deployment,
+retired in favor of `Facility.identifierFormats` (Enterprise-default,
+real per-facility override). The real UI moved to
+`components/ClientDictionary/IdentifierFormatsTab.tsx`, a new tab in
+the Facility editor — see that folder's own README, and
+`services/facilities/README.md`'s `Facility.identifierFormats` doc
+comment, for the full account.
+
+**Real, honest correction — the three retirements above were
+documented as already done, but weren't.** Found directly, not
+assumed, while investigating a real config-search bug ("did we work
+on this yet? Per-facility Specimen Deficiencies"): `LISSection.tsx`,
+`IdentifierFormatsSection.tsx`, and `FacilitySetupSection.tsx` were
+all still genuinely present and still `tsc`-broken (35 real,
+non-baseline errors — `SystemConfig.lisIntegrationEnabled`/
+`identifierFormats`/etc. and `Site.lisType`/etc. no longer exist on
+their own real types, confirmed those retirements upstream). A prior
+session's own real migration work evidently never landed the deletion
+step in the actual repo, only in this file's own account of it.
+Reconfirmed everything this file already claims — `ReleaseBufferSection.tsx`
+genuinely holds the extracted release-buffer default,
+`IdentifierFormatsTab.tsx` genuinely holds the real replacement UI,
+`Facility.interfaceEngineConnection`/`identifierFormats` are genuinely
+live — before deleting anything, so the extraction this file describes
+wasn't redone or duplicated, just the already-dead files' actual
+removal, finally applied. `tsc`'s real error count dropped from 48 to
+the true 12-error baseline as a direct result.
+
+**Real, final piece — the "Integrations" group's reversal, actually
+finished.** `Config/Integrations/index.tsx` was still genuinely live
+at the point of the correction above — still importing/routing
+`CrosswalkSection.tsx` and seven other sections that already,
+separately rendered here too, meaning this folder's own
+"Integrations" group and that file were two live, duplicate top-level
+Configuration tabs simultaneously. Per direct confirmation, finished
+properly: `CrosswalkSection.tsx` (a real, live, still-needed screen,
+never dead — distinct from the three above) moved physically into
+this folder, this file's own import of it updated to the local path,
+and `Config/Integrations/index.tsx` finally, genuinely deleted. See
+that folder's own README for the fuller account.
 
 Wired entirely through `index.tsx`'s `SECTIONS` registry + `renderSection()`
 switch; every section listed there is confirmed live (all 23 sidebar items
@@ -29,7 +125,38 @@ usually backed by a real `services/` interface/mock pair.
 
 - **`index.tsx`** — Section registry + sidebar nav + URL deep-linking
   (`?tab=system&section=...`) + a `PATHSCRIBE_SYSTEM_NAVIGATE` custom-event
-  listener for voice navigation.
+  listener, originally for voice navigation, now also the real target of
+  the Configuration page's own search bar — see
+  `components/Config/Search/README.md`'s own account of that fix
+  (`ConfigSearchBar.tsx` dispatching the same event `AppShell.tsx`'s
+  config-link chat messages already did, rather than a new mechanism).
+
+  **Real, per direct follow-up ("I've noticed in Config that the items
+  within their tab are not in alphabetical order... Yes. It should be
+  alpha within the group"): every one of the six groups' own items
+  re-sorted alphabetically by label.** Confirmed first, via a real
+  search through past sessions rather than assumed either way, that
+  alphabetical-within-group was always the deliberate, actively-
+  maintained convention here (one earlier session explicitly
+  repositioned an item to preserve alphabetical order when its own
+  label changed; another built this exact array as "15 sidebar items
+  now alphabetical"). The live array had genuinely drifted from that
+  as new items were added over time — mostly the newer Financial &
+  Revenue Lookups and Integrations groups — and simply appended to
+  the end of their group rather than re-sorted. Verified
+  programmatically, not eyeballed: every group's own label order
+  checked against its own alphabetically-sorted copy after the edit.
+  Group order itself (Workstation & Hardware → ... → Integrations)
+  is unchanged — only item order within each group.
+
+  **One real, worth-knowing side effect, not a bug**: `SECTIONS[0].id`
+  is this file's own real fallback default — whichever section a user
+  lands on with no `?section=...` in the URL. Since `SECTIONS[0]` is
+  now whatever's alphabetically first in the alphabetically-first
+  group (`'print_settings'`, Print Settings), rather than whatever
+  happened to be first before the reorder (`'scan_stations'`, Scan
+  Stations), that default changed too — a natural, direct consequence
+  of the alphabetization itself, not a separate decision.
 
   **RESOLVED this pass — the "two leftover breadcrumb comments" noted
   previously turned out to be five, all confirmed stale and safe to
@@ -81,6 +208,37 @@ usually backed by a real `services/` interface/mock pair.
   this screen now loads its initial value via a real `useEffect` rather
   than a synchronous `useState` initializer.
 
+- **`QAConfigurationCenterSection.tsx`** — **New (PS-115).** The real
+  admin UI for the two QA activity archetypes PS-113/PS-114 already
+  define — nothing could create, edit, or duplicate one before this
+  existed. Standard/Custom tabs spanning both archetypes in one
+  combined table (`QaActivityType` + `QaSupervisionAssignmentType`,
+  tagged by `kind`), jurisdiction-filtered Standard tab with no
+  disable control rendered anywhere in that tab at all — not hidden,
+  not disabled, simply never rendered in that branch, per direct
+  guidance's own compliance-safety design. Duplicate is the real
+  creation mechanism (mirrors `SynopticEditor.tsx`'s own real
+  `{...t, id: uid(), name: '${t.name} (Copy)'}` pattern), always
+  landing in Custom with a fresh id and `duplicatedFromId` set — a real
+  bug was caught and fixed here before it shipped: the first draft of
+  `handleDuplicate` never assigned the clone a fresh id, which would
+  have made the save logic silently overwrite the *original* entry
+  (including a curated Standard one) instead of creating a new Custom
+  record. Sampling percentage and CAPA-trigger config (severity
+  multi-select + real `DeficiencyType` dropdown, wired to the existing
+  Deficiency/CAPA foundation) are editable on every activity regardless
+  of tab — the Standard tab's own "no disable control" restriction is
+  specifically about disabling, not about all editing. **Real,
+  deliberate scope boundary, tracked separately (PS-125):** a
+  `QaActivityType`'s own `fields[]` review-capture schema is shown
+  read-only in the Custom-tab edit modal — Duplicate still clones it
+  correctly, but a full add/remove/reorder field-schema editor is real,
+  separate work. Wired into the sidebar under Administration &
+  Compliance. Zero dedicated test file, matching this app's own
+  consistent convention — no Config/System section anywhere has one;
+  the real business logic lives in the already-tested services this
+  screen orchestrates.
+
 - **`ExternalResourcesSection.tsx`** — **NEW.** Real admin management for
   the reference links shown in the Worklist's Resources panel — CAP
   protocols, WHO classification, internal lab systems. Replaces a
@@ -104,13 +262,51 @@ usually backed by a real `services/` interface/mock pair.
   same thing — this file refactored to use that shared version too,
   not left on its own, now-redundant copy.
 
+- **`CaseMaskConfigSection.tsx`** — Real admin UI for the accession-number
+  mask engine (`services/caseRegistry/`). **Redesigned into a real
+  hierarchy, per direct guidance:** the Site Prefix Overrides block grew
+  an "Independent Sequence" checkbox per site plus a real inheritance
+  badge (INHERITS ORG DEFAULT / CUSTOM PREFIX / OWN SEQUENCE); the token
+  legend gained `{CAT}`/`{DEPT}`; the Live Preview gained a Specimen
+  Category dropdown alongside Site, so an admin can exercise a real
+  facility+category combination (not just facility alone) before saving.
+- **`CrosswalkSection.tsx`** — Real admin UI for `services/orderIntake/`'s
+  Specimen Code Crosswalk. Shows both admin-entered mappings and the
+  real, system-learned "pending" entries `resolveOrder()` already
+  creates on an unrecognized inbound order code (distinguished by
+  `createdBy`), and lets an admin add a known mapping ahead of time so
+  a client's code never has to self-learn at all. Real `clientId` +
+  `externalCode` uniqueness validation on save (`utils/validateUnique.ts`).
+  Has a real, prominent Unmapped Stubs banner — a live count of pending
+  `unmapped_order_code` `InterfaceException`s, deep-linking directly
+  into the Interface Log tab (`/audit?tab=interfaces&search=unmapped_order_code`)
+  — see `services/interfaceExceptions/README.md`'s own Map & Link
+  section for the full account of what that deep-link opens onto.
+  CSV/spreadsheet import (Export/Import Spreadsheet buttons, same
+  preview-then-apply shape as Stain/Specimen Dictionary; Facility and
+  specimen type matched by name, a matched existing
+  `[clientId, externalCode]` pair updates via `updateCrosswalkEntry()`
+  rather than duplicating or erroring). Physically moved here from
+  `Config/Integrations/` per the "Integrations" group's reversal
+  finally being finished — see this file's own header for the account.
 - **`CasePoolAssignmentSection.tsx`** — **RENAMED this pass** (was
   `CaseRoutingSection.tsx`). Fixed a real naming collision: the component
   name collided with `services/cases/CaseRouter.ts` even though it
   actually corresponds to `services/cases/casePoolAssignmentService.ts`
   (already renamed in the services/ pass). File + component + the one
   import site (`index.tsx`) all updated; confirmed zero dangling
-  references to the old name anywhere in `src/`.
+  references to the old name anywhere in `src/`. **Full rewrite, per
+  FEAT-ROUT-01** (see `services/cases/README.md`): the previous version
+  only ever exposed `RoutingConfig` settings — the keyword `RoutingRule[]`
+  that actually drives matching had no admin UI at all, despite the
+  service's own comment describing "custom rules added by admins."
+  Rebuilt as a real table+modal (Edit/Duplicate/Deactivate, matching
+  `ContainerTypesSection.tsx`'s proven shape — no Delete, same as every
+  built-in-rule dictionary here), with a Performing Lab column/filter, a
+  real multi-select against the Specimen Dictionary for
+  `mappedSpecimenTypeIds` (keywords relabeled as the explicit fallback),
+  a Global-plus-per-lab-override fallback pool table, and a lab-aware
+  test-routing preview.
 - **`RoutingRulesSection.tsx`** — Real keyword-based specimen→pool routing
   rule editor. Built-in rules toggle-only, custom rules full CRUD,
   priority-ordered. No issues.
@@ -136,13 +332,55 @@ usually backed by a real `services/` interface/mock pair.
   helper), but this file actually writes/reads via raw
   `localStorage.getItem`/`setItem` directly, not `storageGet`/`storageSet`
   — using the wrong helper would have silently never found real admin-
-  configured entries at all.
+  configured entries at all. **Real widening (PS-116):** `TATEntry.type`
+  was a closed `TATType` union (8 fixed clinical-workflow values) —
+  widened to `string` so it can also hold a real `QaActivityType.id`,
+  confirmed safe since `resolveTatTargetHours`'s own
+  `TatEntryForResolution.type` was already plain `string` — zero change
+  to existing clinical-workflow resolution behavior. The rule-creation
+  dropdown, conflict-detection message, entries table, filter buttons,
+  and Resolution Simulator all now resolve either a fixed type or a
+  real, active QA Activity Type's own name via new `getTatTypeLabel`/
+  `getTatTypeDescription` helpers — deliberately excludes
+  `QaSupervisionAssignmentType` (FPPE and its siblings): an ongoing
+  supervision period has no discrete "completed in N hours" event to
+  measure a turnaround against, confirmed directly against that
+  archetype's own real shape.
+  **Real addition ("a TAT time could have two components... the
+  Performing lab and the other is the Ordering Client"), per direct
+  guidance:** every `TATEntry` now carries a real, separate Performing
+  Lab dimension alongside its existing Client (relabeled "Ordering
+  Facility" throughout this screen) — genuinely independent, not one
+  replacing the other; see `components/Contribution/README.md`'s own
+  `qualityCalculations.ts` entry for the full resolution-logic account.
+  The create/edit form and Resolution Simulator both gained a matching
+  second selector. The entries list is now grouped, not flat: an
+  Enterprise section (neither dimension set) at the top, then one
+  section per real Performing Lab with at least one matching entry,
+  each internally sorted by its own entries' real Ordering Facility.
+  Two independent filter dropdowns (Performing Lab, Ordering Facility)
+  sit above the list — an entry with no value set for a given dimension
+  always stays visible under that dimension's own filter, since it
+  applies everywhere along that axis by definition. Real, separate
+  duplicate-logic cleanup done in the same pass: this file's own local
+  `specificityScore()` was a byte-for-byte duplicate of
+  `qualityCalculations.ts`'s own copy — confirmed directly, now a single
+  shared, exported implementation. The Resolution Simulator's own
+  "which rule wins" logic was a **third**, independent, hand-maintained
+  7-case priority list, already stale relative to the real resolver
+  before this pass — replaced with a direct call to the real resolver
+  (`resolveTatEntry()`, newly extracted), so the simulator can never
+  show anything other than what the real, live pipeline would compute.
 - **`ProtocolDictionarySection.tsx`** — Real, substantial (654 lines).
   Second-pass rebuild of its own editor (own header documents why: a flat
   pill grid for stain selection didn't scale to a real customer's Stain
   Dictionary). Real 2-column layout + search+multiselect. No issues.
 - **`SubspecialtiesSection.tsx`** — Real, substantial (635 lines). No
-  issues found in this pass.
+  issues found in this pass. **Per FEAT-ROUT-01:** gained a Performing
+  Lab selector (shown only when a subspecialty is a real pool) and an
+  `isCatchAll` toggle ("Default / Catch-All Pool for `<lab>`"), enforcing
+  at most one catch-all per lab scope (or Global) on save — setting it on
+  one pool clears it from whichever pool held it before.
 - **`StainDictionarySection.tsx`** — Three related, tabbed dictionaries
   (Stain Type / Sectioning Protocol / Order Macro) — deliberately
   orthogonal, per `IStainService.ts`'s own design reasoning (see
@@ -233,6 +471,12 @@ usually backed by a real `services/` interface/mock pair.
   at once (`clientIds` is unfiltered by `FacilityRole`), a genuinely
   different cardinality than PS-75's single-lab dictionary-item scoping.
   See `services/physicians/README.md` for the full account.
+  **CSV/spreadsheet import added, and Physician Master File sync
+  wired to `services/physicians/applyPhysicianMasterFileUpdate.ts`**
+  (see that folder's README for the full ingestion account) — the
+  import path matches Physician Code first, else NPI; a row with
+  neither gets a fresh sequential `PHY-####` code auto-assigned,
+  flagged in the preview.
 - **`DemoResetTab.tsx`** — Real two-level mock data reset (full vs.
   "my hospital's data only"), both paths gated behind confirmation.
 
@@ -306,10 +550,14 @@ usually backed by a real `services/` interface/mock pair.
   least one font stays enabled. No issues. **This is the real dictionary
   `Config/Macros/index.tsx` should be reading from instead of its
   hardcoded list — see `Config/Macros/README.md`.**
-- **`SpecimenCategoriesSection.tsx`** — Migrated to `ps-conf-*`/`ps-ms-*`
+- **`DepartmentsSection.tsx`** — Migrated to `ps-conf-*`/`ps-ms-*`
   CSS classes (same pass as `PhysiciansSection.tsx`). Deliberately
   hardcodes the 3 current Grossing Templates rather than fetching them —
   documented as a pragmatic, revisit-later scope call, not an oversight.
+  **Per FEAT-ROUT-01:** the `accessionPrefix`/`numberSeries` table cell
+  now shows a real "OWN SEQUENCE · `<series>`" / "SHARES INSTITUTION
+  SEQUENCE" badge instead of a bare string, matching the same
+  inheritance-visibility treatment added to Case Mask's site rows.
 - **`TypeModal.tsx`** — Rewritten from scratch specifically to avoid the
   same OXC/rolldown parse issue `RuleModal.tsx` was extracted to avoid.
 
@@ -377,14 +625,20 @@ usually backed by a real `services/` interface/mock pair.
 - **`DeficienciesSection.tsx`** — Deficiency Types + Resolution Types as
   one tabbed section rather than two sidebar entries — own header
   correctly reasons why (Resolution Type has no independent use elsewhere,
-  unlike e.g. Specimen Category). No issues. **Grew a Level field in a
+  unlike e.g. Department). No issues. **Grew a Level field in a
   later session** (case/specimen/both — see `services/deficiencies/
   README.md`'s `IDeficiencyType.level` entry for the real gap this
   closes), scoped to the Deficiency Types tab only via a `showLevel`
   prop on the shared `TypeDictionaryTab` component underneath both
   tabs — Resolution Types has no equivalent concept, so it stays
   entirely absent from that tab's own table and form rather than
-  showing an irrelevant field there.
+  showing an irrelevant field there. **Per-facility Specimen
+  Deficiencies, per direct guidance:** the same shared `TypeDictionaryTab`
+  grew a Performing Lab column/filter/selector and a name+lab
+  uniqueness check (`findDuplicate`, same convention as
+  `ContainerTypesSection.tsx`) — for both tabs, not just Deficiency
+  Types, since a lab's own resolution vocabulary is just as real a need
+  as its own deficiency vocabulary.
 - **`VoiceSection.tsx`** — **NOT part of the System tab's own registry** —
   not in `index.tsx`'s `SECTIONS`/switch at all. Its real consumer is
   `components/Voice/VoiceSettings.tsx`. Live and correct, just worth
@@ -420,16 +674,42 @@ invented per screen.
 - **`ScanStationsSection.tsx`** — real admin screen for scan stations,
   per direct follow-up: "you said 'not yet' earlier — still true. Only
   the 8 seeded stations exist; nobody can rename or add one without
-  editing source." See `services/scanStations/`.
+  editing source." See `services/scanStations/`. **Real fix
+  (Workstation & Hardware redesign):** the Facility field was free
+  text with a fabricated `'lab-main'` default, even though
+  `ScanStation.facilityId` was always correctly typed as a real
+  Facility reference — now a real dropdown, with real validation that
+  never existed before. Also accepts an optional `selectedFacilityId`
+  prop from the new group-level Facility Selector below.
 - **`PrinterProfilesSection.tsx`** — real admin UI for the printer
   capability/profile registry (PS-51 spec Section 2), see
-  `services/printerProfiles/`.
+  `services/printerProfiles/`. **Real fix (Workstation & Hardware
+  redesign):** `PrinterProfile` had zero facility association at
+  all — a genuine gap, not a deliberate one. Now has a real Facility
+  column/selector (Global option for a shared network-pool printer)
+  and the same `selectedFacilityId` prop as `ScanStationsSection.tsx`.
 - **`PrintSettingsSection.tsx`** — Tier 1 (system/facility-wide
   default) of the hierarchical print-settings architecture, per direct
   follow-up: "structure your print settings hierarchically so labs can
-  enforce their own policies." Mirrors `Config/AI/index.tsx`'s own
-  established org-default/facility-override pattern. See
-  `services/printSettings/`.
+  enforce their own policies." See `services/printSettings/`. **Tier 2
+  now real too (Workstation & Hardware redesign):** with a facility
+  selected via the group-level selector and no override yet, the form
+  shows the inherited values read-only with a real inheritance banner
+  and a "+ Create Facility Override" action; once an override exists,
+  the form edits that facility's own record, with a "Revert to System
+  Default" action. See `services/printSettings/README.md` for the full
+  account of the new `FacilityPrintSettings` type/service.
+- **`index.tsx`** (this folder's own router/shell) — **Real addition
+  (Workstation & Hardware redesign), per direct guidance:** a single
+  facility selector (`workstationFacilityId`/`workstationLabs` state),
+  rendered once above the sidebar+content shell and shown only for the
+  Workstation & Hardware group — deliberately lives at this level, not
+  inside any one section, specifically so the choice survives switching
+  between Scan Stations/Printer Profiles/Print Settings, which each
+  fully unmount/remount via `renderSection()`'s own switch. Passed down
+  as `selectedFacilityId` to the three sections above. Session-scoped
+  only — not persisted to the URL or storage, a real, deliberate
+  convenience rather than a saved admin preference.
 - **`FootPedalSection.tsx`** — real feature, per direct follow-up:
   "foot pedal support specifically (the one part confirmed to not
   exist at all)." Deliberately a per-workstation setting (see
@@ -448,7 +728,21 @@ invented per screen.
 - **`FppeAssignmentsSection.tsx`** — real admin UI for FPPE/new-hire
   credentialing assignments (`types/case/FppeAssignment.ts`,
   `services/cases/`'s FPPE service), wired to `userService`/
-  `subspecialtyService`.
+  `subspecialtyService`. **Real, current status (PS-114, Stage 3):**
+  `handleCreate`/`handleGraduate` now also shadow-write to the new,
+  generic `qaSupervisionAssignmentService` (`services/quality/`) —
+  fire-and-forget, using the old system's own real, just-generated id
+  explicitly, so the same logical assignment shares one real id across
+  both systems. This component's own real reads/writes to the old FPPE
+  system are otherwise completely unchanged — it remains the actual
+  creation/management UI. **Real addition (FPPE Facility organization),
+  per direct guidance:** a real Performing Lab field on the create form
+  (required — every provisional hire practices at one real, specific
+  facility), a Facility column on both the Active and Completed tables,
+  and a facility filter above both — narrowing to one lab shows that
+  lab's own complete Active+Completed picture together, not just one
+  half. `facilityId` is carried through the existing shadow-write
+  unchanged, keeping the two systems in sync field-for-field.
 - **`ResearchFeedSection.tsx`** — admin management for the PubMed
   literature feed shown on the Home dashboard. Built for the same real
   reason `ExternalResourcesSection.tsx` was.
@@ -592,6 +886,36 @@ so anything still long enough to truncate is available on hover.
 Verified live: full descriptions now show for every subspecialty
 except the genuinely longest one (General Pathology), which now has a
 working tooltip.
+
+## `MasterPaymentTypeDictionarySection.tsx` / `JurisdictionPaymentMappingSection.tsx` — real, per direct guidance ("Step 1 should be under System / Financial")
+
+Two new admin CRUD screens for the two Financial Class reference dictionaries (`services/billing/README.md` has the full data-model account) — registered in the pre-existing `Financial & Revenue Lookups` sidebar group alongside Billing Dictionary/RVU Code Map/NCCI Edit Rules, not a new group invented for this feature. Both use the simple, direct CRUD pattern (no versioned/dual-control-approval workflow) — this is structural reference data an admin configures directly, not licensed content with a real regulatory reason to track who approved which version. `MasterPaymentTypeDictionarySection.tsx`'s own Category ID field locks on edit — real, deliberate: `JurisdictionPaymentMappingSection.tsx`'s own rows reference it by id directly, so renaming one in place would silently orphan every real mapping that points at it.
+
+Explicitly the first step of a larger, staged rollout (see the source spec's own phased roadmap) — the Accessioning Screen redesign that actually consumes these two dictionaries (Client Account/Outside Client selection, Primary Jurisdiction, Payment Category → Primary Payer → Coverage, split-billing toggle) is real, separate, not-yet-built work.
+
+## `OutboundMessagePreviewSection.tsx` — real, per direct guidance ("How do users test this... should be comprehensive tool so that formats can be verified")
+
+A real, working preview/export tool for every outbound JSON payload this app now builds — ADT^A08/A40/A47 (`services/patients/buildPatientAdtPayload.ts`) and ORU^R01 (`services/reports/buildOruR01Payload.ts`). Same real posture as `DftExportPreviewSection.tsx`'s own header: PathScribe builds the JSON, the interface engine builds HL7 from it — this tool lets someone verify exactly what that JSON looks like, and download real example files for their own integration testing (`⬇ Download JSON`, a real `Blob`/`URL.createObjectURL` download, same established pattern as `utils/csvExport.ts`).
+
+Deliberately its own new screen, not bolted onto `DftExportPreviewSection.tsx` — that one is scoped to billing (`Financial & Revenue Lookups`); these four transaction types are patient-identity and result events, a different real domain. Registered under the pre-existing `Integrations` sidebar group instead, alongside Terminology Services/Facility Configuration/Order Types & Inbound Rules — a real, established group for interface-facing tools, not a new one invented for this.
+
+`organisationId` is deliberately never a field the tester has to know or type — for A08/A40/A47 it's resolved automatically from the real, looked-up `MasterPatientRecord` itself, the same real field every actual call site already reads it from.
+
+Two real, honest caveats surfaced directly in the UI rather than silently glossed over:
+- A40/A47 previews show `casesRepointed`/`encountersRepointed` as `0` — this tool builds a payload on demand without performing the real merge/rebind, so those real counts genuinely aren't available outside an actual operation. Every other field is accurate.
+- ORU^R01 previews show `reportPdfBase64`/`reportNarrativeText` as absent — generating either requires the real report-rendering pipeline's own React-component closures (`SynopticReportPage.tsx`), which a standalone admin tool has no access to. `structuredDiagnosisAnswers` and the direct narrative fields (`clinicalHistory`/`grossDescription`/`microscopicDescription`/`diagnosisComment`) are all real and accurate.
+
+No new component-level test file — matches the established, un-tested convention `DftExportPreviewSection.tsx` itself already has: a thin UI wrapper over already-tested service functions (`buildAdt08Payload`/`buildAdt40Payload`/`buildAdt47Payload` all covered by `services/patients/outboundPatientAdt.test.ts`'s own 9 real tests) doesn't need a second, duplicate layer of coverage for the same logic.
+
+## `CytologyCategoriesSection.tsx` — new (Sep 2026), Phase 1 of the Cytology & Cervical Screening module
+
+Real, per direct guidance: any configuration for the new Cytology module lives here, as a new subtab under System — same interface/mock pattern every other admin dictionary in this file already follows, not a new, separate configuration surface (registered under the existing `Clinical Lookups` group, alongside Protocol Dictionary/Subspecialties/Departments).
+
+A real, standard 2014 Bethesda System category dictionary — three configurable components (Specimen Adequacy, General Categorization, Interpretation/Result), verified against IARC's own published Bethesda reference before building the seed data, not improvised. See `services/cytology/README.md` for the full account, including the real, forward-compatible link each interpretation/result category carries to this app's own existing `AbnormalSeverity` vocabulary — recorded now, not consumed anywhere yet.
+
+This is deliberately Phase 1 only. The requirements doc this came from (General Cytology & GYN Features) describes a genuinely large, six-module effort — a cytologist-specific worklist, CT workload/QC tracking, HPV integration, multi-jurisdiction compliance, patient follow-up, and a full QA reporting suite are all real, separate, sequenced work, not built here. `services/cytology/README.md`'s own "Explicitly NOT in this phase" section is the authoritative list.
+
+No dedicated modal component — this section's own field shape (section/group/abbreviation/requiresPathologistReview/suggestedAbnormalSeverity) doesn't fit the existing `TypeModal.tsx` (hard-coded to `ParticipationTypeRecord`), so it uses its own small, inline modal rather than force-fitting an incompatible generic one.
 
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*

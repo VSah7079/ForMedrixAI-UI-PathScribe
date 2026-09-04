@@ -1,5 +1,5 @@
 // src/components/Config/Staff/RoleDictionary.tsx
-// Two-panel layout: category groups left, permissions/clients/cheat-sheet right
+// Two-panel layout: category groups left, permissions/facilities/cheat-sheet right
 
 import React, { useState, useEffect, useMemo } from 'react';
 import '../../../pathscribe.css';
@@ -7,6 +7,7 @@ import {
   ACTION_GROUPS, DEFAULT_ROLE_PERMISSIONS,
   ActionId, PermissionSet,
 } from '../../../constants/systemActions';
+import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
 import { mockParticipationTypeService } from '../../../services/participationTypes/mockParticipationTypeService';
 import type { ParticipationTypeRecord } from '../../../services/participationTypes/IParticipationTypeService';
 import { roleService, auditService, facilityService } from '../../../services';
@@ -23,7 +24,7 @@ export interface Role {
   configAccess: boolean;
   permissions: PermissionSet;
   builtIn: boolean;
-  clientIds?: string[];
+  facilityIds?: string[];
   participationTypeIds: string[];
 }
 
@@ -41,14 +42,14 @@ export const DEFAULT_ROLES: Role[] = [
   { id: 'physician',   name: 'Physician',   description: 'External ordering physician. Directory only — no app access.',                   color: '#C084FC', caseAccess: false, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Physician'],    canViewPediatric: false, builtIn: true, participationTypeIds: []                                    },
 ];
 
-// Real fix: this used to be a hardcoded, fictional list of 5 clients
+// Real fix: this used to be a hardcoded, fictional list of 5 facilities
 // (client_hosp_001..004, client_lab_001) completely disconnected from
-// PathScribe's real, live client roster (services/clients/). A real,
+// PathScribe's real, live facility roster (services/clients/). A real,
 // meaningful bug: this tab exists to restrict which real hospital
-// clients a role can access - with a fake list, an admin could never
+// facilities a role can access - with a fake list, an admin could never
 // actually restrict a role to a genuinely real client, and the
-// clientId stored would match nothing real in the live system. See
-// the real, live fetch below (clients state + effect).
+// facilityId stored would match nothing real in the live system. See
+// the real, live fetch below (facilities state + effect).
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -102,11 +103,11 @@ const RoleModal: React.FC<{
     configAccess:         role?.configAccess ?? false,
     permissions:          role?.permissions ?? {},
     builtIn:              role?.builtIn ?? false,
-    clientIds:            role?.clientIds ?? [],
+    facilityIds:          role?.facilityIds ?? [],
     participationTypeIds: role?.participationTypeIds ?? [],
   });
 
-  const [activeTab,       setActiveTab]       = useState<'permissions' | 'clients' | 'participation' | 'cheatsheet'>('permissions');
+  const [activeTab,       setActiveTab]       = useState<'permissions' | 'facilities' | 'participation' | 'cheatsheet'>('permissions');
   const [selectedGroupId, setSelectedGroupId] = useState<string>(ACTION_GROUPS[0].id);
   const [search,          setSearch]          = useState('');
   const [cheatSearch,     setCheatSearch]     = useState('');
@@ -121,12 +122,12 @@ const RoleModal: React.FC<{
   // Real fix: same "disconnected local list" bug pattern already fixed
   // for participationTypes above, found in the same component - the
   // real, live client roster, not a hardcoded, fictional one.
-  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [facilities, setFacilities] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
-    facilityService.getAll().then(res => { if (res.ok) setClients(res.data); });
+    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data); });
   }, []);
 
-  const allClients     = !draft.clientIds || draft.clientIds.length === 0;
+  const allFacilities  = !draft.facilityIds || draft.facilityIds.length === 0;
   const selectedGroup  = ACTION_GROUPS.find(g => g.id === selectedGroupId) ?? ACTION_GROUPS[0];
   const groupIds       = selectedGroup.actions.map(a => a.id);
   const groupState     = groupTriState(groupIds, draft.permissions);
@@ -139,15 +140,48 @@ const RoleModal: React.FC<{
         (a.description ?? '').toLowerCase().includes(search.toLowerCase()))
     : selectedGroup.actions;
 
+  // Real, per direct follow-up ("Make the cheat sheet also show real
+  // voice triggers/shortcuts from mockActionRegistryService" / "should
+  // focus on worklist and synoptic report page commands"): this used
+  // to source purely from ACTION_GROUPS — a completely separate
+  // catalog from mockActionRegistryService's own real, live voice/
+  // keyboard dispatch data (confirmed directly: different id scheme,
+  // no voiceTriggers field at all on ACTION_GROUPS items, and only a
+  // small fraction of ACTION_GROUPS entries even have a matching real
+  // voice action). Now sources the list itself from the real, live
+  // getActions(), scoped to WORKLIST + SYNOPTIC — every shortcut/
+  // voice trigger shown here is the actual, current data, not a
+  // separate catalog that had already drifted apart from it.
+  //
+  // internalKey is the real, confirmed bridge back to this role's own
+  // permissions (ACTION_MAP/INTERNAL_KEY_MAP in systemActions.ts are
+  // built from ACTION_GROUPS on this exact field) — used below only
+  // to show a real "✓ Granted" badge where a genuine mapping exists;
+  // confirmed directly that most real WORKLIST/SYNOPTIC actions have
+  // no such mapping, so nothing is invented (no default true/false)
+  // where one doesn't.
   const cheatActions = useMemo(() => {
-    const all = ACTION_GROUPS.flatMap(g => g.actions.map(a => ({ ...a, groupTitle: g.title })));
+    const permissionIdByInternalKey: Partial<Record<string, ActionId>> = {};
+    ACTION_GROUPS.forEach(g => g.actions.forEach(a => {
+      permissionIdByInternalKey[a.internalKey] = a.id;
+    }));
+
+    const all = mockActionRegistryService.getActions()
+      .filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC')
+      .map(a => ({
+        ...a,
+        groupTitle: a.category === 'WORKLIST' ? 'Worklist' : 'Synoptic Report',
+        permissionId: permissionIdByInternalKey[a.internalKey],
+      }));
+
     if (!cheatSearch) return all;
     const q = cheatSearch.toLowerCase();
     return all.filter(a =>
       a.label.toLowerCase().includes(q) ||
-      (a.description ?? '').toLowerCase().includes(q) ||
       a.groupTitle.toLowerCase().includes(q) ||
-      a.id.toLowerCase().includes(q)
+      a.id.toLowerCase().includes(q) ||
+      a.shortcut.toLowerCase().includes(q) ||
+      a.voiceTriggers.some(t => t.toLowerCase().includes(q))
     );
   }, [cheatSearch]);
 
@@ -162,17 +196,17 @@ const RoleModal: React.FC<{
   const toggleAction = (id: ActionId) =>
     setDraft(d => ({ ...d, permissions: { ...d.permissions, [id]: !d.permissions[id] } }));
 
-  const toggleClient = (clientId: string) => {
-    const current = draft.clientIds ?? [];
-    const next = current.includes(clientId)
-      ? current.filter(c => c !== clientId)
-      : [...current, clientId];
-    setDraft(d => ({ ...d, clientIds: next }));
+  const toggleFacility = (facilityId: string) => {
+    const current = draft.facilityIds ?? [];
+    const next = current.includes(facilityId)
+      ? current.filter(c => c !== facilityId)
+      : [...current, facilityId];
+    setDraft(d => ({ ...d, facilityIds: next }));
   };
 
   const TABS = [
     { id: 'permissions',   label: `Permissions (${permCount})` },
-    { id: 'clients',       label: `Facility Access (${allClients ? 'All' : (draft.clientIds?.length ?? 0)})` },
+    { id: 'facilities',    label: `Facility Access (${allFacilities ? 'All' : (draft.facilityIds?.length ?? 0)})` },
     { id: 'participation', label: `Case Participation (${draft.participationTypeIds?.length ?? 0})` },
     { id: 'cheatsheet',    label: 'Action Reference' },
   ] as const;
@@ -319,38 +353,38 @@ const RoleModal: React.FC<{
           )}
 
           {/* ── CLIENT ACCESS TAB ── */}
-          {activeTab === 'clients' && (
+          {activeTab === 'facilities' && (
             <div className="ps-rd-clients-tab">
               <p className="ps-rd-clients-intro">
                 Control which hospital facilities this role can access. Set to <strong>All Facilities</strong> for enterprise-wide access, or restrict to specific hospitals for multi-site deployments.
               </p>
-              <div onClick={() => setDraft(d => ({ ...d, clientIds: allClients ? (clients[0] ? [clients[0].id] : []) : [] }))}
-                className={`ps-rd-all-clients-row ${allClients ? 'ps-rd-all-clients-row--on' : 'ps-rd-all-clients-row--off'}`}>
-                <DivCheckbox checked={allClients} size={20} variant="green" />
+              <div onClick={() => setDraft(d => ({ ...d, facilityIds: allFacilities ? (facilities[0] ? [facilities[0].id] : []) : [] }))}
+                className={`ps-rd-all-clients-row ${allFacilities ? 'ps-rd-all-clients-row--on' : 'ps-rd-all-clients-row--off'}`}>
+                <DivCheckbox checked={allFacilities} size={20} variant="green" />
                 <div>
-                  <div className={`ps-rd-all-clients-label ${allClients ? 'ps-rd-all-clients-label--on' : 'ps-rd-all-clients-label--off'}`}>All Facilities</div>
+                  <div className={`ps-rd-all-clients-label ${allFacilities ? 'ps-rd-all-clients-label--on' : 'ps-rd-all-clients-label--off'}`}>All Facilities</div>
                   <div className="ps-rd-all-clients-sub">This role has access to cases and data from all hospital facilities</div>
                 </div>
               </div>
-              {!allClients && (
+              {!allFacilities && (
                 <div>
                   <div className="ps-rd-clients-section-label">Select Specific Facilities</div>
-                  {clients.map(client => {
-                    const selected = (draft.clientIds ?? []).includes(client.id);
+                  {facilities.map(facility => {
+                    const selected = (draft.facilityIds ?? []).includes(facility.id);
                     return (
-                      <div key={client.id} onClick={() => toggleClient(client.id)}
+                      <div key={facility.id} onClick={() => toggleFacility(facility.id)}
                         className={`ps-rd-client-item ${selected ? 'ps-rd-client-item--on' : 'ps-rd-client-item--off'}`}>
                         <DivCheckbox checked={selected} size={18} />
                         <div>
-                          <div className={`ps-rd-client-name ${selected ? 'ps-rd-client-name--on' : 'ps-rd-client-name--off'}`}>{client.name}</div>
-                          <div className="ps-rd-client-id">{client.id}</div>
+                          <div className={`ps-rd-client-name ${selected ? 'ps-rd-client-name--on' : 'ps-rd-client-name--off'}`}>{facility.name}</div>
+                          <div className="ps-rd-client-id">{facility.id}</div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
-              {!allClients && (draft.clientIds ?? []).length === 0 && (
+              {!allFacilities && (draft.facilityIds ?? []).length === 0 && (
                 <div className="ps-rd-no-clients-warn">
                   ⚠ No facilities selected — this role will have no data access. Select at least one facility or switch to All Facilities.
                 </div>
@@ -434,15 +468,21 @@ const RoleModal: React.FC<{
             <div className="ps-rd-cheat-tab">
               <div className="ps-rd-cheat-header">
                 <input autoFocus value={cheatSearch} onChange={e => setCheatSearch(e.target.value)}
-                  placeholder="Search actions by name, description, category, or ID…"
+                  placeholder="Search by name, ID, shortcut, or voice phrase…"
                   className="ps-conf-input" />
                 <div className="ps-rd-cheat-count">
-                  {cheatActions.length} of {ACTION_GROUPS.reduce((n, g) => n + g.actions.length, 0)} actions shown
+                  {cheatActions.length} of {mockActionRegistryService.getActions().filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC').length} worklist/synoptic actions shown
                 </div>
               </div>
               <div className="ps-rd-cheat-list">
                 {cheatActions.map(action => {
-                  const granted = !!draft.permissions[action.id];
+                  // Real, per direct follow-up: undefined here means this
+                  // real voice/keyboard action has no matching entry in
+                  // ACTION_GROUPS at all (confirmed the common case for
+                  // this scope) — kept distinct from a real, mapped
+                  // false, so the UI never invents a grant status this
+                  // role dictionary doesn't actually track.
+                  const granted = action.permissionId ? !!draft.permissions[action.permissionId] : undefined;
                   return (
                     <div key={action.id} className={`ps-rd-cheat-item ${granted ? 'ps-rd-cheat-item--granted' : 'ps-rd-cheat-item--default'}`}>
                       <div className="ps-rd-cheat-label-row">
@@ -450,11 +490,33 @@ const RoleModal: React.FC<{
                         <span className={`ps-rd-cheat-label ${granted ? 'ps-rd-cheat-label--granted' : 'ps-rd-cheat-label--default'}`}>
                           {action.label}
                         </span>
-                        {granted      && <span className="ps-rd-tag-granted">✓ Granted</span>}
-                        {action.prebuilt    && <span className="ps-rd-tag-future">future</span>}
-                        {action.shortcutable && <span className="ps-rd-tag-shortcut">shortcutable</span>}
+                        {granted === true  && <span className="ps-rd-tag-granted">✓ Granted</span>}
+                        {granted === undefined && (
+                          <span
+                            title="No matching permission entry exists for this action — this role dictionary's permission grid doesn't track it."
+                            style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.35)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                          >
+                            No permission mapping
+                          </span>
+                        )}
+                        {!action.isActive && (
+                          <span
+                            title="Registered but deliberately not voice/keyboard-eligible — see this action's own comment in mockActionRegistryService.ts."
+                            style={{ fontSize: '9px', fontWeight: 'bold', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                          >
+                            Disabled
+                          </span>
+                        )}
+                        <span className="ps-rd-tag-shortcut">{action.requiredRole}</span>
                       </div>
-                      {action.description && <div className="ps-rd-cheat-desc">{action.description}</div>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                        <code style={{ background: 'var(--ps-conf-surface)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', color: '#38bdf8' }}>{action.shortcut || '—'}</code>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {action.voiceTriggers.map(t => (
+                            <span key={t} style={{ background: 'rgba(8, 145, 178, 0.15)', color: '#22d3ee', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', border: '1px solid rgba(34, 211, 238, 0.2)' }}>{t}</span>
+                          ))}
+                        </div>
+                      </div>
                       <div className="ps-rd-cheat-id">{action.id} · {action.internalKey}</div>
                     </div>
                   );
@@ -467,7 +529,7 @@ const RoleModal: React.FC<{
         {/* Footer */}
         <div className="fm-footer">
           <span className="ps-rd-footer-meta">
-            {permCount} permissions · {allClients ? 'All clients' : `${(draft.clientIds ?? []).length} client(s)`}
+            {permCount} permissions · {allFacilities ? 'All facilities' : `${(draft.facilityIds ?? []).length} facility(s)`}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
@@ -543,6 +605,20 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
     setModal(null);
   };
 
+  // Real, per direct guidance: reuses the exact same 'add' flow/modal
+  // as a genuinely new role, pre-filled with the source role's full
+  // configuration (permissions, facility access, case participation,
+  // color) — same "duplicate, then review before saving" pattern
+  // already established for Container Types/Physicians/Case Routing
+  // rules elsewhere in this app, rather than an instant, unreviewed
+  // clone. builtIn is deliberately forced false regardless of the
+  // source's own value — duplicating Pathologist/Resident/Admin/
+  // Physician must always produce a genuine custom role, never a
+  // second role silently claiming built-in status.
+  const handleDuplicate = (role: Role) => {
+    setModal({ mode: 'add', role: { ...role, name: `${role.name} (Copy)`, builtIn: false } });
+  };
+
   if (loading) return <div className="ps-rd-loading">Loading roles…</div>;
 
   return (
@@ -562,14 +638,14 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
         <table className="ps-rd-table">
           <thead className="ps-rd-thead">
             <tr>
-              {['Role', 'Description', 'Case Access', 'Config Access', 'Pediatric Access', 'Clients', 'Permissions', ''].map(h => (
+              {['Role', 'Description', 'Case Access', 'Config Access', 'Pediatric Access', 'Facilities', 'Permissions', ''].map(h => (
                 <th key={h} className="ps-rd-th">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.map(role => {
-              const allClients = !role.clientIds || role.clientIds.length === 0;
+              const allFacilities = !role.facilityIds || role.facilityIds.length === 0;
               const pct        = Math.round(permCount(role) / totalActions * 100);
               return (
                 <tr key={role.id} className="ps-rd-tr">
@@ -600,8 +676,8 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                     </span>
                   </td>
                   <td className="ps-rd-td">
-                    <span className={`ps-rd-clients ${allClients ? 'ps-rd-clients--all' : 'ps-rd-clients--some'}`}>
-                      {allClients ? '🌐 All' : `${role.clientIds?.length} client${(role.clientIds?.length ?? 0) !== 1 ? 's' : ''}`}
+                    <span className={`ps-rd-clients ${allFacilities ? 'ps-rd-clients--all' : 'ps-rd-clients--some'}`}>
+                      {allFacilities ? '🌐 All' : `${role.facilityIds?.length} facility${(role.facilityIds?.length ?? 0) !== 1 ? '(s)' : ''}`}
                     </span>
                   </td>
                   <td className="ps-rd-td">
@@ -613,7 +689,10 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                     </div>
                   </td>
                   <td className="ps-rd-td">
-                    <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>Edit</button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>Edit</button>
+                      <button className="ps-rd-edit-btn" onClick={() => handleDuplicate(role)}>Duplicate</button>
+                    </div>
                   </td>
                 </tr>
               );

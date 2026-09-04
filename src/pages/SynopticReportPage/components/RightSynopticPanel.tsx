@@ -13,6 +13,7 @@ import type {
 import type { TemplateDetail } from '@/services/templates/templateService';
 import { getTemplateCached, listTemplatesCached } from '@/services/templates/templateService';
 import { generateAiSuggestionsForReport, saveReportSuggestions, recordAiFeedback } from '@/services/cases/mockCaseService';
+import { resolveEmbeddedCodesForAnswer, appendEmbeddedCodesToSpecimen } from '../resolveEmbeddedCoding';
 import { aiBehaviorService } from '@/services';
 import { getOrgOrchestratorDefault, resolveOrchestratorMode } from '@/components/Config/AI/orchestratorModeConfig';
 import { matchSourceText } from '@/utils/sourceTextMatching';
@@ -517,8 +518,8 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
   // then resolves the full, per-lab-aware value.
   const [orchestratorMode, setOrchestratorMode] = useState<boolean>(getOrgOrchestratorDefault);
   useEffect(() => {
-    resolveOrchestratorMode(initialCaseData?.order?.clientId).then(setOrchestratorMode).catch(() => {});
-  }, [initialCaseData?.order?.clientId]);
+    resolveOrchestratorMode(initialCaseData?.order?.facilityId).then(setOrchestratorMode).catch(() => {});
+  }, [initialCaseData?.order?.facilityId]);
   const caseData = initialCaseData;
   // Fixes a confirmed bug: this used to hardcode 'PATH-001' for both
   // the assignment-validation check and the "Assigned to you" badge,
@@ -1125,9 +1126,10 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       // Confirm: snap answer back to AI value
       if (v === 'verified') setAnswers(ans => ({ ...ans, [fieldId]: sug.value as string | string[] }));
       if (caseData && activeReportInstanceId) saveReportSuggestions(caseData.id, activeReportInstanceId, nextSuggestions);
-      const fieldLabel = templateDetail?.template.sections
+      const field = templateDetail?.template.sections
         .flatMap((s: EditorSection) => s.fields)
-        .find((f: EditorField) => f.id === fieldId)?.label ?? fieldId;
+        .find((f: EditorField) => f.id === fieldId);
+      const fieldLabel = field?.label ?? fieldId;
       recordAiFeedback({
         timestamp: new Date().toISOString(), caseId: caseData?.id ?? '',
         instanceId: activeReportInstanceId ?? '', templateId: templateDetail?.template.id ?? '',
@@ -1136,9 +1138,24 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
         action: v === 'verified' ? 'confirmed' : 'overridden', source: sug.source,
         userId: user?.id, userName: user?.name,
       });
+      // Real, per direct guidance: "AI will suggest selections to the
+      // synoptic report. The Pathologist approve the selection... at
+      // that point, the related codes are applied to the case." This
+      // is that real, missing wiring — see resolveEmbeddedCoding.ts's
+      // own header for the full account. Only ever on 'verified' —
+      // disputing a field never touches any previously-applied code;
+      // that stays the pathologist's own, explicit act via Code
+      // Manager's existing remove action, never an automatic reversal.
+      if (v === 'verified' && field && caseData) {
+        const embedded = resolveEmbeddedCodesForAnswer(field, sug.value);
+        if (embedded.length > 0 && activeSpecimenId) {
+          const updatedSpecimens = appendEmbeddedCodesToSpecimen(caseData.specimens ?? [], activeSpecimenId, embedded);
+          onCaseUpdate?.({ ...caseData, specimens: updatedSpecimens } as any);
+        }
+      }
       return nextSuggestions;
     });
-  }, [caseData, activeReportInstanceId, templateDetail, answers, user]);
+  }, [caseData, activeReportInstanceId, templateDetail, answers, user, activeSpecimenId, onCaseUpdate]);
 
   // ── Early returns ─────────────────────────────────────────────────────────
   if (loading) return (

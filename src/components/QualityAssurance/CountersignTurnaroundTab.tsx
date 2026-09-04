@@ -48,7 +48,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
       if (recRes.ok) setRecords(recRes.data);
       if (casesRes.ok) {
         const map: Record<string, string | undefined> = {};
-        casesRes.data.forEach((c) => { map[c.id] = c?.order?.clientId; });
+        casesRes.data.forEach((c) => { map[c.id] = c?.order?.facilityId; });
         setCaseClientById(map);
       }
       setLoading(false);

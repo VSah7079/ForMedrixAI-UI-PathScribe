@@ -25,7 +25,7 @@ root-level files. 38 files total.
 
 - **`index.ts`** — barrel re-exports.
 - **`serviceResult.ts`** — an older `ServiceResult<T>` shape (`{success, data, error}`), still genuinely used by the `aiIntegration/` subsystem — see "Real findings" below before assuming this is dead.
-- **`systemConfig.ts`**, **`template.ts`**, **`templateTypes.ts`**, **`reportPart.ts`**, **`smarttag.types.ts`**, **`voiceMacros.ts`**, **`flagsRuntime.ts`**, **`FlagDefinition.ts`**, **`AuditEvent.ts`**, **`SynopticAuditEvents.ts`**, **`ContributionDashboard.ts`** — standalone domain types not yet folded into a dedicated subfolder.
+- **`systemConfig.ts`**, **`template.ts`**, **`templateTypes.ts`**, **`reportPart.ts`**, **`smarttag.types.ts`**, **`voiceMacros.ts`**, **`flagsRuntime.ts`**, **`FlagDefinition.ts`**, **`AuditEvent.ts`**, **`SynopticAuditEvents.ts`**, **`ContributionDashboard.ts`** — standalone domain types not yet folded into a dedicated subfolder. **`voiceMacros.ts` grew real substance this pass** ("Personal Quick Text" — Enterprise then Facility then Staff): `VoiceMacro` gained the same `performingLabFacilityId?`/`ownerUserId?` three-tier ownership model `Macro` (`services/macros/`) already has, plus `isVoiceMacroVisibleTo()` (the matching resolution rule) and `applyVoiceMacroSubstitutions()` — the real spoken-trigger substitution algorithm, now shared by `mockVoiceMacroService.ts`'s `refineTranscript()` and `contexts/VoiceProvider.tsx`'s own live dictation pipeline (see that folder's own README for the full account of wiring a previously-orphaned function into real, live use).
 
 ## Real findings
 

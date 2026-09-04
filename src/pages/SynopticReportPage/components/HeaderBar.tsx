@@ -7,8 +7,8 @@ import { useMessaging } from '@/contexts/MessagingContext';
 import type { Case } from '@/types/case/Case';
 import { getOrgOrchestratorDefault, resolveOrchestratorMode } from '@/components/Config/AI/orchestratorModeConfig';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
-import { lisSyncService } from '@/services';
-import type { LisSyncState } from '@/services/lisSync/mockLisSyncService';
+import { lisSyncService, flagService } from '@/services';
+import type { LisSyncState, LisSyncPendingFlag } from '@/services/lisSync/mockLisSyncService';
 import { getCaseStatusLabel, hasDisplayableRevision } from '@/utils/caseRevisionDisplay';
 import { useReleaseBufferCountdown } from '../hooks/useReleaseBufferCountdown';
 import '@/pathscribe.css';
@@ -104,6 +104,10 @@ const CASE_STATE_CLASS: Record<string, string> = {
    *  ReleaseBufferBanner.tsx's own color theme for visual consistency
    *  across the two real, related UI elements. */
   'pending-release':  'ps-case-status--pending-release',
+  // Real, per direct guidance ("Yes we should scope 'Return to
+  // Trainee'/'Reject with Notes'"): the attending declined to
+  // countersign and sent this case back for revision.
+  'returned':         'ps-case-status--returned',
 };
 
 // ── Step circle class helper ──────────────────────────────────────────────────
@@ -117,14 +121,14 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   // dead NarrativeTemplates/index.tsx) instead of the real
   // resolveOrchestratorMode() this file's own AI config module
   // provides — meaning the real, documented per-lab override
-  // (Client.internalAiOrchestratorEnabled) was silently never applied
+  // (Facility.internalAiOrchestratorEnabled) was silently never applied
   // here, even though the admin UI to set it (OrchestratorConfigSection)
   // is real and reachable. Defaults to the sync org-level value first
   // (no blank flash), then resolves the full, per-lab-aware value.
   const [isOrchestration, setIsOrchestration] = useState<boolean>(getOrgOrchestratorDefault);
   useEffect(() => {
-    resolveOrchestratorMode(caseData?.order?.clientId).then(setIsOrchestration).catch(() => {});
-  }, [caseData?.order?.clientId]);
+    resolveOrchestratorMode(caseData?.order?.facilityId).then(setIsOrchestration).catch(() => {});
+  }, [caseData?.order?.facilityId]);
 
   // CoPilot-only — Orchestration mode is the system of record; there's no
   // separate LIS for anything here to be "as of" relative to.
@@ -152,6 +156,43 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
     return () => { cancelled = true; };
   }, [isAssistCase, caseData?.id]);
 
+  // Real, confirmed fix (Jira PS-57 + its follow-up "should be able
+  // to assign Flags at either a Case or Specimen level"): this used
+  // to write LisSyncPendingFlag objects (id/name/lisCode/tagClass/
+  // severity) directly onto a case-level specimenFlags field — a
+  // third, different shape from the real FlagInstance model
+  // (id/flagDefinitionId/appliedAt/source/deletedAt) the only real
+  // flag-application workflow (FlagManagerModal/caseFlagsApi.ts)
+  // actually uses, into a field that field never even read from or
+  // wrote to. Each LIS-reported flag is now resolved against the
+  // real flag catalog by lisCode — auto-created there (autoCreated:
+  // true, matching this app's own, established pattern for
+  // unrecognised LIS codes elsewhere) when no match exists — then
+  // applied as a real FlagInstance (source: 'lis', the exact value
+  // this field documents itself as existing for) to the correct
+  // location: the specific specimen's own specimenFlags when
+  // pf.specimenId is present, caseFlags when it's genuinely
+  // case-level. Deduplicates against an already-applied, non-deleted
+  // instance of the same definition, same real check
+  // caseFlagsApi.ts's own applyFlags() uses.
+  const resolveOrCreateFlagDefId = async (pf: LisSyncPendingFlag): Promise<string> => {
+    const catalog = await flagService.getAll();
+    const existing = catalog.ok ? catalog.data.find(f => f.lisCode === pf.lisCode) : undefined;
+    if (existing) return existing.id;
+    const created = await flagService.add({
+      name: pf.name,
+      lisCode: pf.lisCode,
+      description: `Auto-created from LIS sync (code: ${pf.lisCode})`,
+      level: pf.specimenId ? 'Specimen' : 'Case',
+      severity: pf.severity,
+      status: 'Active',
+      tagClass: pf.tagClass,
+      autoCreated: true,
+    });
+    if (created.ok) return created.data.id;
+    throw new Error((created as { ok: false; error: string }).error);
+  };
+
   const handleCheckNow = async () => {
     if (!caseData?.id || checkingNow) return;
     setCheckingNow(true);
@@ -160,18 +201,48 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
       if (res.ok) {
         setSyncState({ lastCheckedAt: res.data.lastCheckedAt });
         // Real flag-adding mechanism (caseFlagsApi / useSynopticFlags) is
-        // the actual insertion point here — deliberately not duplicated
-        // in this mock service, kept as the caller's job per its own
-        // header comment. onCaseUpdate applies whatever came back onto
-        // the case the same way any other flag addition would.
+        // the actual insertion point for the manual-apply flow —
+        // deliberately not duplicated in this mock service, kept as the
+        // caller's job per its own header comment. onCaseUpdate applies
+        // whatever came back onto the case the same way any other flag
+        // addition would, just built as real FlagInstance records here.
         if (res.data.newFlags.length > 0 && onCaseUpdate && caseData) {
+          const now = new Date().toISOString();
+          let updatedCaseFlags = (caseData.caseFlags ?? []).slice();
+          const specimenFlagAdds = new Map<string, any[]>();
+
+          for (const pf of res.data.newFlags) {
+            const flagDefinitionId = await resolveOrCreateFlagDefId(pf);
+            const inst = {
+              id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+              flagDefinitionId,
+              appliedAt: now,
+              appliedBy: 'LIS Sync',
+              source: 'lis' as const,
+              deletedAt: null,
+              deletedBy: null,
+            };
+            if (pf.specimenId) {
+              const existingOnSpecimen = (caseData.specimens ?? []).find(sp => sp.id === pf.specimenId)?.specimenFlags ?? [];
+              const alreadyApplied = existingOnSpecimen.some(f => f.flagDefinitionId === flagDefinitionId && !f.deletedAt);
+              if (!alreadyApplied) {
+                if (!specimenFlagAdds.has(pf.specimenId)) specimenFlagAdds.set(pf.specimenId, []);
+                specimenFlagAdds.get(pf.specimenId)!.push(inst);
+              }
+            } else {
+              const alreadyApplied = updatedCaseFlags.some(f => f.flagDefinitionId === flagDefinitionId && !f.deletedAt);
+              if (!alreadyApplied) updatedCaseFlags = [...updatedCaseFlags, inst];
+            }
+          }
+
           const updated: Case = {
             ...caseData,
-            specimenFlags: [
-              ...((caseData as any).specimenFlags ?? []),
-              ...res.data.newFlags,
-            ],
-          } as any;
+            caseFlags: updatedCaseFlags,
+            specimens: (caseData.specimens ?? []).map(sp => {
+              const adds = specimenFlagAdds.get(sp.id);
+              return adds ? { ...sp, specimenFlags: [...(sp.specimenFlags ?? []), ...adds] } : sp;
+            }),
+          };
           onCaseUpdate(updated);
         }
       }
@@ -196,7 +267,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   const sex       = caseData?.patient?.sex ?? '—';
   const status    = caseData?.status ?? 'draft';
   const hospital    = getOrganisationByHospitalId(caseData?.originHospitalId ?? '');
-  const clientName  = caseData?.order?.clientName ?? null;
+  const clientName  = caseData?.order?.facilityName ?? null;
   const isRevisedFinal = hasDisplayableRevision(status, caseData?.lastRevisionType);
   const statusClass  = isRevisedFinal ? 'ps-case-status--amended' : (CASE_STATE_CLASS[status] ?? CASE_STATE_CLASS['draft']);
   const statusDisplayLabel = getCaseStatusLabel(status, caseData?.lastRevisionType);

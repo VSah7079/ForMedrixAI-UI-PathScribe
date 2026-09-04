@@ -6,7 +6,7 @@ import type {
   IOrderIntakeService, IncomingOrder, SpecimenCodeCrosswalkEntry, OrderResolutionResult, OrderCodeCodingSystem,
 } from './IOrderIntakeService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
-import { mockSpecimenCategoryService } from '../specimenCategories/mockSpecimenCategoryService';
+import { mockDepartmentService } from '../departments/mockDepartmentService';
 import { mockSpecimenDictionaryService } from '../specimenDictionary/mockSpecimenDictionaryService';
 import { mockInterfaceExceptionService } from '../interfaceExceptions/mockInterfaceExceptionService';
 import { resolveProviderName } from '../physicians/resolveProviderName';
@@ -36,9 +36,9 @@ const isoDaysAgo = (days: number) => {
 // mockSpecimenDictionaryService.ts, confirmed real. 'sp034' (Pleural
 // Fluid Cytology) is confirmed real too — verified directly against
 // specimens-starter.json once it was shared; both entries have
-// specimenCategoryId: null in the real starter data (true for all 60
+// departmentId: null in the real starter data (true for all 60
 // starter entries, not just these two), so resolving through either
-// will exercise the "dictionary entry has no category yet" fallback
+// will exercise the "dictionary entry has no department yet" fallback
 // path in resolveOrder() — that's accurate to the real seed data, not
 // an artifact of picking these two specifically.
 const SEED_CROSSWALK: SpecimenCodeCrosswalkEntry[] = [
@@ -63,9 +63,9 @@ let CROSSWALK: SpecimenCodeCrosswalkEntry[] = loadCrosswalk();
 //   ORD-002 — assigning authority 'NEWCLINIC01' doesn't match any existing
 //             Client.assigningAuthority → demonstrates clientWasAutoCreated.
 //   ORD-003 — Royal Manchester (known client) but a specimen code with no
-//             crosswalk entry → demonstrates categoryWasAutoCreated,
+//             crosswalk entry → demonstrates departmentWasAutoCreated,
 //             independent of client resolution.
-// None are pre-resolved — clientId/specimenCategoryId are left undefined
+// None are pre-resolved — clientId/departmentId are left undefined
 // until resolveOrder() actually runs, same as a real order would arrive
 // unresolved and get processed by the Accession page.
 const SEED_ORDERS: IncomingOrder[] = [
@@ -443,8 +443,8 @@ let ORDERS: IncomingOrder[] = loadOrders();
  *  array — a real, silent, wrong-match risk this fixes.
  *
  *  Real, most-specific-wins priority, matching the same pattern
- *  already proven for BillingRuleVersion/CaseMaskConfig site
- *  overrides in this app:
+ *  already proven for BillingRuleVersion site overrides and
+ *  CaseMask's own scope resolution in this app:
  *    1. Exact codingSystem match, when the incoming specimen actually
  *       carried one.
  *    2. A crosswalk entry with NO codingSystem set at all (every real
@@ -500,7 +500,7 @@ export const mockOrderIntakeService: IOrderIntakeService = {
   async listPendingOrders(params) {
     await delay();
     let results = ORDERS.filter(o => o.status === 'pending');
-    if (params?.clientId) results = results.filter(o => o.clientId === params.clientId);
+    if (params?.facilityId) results = results.filter(o => o.facilityId === params.facilityId);
     return ok([...results]);
   },
 
@@ -534,25 +534,25 @@ export const mockOrderIntakeService: IOrderIntakeService = {
     const order = { ...ORDERS[idx] };
     const warnings: string[] = [];
 
-    // ── Client resolution — Client.assigningAuthority IS the crosswalk key, no
-    // separate client crosswalk table needed. ──────────────────────────
+    // ── Facility resolution — Facility.assigningAuthority IS the crosswalk key, no
+    // separate facility crosswalk table needed. ──────────────────────────
     const clientsRes = await mockFacilityService.getAll();
     const clients = clientsRes.ok ? clientsRes.data : [];
     const clientMatch = clients.find(c => c.assigningAuthority.toLowerCase() === order.externalAssigningAuthority.toLowerCase());
 
     if (clientMatch) {
-      order.clientId = clientMatch.id;
-      order.clientWasAutoCreated = false;
+      order.facilityId = clientMatch.id;
+      order.facilityWasAutoCreated = false;
     } else {
       const created = await mockFacilityService.findOrCreateByAssigningAuthority(
         order.externalAssigningAuthority,
-        `Unrecognized client (order ${order.externalOrderNumber})`,
-        `No Client.assigningAuthority match for "${order.externalAssigningAuthority}" on incoming order ${order.externalOrderNumber} — created pending admin review.`
+        `Unrecognized facility (order ${order.externalOrderNumber})`,
+        `No Facility.assigningAuthority match for "${order.externalAssigningAuthority}" on incoming order ${order.externalOrderNumber} — created pending admin review.`
       );
       if (created.ok) {
-        order.clientId = created.data.id;
-        order.clientWasAutoCreated = true;
-        warnings.push(`No existing client matched assigning authority "${order.externalAssigningAuthority}" — created "${created.data.name}" as Unverified, pending admin review.`);
+        order.facilityId = created.data.id;
+        order.facilityWasAutoCreated = true;
+        warnings.push(`No existing facility matched assigning authority "${order.externalAssigningAuthority}" — created "${created.data.name}" as Unverified, pending admin review.`);
       }
     }
 
@@ -575,14 +575,14 @@ export const mockOrderIntakeService: IOrderIntakeService = {
             identifiers: order.requestingProvider.identifiers,
           },
           'requesting',
-          order.clientId
+          order.facilityId
         )
-      : await resolveProviderName(order.requestingProvider.rawName, 'requesting', order.clientId);
+      : await resolveProviderName(order.requestingProvider.rawName, 'requesting', order.facilityId);
     if (providerResolved.ok && providerResolved.data) {
       order.requestingProviderPhysicianId = providerResolved.data.physician.id;
     }
 
-    // ── Per-specimen resolution — Specimen Dictionary first, category
+    // ── Per-specimen resolution — Specimen Dictionary first, department
     // derived transitively ────────────────────────────────────────────
     const dictionaryRes = await mockSpecimenDictionaryService.getAll();
     const dictionary = dictionaryRes.ok ? dictionaryRes.data : [];
@@ -590,18 +590,18 @@ export const mockOrderIntakeService: IOrderIntakeService = {
     const resolvedSpecimens = await Promise.all(order.specimens.map(async (spec) => {
       // Crosswalk match first, if this specimen came with a code —
       // resolves to a specific SpecimenEntry, not straight to a
-      // category, so "TISSUE-01" resolves to "Left breast core biopsy"
-      // and its category follows transitively, not a bare category
+      // department, so "TISSUE-01" resolves to "Left breast core biopsy"
+      // and its department follows transitively, not a bare department
       // guess that loses the actual specimen type. Real, priority-
       // ordered match (findCrosswalkMatch above) — resolves PS-80.
-      if (spec.externalSpecimenCode && order.clientId) {
-        const xwalkMatch = findCrosswalkMatch(CROSSWALK, order.clientId, spec.externalSpecimenCode, spec.externalCodingSystem);
+      if (spec.externalSpecimenCode && order.facilityId) {
+        const xwalkMatch = findCrosswalkMatch(CROSSWALK, order.facilityId, spec.externalSpecimenCode, spec.externalCodingSystem);
         const entry = xwalkMatch ? dictionary.find(d => d.id === xwalkMatch.dictionaryEntryId) : undefined;
         if (entry) {
           return {
             ...spec,
             dictionaryEntryId: entry.id, dictionaryEntryWasAutoCreated: false,
-            specimenCategoryId: entry.specimenCategoryId, categoryWasAutoCreated: false,
+            departmentId: entry.departmentId, departmentWasAutoCreated: false,
           };
         }
       }
@@ -611,13 +611,13 @@ export const mockOrderIntakeService: IOrderIntakeService = {
       // the existing auto-create-and-continue fallback below, never
       // instead of it — matches the same fail-open, never-block-order-
       // processing posture this whole function already applies to
-      // clients and categories. Only for a specimen that actually
+      // clients and departments. Only for a specimen that actually
       // carried a real code the crosswalk tried and missed — a
       // description-only specimen (no externalSpecimenCode at all) was
       // never going to have a crosswalk entry in the first place, so
       // that's not a real "unmapped code" event, just the normal,
       // expected description-only path.
-      if (spec.externalSpecimenCode && order.clientId) {
+      if (spec.externalSpecimenCode && order.facilityId) {
         await mockInterfaceExceptionService.create({
           eventType: 'unmapped_order_code',
           reason: `No crosswalk match for order code "${spec.externalSpecimenCode}"${spec.externalCodingSystem ? ` (${spec.externalCodingSystem})` : ''} on order ${order.externalOrderNumber} from client assigning authority "${order.externalAssigningAuthority}" — auto-created a pending Specimen Dictionary entry so order processing wasn't blocked; a real crosswalk entry should be added for this code.`,
@@ -625,7 +625,7 @@ export const mockOrderIntakeService: IOrderIntakeService = {
           rawOrderCode: spec.externalSpecimenCode,
           normalizedOrderCode: normalizeOrderCode(spec.externalSpecimenCode),
           codingSystem: spec.externalCodingSystem,
-          clientId: order.clientId,
+          facilityId: order.facilityId,
         });
       }
 
@@ -643,10 +643,10 @@ export const mockOrderIntakeService: IOrderIntakeService = {
       if (!created.ok) return spec;
 
       const wasAutoCreated = !!created.data.autoCreated;
-      if (wasAutoCreated && spec.externalSpecimenCode && order.clientId) {
+      if (wasAutoCreated && spec.externalSpecimenCode && order.facilityId) {
         const newEntry: SpecimenCodeCrosswalkEntry = {
           id: 'xwalk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-          clientId: order.clientId,
+          clientId: order.facilityId,
           externalCode: spec.externalSpecimenCode,
           dictionaryEntryId: created.data.id,
           createdAt: new Date().toISOString(),
@@ -659,28 +659,28 @@ export const mockOrderIntakeService: IOrderIntakeService = {
         warnings.push(`No crosswalk match for specimen "${spec.description}" — created Specimen Dictionary entry "${created.data.name}" as pending admin review.`);
       }
 
-      // The matched/created dictionary entry may not have a category set
+      // The matched/created dictionary entry may not have a department set
       // yet (a brand-new auto-created entry never does; an existing one
-      // might not either — see SpecimenEntry.specimenCategoryId's own
-      // "optional, additive" doc comment). Falling back to category-level
+      // might not either — see SpecimenEntry.departmentId's own
+      // "optional, additive" doc comment). Falling back to department-level
       // findOrCreateByName here is a deliberate, documented
-      // simplification: it derives a usable category immediately (never
+      // simplification: it derives a usable department immediately (never
       // blocks order processing) without writing the link back onto the
       // dictionary entry itself — that reconciliation is left for an
       // admin, same as everywhere else in this fail-open pattern, rather
       // than silently auto-linking a guess.
-      let specimenCategoryId = created.data.specimenCategoryId;
-      let categoryWasAutoCreated = false;
-      if (!specimenCategoryId) {
-        const catCreated = await mockSpecimenCategoryService.findOrCreateByName(
+      let departmentId = created.data.departmentId;
+      let departmentWasAutoCreated = false;
+      if (!departmentId) {
+        const catCreated = await mockDepartmentService.findOrCreateByName(
           nameGuess,
-          `No category on Specimen Dictionary entry "${created.data.name}" for specimen "${spec.description}" on order ${order.externalOrderNumber} — created pending admin review.`
+          `No department on Specimen Dictionary entry "${created.data.name}" for specimen "${spec.description}" on order ${order.externalOrderNumber} — created pending admin review.`
         );
         if (catCreated.ok) {
-          specimenCategoryId = catCreated.data.id;
-          categoryWasAutoCreated = !!catCreated.data.autoCreated;
-          if (categoryWasAutoCreated) {
-            warnings.push(`Specimen Dictionary entry "${created.data.name}" has no category — created Specimen Category "${catCreated.data.name}" as Unverified, pending admin review.`);
+          departmentId = catCreated.data.id;
+          departmentWasAutoCreated = !!catCreated.data.autoCreated;
+          if (departmentWasAutoCreated) {
+            warnings.push(`Specimen Dictionary entry "${created.data.name}" has no department — created Department "${catCreated.data.name}" as Unverified, pending admin review.`);
           }
         }
       }
@@ -688,7 +688,7 @@ export const mockOrderIntakeService: IOrderIntakeService = {
       return {
         ...spec,
         dictionaryEntryId: created.data.id, dictionaryEntryWasAutoCreated: wasAutoCreated,
-        specimenCategoryId, categoryWasAutoCreated,
+        departmentId, departmentWasAutoCreated,
       };
     }));
 
@@ -713,5 +713,14 @@ export const mockOrderIntakeService: IOrderIntakeService = {
     CROSSWALK = [...CROSSWALK, newEntry];
     persistCrosswalk(CROSSWALK);
     return ok({ ...newEntry });
+  },
+
+  async updateCrosswalkEntry(id, changes) {
+    await delay();
+    const idx = CROSSWALK.findIndex(x => x.id === id);
+    if (idx === -1) return err(`Crosswalk entry ${id} not found`);
+    CROSSWALK = CROSSWALK.map(x => x.id === id ? { ...x, ...changes } : x);
+    persistCrosswalk(CROSSWALK);
+    return ok({ ...CROSSWALK[idx] });
   },
 };

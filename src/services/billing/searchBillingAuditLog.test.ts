@@ -19,7 +19,7 @@ const makeCase = (overrides: Partial<PathologyCase> = {}): PathologyCase => ({
   accession: { fullAccession: 'S26-0001' } as any,
   patient: { firstName: 'Grace', lastName: 'Thompson', mrn: '100001', id: 'PAT-1' } as any,
   specimens: [{ id: 'SP-1', receivedAt: '2026-06-01T00:00:00.000Z' } as any],
-  order: { clientId: 'CLIENT-1', clientName: 'Metro General Hospital' } as any,
+  order: { facilityId: 'CLIENT-1', facilityName: 'Metro General Hospital' } as any,
   finalizedBy: 'Dr. Owusu',
   finalizedAt: '2026-06-05T00:00:00.000Z',
   releasedAt: '2026-06-06T00:00:00.000Z',

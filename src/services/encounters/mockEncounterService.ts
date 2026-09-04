@@ -334,4 +334,29 @@ export const mockEncounterService: IEncounterService = {
     saveEncounters(encounters);
     return { ok: true, data: { encounter: updated, applied: true } };
   },
+
+  async reassignPatient(encounterId, sourcePatientId, targetPatientId, eventTimestamp) {
+    await delay();
+    const encounters = loadEncounters();
+    const idx = encounters.findIndex(e => e.id === encounterId);
+    if (idx === -1) return { ok: false, error: `Encounter ${encounterId} not found` };
+
+    const current = encounters[idx];
+    // Real, load-bearing safety check, same reasoning as
+    // moveCaseToPatient()'s own — never blindly repoint an encounter
+    // that doesn't actually belong to the claimed source patient.
+    if (current.patientId !== sourcePatientId) {
+      return { ok: true, data: { encounter: current, reassigned: false, reason: `Encounter ${encounterId} does not currently belong to patient ${sourcePatientId} — real, current owner is ${current.patientId}` } };
+    }
+
+    const updated: Encounter = {
+      ...current,
+      patientId: targetPatientId,
+      lastEventAt: eventTimestamp,
+      updatedAt: new Date().toISOString(),
+    };
+    encounters[idx] = updated;
+    saveEncounters(encounters);
+    return { ok: true, data: { encounter: updated, reassigned: true } };
+  },
 };

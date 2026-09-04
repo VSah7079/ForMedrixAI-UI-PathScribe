@@ -18,17 +18,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
-import { reconciliationService, auditService } from '@/services';
+import { qaActivityRecordService, auditService } from '@/services';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
-import type { ReconciliationRecord } from '@/types/quality/ReconciliationRecord';
+import type { QaActivityRecord } from '@/types/quality/QaActivityRecord';
+import type { FrozenCategory } from '@/types/intraop/IntraoperativeEntry';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
 import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
 
 export const ReconciliationTab: React.FC = () => {
   const navigate = useNavigate();
   const [scope, setScope] = useState<QaScope>({ level: 'enterprise' });
-  const [records, setRecords] = useState<ReconciliationRecord[]>([]);
+  const [records, setRecords] = useState<QaActivityRecord[]>([]);
   const [caseClientById, setCaseClientById] = useState<Record<string, string | undefined>>({});
   const [loading, setLoading] = useState(true);
 
@@ -46,13 +48,18 @@ export const ReconciliationTab: React.FC = () => {
       }).catch(() => {});
     }
     Promise.all([
-      reconciliationService.getAll(),
+      // PS-113, Stage 4 — real migration from reconciliationService to
+      // the new, generic mockQaActivityRecordService. This tab only
+      // ever cares about Frozen vs Final correlation specifically, so
+      // filters to that one real activity type - the service itself
+      // is genuinely shared across activity types now.
+      qaActivityRecordService.getAll(),
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: crossTenant }),
     ]).then(([recRes, casesRes]) => {
-      if (recRes.ok) setRecords(recRes.data);
+      if (recRes.ok) setRecords(recRes.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID));
       if (casesRes.ok) {
         const map: Record<string, string | undefined> = {};
-        casesRes.data.forEach((c) => { map[c.id] = c?.order?.clientId; });
+        casesRes.data.forEach((c) => { map[c.id] = c?.order?.facilityId; });
         setCaseClientById(map);
       }
       setLoading(false);
@@ -74,7 +81,7 @@ export const ReconciliationTab: React.FC = () => {
   const highCount = discordant.filter(r => r.severity === 'high').length;
   const mediumCount = discordant.filter(r => r.severity === 'medium').length;
   const escalationCount = scoped.filter(r => r.escalationRequired).length;
-  const teachingCount = scoped.filter(r => r.isTeachingCase).length;
+  const teachingCount = scoped.filter(r => r.isTeachingOnboardingCase).length;
 
   // Real monthly concordance-rate trend, last 6 months — respects the
   // active Client/Enterprise scope like everything else on this tab.
@@ -115,19 +122,19 @@ export const ReconciliationTab: React.FC = () => {
       'Case': r.caseId,
       'Specimen Type': r.caseType,
       'Outcome': r.outcome,
-      'Frozen Category': r.frozenCategory,
-      'Final Category': r.finalCategory,
-      'Frozen Dx': r.frozenDx,
-      'Final Dx': r.finalDx,
+      'Frozen Category': String(r.fieldValues.frozenCategory ?? ''),
+      'Final Category': String(r.fieldValues.finalCategory ?? ''),
+      'Frozen Dx': String(r.fieldValues.frozenDx ?? ''),
+      'Final Dx': String(r.fieldValues.finalDx ?? ''),
       'Delta': r.delta ?? '',
       'Severity': r.severity ?? '',
       'Root Cause': r.rootCause ?? '',
       'Root Cause Note': r.rootCauseNote ?? '',
       'Comments': r.comments ?? '',
       'Escalation Required': r.escalationRequired ? 'Yes' : 'No',
-      'Teaching Case': r.isTeachingCase ? 'Yes' : 'No',
+      'Teaching Case': r.isTeachingOnboardingCase ? 'Yes' : 'No',
       'Drafted By': r.draftedBy?.userName ?? '',
-      'Attending Feedback': r.attendingFeedback ?? '',
+      'Attending Feedback': r.reviewerFeedback ?? '',
       'Recorded At': r.recordedAt,
       'Recorded By': r.recordedBy.userName,
     }));
@@ -202,7 +209,7 @@ export const ReconciliationTab: React.FC = () => {
                 <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
                   <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                   <td className="ps-conf-td">{r.caseType}</td>
-                  <td className="ps-conf-td">{r.frozenCategory} → {r.finalCategory}</td>
+                  <td className="ps-conf-td">{r.fieldValues.frozenCategory as FrozenCategory} → {r.fieldValues.finalCategory as FrozenCategory}</td>
                   <td className="ps-conf-td">{r.delta}</td>
                   <td className="ps-conf-td" style={r.severity === 'high' ? { color: '#f87171', fontWeight: 600 } : undefined}>{r.severity}</td>
                   <td className="ps-conf-td">{r.rootCause}</td>
@@ -226,7 +233,7 @@ export const ReconciliationTab: React.FC = () => {
                 <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
                   <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
                   <td className="ps-conf-td">{r.caseType}</td>
-                  <td className="ps-conf-td">{r.finalCategory}</td>
+                  <td className="ps-conf-td">{r.fieldValues.finalCategory as FrozenCategory}</td>
                   <td className="ps-conf-td">{r.recordedBy.userName}</td>
                   <td className="ps-conf-td">{new Date(r.recordedAt).toLocaleDateString()}</td>
                 </tr>

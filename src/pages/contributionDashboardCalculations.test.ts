@@ -134,23 +134,23 @@ describe('computeRvu30 — real fix, the actual point of versioning: a case keep
 
 describe('computeOrgWideTatPerformance — real fix: replaces mockClientTatData/mockTatTargets/mockTatPerf', () => {
   const entries = [
-    { id: 't1', type: 'FIRST_TOUCH', targetHours: 4,  urgency: null, clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true },
-    { id: 't2', type: 'TOTAL_CASE',  targetHours: 24, urgency: null, clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true },
+    { id: 't1', type: 'FIRST_TOUCH', targetHours: 4,  urgency: null, facilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true },
+    { id: 't2', type: 'TOTAL_CASE',  targetHours: 24, urgency: null, facilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true },
   ];
 
   it('computes a real, weighted first-touch and total-case average across all real cases', () => {
     const cases: CaseForDashboardCalc[] = [
-      { id: 'a', order: { receivedDate: '2026-03-20T00:00:00.000Z', clientId: 'c1' },
+      { id: 'a', order: { receivedDate: '2026-03-20T00:00:00.000Z', facilityId: 'c1' },
         firstOpenedAt: '2026-03-20T02:00:00.000Z', // 2h
         diagnostic: { issuedDate: '2026-03-21T00:00:00.000Z' } }, // 24h
-      { id: 'b', order: { receivedDate: '2026-03-20T00:00:00.000Z', clientId: 'c2' },
+      { id: 'b', order: { receivedDate: '2026-03-20T00:00:00.000Z', facilityId: 'c2' },
         firstOpenedAt: '2026-03-20T06:00:00.000Z', // 6h
         diagnostic: { issuedDate: '2026-03-22T00:00:00.000Z' } }, // 48h
     ];
     const result = computeOrgWideTatPerformance(cases, entries as any);
     expect(result.firstTouchAvgHrs).toBe(4); // (2+6)/2
     expect(result.totalCaseAvgHrs).toBe(36); // (24+48)/2
-    expect(result.clientCount).toBe(2);
+    expect(result.facilityCount).toBe(2);
   });
 
   it('excludes a case missing either real timestamp from that specific average, not fabricated', () => {
@@ -182,12 +182,12 @@ describe('computeOrgWideTatPerformance — real fix: replaces mockClientTatData/
 
   it('counts real, distinct client ids only, not duplicates', () => {
     const cases: CaseForDashboardCalc[] = [
-      { id: 'a', order: { clientId: 'c1' } },
-      { id: 'b', order: { clientId: 'c1' } },
-      { id: 'c', order: { clientId: 'c2' } },
+      { id: 'a', order: { facilityId: 'c1' } },
+      { id: 'b', order: { facilityId: 'c1' } },
+      { id: 'c', order: { facilityId: 'c2' } },
     ];
     const result = computeOrgWideTatPerformance(cases, entries as any);
-    expect(result.clientCount).toBe(2);
+    expect(result.facilityCount).toBe(2);
   });
 });
 

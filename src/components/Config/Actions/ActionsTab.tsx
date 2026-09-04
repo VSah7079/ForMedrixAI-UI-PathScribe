@@ -102,12 +102,26 @@ export const ActionsTab: React.FC = () => {
       ["ID (DO NOT ALTER)", "Label (READ ONLY)", "Category (READ ONLY)", "Shortcut (UNIQUE)", "Voice Triggers (EDITABLE)"]
     ];
 
-    const rows = actions.map(a => [
-      a.id,
-      `"${a.label}"`,
-      `"${a.category}"`,
-      `"${a.shortcut}"`,
-      `"${a.voiceTriggers.join('; ')}"`
+    const rows = actions.flatMap(a => [
+      // Real, per direct follow-up ("someone can edit the action if
+      // they really want to type some voice triggers"): confirmed
+      // directly — nothing distinguished a disabled action's row from
+      // any other in this exported file, so someone editing it in
+      // Excel would have no way to know their edits won't take effect.
+      // A '#' comment line, not a new column — the import logic
+      // already skips '#' lines, and touching the Label column itself
+      // would break re-import (it's checked verbatim against the
+      // action's real label, so appending text there would make every
+      // disabled row fail as a false "Blocked change to Label" error
+      // even with no real edit intended).
+      ...(a.isActive ? [] : [[`# ^ DISABLED — not voice/keyboard-eligible; editing this row's Shortcut/Voice Triggers below will not make it functional.`]]),
+      [
+        a.id,
+        `"${a.label}"`,
+        `"${a.category}"`,
+        `"${a.shortcut}"`,
+        `"${a.voiceTriggers.join('; ')}"`
+      ],
     ]);
 
     const csvContent = [...instructions, ...rows].map(e => e.join(",")).join("\n");
@@ -164,6 +178,17 @@ export const ActionsTab: React.FC = () => {
           }
           if (original.label !== label || original.category !== category) {
             errorLog.push(`Line ${excelRow} (${original.label}): Blocked change to Label/Category.`);
+            return;
+          }
+          // Real, per direct follow-up ("someone can edit the action if
+          // they really want to type some voice triggers"): the table's
+          // own Edit button is disabled for isActive: false actions, but
+          // this bulk-import path is a second, separate way to call
+          // updateAction() that didn't share that same protection —
+          // confirmed directly, nothing here checked isActive at all.
+          // Same "Blocked change" pattern as the check just above.
+          if (!original.isActive) {
+            errorLog.push(`Line ${excelRow} (${original.label}): Blocked — this action is deliberately disabled (not voice/keyboard-eligible) and editing it here would not make it functional.`);
             return;
           }
 
@@ -268,9 +293,27 @@ export const ActionsTab: React.FC = () => {
                   <td colSpan={4} style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 'bold', color: '#38bdf8' }}>{toTitleCase(cat)}</td>
                 </tr>
                 {filteredActions.filter(a => a.category === cat).map((action) => (
-                  <tr key={action.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <tr key={action.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', opacity: action.isActive ? 1 : 0.5 }}>
                     <td style={{ padding: '16px 32px' }}>
-                       <div style={{ fontWeight: '500', fontSize: '14px' }}>{action.label}</div>
+                       <div style={{ fontWeight: '500', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                         {action.label}
+                         {/* Real, per direct follow-up ("someone can edit the
+                             action if they really want to type some voice
+                             triggers"): confirmed directly — this screen has
+                             no isActive toggle at all, so an admin could type
+                             real new triggers here for an action that will
+                             never actually fire no matter what's typed,
+                             with nothing telling them why. This badge is
+                             that missing signal. */}
+                         {!action.isActive && (
+                           <span
+                             title="Deliberately not voice/keyboard-enabled — a real, per-row action with no safe default target for a bare trigger (see this action's own comment in mockActionRegistryService.ts). Editing here would not make it functional."
+                             style={{ fontSize: '9px', fontWeight: 'bold', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                           >
+                             Disabled
+                           </span>
+                         )}
+                       </div>
                        <div style={{ fontSize: '10px', color: '#475569' }}>{action.requiredRole}</div>
                     </td>
                     <td style={{ padding: '16px' }}><code style={{ background: 'var(--ps-conf-surface)', padding: '4px 8px', borderRadius: '4px', color: '#38bdf8' }}>{action.shortcut}</code></td>
@@ -280,7 +323,15 @@ export const ActionsTab: React.FC = () => {
                       </div>
                     </td>
                     <td style={{ padding: '16px', textAlign: 'right' }}>
-                      <button onClick={() => openEditModal(action)} className="ps-conf-btn-row">Edit</button>
+                      <button
+                        onClick={() => openEditModal(action)}
+                        className="ps-conf-btn-row"
+                        disabled={!action.isActive}
+                        title={action.isActive ? undefined : 'Disabled — editing would not make this action functional (see the Disabled badge)'}
+                        style={action.isActive ? undefined : { opacity: 0.4, cursor: 'not-allowed' }}
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}

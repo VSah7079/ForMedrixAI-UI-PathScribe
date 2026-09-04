@@ -89,25 +89,25 @@ const NewEntryForm: React.FC<{
   // pattern already established on AccessionPage.tsx — locations
   // reload and locationId resets whenever the selected facility
   // changes.
-  const [clients, setClients] = useState<Facility[]>([]);
-  const [clientId, setClientId] = useState('');
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [facilityId, setFacilityId] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState('');
   useEffect(() => {
-    facilityService.getAll().then(res => { if (res.ok) setClients(res.data.filter(c => c.status === 'Active')); });
+    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
   }, []);
   useEffect(() => {
-    if (!clientId) { setLocations([]); setLocationId(''); return; }
+    if (!facilityId) { setLocations([]); setLocationId(''); return; }
     let cancelled = false;
     (async () => {
-      const res = await locationService.listForFacility(clientId);
+      const res = await locationService.listForFacility(facilityId);
       if (cancelled) return;
       const list = res.ok ? res.data.filter(l => l.status !== 'Inactive') : [];
       setLocations(list);
       setLocationId(prev => (list.some(l => l.id === prev) ? prev : ''));
     })();
     return () => { cancelled = true; };
-  }, [clientId]);
+  }, [facilityId]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [specimenLabel, setSpecimenLabel] = useState('');
   const [quickGross, setQuickGross] = useState('');
@@ -208,7 +208,7 @@ const NewEntryForm: React.FC<{
     setScannerError(null);
     // The decoded payload is fed straight into the same real ADT lookup
     // manual MRN entry already uses. Today this treats the whole decoded
-    // string as the MRN directly - the real, per-client label-format
+    // string as the MRN directly - the real, per-facility label-format
     // decompose (extracting MRN/name/encounter# from a single combined
     // payload) is real, separate, sequenced work, not yet built.
     lookupPatient(text.trim(), 'barcode');
@@ -248,7 +248,7 @@ const NewEntryForm: React.FC<{
     const res = await intraoperativeService.createSession({
       patientMatch: { source, patientName: patientName.trim(), mrn: mrn.trim(), dateOfBirth: dateOfBirth.trim() || undefined },
       performedBy, orNumber: orNumber.trim(), surgeon: surgeon.trim(),
-      clientId: clientId || undefined, locationId: locationId || undefined,
+      facilityId: facilityId || undefined, locationId: locationId || undefined,
     });
     setBusy(false);
     if (res.ok) { setSessionId(res.data.id); setStep('specimen'); }
@@ -394,16 +394,16 @@ const NewEntryForm: React.FC<{
             location is known. */}
         <div className="ps-conf-form-field">
           <label className="ps-conf-label">Submitting facility (optional)</label>
-          <select className="ps-conf-input" value={clientId} onChange={e => setClientId(e.target.value)}>
+          <select className="ps-conf-input" value={facilityId} onChange={e => setFacilityId(e.target.value)}>
             <option value="">Select facility…</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div className="ps-conf-form-field">
           <label className="ps-conf-label">Location — ward / room / bed (optional)</label>
-          <select className="ps-conf-input" value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!clientId}>
+          <select className="ps-conf-input" value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!facilityId}>
             <option value="">
-              {!clientId ? 'Select a facility first' : locations.length === 0 ? 'No locations configured for this facility' : 'None specified'}
+              {!facilityId ? 'Select a facility first' : locations.length === 0 ? 'No locations configured for this facility' : 'None specified'}
             </option>
             {locations.map(l => (
               <option key={l.id} value={l.id}>{[l.pointOfCare, l.room, l.bed].filter(Boolean).join(' / ')}</option>
@@ -429,7 +429,7 @@ const NewEntryForm: React.FC<{
     <div className="ps-intraop-capture-step2">
       <div className="ps-intraop-identified-banner">
         {patientName} · {mrn} · {orNumber} · {surgeon}
-        {clientId ? ` · ${clients.find(c => c.id === clientId)?.name ?? ''}` : ''}
+        {facilityId ? ` · ${facilities.find(c => c.id === facilityId)?.name ?? ''}` : ''}
         {locationId ? ` · ${(() => { const l = locations.find(l => l.id === locationId); return l ? [l.pointOfCare, l.room, l.bed].filter(Boolean).join(' / ') : ''; })()}` : ''}
         {specimenCount > 0 ? ` · ${specimenCount} specimen${specimenCount === 1 ? '' : 's'} saved` : ''}
       </div>
@@ -871,7 +871,7 @@ const EntryCard: React.FC<{
             surgeon, match source) stays visible; name and MRN don't. */}
         <div className="ps-intraop-card-patient">🔒 Pending Match</div>
         <div className="ps-intraop-card-sub">
-          {entry.orNumber} · {entry.surgeon}{entry.clientName ? ` · ${entry.clientName}` : ''}{entry.locationDisplay ? ` · ${entry.locationDisplay}` : ''} · {entry.performedBy.userName} · matched via {entry.patientMatch.source === 'barcode' ? 'barcode scan (simulated)' : 'manual / ADT entry'}
+          {entry.orNumber} · {entry.surgeon}{entry.facilityName ? ` · ${entry.facilityName}` : ''}{entry.locationDisplay ? ` · ${entry.locationDisplay}` : ''} · {entry.performedBy.userName} · matched via {entry.patientMatch.source === 'barcode' ? 'barcode scan (simulated)' : 'manual / ADT entry'}
         </div>
       </div>
       <button className="ps-conf-btn-primary" onClick={onMergeClick}>Merge Mobile Intake Data</button>

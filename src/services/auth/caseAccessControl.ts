@@ -19,11 +19,14 @@
 //   1. DENY BY DEFAULT. No organisationId resolved on the session → no
 //      case access, full stop. Never fall back to "show everything" on a
 //      missing/failed lookup.
-//   2. Organisation is the tenant wall. A case belongs to exactly one
-//      Organisation (resolved via getOrganisationByHospitalId — Case.
-//      originHospitalId legacy-maps 1:1 to an Organisation, not a Site;
-//      see that function's own comment). A user can only see cases whose
-//      Organisation matches their own organisationId.
+//   2. The Enterprise Facility is the tenant wall. A case belongs to
+//      exactly one real Enterprise Facility (resolved via
+//      resolveTenantFacility.ts — Case.originHospitalId legacy-maps
+//      1:1 to one, not to a Site; see that function's own comment,
+//      and Facility.legacyTenantIds' doc comment for why this is a
+//      deliberate Phase 1 bridge, not a permanent design). A user can
+//      only see cases whose Enterprise Facility matches their own
+//      session's.
 //   3. Enterprise-wide visibility within your own organisation is the
 //      DEFAULT once the tenant check passes — not a separate opt-in flag.
 //      This matches both the actual data granularity available today
@@ -65,7 +68,8 @@
 // a malicious client.
 // ─────────────────────────────────────────────────────────────
 
-import { getOrganisationByHospitalId } from '../organisation/organisationService';
+import { resolveTenantFacility } from './resolveTenantFacility';
+import type { Facility } from '../facilities/IFacilityService';
 
 const SESSION_STORAGE_KEY = 'pathscribe-user';
 
@@ -74,6 +78,8 @@ export interface SessionUser {
   role?: 'pathologist' | 'admin' | 'pathologist-admin' | 'superadmin';
   organisationId?: string;
   canAccessCrossTenantQa?: boolean;
+  canViewPediatric?: boolean;
+  canViewOrchestration?: boolean;
   firstName?: string;
   lastName?: string;
 }
@@ -92,7 +98,7 @@ export function getSessionUser(): SessionUser | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.id) return null;
-    return { id: parsed.id, role: parsed.role, organisationId: parsed.organisationId, canAccessCrossTenantQa: parsed.canAccessCrossTenantQa, firstName: parsed.firstName, lastName: parsed.lastName };
+    return { id: parsed.id, role: parsed.role, organisationId: parsed.organisationId, canAccessCrossTenantQa: parsed.canAccessCrossTenantQa, canViewPediatric: parsed.canViewPediatric, canViewOrchestration: parsed.canViewOrchestration, firstName: parsed.firstName, lastName: parsed.lastName };
   } catch {
     // Fail safe, not fail open — a corrupted/unreadable session resolves
     // to "no session," which denies access, not "assume trusted."
@@ -172,12 +178,23 @@ export type CaseAccessDecision =
  * the resolved Subspecialty record for `caseRecord.subspecialtyId` if the
  * case has one (the caller resolves this — kept out of this function to
  * avoid a new cross-service dependency, matching this file's existing
- * pattern).
+ * pattern). `enterpriseFacilities` is every real, isEnterprise: true
+ * Facility (caller's responsibility to fetch/cache once — see
+ * CaseRouter.ts's own getEnterpriseFacilityLookup(), same pattern as
+ * getSubspecialtyLookup()) — Phase 1 of the Organisation/Site ->
+ * Facility migration: resolves session.organisationId and
+ * caseRecord.originHospitalId (still their original legacy string
+ * values, untouched until Phase 3) each through
+ * resolveTenantFacility.ts against this same real list, and compares
+ * the two REAL Facility.id results, rather than trusting either legacy
+ * string's equality directly or resolving through
+ * organisationService.ts's own hardcoded, incomplete legacyMap.
  */
 export function resolveCaseAccess(
   session: SessionUser | null,
   caseRecord: { originHospitalId?: string | null; subspecialtyId?: string | null; status?: string } | null | undefined,
-  subspecialty?: CaseAccessSubspecialty | null
+  subspecialty?: CaseAccessSubspecialty | null,
+  enterpriseFacilities: Facility[] = []
 ): CaseAccessDecision {
   if (!caseRecord) return { granted: false, dimension: 'no-case', reason: 'No case record to evaluate.' };
   if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
@@ -190,8 +207,9 @@ export function resolveCaseAccess(
     return { granted: false, dimension: 'no-org', reason: 'No organisation resolved on this session.' };
   }
 
-  const caseOrg = getOrganisationByHospitalId(caseRecord.originHospitalId ?? '');
-  if (!caseOrg || caseOrg.id !== session.organisationId) {
+  const sessionTenant = resolveTenantFacility(session.organisationId, enterpriseFacilities);
+  const caseTenant = resolveTenantFacility(caseRecord.originHospitalId, enterpriseFacilities);
+  if (!sessionTenant || !caseTenant || caseTenant.id !== sessionTenant.id) {
     return { granted: false, dimension: 'tenant-mismatch', reason: 'Case does not belong to this session\'s organisation.' };
   }
 
@@ -300,6 +318,92 @@ export function canViewCrossTenantQaData(session: SessionUser | null): boolean {
   return session.role === 'superadmin' || session.canAccessCrossTenantQa === true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// resolvePediatricAccess() / resolveOrchestrationAccess() — real,
+// centralized enforcement of the two sensitive-data restrictions that
+// previously only existed as UI-level convenience checks scattered
+// across WorklistTable.tsx (isPedRestricted) and WorklistPage.tsx
+// (canViewCase), with neither wired into the actual case-loading path
+// (synopticLoader.ts only ever checked that a case exists). Anyone
+// navigating directly to a case URL, using a bookmark/shared link, or
+// opening a case from Search bypassed both checks entirely. This file
+// is the single place both the UI convenience checks and the real
+// loader-level guard now call, so they can't independently drift again
+// the way isPedRestricted/canViewCase already had (one had silently
+// stopped reading a renamed field; the other used OR instead of the
+// documented AND for the two-part pediatric gate).
+//
+// Pediatric logic: "Option C" dual gate per
+// Facility.authorizedPediatricPathologistIds's own doc comment
+// (IFacilityService.ts) — "Both this AND canViewPediatric on the user
+// record must be true." Deliberately AND, not OR: a user-level flag
+// alone doesn't authorize a specific facility's pediatric cases, and
+// being on a facility's list alone doesn't override a missing
+// user-level qualification.
+//
+// Deliberately no superadmin/admin bypass here, unlike resolveCaseAccess
+// / canFinalizeCase above — this gate reflects a real clinical
+// qualification (age-appropriate specialist review), not an
+// organizational permission a platform or org admin should be able to
+// wave through. Neither of the two prior UI-level implementations had
+// a role-based bypass either; this preserves that, doesn't add one.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface CaseAccessFacility {
+  id: string;
+  pediatricAgeThreshold: number | null;
+  authorizedPediatricPathologistIds: string[];
+}
+
+export type SensitiveAccessDecision =
+  | { granted: true; dimension: 'no-restriction' | 'not-pediatric' | 'pediatric-authorized'; reason: string }
+  | { granted: false; dimension: 'no-session' | 'pediatric-restricted' | 'orchestration-restricted'; reason: string };
+
+export function resolvePediatricAccess(
+  session: SessionUser | null,
+  caseRecord: { order?: { facilityId?: string | null } | null; patient?: { dateOfBirth?: string | null } | null } | null | undefined,
+  facility: CaseAccessFacility | null | undefined
+): SensitiveAccessDecision {
+  if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
+
+  const dob = caseRecord?.patient?.dateOfBirth;
+  const threshold = facility?.pediatricAgeThreshold ?? null;
+  if (!dob || threshold === null) {
+    return { granted: true, dimension: 'no-restriction', reason: 'No pediatric threshold configured for this facility.' };
+  }
+
+  const ageYrs = Math.floor((Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+  if (ageYrs >= threshold) {
+    return { granted: true, dimension: 'not-pediatric', reason: `Patient age ${ageYrs} is at or above this facility's pediatric threshold (${threshold}).` };
+  }
+
+  const hasFlag = session.canViewPediatric === true;
+  const isAuthorized = (facility?.authorizedPediatricPathologistIds ?? []).includes(session.id);
+  if (hasFlag && isAuthorized) {
+    return { granted: true, dimension: 'pediatric-authorized', reason: 'User has canViewPediatric and is on this facility\'s authorized pediatric pathologist list.' };
+  }
+
+  return {
+    granted: false,
+    dimension: 'pediatric-restricted',
+    reason: `Patient age ${ageYrs} is below this facility's pediatric threshold (${threshold}). ${!hasFlag ? 'User lacks canViewPediatric permission.' : 'User is not on this facility\'s authorized pediatric pathologist list.'}`,
+  };
+}
+
+export function resolveOrchestrationAccess(
+  session: SessionUser | null,
+  caseRecord: { reportingMode?: string | null } | null | undefined
+): SensitiveAccessDecision {
+  if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
+  if (caseRecord?.reportingMode !== 'orchestrator') {
+    return { granted: true, dimension: 'no-restriction', reason: 'Not an Orchestration case.' };
+  }
+  if (session.canViewOrchestration === true) {
+    return { granted: true, dimension: 'no-restriction', reason: 'User has canViewOrchestration.' };
+  }
+  return { granted: false, dimension: 'orchestration-restricted', reason: 'User lacks canViewOrchestration permission for this Orchestration/Outreach case.' };
+}
+
 // DELETED (this pass): filterAccessibleCases() used to live here — same
 // situation as canAccessCase() above, superseded by
 // filterAccessibleCasesWithPools() below when CaseRouter.ts was
@@ -318,16 +422,18 @@ export function canViewCrossTenantQaData(session: SessionUser | null): boolean {
 export function canAccessCaseWithPools(
   session: SessionUser | null,
   caseRecord: { originHospitalId?: string | null; subspecialtyId?: string | null } | null | undefined,
-  subspecialtiesById: Map<string, CaseAccessSubspecialty> | null | undefined
+  subspecialtiesById: Map<string, CaseAccessSubspecialty> | null | undefined,
+  enterpriseFacilities: Facility[] = []
 ): boolean {
   const sub = caseRecord?.subspecialtyId ? subspecialtiesById?.get(caseRecord.subspecialtyId) : undefined;
-  return resolveCaseAccess(session, caseRecord, sub ?? null).granted;
+  return resolveCaseAccess(session, caseRecord, sub ?? null, enterpriseFacilities).granted;
 }
 
 export function filterAccessibleCasesWithPools<T extends { originHospitalId?: string | null; subspecialtyId?: string | null }>(
   session: SessionUser | null,
   cases: T[],
-  subspecialtiesById: Map<string, CaseAccessSubspecialty> | null | undefined
+  subspecialtiesById: Map<string, CaseAccessSubspecialty> | null | undefined,
+  enterpriseFacilities: Facility[] = []
 ): T[] {
-  return cases.filter(c => canAccessCaseWithPools(session, c, subspecialtiesById));
+  return cases.filter(c => canAccessCaseWithPools(session, c, subspecialtiesById, enterpriseFacilities));
 }

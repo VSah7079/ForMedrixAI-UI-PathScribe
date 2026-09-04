@@ -1,5 +1,5 @@
 import { IVoiceMacroService } from './IVoiceMacroService';
-import { VoiceMacro } from '../../types/voiceMacros';
+import { VoiceMacro, applyVoiceMacroSubstitutions } from '../../types/voiceMacros';
 import { PATHOLOGY_DEFAULTS } from '../../constants/defaultMacros';
 
 export class MockVoiceMacroService implements IVoiceMacroService {
@@ -70,7 +70,11 @@ export class MockVoiceMacroService implements IVoiceMacroService {
   }
 
   /**
-   * REFINED: Uses 'spoken' as the trigger and 'written' as the result.
+   * Real, per direct guidance: delegates to applyVoiceMacroSubstitutions
+   * (types/voiceMacros.ts) — the same pure algorithm the real, live
+   * dictation pipeline (contexts/VoiceProvider.tsx) now calls directly,
+   * kept as a single implementation so this async wrapper and that
+   * real-time path can never disagree on what counts as a match.
    */
   async refineTranscript(
     transcript: string, 
@@ -79,24 +83,9 @@ export class MockVoiceMacroService implements IVoiceMacroService {
     return new Promise((resolve) => {
       setTimeout(() => {
         const macros = this.getStoredMacros();
-        let refinedText = transcript;
-
-        // 1. Filter active and sort by 'spoken' length (longest first)
-        const activeMacros = macros
-          .filter(m => m.isActive)
-          .sort((a, b) => b.spoken.length - a.spoken.length);
-
-        // 2. Perform replacements
-        activeMacros.forEach(macro => {
-          if (!macro.spoken) return;
-          // Use word boundaries to ensure clean replacement
-          const regex = new RegExp(`\\b${macro.spoken}\\b`, 'gi');
-          refinedText = refinedText.replace(regex, macro.written);
-        });
-
         resolve({
           success: true,
-          data: refinedText
+          data: applyVoiceMacroSubstitutions(transcript, macros),
         });
       }, 200);
     });

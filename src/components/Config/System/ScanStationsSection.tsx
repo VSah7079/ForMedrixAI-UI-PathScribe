@@ -16,7 +16,8 @@ import { SCAN_STATION_WORKFLOW_STAGES } from '../../../services/scanStations/ISc
 import type { ScanStation } from '../../../services/scanStations/IScanStationService';
 import { printStationLabel, printAllStationLabels } from '../../../utils/labels/printStationLabels';
 import { printerProfileService } from '../../../services';
-import type { PrinterProfile } from '../../../services';
+import type { PrinterProfile, Facility } from '../../../services';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import { validateScanStationDraft } from '../../../services/scanStations/validateScanStationDraft';
 import type { ScanStationDraftValidationErrors } from '../../../services/scanStations/validateScanStationDraft';
 
@@ -24,22 +25,32 @@ import type { ScanStationDraftValidationErrors } from '../../../services/scanSta
 type Draft = Omit<ScanStation, 'id' | 'status' | 'createdAt' | 'updatedAt'> & { active: boolean };
 
 const emptyDraft: Draft = {
-  name: '', barcodeCode: '', facilityId: 'lab-main', workflowStage: SCAN_STATION_WORKFLOW_STAGES[0], active: true, printerIp: '',
+  // Real fix, per direct guidance: was 'lab-main' — a fake, hardcoded
+  // default that doesn't correspond to any real Facility record and
+  // let the free-text field always trivially validate. A scan
+  // station's own facilityId is a real reference (see
+  // IScanStationService.ts's own doc comment — "same real,
+  // established scoping as Location.facilityId"), so an unselected
+  // default has to be genuinely empty, not a plausible-looking string
+  // standing in for a real choice.
+  name: '', barcodeCode: '', facilityId: '', workflowStage: SCAN_STATION_WORKFLOW_STAGES[0], active: true, printerIp: '',
   supportsEngraving: false, supportsPrinting: false, cassetteSlidePrinterProfileId: '',
 };
 
 interface ScanStationModalProps {
   mode: 'add' | 'edit';
   station?: ScanStation;
+  labs: Facility[];
+  defaultFacilityId?: string;
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const ScanStationModal: React.FC<ScanStationModalProps> = ({ mode, station, onSave, onClose }) => {
+const ScanStationModal: React.FC<ScanStationModalProps> = ({ mode, station, labs, defaultFacilityId, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(
     station
       ? { ...station, active: station.status !== 'Inactive' }
-      : emptyDraft
+      : { ...emptyDraft, facilityId: defaultFacilityId ?? emptyDraft.facilityId }
   );
   const [errors, setErrors] = useState<ScanStationDraftValidationErrors>({});
   const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
@@ -158,9 +169,14 @@ const ScanStationModal: React.FC<ScanStationModalProps> = ({ mode, station, onSa
           )}
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Facility</label>
-            <input className="ps-conf-input" value={draft.facilityId} onChange={e => set('facilityId', e.target.value)} placeholder="e.g. lab-main" />
-            <span className="ps-conf-field-hint">Which real lab site this bench physically sits in — distinct from a referring facility.</span>
+            <label className="ps-conf-label">Facility <span className="ps-conf-required">*</span></label>
+            <select className={`ps-conf-select ${errors.facilityId ? 'ps-conf-input--error' : ''}`}
+              value={draft.facilityId} onChange={e => set('facilityId', e.target.value)}>
+              <option value="">— Select a performing lab —</option>
+              {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            {errors.facilityId && <span className="ps-conf-error-text">{errors.facilityId}</span>}
+            <span className="ps-conf-field-hint">Which real performing lab this bench physically sits in — distinct from a referring facility.</span>
           </div>
 
           <div className="ps-conf-form-field">
@@ -186,24 +202,38 @@ const ScanStationModal: React.FC<ScanStationModalProps> = ({ mode, station, onSa
 };
 
 // ─── Main ScanStationsSection ───────────────────────────────────────────────────
-const ScanStationsSection: React.FC = () => {
+const ScanStationsSection: React.FC<{ selectedFacilityId?: string }> = ({ selectedFacilityId }) => {
   const [stations,     setStations]     = useState<ScanStation[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; station?: ScanStation } | null>(null);
+  // Real fix, per direct guidance: a scan station's own facility is a
+  // real, existing performing lab (see IScanStationService.ts's own
+  // ScanStation.facilityId doc comment) — loaded here from the real
+  // registry, same shared utility every other lab-scoped dictionary in
+  // this app already uses, not free text an admin has to type
+  // correctly by hand.
+  const [labs, setLabs] = useState<Facility[]>([]);
 
   useEffect(() => {
     mockScanStationService.getAll().then(res => {
       if (res.ok) setStations(res.data);
       setLoading(false);
     });
+    getActivePerformingLabs().then(setLabs);
   }, []);
 
   const filtered = stations.filter(s => {
     const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.barcodeCode.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'All' || s.status === statusFilter;
-    return matchSearch && matchStatus;
+    // Real, per direct guidance (group-level Facility Selector): unlike
+    // Printer Profiles' own Global-fallback, a scan station has no
+    // "shared across facilities" concept — it's a real, physical bench
+    // sitting in exactly one real place — so this is a plain equality
+    // filter, not a most-specific-wins-but-Global-applies one.
+    const matchFacility = !selectedFacilityId || s.facilityId === selectedFacilityId;
+    return matchSearch && matchStatus && matchFacility;
   });
 
   const handleSave = async (draft: Draft) => {
@@ -283,7 +313,7 @@ const ScanStationsSection: React.FC = () => {
                   </td>
                   <td className="ps-conf-td"><code>STATION:{s.barcodeCode}</code></td>
                   <td className="ps-conf-td">{s.workflowStage || '—'}</td>
-                  <td className="ps-conf-td">{s.facilityId}</td>
+                  <td className="ps-conf-td">{labs.find(l => l.id === s.facilityId)?.name ?? s.facilityId}</td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${s.status === 'Active' ? 'ps-conf-status-dot--active' : ''}`} />
@@ -309,7 +339,7 @@ const ScanStationsSection: React.FC = () => {
         </div>
       </div>
 
-      {modal && <ScanStationModal mode={modal.mode} station={modal.station} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <ScanStationModal mode={modal.mode} station={modal.station} labs={labs} defaultFacilityId={selectedFacilityId} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };

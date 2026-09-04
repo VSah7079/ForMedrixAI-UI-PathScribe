@@ -5,7 +5,7 @@
 // boxes that break for Spanish double surnames, Hungarian name order,
 // patients with no middle name, Mc/Mac variants, etc.
 //
-// Used by Patient, Physician, and Client contact name fields. Each of
+// Used by Patient, Physician, and Facility contact name fields. Each of
 // those types keeps `firstName`/`lastName` (or `contactName`) as
 // backward-compatible derived fields — always mirroring givenNames/
 // familyNames — so the ~15 existing consumers across Worklist, report

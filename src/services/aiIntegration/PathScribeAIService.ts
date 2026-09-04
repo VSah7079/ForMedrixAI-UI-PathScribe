@@ -41,7 +41,7 @@ export class PathScribeAIService implements IAIIntegrationService {
   // (matching the prior hardcoded behaviour) when omitted.
   async refineTranscript(
     text: string,
-    options?: AIProcessingOptions & { jurisdiction?: Jurisdiction; clientId?: string }
+    options?: AIProcessingOptions & { jurisdiction?: Jurisdiction; facilityId?: string }
   ): Promise<ServiceResult<string>> {
     try {
       const spellLang = spellLangForJurisdiction(options?.jurisdiction as Jurisdiction);
@@ -53,7 +53,7 @@ export class PathScribeAIService implements IAIIntegrationService {
         system: `You are an expert Pathology Transcription Assistant. Correct phonetic errors, format measurements, and use proper pathology capitalisation. ${localeNote} Return ONLY the refined text.`,
         prompt: `Context: ${options?.context ?? 'Pathology Report'}\nRaw Text: "${text}"`,
         maxTokens: 500,
-        configOverride: await resolveAiConfigOverrideForClient(options?.clientId),
+        configOverride: await resolveAiConfigOverrideForClient(options?.facilityId),
       });
       return { success: true, data: refined.trim() };
     } catch (error: any) {
@@ -62,13 +62,13 @@ export class PathScribeAIService implements IAIIntegrationService {
   }
 
   // ── Macro suggestions ───────────────────────────────────────
-  async suggestMacros(text: string, clientId?: string): Promise<ServiceResult<Partial<VoiceMacro>[]>> {
+  async suggestMacros(text: string, facilityId?: string): Promise<ServiceResult<Partial<VoiceMacro>[]>> {
     try {
       const { text: raw } = await callAi({
         system: 'You are a pathology macro assistant. Analyse text and suggest useful shorthand macros as JSON only — no markdown.',
         prompt: `Suggest macros for this pathology text. Return JSON array: [{"id":"m1","keyword":"XX","expansion":"Full text"}]\n\nText: "${text}"`,
         maxTokens: 300,
-        configOverride: await resolveAiConfigOverrideForClient(clientId),
+        configOverride: await resolveAiConfigOverrideForClient(facilityId),
       });
       const clean  = raw.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
@@ -83,7 +83,7 @@ export class PathScribeAIService implements IAIIntegrationService {
   async suggestSynopticFields(
     caseText: { gross: string; microscopic: string; ancillary: string },
     fields: Array<{ id: string; label: string; options?: Array<{ id: string; label: string }> }>,
-    clientId?: string
+    facilityId?: string
   ): Promise<ServiceResult<Record<string, AiFieldSuggestionResult>>> {
     try {
       const fieldList = fields.map(f => {
@@ -111,7 +111,7 @@ Rules:
 - source ≤12 words from the case text
 - Only include fields you can answer with confidence ≥30`,
         maxTokens: 1000,
-        configOverride: await resolveAiConfigOverrideForClient(clientId),
+        configOverride: await resolveAiConfigOverrideForClient(facilityId),
       });
 
       const clean  = raw.replace(/```json|```/g, '').trim();
@@ -123,9 +123,9 @@ Rules:
   }
 
   // ── Narrative generation ────────────────────────────────────
-  async generateNarrative(system: string, prompt: string, clientId?: string): Promise<ServiceResult<string>> {
+  async generateNarrative(system: string, prompt: string, facilityId?: string): Promise<ServiceResult<string>> {
     try {
-      const { text } = await callAi({ system, prompt, maxTokens: 1000, configOverride: await resolveAiConfigOverrideForClient(clientId) });
+      const { text } = await callAi({ system, prompt, maxTokens: 1000, configOverride: await resolveAiConfigOverrideForClient(facilityId) });
       return { success: true, data: text };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -145,7 +145,7 @@ Rules:
   async checkSpelling(
     text: string,
     jurisdiction?: Jurisdiction,
-    clientId?: string
+    facilityId?: string
   ): Promise<ServiceResult<SpellCheckResult>> {
     // Strip HTML tags before sending to the model — we only want to check
     // the visible text, and don't want the model trying to "fix" markup.
@@ -175,7 +175,7 @@ Return ONLY valid JSON, no markdown, no preamble, in this exact shape:
 If there are no spelling errors, return {"flags":[]}.`,
         prompt: `Check this pathology report text for spelling errors:\n\n"${plainText}"`,
         maxTokens: 800,
-        configOverride: await resolveAiConfigOverrideForClient(clientId),
+        configOverride: await resolveAiConfigOverrideForClient(facilityId),
       });
 
       const clean  = raw.replace(/```json|```/g, '').trim();

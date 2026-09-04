@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import '@/pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { useSystemConfig } from '../../contexts/SystemConfigContext';
+import { useEnabledIdentifierFormats } from '../../hooks/useEnabledIdentifierFormats';
 import { useAuditLog } from '../Audit/useAuditLog';
 import type { IdentifierFormat } from '../../types/systemConfig';
 
@@ -20,7 +20,7 @@ interface CaseHit {
   sex:            string;
   status:         string;
   priority:       string;
-  clientName:     string;
+  facilityName:   string;
   specimenCount:  number;
   assignedTo:     string;
   flags:          { name: string; color: string; tagClass: string }[];
@@ -30,14 +30,6 @@ interface CaseHit {
 
 // Scan types emitted by ScannerProvider that warrant auto-navigation
 const AUTO_NAV_SCAN_TYPES = new Set(['barcode', 'qr']);
-
-// Real, stable, module-level empty array - real fix for a genuine
-// instability ESLint flagged: `config.identifierFormats?.formats ?? []`
-// creates a NEW array reference every render whenever the optional
-// field is absent, which cascades into resolve() (below) getting a new
-// identity every render too. A single, shared, never-recreated empty
-// array reference fixes this at the actual source.
-const EMPTY_IDENTIFIER_FORMATS: IdentifierFormat[] = [];
 
 // ── Case lookup ───────────────────────────────────────────────────────────────
 // Uses Tier 1 enabled IdentifierFormats from SystemConfig to match input.
@@ -186,7 +178,7 @@ async function lookupCases(
           sex:           cas.patient?.sex ?? '—',
           status:        (cas as any).status ?? 'unknown',
           priority:      cas.order?.priority ?? '—',
-          clientName:    cas.order?.clientName ?? '—',
+          facilityName:  cas.order?.facilityName ?? '—',
           specimenCount: (cas.specimens ?? []).length,
           assignedTo:    cas.order?.assignedTo ?? '—',
           flags:         ((cas as any).flags ?? [])
@@ -249,9 +241,14 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
   const inputRef    = useRef<HTMLInputElement>(null);
   const navigate    = useNavigate();
 
-  const { config } = useSystemConfig();
   const { log } = useAuditLog();
-  const activeFormats: IdentifierFormat[] = config.identifierFormats?.formats ?? EMPTY_IDENTIFIER_FORMATS;
+  // Real, per direct guidance: replaces config.identifierFormats -
+  // useEnabledIdentifierFormats() already returns a stable reference
+  // (either the module-level IDENTIFIER_FORMAT_LIBRARY, or real React
+  // state), so the old EMPTY_IDENTIFIER_FORMATS workaround for
+  // reference instability is no longer needed - the hook itself never
+  // produces a new array identity on every render.
+  const activeFormats: IdentifierFormat[] = useEnabledIdentifierFormats();
 
   const { phase, transcript } = useVoice();
   const isDictating = phase === 'dictate';
@@ -439,7 +436,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
               <span className="ps-casebar-dropdown__col-header">DOB · Sex</span>
               <span className="ps-casebar-dropdown__col-header">Priority</span>
               <span className="ps-casebar-dropdown__col-header">Status</span>
-              <span className="ps-casebar-dropdown__col-header">Client</span>
+              <span className="ps-casebar-dropdown__col-header">Facility</span>
             </div>
 
             {/* Results */}
@@ -450,7 +447,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
               className="ps-casebar-dropdown__row"
               onClick={() => openCase(hit)}
             >
-              {/* Grid row matching column headers: Accession | Patient | DOB·Sex | Priority | Status | Client */}
+              {/* Grid row matching column headers: Accession | Patient | DOB·Sex | Priority | Status | Facility */}
               <div className="ps-casebar-dropdown__grid">
                 <span className="ps-casebar-dropdown__accession" data-phi="accession">{highlight(hit.accession, caseNumber)}</span>
                 <span className="ps-casebar-dropdown__patient" data-phi="name">{hit.patientName}</span>
@@ -461,7 +458,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
                 <span className={`ps-casebar-dropdown__status ps-casebar-dropdown__status--${hit.status.replace(/\s+/g, '-').toLowerCase()}`}>
                   {statusLabel[hit.status] ?? hit.status}
                 </span>
-                <span className="ps-casebar-dropdown__client">{hit.clientName}</span>
+                <span className="ps-casebar-dropdown__client">{hit.facilityName}</span>
               </div>
               {/* Sub-row: specimens + flags + match hint */}
               {(hit.specimenCount > 0 || hit.flags.length > 0 || (hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, ''))) && (

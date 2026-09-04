@@ -232,7 +232,7 @@ const demoPart = part(DEMO_ID, 'Patient & Order Demographics', 'body', [
       e('MRN',              '{{patient.mrn}}',                            '—',         12),
       // Right column: order info
       e('Requesting provider', '{{order.requestingProvider}}',            '—',         12),
-      e('Referring facility',  '{{order.clientName}}',                    '—',         12),
+      e('Referring facility',  '{{order.facilityName}}',                  '—',         12),
       e('Received date',       '{{order.receivedDate}}',                  '—',         12),
       e('Priority',            '{{order.priority}}',                      'Routine',   12),
       e('Report date',         '{{diagnostic.issuedDate}}',               '—',         12),

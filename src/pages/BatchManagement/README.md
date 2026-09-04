@@ -4,7 +4,7 @@ Cassette/slide chain-of-custody through histology processing nodes, plus the thr
 
 ## Files
 
-- **`BatchManagementPage.tsx`** — the main page: processing-node tiles (Decal/Special Processing, Processing, Embedding, Microtomy/Sectioning, Staining, Checkout), active batch list, and the tiles navigating to the four pages below.
+- **`BatchManagementPage.tsx`** — the main page: processing-node tiles (Decal/Special Processing, Processing, Embedding, Microtomy/Sectioning, Staining, Checkout), active batch list, and the tiles navigating to the four pages below. **Real, per direct UI-review follow-up ("Fix the root" — background inconsistency across pages):** `.ps-batch-page`'s own hardcoded `background: var(--ps-bg)` removed — falls through to `AppShell.tsx`'s own, real `.ps-app-root` background now (see that folder's own README for the fuller account of the inline-style bug this whole pass traced back to), matching Configuration/Quality Assurance/Intraop Queue/Contribution.
 - **`BatchDetailView.tsx`** — a single batch's manifest, scan-to-add items.
 - **`NewContainerModal.tsx`** — create a new batch (container type, target node, protocol/run parameters, priority, identifier mode disposable vs. reusable rack).
 - **`DisposalQueuePage.tsx`** (`/batch-management/disposal`) — real, computed queue of every specimen/block/slide currently eligible for disposal under retention policy, with direct scan-to-dispose. Backed by `services/retentionPolicy/computeDisposalQueue.ts`.

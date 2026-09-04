@@ -33,7 +33,7 @@ export interface CaseForDashboardCalc {
   id: string;
   status?: string;
   subspecialtyId?: string;
-  order?: { assignedTo?: string; receivedDate?: string; clientId?: string; priority?: string };
+  order?: { assignedTo?: string; receivedDate?: string; facilityId?: string; priority?: string };
   diagnostic?: { finalizedBy?: string; issuedDate?: string };
   synopticReports?: { aiSuggestions?: Record<string, unknown> }[];
   firstOpenedAt?: string;
@@ -146,7 +146,7 @@ export interface RealTatPerformance {
   firstTouchTargetHrs: number;
   totalTargetHrs:      number;
   onTargetPct: number;
-  clientCount: number;
+  facilityCount: number;
 }
 
 /** Real fix: replaces mockClientTatData/mockTatTargets/mockTatPerf.
@@ -164,19 +164,19 @@ export function computeOrgWideTatPerformance(
   cases: CaseForDashboardCalc[],
   tatEntries: TatEntryForResolution[]
 ): RealTatPerformance {
-  const clientIds = new Set<string>();
+  const facilityIds = new Set<string>();
   let ftHrsSum = 0, ftTargetSum = 0, ftOnTargetCount = 0, ftCount = 0;
   let tcHrsSum = 0, tcTargetSum = 0, tcOnTargetCount = 0, tcCount = 0;
 
   for (const c of cases) {
-    if (c.order?.clientId) clientIds.add(c.order.clientId);
+    if (c.order?.facilityId) facilityIds.add(c.order.facilityId);
     const urgency: 'ROUTINE' | 'STAT' = c.order?.priority === 'STAT' ? 'STAT' : 'ROUTINE';
     const receivedMs = c.order?.receivedDate ? new Date(c.order.receivedDate).getTime() : NaN;
 
     if (!isNaN(receivedMs) && c.firstOpenedAt) {
       const openedMs = new Date(c.firstOpenedAt).getTime();
       const target = resolveTatTargetHours(tatEntries, 'FIRST_TOUCH', {
-        clientId: c.order?.clientId, subspecialtyId: c.subspecialtyId, urgency,
+        facilityId: c.order?.facilityId, subspecialtyId: c.subspecialtyId, urgency,
       });
       if (target !== null && !isNaN(openedMs) && openedMs > receivedMs) {
         const hrs = (openedMs - receivedMs) / (1000 * 60 * 60);
@@ -188,7 +188,7 @@ export function computeOrgWideTatPerformance(
     if (!isNaN(receivedMs) && c.diagnostic?.issuedDate) {
       const issuedMs = new Date(c.diagnostic.issuedDate).getTime();
       const target = resolveTatTargetHours(tatEntries, 'TOTAL_CASE', {
-        clientId: c.order?.clientId, subspecialtyId: c.subspecialtyId, urgency,
+        facilityId: c.order?.facilityId, subspecialtyId: c.subspecialtyId, urgency,
       });
       if (target !== null && !isNaN(issuedMs) && issuedMs > receivedMs) {
         const hrs = (issuedMs - receivedMs) / (1000 * 60 * 60);
@@ -208,7 +208,7 @@ export function computeOrgWideTatPerformance(
     firstTouchTargetHrs: ftCount > 0 ? +(ftTargetSum / ftCount).toFixed(1) : 0,
     totalTargetHrs:      tcCount > 0 ? +(tcTargetSum / tcCount).toFixed(1) : 0,
     onTargetPct:         realPcts.length > 0 ? Math.round(realPcts.reduce((a, b) => a + b, 0) / realPcts.length) : 0,
-    clientCount:         clientIds.size,
+    facilityCount:       facilityIds.size,
   };
 }
 

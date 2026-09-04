@@ -43,7 +43,16 @@ export type AmendmentType = 'addendum' | 'amendment' | 'correction';
 // directly, since 'original' has no meaning on an AmendmentRecord itself.
 export type RevisionType = 'original' | AmendmentType;
 
-export type NotificationMethod = 'verbal_phone' | 'secure_page' | 'direct_lis_flag';
+// Real, per direct guidance's own regulatory research (services/clinical/README.md):
+// UK's current RCPath guidance (G133, Feb 2026) explicitly names secure
+// email as a real, acceptable method; AU's RCPA/AACB consensus statement
+// explicitly discusses fax as a real, recognized method — with the real
+// caveat that a fax alone is insufficient and needs a follow-up phone
+// call to confirm receipt. That follow-up is naturally its own, separate
+// notification record (or captured via this same record's own
+// readBackConfirmed field, at the recording pathologist's discretion) —
+// this type itself doesn't force a specific structure for it.
+export type NotificationMethod = 'verbal_phone' | 'secure_page' | 'direct_lis_flag' | 'secure_email' | 'fax';
 
 export interface ClinicalNotification {
   clinicianName: string;

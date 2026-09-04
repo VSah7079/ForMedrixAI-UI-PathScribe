@@ -214,7 +214,7 @@ describe('useGrossingCompletion — AI back-fill of structured Grossing answers 
     const caseData = makeTestCase({
       specimens: [{ id: 'SP-1', label: 'A', description: 'Right shoulder skin excision' }] as any,
       grossingReports: [{ instanceId: 'GR-1', specimenId: 'SP-1', templateId: 'tmpl-1', templateName: 'T1', status: 'draft', answers: {}, createdAt: '', updatedAt: '' }] as any,
-      order: { clientId: 'client-123' } as any,
+      order: { facilityId: 'client-123' } as any,
     });
     const orchSections = [{ id: 'random-uuid-4', sourcePartId: 'std_body_gross', text: '<p>Specimen A dictated observation here.</p>' }];
     const { result } = renderHook(() => useGrossingCompletion(baseParams({ caseData, orchSections })));

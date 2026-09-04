@@ -105,6 +105,21 @@ export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
     }
   }, [caseData?.id, currentUserId, currentUserName, setCaseData, showToast]);
 
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control... has to be flawless"): the real, other half of the
+  // RECALL_REPORT action registered in mockActionRegistryService.ts —
+  // that side dispatches this same event (see SynopticReportPage.tsx's
+  // own onAction switch), this side is what actually calls the real
+  // handler. Safe to wire globally, not gated on isRealSigner here
+  // too — mockReportReleaseService.recall() itself already refuses a
+  // mismatched performedBy.userId independently of this component's
+  // own UI-level button gating (see that service's own doc comment).
+  useEffect(() => {
+    const handler = () => { handleRecall(); };
+    window.addEventListener('PATHSCRIBE_RECALL_REPORT', handler);
+    return () => window.removeEventListener('PATHSCRIBE_RECALL_REPORT', handler);
+  }, [handleRecall]);
+
   if (!isPendingRelease || !expiresAt) return null;
 
   return (

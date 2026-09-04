@@ -1,12 +1,14 @@
 // src/components/Contribution/QualityTab.tsx
 import React, { useState, useEffect } from "react";
 import '../../pathscribe.css';
-import { reconciliationService, facilityService, intraoperativeService } from '@/services';
+import { qaActivityRecordService, facilityService, intraoperativeService } from '@/services';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { mockAmendmentService } from '@/services/reports/mockAmendmentService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getDelegations } from '@/services/cases/mockCaseService';
 import { informalReviewService } from '@/services';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@/components/Config/System/TATConfigSection';
 import {
   reconciliationRecordsToDiscordantCases, amendmentRecordsToAmendedCases,
@@ -55,7 +57,7 @@ interface TatTrendMonth {
 }
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 // mockDiscordant/mockAmended removed - real fix, now sourced from
-// reconciliationService/mockAmendmentService via qualityCalculations.ts.
+// qaActivityRecordService/mockAmendmentService via qualityCalculations.ts.
 // The four TAT-outlier arrays below remain demo data - see this file's
 // header comment in qualityCalculations.ts for why, and the DemoDataBadge
 // on each of their sections below for honest, visible disclosure.
@@ -312,8 +314,8 @@ const QualityTab: React.FC = () => {
   const [realTatByClient, setRealTatByClient] = useState<RealClientTatRow[]>([]);
   useEffect(() => {
     let cancelled = false;
-    reconciliationService.getAll().then(res => {
-      if (!cancelled && res.ok) setRealDiscordant(reconciliationRecordsToDiscordantCases(res.data));
+    qaActivityRecordService.getAll().then(res => {
+      if (!cancelled && res.ok) setRealDiscordant(reconciliationRecordsToDiscordantCases(res.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID)));
     });
     mockAmendmentService.getAll().then(async res => {
       if (cancelled || !res.ok) return;
@@ -364,19 +366,33 @@ const QualityTab: React.FC = () => {
       })() as TatEntryForResolution[];
       const clientNameById: Record<string, string> = {};
       if (clientRes.ok) clientRes.data.forEach(c => { clientNameById[c.id] = c.name; });
-      setRealTotalTAT(computeTotalCaseTatOutliers(allCases, tatEntries, clientNameById));
-      setRealFirstTouch(computeFirstTouchOutliers(allCases, tatEntries, clientNameById));
-      setRealGrossing(computeGrossingOutliers(allCases, tatEntries, clientNameById));
-      setRealSignOut(computeSignOutOutliers(allCases, tatEntries, clientNameById));
-      setRealColdIschemia(computeColdIschemiaOutliers(allCases, tatEntries, clientNameById));
+      // Real, per direct guidance ("a TAT time could have two
+      // components... the Performing lab and the other is the Ordering
+      // Client"): resolves every real client's own performing lab ONCE
+      // here (reusing clientRes.data, already loaded — no second
+      // fetch), then annotates each case with it before any real
+      // calculation function runs. Genuinely distinct from
+      // clientNameById above — a client's own name and its resolved
+      // performing lab are two different real facts about it.
+      const performingLabByClientId: Record<string, string | undefined> = {};
+      if (clientRes.ok) clientRes.data.forEach(c => { performingLabByClientId[c.id] = resolvePerformingLabFacilityId(c) ?? undefined; });
+      const casesWithPerformingLab = allCases.map(c => ({
+        ...c,
+        performingLabFacilityId: c.order?.facilityId ? performingLabByClientId[c.order.facilityId] : undefined,
+      }));
+      setRealTotalTAT(computeTotalCaseTatOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealFirstTouch(computeFirstTouchOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealGrossing(computeGrossingOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealSignOut(computeSignOutOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealColdIschemia(computeColdIschemiaOutliers(casesWithPerformingLab, tatEntries, clientNameById));
       if (intraopRes.ok) {
-        setRealFrozenSection(computeFrozenSectionOutliers(intraopRes.data, allCases, tatEntries, clientNameById));
+        setRealFrozenSection(computeFrozenSectionOutliers(intraopRes.data, casesWithPerformingLab, tatEntries, clientNameById));
       }
       if (currentUser) {
-        setRealConsultResponse(computeConsultResponseOutliers(combinedDelegations, allCases, currentUser.id, tatEntries, clientNameById));
-        setRealConsultAwaiting(computeConsultAwaitingOutliers(combinedDelegations, allCases, currentUser.id, tatEntries, clientNameById));
+        setRealConsultResponse(computeConsultResponseOutliers(combinedDelegations, casesWithPerformingLab, currentUser.id, tatEntries, clientNameById));
+        setRealConsultAwaiting(computeConsultAwaitingOutliers(combinedDelegations, casesWithPerformingLab, currentUser.id, tatEntries, clientNameById));
         if (clientRes.ok) {
-          setRealTatByClient(computeTatByClient(allCases, tatEntries, clientRes.data, currentUser.id));
+          setRealTatByClient(computeTatByClient(casesWithPerformingLab, tatEntries, clientRes.data, currentUser.id));
         }
       }
     });
@@ -613,7 +629,7 @@ const QualityTab: React.FC = () => {
           <button className={`ps-quality-btn${section === "discordant" ? " active" : ""}`} onClick={() => setSection("discordant")}>Frozen vs Final</button>
           <button className={`ps-quality-btn${section === "amended"    ? " active" : ""}`} onClick={() => setSection("amended")}>Amended Reports</button>
           <button className={`ps-quality-btn${section === "tat"        ? " active" : ""}`} onClick={() => setSection("tat")}>TAT Outliers</button>
-          <button className={`ps-quality-btn${section === "tatClient"  ? " active" : ""}`} onClick={() => setSection("tatClient")}>TAT by Client</button>
+          <button className={`ps-quality-btn${section === "tatClient"  ? " active" : ""}`} onClick={() => setSection("tatClient")}>TAT by Facility</button>
         </div>
       </div>
 
@@ -691,8 +707,8 @@ const QualityTab: React.FC = () => {
           subtitle: string;
           isMin: boolean;
         }> = {
-          firstTouch:      { data: filteredFirstTouch,         valueLabel: "First Opened",        subtitle: "Cases not opened within the client's first-touch TAT threshold", isMin: false },
-          totalCase:       { data: filteredTotalTAT,           valueLabel: "Actual TAT",           subtitle: "Cases where receivedDate \u2192 finalizedAt exceeded the client's total TAT target", isMin: false },
+          firstTouch:      { data: filteredFirstTouch,         valueLabel: "First Opened",        subtitle: "Cases not opened within the facility's first-touch TAT threshold", isMin: false },
+          totalCase:       { data: filteredTotalTAT,           valueLabel: "Actual TAT",           subtitle: "Cases where receivedDate \u2192 finalizedAt exceeded the facility's total TAT target", isMin: false },
           frozenSection:   { data: filteredFrozenSection,      valueLabel: "Frozen Section TAT",   subtitle: "Intraoperative frozen section results exceeding the turnaround target", isMin: true  },
           grossing:        { data: filteredGrossing,           valueLabel: "Grossing TAT",         subtitle: "Specimens exceeding the gross-to-description turnaround target", isMin: false },
           signOut:         { data: filteredSignOut,            valueLabel: "Sign-out TAT",         subtitle: "Cases exceeding the gross-to-final-signout turnaround target", isMin: false },
@@ -728,7 +744,7 @@ const QualityTab: React.FC = () => {
                     : (
                       <table className="ps-quality-table">
                         <thead>
-                          <tr>{["Case", "Type", "Client", cfg.valueLabel, "Target", "Over By", "Date"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+                          <tr>{["Case", "Type", "Facility", cfg.valueLabel, "Target", "Over By", "Date"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
                         </thead>
                         <tbody>
                           {cfg.data.map(c => (
@@ -753,14 +769,14 @@ const QualityTab: React.FC = () => {
         );
       })()}
 
-      {/* ── TAT by Client ── */}
+      {/* ── TAT by Facility ── */}
       {section === "tatClient" && (
         <div className="ps-quality-tat-client">
 
           <div className="ps-tat-client__section-header">
             <div>
-              <div className="ps-tat-client__title">TAT by Client</div>
-              <div className="ps-tat-client__subtitle">Your performance vs client targets · peer group overlay (anonymised, same subspecialty)</div>
+              <div className="ps-tat-client__title">TAT by Facility</div>
+              <div className="ps-tat-client__subtitle">Your performance vs facility targets · peer group overlay (anonymised, same subspecialty)</div>
             </div>
             <div className="ps-tat-client__metric-toggle">
               <button className={`ps-quality-sub-btn${metric === "firstTouch" ? " active" : ""}`} onClick={() => setMetric("firstTouch")}>⚡ First Touch</button>
@@ -770,7 +786,7 @@ const QualityTab: React.FC = () => {
 
           <div className="ps-tat-client__cards">
             {realTatByClient.length === 0 && (
-              <div className="ps-cmnt-thread-empty">No real cases with a resolvable client and target found yet for your own sign-outs.</div>
+              <div className="ps-cmnt-thread-empty">No real cases with a resolvable facility and target found yet for your own sign-outs.</div>
             )}
             {realTatByClient.map(client => {
               const myVal      = client.mine[metric];

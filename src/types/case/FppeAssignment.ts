@@ -24,6 +24,16 @@ export interface FppeAssignment {
   provisionalUserName: string;
   proctorUserId: string;
   proctorUserName: string;
+  /**
+   * Real, per direct guidance: which real performing lab this
+   * provisional hire's own practice — and this specific FPPE
+   * assignment — belongs to. Required, not optional: unlike a shared
+   * network-pool printer, a provisional hire practices at one real,
+   * specific place, and the whole point of adding this is letting an
+   * admin see and filter which supervisees belong to their own
+   * facility, not treat every assignment as belonging everywhere.
+   */
+  facilityId: string;
   /** Real Subspecialty.id, if this FPPE assignment is scoped to a
    *  specific subspecialty rather than the new hire's whole practice —
    *  a real, common pattern (e.g. proctoring only GI cases for a hire

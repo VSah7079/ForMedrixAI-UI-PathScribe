@@ -24,28 +24,38 @@ const NOTIFICATION_METHOD_LABEL: Record<NotificationMethod, string> = {
   verbal_phone: 'Verbal / Phone Call',
   secure_page: 'Secure Page',
   direct_lis_flag: 'Direct LIS Flag',
+  secure_email: 'Secure Email',
+  fax: 'Fax',
 };
 
 interface CriticalFindingsModalProps {
   findings: CriticalFindingFlag[];
-  onRecord: (input: { clinicianName: string; method: NotificationMethod; readBackConfirmed?: boolean }) => void;
+  /** Real, per direct guidance: defaults the new, editable "notified
+   *  by" field to the real, currently signed-in user — the common
+   *  case, where the same person recording this also made the real
+   *  call. Editable since that's not always true: a representative
+   *  may have made the real call, with staff simply transcribing the
+   *  event into the record afterward. */
+  defaultNotifiedByName?: string;
+  onRecord: (input: { clinicianName: string; method: NotificationMethod; readBackConfirmed?: boolean; notifiedByName: string }) => void;
   onAcknowledge: () => void;
 }
 
 export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
-  findings, onRecord, onAcknowledge,
+  findings, defaultNotifiedByName, onRecord, onAcknowledge,
 }) => {
   const [clinicianName, setClinicianName] = useState('');
   const [method, setMethod] = useState<NotificationMethod | ''>('');
   const [readBackConfirmed, setReadBackConfirmed] = useState(false);
+  const [notifiedByName, setNotifiedByName] = useState(defaultNotifiedByName ?? '');
   const [busy, setBusy] = useState(false);
 
-  const canRecord = clinicianName.trim().length > 0 && !!method;
+  const canRecord = clinicianName.trim().length > 0 && !!method && notifiedByName.trim().length > 0;
 
   const handleRecord = async () => {
     if (!canRecord) return;
     setBusy(true);
-    await onRecord({ clinicianName: clinicianName.trim(), method: method as NotificationMethod, readBackConfirmed });
+    await onRecord({ clinicianName: clinicianName.trim(), method: method as NotificationMethod, readBackConfirmed, notifiedByName: notifiedByName.trim() });
     setBusy(false);
   };
 
@@ -69,6 +79,15 @@ export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
           ))}
 
           <div className="ps-conf-form-field" style={{ marginTop: 16 }}>
+            <label className="ps-conf-label">Notified by</label>
+            <input
+              className="ps-conf-input"
+              value={notifiedByName}
+              onChange={e => setNotifiedByName(e.target.value)}
+              placeholder="Name of the person who made this notification"
+            />
+          </div>
+          <div className="ps-conf-form-field">
             <label className="ps-conf-label">Clinician notified</label>
             <input
               className="ps-conf-input"

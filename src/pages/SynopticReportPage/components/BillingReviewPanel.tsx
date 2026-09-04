@@ -42,7 +42,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
-import { CODE_MAP_TABLE, computeCaseCodingSummary } from '@/services/billing/codeMapTable';
+import { CODE_MAP_TABLE, computeCaseCodingSummary, type SpecimenCodingSummary } from '@/services/billing/codeMapTable';
 import type { AppliedBlockCode } from '@/types/case/Specimen';
 import { CodeSearchModal } from '@/components/Common/CodeSearchModal';
 
@@ -65,7 +65,25 @@ interface PendingCode {
 }
 
 interface BillingReviewPanelProps {
-  specimens: { id: string; label: string; description?: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { id?: string; stainName: string }[]; coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] } }[] }[];
+  specimens: { id: string; label: string; description?: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { id?: string; stainName: string }[]; coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] } }[]; matrixBlockIds?: string[]; matrixBlockCoding?: { matrixBlockId: string; cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] }[] }[];
+  /** Real, per direct billing-expert guidance (PS-93) — see
+   *  BillingReviewPanel.tsx's own identical prop for the full
+   *  reasoning. Defaults to [] — a case with no Biopsy Arrays renders
+   *  exactly as it always did before this feature existed. */
+  matrixBlocks?: { id: string; label: string; participants: { specimenId: string; positionInBlock: number }[]; slides: { id?: string; stainName: string; targetSpecimenIds?: string[]; evaluatedSpecimenIds?: string[] }[] }[];
+  /** Real, per direct billing-expert guidance (PS-93) — the Evaluated
+   *  Cores Checklist's own real write. See
+   *  SynopticReportPage.tsx's own handleSetMatrixEvaluatedCores for
+   *  the real implementation this is always wired to. */
+  onSetMatrixEvaluatedCores?: (matrixBlockId: string, stainOrderId: string, evaluatedSpecimenIds: string[]) => void;
+  /** Real, per direct billing-expert guidance (PS-93) — applies/
+   *  rejects one specimen's own contribution from a shared MatrixBlock
+   *  — deliberately separate props from onApprove/onRejectOnly above,
+   *  since the real storage location differs (Specimen.matrixBlockCoding,
+   *  not HistologyBlock.coding) — see SynopticReportPage.tsx's own
+   *  handleApplyMatrixBillingCode/handleRejectMatrixBillingCode. */
+  onApplyMatrixCode?: (specimenId: string, matrixBlockId: string, code: string, stainOrderId?: string) => void;
+  onRejectMatrixCode?: (specimenId: string, matrixBlockId: string, code: string, stainOrderId?: string) => void;
   onApprove: (specimenId: string, blockId: string, code: string, stainOrderId?: string) => void;
   /** Real fix, found via direct data inspection: calling a separate
    *  onReject then onApprove back-to-back for the same suggestion
@@ -195,14 +213,14 @@ function resolveRealCptCode(code: string): string | null {
 }
 
 const BillingReviewPanel: React.FC<BillingReviewPanelProps> = ({
-  specimens, onApprove, onOverride, onRejectOnly, onDelete, onDeleteBaseCode, onCorrect, onCorrectBaseCode, onAddBaseCode, onApproveAll, onHighlight, onHighlightStain, materialSelectedBlockId, onFocusBlock, contextLabel = 'sign-out',
+  specimens, matrixBlocks = [], onSetMatrixEvaluatedCores, onApplyMatrixCode, onRejectMatrixCode, onApprove, onOverride, onRejectOnly, onDelete, onDeleteBaseCode, onCorrect, onCorrectBaseCode, onAddBaseCode, onApproveAll, onHighlight, onHighlightStain, materialSelectedBlockId, onFocusBlock, contextLabel = 'sign-out',
 }) => {
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
   }, []);
 
-  const summary = computeCaseCodingSummary(specimens, stainTypes);
+  const summary = computeCaseCodingSummary(specimens, stainTypes, matrixBlocks);
 
   const pending: PendingCode[] = summary.flatMap(sp =>
     sp.blocks.flatMap(block => {
@@ -536,6 +554,17 @@ const BillingReviewPanel: React.FC<BillingReviewPanelProps> = ({
           setShowOverrideCodeSearch={setShowOverrideCodeSearch}
         />
       </div>
+
+      {matrixBlocks.length > 0 && (
+        <MatrixArrayCoverageSection
+          matrixBlocks={matrixBlocks}
+          specimens={specimens}
+          summary={summary}
+          onSetMatrixEvaluatedCores={onSetMatrixEvaluatedCores}
+          onApplyMatrixCode={onApplyMatrixCode}
+          onRejectMatrixCode={onRejectMatrixCode}
+        />
+      )}
     </div>
   );
 };
@@ -934,6 +963,134 @@ const DetailPanel: React.FC<{
           onClose={() => setShowManualCodeSearch(false)}
         />
       )}
+    </div>
+  );
+};
+
+// Real, per direct billing-expert guidance (PS-93) — the Evaluated
+// Cores Checklist, at the slide viewer / diagnostic sign-out stage
+// per direct spec: for every ancillary stain ordered on a shared
+// Biopsy Array (MatrixBlock.slides, excluding the routine H&E every
+// block gets by default), a pathologist explicitly checks which
+// targeted cores were genuinely evaluated/reviewed for diagnosis on
+// the resulting slide — this is the real billing trigger
+// (StainOrder.evaluatedSpecimenIds), never the earlier, order-entry
+// targetSpecimenIds selection alone. Deliberately a separate section
+// below the ordinary specimen tree/detail layout above, not folded
+// into it — a shared MatrixBlock genuinely doesn't belong to one
+// specimen the way that tree's own selection model assumes.
+const MatrixArrayCoverageSection: React.FC<{
+  matrixBlocks: NonNullable<BillingReviewPanelProps['matrixBlocks']>;
+  specimens: BillingReviewPanelProps['specimens'];
+  summary: SpecimenCodingSummary[];
+  onSetMatrixEvaluatedCores?: BillingReviewPanelProps['onSetMatrixEvaluatedCores'];
+  onApplyMatrixCode?: BillingReviewPanelProps['onApplyMatrixCode'];
+  onRejectMatrixCode?: BillingReviewPanelProps['onRejectMatrixCode'];
+}> = ({ matrixBlocks, specimens, summary, onSetMatrixEvaluatedCores, onApplyMatrixCode, onRejectMatrixCode }) => {
+  // Local, per-stain draft of the checklist — only committed via
+  // onSetMatrixEvaluatedCores when the pathologist explicitly saves,
+  // same "never auto-fires" posture as everywhere else in this
+  // feature. Keyed by stainOrderId, initialized from the stain's own
+  // real, already-saved evaluatedSpecimenIds.
+  const [drafts, setDrafts] = useState<Record<string, Set<string>>>({});
+  const draftFor = (stainId: string, saved: string[] | undefined): Set<string> =>
+    drafts[stainId] ?? new Set(saved ?? []);
+  const toggleCore = (stainId: string, saved: string[] | undefined, specimenId: string) => {
+    setDrafts(prev => {
+      const current = new Set(draftFor(stainId, saved));
+      if (current.has(specimenId)) current.delete(specimenId); else current.add(specimenId);
+      return { ...prev, [stainId]: current };
+    });
+  };
+
+  const ancillaryStains = matrixBlocks.flatMap(mb =>
+    mb.slides.filter(s => s.stainName !== 'H&E' && (s.targetSpecimenIds?.length ?? 0) > 0).map(s => ({ matrixBlock: mb, stain: s }))
+  );
+  if (ancillaryStains.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 16, borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: 14 }}>
+      <div className="fm-eyebrow" style={{ color: '#38bdf8', marginBottom: 4 }}>
+        ✦ Biopsy Array — Evaluated Cores
+      </div>
+      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
+        Billing only fires for a core a pathologist explicitly confirms as evaluated on the stained slide —
+        targeting a core at order time doesn't bill it by itself.
+      </div>
+
+      {ancillaryStains.map(({ matrixBlock, stain }) => {
+        if (!stain.id) return null;
+        const saved = stain.evaluatedSpecimenIds ?? [];
+        const draft = draftFor(stain.id, stain.evaluatedSpecimenIds);
+        const isDirty = draft.size !== saved.length || saved.some(id => !draft.has(id));
+        const specimenContribution = (specimenId: string) =>
+          summary.find(sp => sp.specimenId === specimenId)?.matrixBlockContributions.find(mb => mb.matrixBlockId === matrixBlock.id);
+
+        return (
+          <div key={stain.id} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+              {stain.stainName} <span style={{ color: '#64748b', fontWeight: 400 }}>— {matrixBlock.label}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+              {(stain.targetSpecimenIds ?? []).map(specimenId => {
+                const sp = specimens.find(s => s.id === specimenId);
+                return (
+                  <label key={specimenId} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#cbd5e1' }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.has(specimenId)}
+                      onChange={() => toggleCore(stain.id!, stain.evaluatedSpecimenIds, specimenId)}
+                    />
+                    {sp?.label ?? specimenId} — Evaluated / Reviewed for Diagnosis
+                  </label>
+                );
+              })}
+            </div>
+            {isDirty && (
+              <button
+                type="button"
+                onClick={() => onSetMatrixEvaluatedCores?.(matrixBlock.id, stain.id!, Array.from(draft))}
+                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8, cursor: 'pointer', border: '1.5px solid rgba(8,145,178,0.4)', background: 'rgba(8,145,178,0.1)', color: '#22d3ee' }}
+              >
+                Save Evaluation
+              </button>
+            )}
+            {/* Real, per direct spec: once evaluatedSpecimenIds is
+                saved, the resulting computeMatrixStainBillingUnits
+                suggestion(s) become real, pending, per-specimen codes
+                — shown here for direct Confirm/Reject, same real
+                "explicit confirmation required" posture as every
+                other suggestion in this panel. */}
+            {saved.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {saved.map(specimenId => {
+                  const contribution = specimenContribution(specimenId);
+                  const pendingForThisStain = (contribution?.unappliedSuggestionSources ?? []).filter(s => s.stainOrderId === stain.id);
+                  if (pendingForThisStain.length === 0) return null;
+                  const sp = specimens.find(s => s.id === specimenId);
+                  return pendingForThisStain.map(({ code }, i) => (
+                    <div key={`${specimenId}-${code}-${i}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: '#cbd5e1', padding: '4px 0' }}>
+                      <span>{sp?.label ?? specimenId}: <strong>{code}</strong></span>
+                      <span style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => onApplyMatrixCode?.(specimenId, matrixBlock.id, code, stain.id)}
+                          style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#34d399' }}
+                        >Confirm</button>
+                        <button
+                          type="button"
+                          onClick={() => onRejectMatrixCode?.(specimenId, matrixBlock.id, code, stain.id)}
+                          style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(148,163,184,0.3)', background: 'transparent', color: '#94a3b8' }}
+                        >Reject</button>
+                      </span>
+                    </div>
+                  ));
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };

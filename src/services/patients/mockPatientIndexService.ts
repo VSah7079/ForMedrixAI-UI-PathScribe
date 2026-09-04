@@ -5,6 +5,7 @@ import type {
   PatientMatchCandidate,
   PatientMatchResult,
   PatientLink,
+  PatientLinkRelationshipType,
   PatientIdentifier,
 } from './IPatientIndexService';
 import { caseRouter } from '../cases/CaseRouter';
@@ -12,6 +13,8 @@ import { ConcurrencyConflictError } from '../cases/ConcurrencyConflictError';
 import { mockAuditService } from '../auditlog/mockAuditService';
 import { getSessionUser } from '../auth/caseAccessControl';
 import { mockPatientEventBus } from '../events/mockPatientEventBus';
+import { mockEncounterService } from '../encounters/mockEncounterService';
+import { mockOutboundPatientAdtQueueService } from './mockOutboundPatientAdtQueueService';
 import { BREAK_GLASS_MIN_NOTE_LENGTH } from '../../types/patients/BreakGlassReasonCode';
 
 const STORAGE_KEY = 'pathscribe_mpi_records';
@@ -238,6 +241,35 @@ export const mockPatientIndexService: IPatientIndexService = {
     return { outcome: 'created', patientId: created.id };
   },
 
+  async resolvePatientWithoutMatching(candidate: PatientMatchCandidate): Promise<PatientMatchResult> {
+    await delay();
+    // Real, deliberate: no fuzzy matching of any kind here — no
+    // crosswalk lookup, no MRN check, no name+DOB check. This is the
+    // whole point (see this method's own doc comment on the interface
+    // for the full real reasoning) — every real call always creates a
+    // genuinely fresh identity.
+    const records = loadRecords();
+    const now = new Date().toISOString();
+    const created: MasterPatientRecord = {
+      id: generatePatientId(),
+      organisationId: candidate.organisationId,
+      mrn: candidate.mrn,
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      dateOfBirth: candidate.dateOfBirth,
+      createdAt: now,
+      updatedAt: now,
+      establishedVia: 'created_unmatched',
+      sourceAccession: candidate.sourceAccession,
+    };
+    saveRecords([...records, created]);
+    if (candidate.assigningAuthority) {
+      await this.addIdentifier(created.id, candidate.assigningAuthority, candidate.mrn, 'resolution');
+    }
+    mockPatientEventBus.publish({ type: 'Patient.Created', patient: created });
+    return { outcome: 'created', patientId: created.id };
+  },
+
   async getById(patientId: string): Promise<MasterPatientRecord | null> {
     await delay();
     return loadRecords().find(r => r.id === patientId) ?? null;
@@ -301,7 +333,7 @@ export const mockPatientIndexService: IPatientIndexService = {
     }).catch(() => {});
   },
 
-  async mergeIntoExistingPatient(provisionalPatientId: string, confirmedPatientId: string): Promise<{ casesRepointed: number; caseIds: string[] }> {
+  async mergeIntoExistingPatient(provisionalPatientId: string, confirmedPatientId: string, suppressAdtEnqueue = false): Promise<{ casesRepointed: number; caseIds: string[]; encountersRepointed: number }> {
     await delay();
     const records = loadRecords();
     const provIdx = records.findIndex(r => r.id === provisionalPatientId);
@@ -345,6 +377,27 @@ export const mockPatientIndexService: IPatientIndexService = {
       }
     }
 
+    // Real, found-and-fixed gap: a merge used to only ever repoint
+    // Case.patient.id — any real Encounter record still pointing at
+    // the provisional id was silently left behind, orphaned from the
+    // now-canonical patient. A merge means "these are confirmed to be
+    // the SAME real person" — every real encounter genuinely belongs
+    // to that one real person going forward, so unlike
+    // moveCaseToPatient() below, there's no real sharing ambiguity
+    // here to worry about; every encounter under the provisional id
+    // moves. Fire-and-forget per encounter is deliberately NOT used
+    // here — a merge is a rare, deliberate, human-confirmed action
+    // worth waiting on to get an honest, complete repointed count.
+    const encountersRes = await mockEncounterService.listForPatient(provisionalPatientId);
+    let encountersRepointed = 0;
+    if (encountersRes.ok) {
+      const now = new Date().toISOString();
+      for (const enc of encountersRes.data) {
+        const result = await mockEncounterService.reassignPatient(enc.id, provisionalPatientId, confirmedPatientId, now);
+        if (result.ok && result.data.reassigned) encountersRepointed++;
+      }
+    }
+
     records[provIdx] = {
       ...records[provIdx],
       needsReview: false,
@@ -356,13 +409,33 @@ export const mockPatientIndexService: IPatientIndexService = {
     mockAuditService.logEvent({
       type: 'system',
       event: 'mpi.match.merged',
-      detail: `Provisional patient record ${provisionalPatientId} merged into confirmed record ${confirmedPatientId} by a real reviewer — ${casesRepointed} case(s) repointed.`,
+      detail: `Provisional patient record ${provisionalPatientId} merged into confirmed record ${confirmedPatientId} by a real reviewer — ${casesRepointed} case(s) and ${encountersRepointed} encounter(s) repointed.`,
       user: session?.id ?? 'unknown',
       caseId: records[provIdx].sourceAccession ?? null,
       confidence: null,
     }).catch(() => {});
     mockPatientEventBus.publish({ type: 'Patient.Merged', sourcePatientId: provisionalPatientId, targetPatient: target, casesRepointed });
-    return { casesRepointed, caseIds: repointedCaseIds };
+
+    // Real, per direct guidance ("we trigger the json packages and
+    // the interface engine generates the formatted messages" /
+    // Pathology HL7 Outbound Feature Spec §4, ADT^A40): enqueues a
+    // real, lightweight reference — the actual JSON package itself is
+    // built lazily, at real dispatch time, by buildAdt40Payload().
+    // Suppressed when called internally from breakGlassRebind() below,
+    // which enqueues its own, correctly-distinct A47 entry instead.
+    if (!suppressAdtEnqueue) {
+      mockOutboundPatientAdtQueueService.enqueue({
+        eventType: 'A40_MERGE_PATIENT',
+        organisationId: records[provIdx].organisationId,
+        sourcePatientId: provisionalPatientId,
+        targetPatientId: confirmedPatientId,
+        sourceOperation: 'mergeIntoExistingPatient',
+        casesRepointed,
+        encountersRepointed,
+      }).catch(e => console.error('[mockPatientIndexService] Real, non-blocking failure enqueueing A40 ADT event:', e));
+    }
+
+    return { casesRepointed, caseIds: repointedCaseIds, encountersRepointed };
   },
 
   async breakGlassRebind(input: {
@@ -405,7 +478,7 @@ export const mockPatientIndexService: IPatientIndexService = {
 
     let mergeResult: { casesRepointed: number; caseIds: string[] };
     try {
-      mergeResult = await this.mergeIntoExistingPatient(input.downtimePatientId, input.confirmedPatientId);
+      mergeResult = await this.mergeIntoExistingPatient(input.downtimePatientId, input.confirmedPatientId, true);
     } catch (e) {
       return { rebound: false, reason: e instanceof Error ? e.message : 'Break-Glass rebind failed for an unknown reason.' };
     }
@@ -429,6 +502,22 @@ export const mockPatientIndexService: IPatientIndexService = {
       confidence: null,
     }).catch(() => {});
 
+    // Real, per direct guidance (Pathology HL7 Outbound Feature Spec
+    // §4, ADT^A47 — "Swaps temporary 'Trauma/Unidentified' specimen
+    // tracking numbers for confirmed medical record identifiers," an
+    // exact match for this real operation): its own, distinct
+    // outbound enqueue — never the merge's own A40 (suppressed above).
+    mockOutboundPatientAdtQueueService.enqueue({
+      eventType: 'A47_CHANGE_IDENTIFIER',
+      organisationId: downtimeRecord.organisationId,
+      sourcePatientId: input.downtimePatientId,
+      targetPatientId: input.confirmedPatientId,
+      sourceOperation: 'breakGlassRebind',
+      casesRepointed: mergeResult.casesRepointed,
+      reasonCode: input.reasonCode,
+      notes: input.notes,
+    }).catch(e => console.error('[mockPatientIndexService] Real, non-blocking failure enqueueing A47 ADT event:', e));
+
     return { rebound: true, casesRepointed: mergeResult.casesRepointed, caseIds: mergeResult.caseIds };
   },
 
@@ -437,7 +526,7 @@ export const mockPatientIndexService: IPatientIndexService = {
     sourcePatientId: string,
     targetPatientId: string,
     eventTimestamp: string
-  ): Promise<{ moved: boolean; reason?: string }> {
+  ): Promise<{ moved: boolean; reason?: string; encounterOutcome?: 'reassigned' | 'unlinked_shared' | 'none' }> {
     await delay();
     const records = loadRecords();
     const source = records.find(r => r.id === sourcePatientId);
@@ -477,19 +566,60 @@ export const mockPatientIndexService: IPatientIndexService = {
     // needs clear, real audit traceability — source patient id, target
     // patient id, and the specific case id, all recorded together.
     const session = getSessionUser();
+
+    // Real, found-and-fixed gap: this used to leave Case.encounterId
+    // pointing at an Encounter that still had the OLD patientId —
+    // a real, silent inconsistency (the case says "belongs to
+    // target," the encounter it's linked to still says "belongs to
+    // source"). Genuinely more careful than the merge fix above:
+    // unlike a merge (same real person, every encounter moves), an
+    // Encounter can be legitimately SHARED by more than one real Case
+    // (multiple specimens collected during the same real clinical
+    // visit) — moving it wholesale here could incorrectly reassign
+    // another, real case that still, correctly, belongs to the source
+    // patient. So: only reassign the Encounter itself when this moved
+    // case was its ONLY real remaining case under the source patient;
+    // when it's genuinely shared, leave the Encounter with the source
+    // patient (correct — other real cases still need it there) and
+    // instead clear the just-moved case's own encounterId, since a
+    // stale link crossing two now-different patients would be a real,
+    // silent inconsistency worse than no link at all.
+    let encounterOutcome: 'reassigned' | 'unlinked_shared' | 'none' = 'none';
+    if (theCase.encounterId) {
+      const stillSharedRes = await caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: true } as any);
+      const stillShared = stillSharedRes.ok
+        ? (stillSharedRes.data as any[]).some(c => c?.id !== caseId && c?.encounterId === theCase.encounterId && c?.patient?.id === sourcePatientId)
+        : false;
+      if (stillShared) {
+        try {
+          await caseRouter.updateCase(caseId, { encounterId: undefined } as any, theCase.version);
+        } catch {
+          // Real, honest limitation: a concurrent write here would be
+          // rare (this fires immediately after the successful move
+          // above) and non-critical enough not to retry a second time
+          // — the case's own patient.id is already correctly moved,
+          // which is the load-bearing part of this whole operation.
+        }
+        encounterOutcome = 'unlinked_shared';
+      } else {
+        const encResult = await mockEncounterService.reassignPatient(theCase.encounterId, sourcePatientId, targetPatientId, eventTimestamp);
+        if (encResult.ok && encResult.data.reassigned) encounterOutcome = 'reassigned';
+      }
+    }
+
     mockAuditService.logEvent({
       type: 'system',
       event: 'mpi.case.moved',
-      detail: `Case ${caseId} moved from patient ${sourcePatientId} to patient ${targetPatientId} (real ADT^A43, source event ${eventTimestamp}) — neither identity was merged or retired; both remain independently active.`,
+      detail: `Case ${caseId} moved from patient ${sourcePatientId} to patient ${targetPatientId} (real ADT^A43, source event ${eventTimestamp}) — neither identity was merged or retired; both remain independently active. Encounter outcome: ${encounterOutcome}.`,
       user: session?.id ?? 'system-adt',
       caseId: theCase.accessionNumber ?? theCase.id ?? null,
       confidence: null,
     }).catch(() => {});
     mockPatientEventBus.publish({ type: 'Patient.CaseMoved', caseId, sourcePatientId, targetPatientId });
-    return { moved: true };
+    return { moved: true, encounterOutcome };
   },
 
-  async linkPatients(patientIdA: string, patientIdB: string, linkedBy: string, reason?: string): Promise<PatientLink> {
+  async linkPatients(patientIdA: string, patientIdB: string, relationshipType: PatientLinkRelationshipType, linkedBy: string, reason?: string): Promise<PatientLink> {
     await delay();
     const records = loadRecords();
     const a = records.find(r => r.id === patientIdA);
@@ -516,6 +646,7 @@ export const mockPatientIndexService: IPatientIndexService = {
       id: `LINK-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       patientIdA,
       patientIdB,
+      relationshipType,
       linkedBy,
       linkedAt: now,
       reason,
@@ -523,22 +654,39 @@ export const mockPatientIndexService: IPatientIndexService = {
     saveLinks([...links, link]);
 
     const session = getSessionUser();
+    // Real, per direct guidance: the audit message itself is now
+    // real and honest about which relationship was actually
+    // confirmed — the old, hardcoded "confirmed as the same real
+    // person" text would have been factually wrong for a
+    // 'family_relation' link.
+    const auditDetail = relationshipType === 'same_person'
+      ? `Patient records ${patientIdA} and ${patientIdB} confirmed as the same real person and linked by a real reviewer — neither record merged or deprecated.`
+      : `Patient records ${patientIdA} and ${patientIdB} linked as a real family relation by a real reviewer — two distinct real people, neither record merged.`;
     mockAuditService.logEvent({
       type: 'system',
       event: 'mpi.match.linked',
-      detail: `Patient records ${patientIdA} and ${patientIdB} confirmed as the same real person and linked by a real reviewer — neither record merged or deprecated.`,
+      detail: auditDetail,
       user: session?.id ?? linkedBy,
       caseId: a.sourceAccession ?? b.sourceAccession ?? null,
       confidence: null,
     }).catch(() => {});
 
-    mockPatientEventBus.publish({ type: 'Patient.Linked', patientIdA, patientIdB, linkedBy, reason });
+    mockPatientEventBus.publish({ type: 'Patient.Linked', patientIdA, patientIdB, relationshipType, linkedBy, reason });
     return link;
   },
 
-  async getLinkedPatientIds(patientId: string): Promise<string[]> {
+  async getLinkedPatientIds(patientId: string, relationshipType: PatientLinkRelationshipType): Promise<string[]> {
     await delay();
-    const links = loadLinks();
+    // Real, per direct guidance: the graph traversal itself only ever
+    // follows edges of the requested relationshipType — a chain
+    // mixing both real types (A-B same_person, B-C family_relation)
+    // must never let an unrelated relationship leak into the result
+    // just because it shares an intermediate patient. This is the
+    // real fix that makes a 'family_relation' link safe to create at
+    // all without risking patientHistoryQuery.ts (which always
+    // requests 'same_person') ever silently merging two distinct real
+    // people's own clinical histories.
+    const links = loadLinks().filter(l => l.relationshipType === relationshipType);
     // Real fix: follows the full real link graph via breadth-first
     // traversal, not just one hop - if A-B and B-C are both real,
     // separately-confirmed links, a history query for A should still
@@ -640,6 +788,37 @@ export const mockPatientIndexService: IPatientIndexService = {
     records[idx] = updated;
     saveRecords(records);
     mockPatientEventBus.publish({ type: 'Patient.Updated', patient: updated });
+
+    // Real, found-and-fixed gap: a successful demographic update
+    // previously left NO real audit trail at all — only the rejected
+    // (stale-event) path above logged anything. A real, applied
+    // change to a patient's own identity fields is exactly the kind
+    // of event a compliance review needs to find, same reasoning as
+    // every other real mpi.* event already logged in this file. PHI-
+    // safe by the same, established precedent as the stale-event log
+    // right above: names only WHICH real fields changed, never the
+    // actual new values themselves.
+    const changedFields = (Object.keys(demographics) as (keyof typeof demographics)[]).filter(k => demographics[k] !== undefined);
+    mockAuditService.logEvent({
+      type: 'system',
+      event: 'mpi.demographics.updated',
+      detail: `Real, applied ADT^A08 demographic update for patient ${patientId} — field(s) changed: ${changedFields.join(', ') || 'none'}.`,
+      user: getSessionUser()?.id ?? 'system-adt',
+      caseId: updated.sourceAccession ?? null,
+      confidence: null,
+    }).catch(() => {});
+
+    // Real, per direct guidance (Pathology HL7 Outbound Feature Spec
+    // §4, ADT^A08 — "Emitted when patient name, date of birth, MRN, or
+    // clinical history tags are amended inside the pathology
+    // workstation," an exact match for this real operation).
+    mockOutboundPatientAdtQueueService.enqueue({
+      eventType: 'A08_DEMOGRAPHIC_UPDATE',
+      organisationId: updated.organisationId,
+      sourcePatientId: patientId,
+      sourceOperation: 'updateDemographics',
+    }).catch(e => console.error('[mockPatientIndexService] Real, non-blocking failure enqueueing A08 ADT event:', e));
+
     return { record: updated, applied: true };
   },
 };

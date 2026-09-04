@@ -54,3 +54,33 @@ honest, self-documented confidence levels (explicitly flags which
 entries are "verified" against the Admin Guide vs. "placeholder"
 best-guesses for tabs that were never documented) — a genuinely mature
 pattern, not something needing correction here.
+
+**Real, per direct follow-up ("did we work on this yet? Per-facility
+Specimen Deficiencies" → the config search bug this surfaced): five
+stale entries removed, one added.** Five `'verified'`-confidence
+entries (LIS Integration Enabled/Endpoint/Owns Case Statuses, Allow
+Post-Final Actions, Identifier Formats) pointed at screens confirmed
+genuinely deleted (`components/Config/System/README.md`'s own
+correction has the full account) — "verified" here meant grounded in
+the Admin Guide at the time it was written, not a guarantee it stayed
+current as the app changed underneath it. A new `sys-deficiencies`
+entry was added — Specimen Deficiencies had zero index entry despite
+being a real, live, built screen. This pass was deliberately scoped
+to these six changes, not a full rebuild against the current nav —
+this file's own maturity claim above still needs re-checking
+periodically, not just trusted going forward.
+
+**Real, per direct follow-up ("the top level search in config found
+the entry, but when clicked on, it did not go to the setting"):
+`ConfigSearchEntry` gained an optional `section` field.** Every
+result previously navigated to the right top-level tab only — for
+`system` (30+ sections), that usually landed nowhere near the actual
+setting. `section` carries the exact `SystemSection` id
+(`Config/System/index.tsx`'s own type) for entries with a confirmed
+mapping — `sys-specimens`/`sys-subspecialties`/`sys-terminology`/
+`sys-physicians`/`sys-flags`/`sys-delegation-types`/`sys-deficiencies`
+all set it now. Left deliberately unset for `sys-jurisdiction`/
+`sys-info` — neither is a real `SystemSection` sidebar item, and
+guessing one would be worse than the honest tab-only fallback both
+already had. See `components/Config/Search/README.md` for the
+consuming side of this fix.

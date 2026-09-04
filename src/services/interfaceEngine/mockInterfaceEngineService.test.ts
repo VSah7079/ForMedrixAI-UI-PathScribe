@@ -1,5 +1,5 @@
 // src/services/interfaceEngine/mockInterfaceEngineService.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mockInterfaceEngineService } from './mockInterfaceEngineService';
 import type { OrderCreationEventPayload } from './IInterfaceEngineService';
 
@@ -10,6 +10,14 @@ beforeEach(() => {
     setItem: (k: string, v: string) => { store[k] = v; },
     removeItem: (k: string) => { delete store[k]; },
   };
+  // Real, per direct guidance (real outbound HTTP dispatch transport):
+  // postOrderCreated now genuinely dispatches — mocked here by default
+  // to a real success response, so every existing test below stays
+  // focused on its own real, original concern (idempotency, org
+  // scoping, ordering) without also depending on network reachability.
+  // The two new tests further down override this to prove the real
+  // success/failure paths specifically.
+  vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 });
 
 function makePayload(overrides: Partial<OrderCreationEventPayload> = {}): OrderCreationEventPayload {
@@ -71,5 +79,35 @@ describe('mockInterfaceEngineService — real feature, per direct follow-up: the
     await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-second' }));
     const result = await mockInterfaceEngineService.listDispatchedEvents('ORG-A');
     if (result.ok) expect(result.data.map(e => e.messageId)).toEqual(['evt-second', 'evt-first']);
+  });
+
+  it('real, per direct guidance (real outbound HTTP dispatch transport): postOrderCreated genuinely dispatches the real payload to the real receiving endpoint', async () => {
+    const fetchMock = vi.mocked(global.fetch);
+    fetchMock.mockClear(); // real, needed: earlier tests in this file also trigger real dispatch calls now
+    const result = await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-dispatch-test' }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.delivered).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const sentBody = JSON.parse((requestInit as RequestInit).body as string);
+    expect(sentBody.transactionType).toBe('ORDER_CREATED');
+    expect(sentBody.queueEntryId).toBe('evt-dispatch-test');
+    expect(sentBody.payload.messageId).toBe('evt-dispatch-test');
+  });
+
+  it('real, per direct guidance: a genuine dispatch failure reports delivered: false with the real error, not a silently-swallowed success', async () => {
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'Unknown transactionType' }), { status: 422 }));
+    const result = await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-dispatch-fail' }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.delivered).toBe(false);
+    expect(result.data.error).toContain('Unknown transactionType');
+    // Real, per direct guidance: a real dispatch failure still means
+    // the case-creation trigger itself succeeded — the event was
+    // genuinely recorded locally (real idempotency/inspection intact)
+    // even though the real, external dispatch attempt failed.
+    const listResult = await mockInterfaceEngineService.listDispatchedEvents('ORG-A');
+    if (listResult.ok) expect(listResult.data.some(e => e.messageId === 'evt-dispatch-fail')).toBe(true);
   });
 });

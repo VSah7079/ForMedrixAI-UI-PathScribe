@@ -50,6 +50,7 @@ export const mockFppeAssignmentService: IFppeAssignmentService = {
       provisionalUserName: input.provisionalUserName,
       proctorUserId: input.proctorUserId,
       proctorUserName: input.proctorUserName,
+      facilityId: input.facilityId,
       subspecialtyId: input.subspecialtyId,
       startedAt: new Date().toISOString(),
       endCondition: input.endCondition,

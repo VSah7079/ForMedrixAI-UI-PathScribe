@@ -169,12 +169,24 @@ input[type="date"] { color-scheme: dark; }
 /* Background image layer */
 .ps-page-bg {
   position: absolute;
-  inset: 0;
+  /* Real, per direct UI-review feedback ("Darken and Blur the Main
+     Background Image"): inset extended beyond the viewport (rather
+     than 0) so the added blur below doesn't sample past the
+     element's own edge and leave a visible, unblurred light fringe
+     at the page boundary — .ps-page's own overflow: hidden clips the
+     overflow safely, no layout/scrollbar impact. */
+  inset: -40px;
   background-image: url(/main_background.webp);
   background-size: cover;
   background-position: center;
   z-index: 0;
-  filter: brightness(0.4) contrast(1.1);
+  /* Real, per direct UI-review feedback: darkened further (0.4 ->
+     0.3) and blurred (new) — the stock photo's own bright highlights
+     and distinct geometric shapes (keyboards, dark monitors) fight
+     the cards sitting on top of it otherwise. blur(10px) softens
+     shapes into an atmosphere rather than recognizable objects,
+     without going so far the image reads as an abstract smear. */
+  filter: brightness(0.3) contrast(1.1) blur(10px);
 }
 
 /* Gradient overlay over background */
@@ -450,7 +462,7 @@ input[type="date"] { color-scheme: dark; }
 .ps-modal-title {
   font-size: 20px;
   font-weight: 800;
-  color: #0f172a;
+  color: #e2e8f0;
   letter-spacing: -0.3px;
   margin: 0;
 }
@@ -843,7 +855,7 @@ input[type="date"] { color-scheme: dark; }
 .ps-btn-pill {
   padding: 7px 16px;
   background: #0ea5e9;
-  color: #0f172a;
+  color: #e2e8f0;
   border: none;
   border-radius: 999px;
   font-weight: 600;
@@ -878,7 +890,7 @@ input[type="date"] { color-scheme: dark; }
 .ps-filter-tab.active {
   background: var(--ps-teal);
   border-color: var(--ps-teal);
-  color: #000;
+  color: #e2e8f0;
 }
 
 /* Icon-only round button */
@@ -1599,7 +1611,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-msg-footer-edit-row { display: flex; justify-content: space-between; align-items: center; }
 .ps-msg-footer-readall-btn { background: none; border: none; color: #0891B2; cursor: pointer; font-size: 14px; padding: 0; }
 .ps-msg-footer-deleteall-btn { background: none; border: none; cursor: pointer; color: #EF4444; font-size: 14px; font-weight: 600; padding: 0; }
-.ps-msg-footer-deleteall-btn:disabled { cursor: default; color: #1e293b; }
+.ps-msg-footer-deleteall-btn:disabled { cursor: default; color: #94a3b8; }
 .ps-msg-footer-deleteall-btn--centered { display: block; margin: 0 auto; }
 .ps-msg-footer-empty-row { display: flex; justify-content: center; }
 .ps-msg-footer-normal-row { display: flex; align-items: center; gap: 8px; }
@@ -2319,7 +2331,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 /* Field value */
 .ps-field-value {
   font-size: 14px;
-  color: #0f172a;
+  color: #e2e8f0;
   line-height: 1.5;
 }
 
@@ -3407,7 +3419,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
-.ps-msg-sidebar {
+.ps-msg-legacy-sidebar {
   width: 300px;
   min-width: 300px;
   display: flex;
@@ -3456,7 +3468,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
 }
 
-.ps-msg-header-actions {
+.ps-msg-legacy-header-actions {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -3706,7 +3718,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   overflow: hidden;
 }
 
-.ps-msg-thread-header {
+.ps-msg-legacy-thread-header {
   padding: 16px 22px;
   border-bottom: 1px solid var(--msg-border);
   flex-shrink: 0;
@@ -3716,7 +3728,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   gap: 16px;
 }
 
-.ps-msg-thread-subject {
+.ps-msg-legacy-thread-subject {
   font-size: 16px;
   font-weight: 700;
   color: #e8f0fc;
@@ -4999,7 +5011,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-hb-accession-number {
   font-size: 22px;
   font-weight: 800;
-  color: #0f172a;
+  color: #e2e8f0;
   letter-spacing: -0.5px;
   line-height: 1;
 }
@@ -5053,7 +5065,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-hb-field-value {
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
+  color: #94a3b8;
 }
 
 .ps-hb-field-value--lg {
@@ -5120,7 +5132,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 }
 
 .ps-hb-step-label--completed { color: #94a3b8; }
-.ps-hb-step-label--current   { color: #1e293b; font-weight: 600; }
+.ps-hb-step-label--current   { color: #94a3b8; font-weight: 600; }
 .ps-hb-step-label--pending   { color: #94a3b8; }
 .ps-hb-step-label--alert     { color: #F59E0B; }
 
@@ -5324,6 +5336,14 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 /* ── Status dots ─────────────────────────────────────────── */
 .wl-status-dot  { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .wl-urgent-dot  { width: 6px; height: 6px; border-radius: 50%; background: #EF4444; flex-shrink: 0; display: inline-block; animation: urgentPulse 2s ease-in-out infinite; }
+/* Real, per direct guidance (PS-105) — same size/shape convention as
+   wl-urgent-dot, distinct color family so the two are never confused
+   at a glance. No pulse animation: unlike STAT urgency (a real, active
+   TAT clock), a confirmed abnormal finding is a static fact once
+   recorded, not something demanding continuous visual attention. */
+.wl-abnormal-dot--Abnormal  { width: 6px; height: 6px; border-radius: 50%; background: #F59E0B; flex-shrink: 0; display: inline-block; }
+.wl-abnormal-dot--Critical  { width: 6px; height: 6px; border-radius: 50%; background: #DC2626; flex-shrink: 0; display: inline-block; }
+.wl-abnormal-dot--Malignant { width: 6px; height: 6px; border-radius: 50%; background: #991B1B; flex-shrink: 0; display: inline-block; box-shadow: 0 0 0 1.5px rgba(153,27,27,0.35); }
 @keyframes urgentPulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
 /* ── Flags & specimens ───────────────────────────────────── */
@@ -7644,7 +7664,12 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
    ───────────────────────────────────────────────────────────── */
 .ps-search-page-root {
   position: relative; width: 100%; height: 100%;
-  background-color: #000; color: #fff;
+  /* Real, per direct UI-review follow-up ("Fix the root"):
+     background-color/color removed — this used to hardcode #000/#fff,
+     a third, different color pairing than either AppShell's own
+     .ps-app-root (now the single source of truth) or this app's own
+     text-color tokens. Falls through to AppShell's real background/
+     color now, matching every other consistent page. */
   font-family: 'Inter', sans-serif;
   display: flex; flex-direction: column; overflow: hidden;
   transition: opacity 0.5s ease;
@@ -7660,17 +7685,10 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
    by the wrapper's own overflow:hidden, not by anything inside this
    page's tree, which is why no fix inside SearchPage.tsx itself ever
    resolved it. width changed from 100vw to 100% for the same reason. */
-.ps-search-bg-image {
-  position: absolute; inset: 0;
-  background-image: url(/main_background.jpg);
-  background-size: cover; background-position: center;
-  z-index: 0; filter: brightness(0.3) contrast(1.1);
-}
-.ps-search-bg-gradient {
-  position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, #000 100%);
-  z-index: 1;
-}
+/* Real, per direct UI-review follow-up ("Fix the root"):
+   .ps-search-bg-image/.ps-search-bg-gradient deleted entirely — this
+   page's own competing background image no longer renders (JSX
+   updated in the same pass); these rules had no other consumer. */
 .ps-search-shell {
   position: relative; z-index: 10;
   display: grid; grid-template-rows: auto 1fr;
@@ -7779,7 +7797,16 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-iexc-review-btn { border: none; cursor: pointer; font: inherit; }
 .ps-iexc-review-btn:hover { filter: brightness(1.2); }
 
-.ps-search-sidebar     { flex-shrink:0; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; min-height:0; position:relative; }
+/* padding-bottom added - real, per direct feedback: the sticky Clear/
+   Search bar (bottom:0 within .ps-search-form, which fills this
+   sidebar via flex:1) had zero breathing room below it, sitting flush
+   against this sidebar's own outer border - looked visually cramped.
+   Safe as padding, not margin: doesn't risk the same overflow:hidden
+   clipping the earlier .ps-search-form fix addressed - this just
+   reduces the real content area available to the form slightly,
+   rather than pushing this box's own outer edge further than its
+   real parent (.ps-search-row) allows. */
+.ps-search-sidebar     { flex-shrink:0; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; min-height:0; position:relative; padding-bottom:10px; }
 .ps-search-sidebar.expanded  { width: 520px; }
 .ps-search-sidebar.collapsed { width: 56px; overflow-y: hidden; }
 /* width now set via .expanded/.collapsed modifier classes below, not a
@@ -7833,7 +7860,18 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 /* KEY FIX: min-height:0 on the form ensures flex children (scrollable area +
    action buttons) can distribute height correctly. Without it the form
    overflows the aside and the action buttons are clipped. */
-.ps-search-form        { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+/* overflow-y changed from hidden to auto - same real bug, same real
+   fix already applied to .ps-search-sidebar/.ps-search-results-pane
+   during the original height-truncation investigation (see their own
+   comments), just missed here. The outer sidebar being scrollable
+   doesn't help if this inner element - the one that actually holds
+   the 14 real filter sections AND the Clear/Search buttons - clips
+   its own content at its own boundary first. Confirmed directly: at
+   100% zoom, with enough filter sections active, the buttons (last
+   in the form) were being clipped out of view entirely, with no way
+   to reach them. overflow-x stays hidden, same reasoning as the
+   sibling fixes - no horizontal scrollbar needed here. */
+.ps-search-form        { flex:1; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; min-height:0; }
 
 /* ── Date section ─────────────────────────────────────────── */
 .ps-search-date-section{ padding:10px 16px 8px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
@@ -7848,7 +7886,17 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-search-filter-scroll { flex:1; min-height:0; overflow-y:auto; /* auto = bar only when content overflows */ padding:6px 12px 0; display:flex; flex-direction:column; gap:5px; scrollbar-width:thin; scrollbar-color:rgba(148,163,184,0.15) transparent; }
 
 /* ── Action buttons (always pinned at bottom) ─────────────── */
-.ps-search-actions     { padding:10px 16px 12px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0; display:flex; gap:8px; }
+/* position: sticky/bottom:0 + the same near-solid background+blur
+   combination .wl-thead already established for exactly this same
+   real problem (a sticky element needing to visually separate from
+   content scrolling underneath it) - real, per direct usability
+   feedback: the buttons being reachable via scroll (the earlier
+   overflow fix) wasn't enough on its own - with 14+ real filter
+   sections above them, a user had to scroll every single time just
+   to reach Search. Now pinned to the bottom of the scrollable filter
+   area regardless of scroll position - shared by both real consumers
+   of .ps-search-actions (BillingLogsSection.tsx, SearchPage.tsx). */
+.ps-search-actions     { padding:10px 16px 12px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0; display:flex; gap:8px; position:sticky; bottom:0; background:rgba(13,20,38,0.97); backdrop-filter:blur(8px); z-index:2; }
 .ps-search-btn-clear   { flex:1; border-radius:8px; border:1px solid rgba(148,163,184,0.3); background:transparent; color:#64748b; padding:7px 8px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:border-color 0.15s, color 0.15s; }
 .ps-search-btn-clear:hover { border-color:rgba(148,163,184,0.5); color:#94a3b8; }
 .ps-search-btn-submit  { flex:2; border-radius:8px; border:none; background:#22c55e; color:#022c22; padding:7px 8px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; transition:background 0.15s; }
@@ -7882,7 +7930,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-search-results     { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; }
 .ps-search-results-bar { padding:9px 20px; flex-shrink:0; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .ps-search-results-body{ flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
-.ps-search-no-results  { display:flex; align-items:center; justify-content:center; height:100%; color:#1e293b; font-size:13px; }
+.ps-search-no-results  { display:flex; align-items:center; justify-content:center; height:100%; color:#94a3b8; font-size:13px; }
 .ps-search-export-btn  { border:1px solid rgba(148,163,184,0.2); background:transparent; color:#64748b; border-radius:6px; padding:3px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
 
 /* ============================================================
@@ -11091,7 +11139,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch-sec-hdr:hover .ps-orch-chev { color: #64748b; }
 .ps-orch-sec-accent        { width: 3px; height: 16px; flex-shrink: 0; border-radius: 0; }
 .ps-orch-sec-name          { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; }
-.ps-orch-chev              { font-size: 8px; color: #1e293b; transition: transform 0.2s; flex-shrink: 0; }
+.ps-orch-chev              { font-size: 8px; color: #94a3b8; transition: transform 0.2s; flex-shrink: 0; }
 .ps-orch-chev--open        { transform: rotate(90deg); }
 .ps-orch-regen-btn         { font-size: 10px; color: #94a3b8; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s; font-family: inherit; }
 .ps-orch-regen-btn:hover   { color: #0891B2; }
@@ -11110,7 +11158,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 
 /* Section body */
 .ps-orch-sec-body          { padding-top: 12px; }
-.ps-orch-hint              { font-size: 10px; color: #1e293b; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.ps-orch-hint              { font-size: 10px; color: #94a3b8; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
 
 /* Pending draft banner */
 .ps-orch-pending-banner    { background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.2); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -11121,7 +11169,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 
 /* Synoptic locked block */
 .ps-orch-synoptic-block    { background: rgba(16,185,129,0.03); border: 1px solid rgba(16,185,129,0.15); border-radius: 6px; padding: 12px 14px; color: #cbd5e1; font-size: 13px; line-height: 1.8; font-family: 'Georgia','Times New Roman',serif; position: relative; }
-.ps-orch-synoptic-lock     { position: absolute; bottom: 8px; right: 10px; font-size: 9px; color: #1e3a2f; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; gap: 4px; }
+.ps-orch-synoptic-lock     { position: absolute; bottom: 8px; right: 10px; font-size: 9px; color: #34d399; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; gap: 4px; }
 .ps-orch-edit-synoptic-btn { margin-top: 8px; font-size: 10px; color: #0891B2; background: rgba(8,145,178,0.1); border: 1px solid rgba(8,145,178,0.25); border-radius: 4px; padding: 3px 10px; cursor: pointer; transition: background 0.15s; font-family: inherit; }
 .ps-orch-edit-synoptic-btn:hover { background: rgba(8,145,178,0.2); }
 
@@ -11135,7 +11183,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch-empty-title       { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 10px; }
 .ps-orch-empty-body        { font-size: 12px; color: #94a3b8; max-width: 300px; line-height: 1.75; }
 .ps-orch-empty-cta         { color: #0891B2; font-weight: 600; }
-.ps-orch-empty-hint        { margin-top: 14px; font-size: 11px; color: #1e293b; line-height: 1.7; max-width: 280px; }
+.ps-orch-empty-hint        { margin-top: 14px; font-size: 11px; color: #94a3b8; line-height: 1.7; max-width: 280px; }
 
 /* ── OrchestratorReportPanel v2 — white canvas on dark chrome ─────────────── */
 @keyframes ps-orch2-pulse  { 0%,100%{opacity:1} 50%{opacity:0.2} }
@@ -11150,7 +11198,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch2-empty-title      { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 10px; }
 .ps-orch2-empty-body       { font-size: 12px; color: #94a3b8; max-width: 300px; line-height: 1.75; }
 .ps-orch2-empty-cta        { color: #38bdf8; font-weight: 600; }
-.ps-orch2-empty-hint       { margin-top: 14px; font-size: 11px; color: #1e293b; line-height: 1.7; max-width: 280px; }
+.ps-orch2-empty-hint       { margin-top: 14px; font-size: 11px; color: #94a3b8; line-height: 1.7; max-width: 280px; }
 
 /* Left nav */
 .ps-orch2-nav              { width: 176px; flex-shrink: 0; border-right: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; }
@@ -11167,7 +11215,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch2-nav-foot         { padding: 10px 12px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
 .ps-orch2-pbar             { height: 3px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; margin-bottom: 5px; }
 .ps-orch2-pfill            { height: 100%; background: #0891B2; border-radius: 99px; transition: width 0.4s; }
-.ps-orch2-plabel           { font-size: 10px; color: #1e293b; }
+.ps-orch2-plabel           { font-size: 10px; color: #94a3b8; }
 
 /* Canvas wrap — dark surround with white paper centred inside */
 .ps-orch2-canvas-wrap      { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #1a2234; }
@@ -11186,7 +11234,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 /* Letterhead */
 .ps-orch2-letterhead       { margin-bottom: 28px; }
 .ps-orch2-letterhead-left  { display: flex; flex-direction: column; gap: 6px; }
-.ps-orch2-lh-acc           { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 1px; font-family: 'Georgia','Times New Roman',serif; }
+.ps-orch2-lh-acc           { font-size: 20px; font-weight: 700; color: #e2e8f0; letter-spacing: 1px; font-family: 'Georgia','Times New Roman',serif; }
 .ps-orch2-lh-fields        { display: flex; flex-wrap: wrap; gap: 4px 20px; }
 .ps-orch2-lh-val           { font-size: 12px; color: #374151; }
 .ps-orch2-lh-key           { font-weight: 700; color: #0891B2; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; margin-right: 5px; }
@@ -11789,7 +11837,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch4-ph-accession {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
   letter-spacing: -0.01em;
   margin-bottom: 10px;
   font-family: 'Georgia', serif;
@@ -11813,7 +11861,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 
 .ps-orch4-ph-val {
   font-size: 13px;
-  color: #1e293b;
+  color: #94a3b8;
   font-weight: 500;
 }
 
@@ -11916,7 +11964,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 .ps-orch3-empty-title       { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 10px; }
 .ps-orch3-empty-body        { font-size: 12px; color: #94a3b8; max-width: 300px; line-height: 1.75; }
 .ps-orch3-empty-cta         { color: #38bdf8; font-weight: 600; }
-.ps-orch3-empty-hint        { margin-top: 14px; font-size: 11px; color: #1e293b; line-height: 1.7; max-width: 280px; }
+.ps-orch3-empty-hint        { margin-top: 14px; font-size: 11px; color: #94a3b8; line-height: 1.7; max-width: 280px; }
 
 /* Status bar */
 .ps-orch3-statusbar         { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; min-height: 34px; gap: 12px; }
@@ -11942,7 +11990,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
 
 /* Letterhead */
 .ps-orch3-letterhead        { margin-bottom: 24px; }
-.ps-orch3-lh-acc            { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 1px; font-family: 'Georgia','Times New Roman',serif; margin-bottom: 6px; }
+.ps-orch3-lh-acc            { font-size: 20px; font-weight: 700; color: #e2e8f0; letter-spacing: 1px; font-family: 'Georgia','Times New Roman',serif; margin-bottom: 6px; }
 .ps-orch3-lh-fields         { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-bottom: 12px; }
 .ps-orch3-lh-key            { font-size: 10px; font-weight: 700; color: #0891B2; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 4px; }
 .ps-orch3-lh-val            { font-size: 12px; color: #374151; margin-right: 12px; }
@@ -12007,6 +12055,11 @@ h3[data-section-id]:first-child {
 .ps-rr-template         { font-size: 12px; color: #38bdf8; }
 .ps-rr-note             { font-size: 11px; color: #aab4c4; font-style: italic; }
 .ps-rr-note--spaced     { margin-bottom: 8px; }
+/* Real, new — per direct guidance ("Routing Rules should also be tied
+   to a Performing Lab facility"): the Performing Lab hint text in the
+   rule modal, and the small lab badge shown on each rule row. */
+.ps-rr-lab-hint         { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.ps-rr-lab-badge        { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(130,145,168,0.13); color: #8291a8; border: 1px solid rgba(130,145,168,0.27); }
 .ps-rr-row-actions      { display: flex; align-items: center; gap: 6px; opacity: 0; transition: opacity 0.15s; }
 .ps-rr-row:hover .ps-rr-row-actions { opacity: 1; }
 .ps-rr-toggle           { font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #94a3b8; cursor: pointer; font-family: inherit; }
@@ -12039,7 +12092,7 @@ h3[data-section-id]:first-child {
 .ps-orch3-tmpl-bar-left      { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ps-orch3-tmpl-bar-right     { display: flex; align-items: center; gap: 6px; }
 .ps-orch3-tmpl-label         { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
-.ps-orch3-tmpl-name          { font-size: 12px; font-weight: 600; color: #0f172a; }
+.ps-orch3-tmpl-name          { font-size: 12px; font-weight: 600; color: #e2e8f0; }
 .ps-orch3-tmpl-by            { font-size: 10px; color: #9ca3af; font-style: italic; }
 .ps-orch3-tmpl-by--override  { color: #f59e0b; font-style: normal; font-weight: 600; }
 .ps-orch3-tmpl-reset         { font-size: 11px; color: #94a3b8; background: none; border: 1px solid #e5e7eb; border-radius: 4px; padding: 3px 8px; cursor: pointer; font-family: inherit; }
@@ -12054,7 +12107,7 @@ h3[data-section-id]:first-child {
 .ps-orch3-tmpl-option:hover  { background: #f9fafb; }
 .ps-orch3-tmpl-option--active{ background: #eff6ff; }
 .ps-orch3-tmpl-option:last-child { border-bottom: none; }
-.ps-orch3-tmpl-option-name   { font-size: 12px; font-weight: 500; color: #1f2937; }
+.ps-orch3-tmpl-option-name   { font-size: 12px; font-weight: 500; color: #94a3b8; }
 .ps-orch3-tmpl-option-meta   { font-size: 10px; color: #9ca3af; }
 
 /* ── Validation Studies ──────────────────────────────────────────────────── */
@@ -12253,7 +12306,7 @@ h3[data-section-id]:first-child {
 .ps-rd-tri-none                  { border: 2px solid #374151; background: transparent; }
 .ps-rd-tri-some                  { border: 2px solid #8AB4F8; background: rgba(138,180,248,0.2); }
 .ps-rd-tri-all                   { border: 2px solid #8AB4F8; background: #8AB4F8; }
-.ps-rd-tri-check                 { color: #0d1117; font-weight: 900; }
+.ps-rd-tri-check                 { color: #e2e8f0; font-weight: 900; }
 .ps-rd-tri-dash                  { color: #8AB4F8; font-weight: 900; line-height: 1; }
 
 /* Client access tab */
@@ -12353,6 +12406,14 @@ h3[data-section-id]:first-child {
    elsewhere in this file for ps-conf-select/ps-specedit-input. */
 select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
+/* Real, new — per-role grouped sections (Staff member Organized under
+   Role). Each group gets its own header (role badge + real member
+   count) above its own table, rather than one flat table for every
+   staff member regardless of role. */
+.ps-st-role-group           { margin-bottom: 24px; }
+.ps-st-role-group-header    { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ps-st-role-group-count     { font-size: 12px; font-weight: 600; color: #9AA0A6; }
+
 /* Table */
 .ps-st-table-wrap           { border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; overflow: hidden; }
 .ps-st-table-scroll         { max-height: calc(100vh - 480px); overflow-y: auto; }
@@ -12372,6 +12433,12 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-st-name                 { font-size: 14px; font-weight: 600; color: #DEE4E7; }
 .ps-st-credentials          { font-size: 11px; color: #64748b; margin-left: 6px; }
 .ps-st-peds-badge           { font-size: 10px; font-weight: 700; margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+/* Real, new — small "has more than one role" marker, distinct from
+   ps-st-peds-badge's amber (a clinical-access signal) since this is a
+   neutral, informational one. Deliberately just a count ("+1"), never
+   the role names inline — those show on hover via the real title
+   attribute, and don't belong cluttering every row that has one. */
+.ps-st-multirole-badge      { font-size: 10px; font-weight: 700; margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: rgba(130,145,168,0.13); color: #8291a8; border: 1px solid rgba(130,145,168,0.27); cursor: default; }
 
 /* Role badges in table */
 .ps-st-role-cell            { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
@@ -12973,7 +13040,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orch4-ph-accession {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
   letter-spacing: -0.01em;
   margin-bottom: 10px;
   font-family: 'Georgia', serif;
@@ -12997,7 +13064,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-orch4-ph-val {
   font-size: 13px;
-  color: #1e293b;
+  color: #94a3b8;
   font-weight: 500;
 }
 
@@ -13269,7 +13336,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orch4-inst-name {
   font-size: 13px;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
   font-family: 'Georgia', serif;
 }
 
@@ -13408,7 +13475,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orch4-page-footer--dark .ps-orch4-footer-patient    { color: #cbd5e1; }
 .ps-orch4-page-footer--dark .ps-orch4-footer-dob,
 .ps-orch4-page-footer--dark .ps-orch4-footer-acc        { color: #64748b; }
-.ps-orch4-page-footer--dark .ps-orch4-footer-sep        { color: #1e293b; }
+.ps-orch4-page-footer--dark .ps-orch4-footer-sep        { color: #94a3b8; }
 .ps-orch4-page-footer--dark .ps-orch4-footer-confidential { color: #94a3b8; }
 .ps-orch4-page-footer--dark .ps-orch4-footer-page       { color: #94a3b8; }
 
@@ -13418,7 +13485,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   .ps-orch4-page-footer  { border-top: 1px solid #ccc !important; background: white !important; position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px; }
   .ps-orch4-footer-patient,
   .ps-orch4-footer-dob,
-  .ps-orch4-footer-acc   { color: #333 !important; }
+  .ps-orch4-footer-acc   { color: #94a3b8 !important; }
   .ps-orch4-footer-confidential { color: #666 !important; }
   .ps-orch4-footer-page  { color: #666 !important; }
 }
@@ -13588,7 +13655,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orch4-inst-header--compact .ps-orch4-inst-name {
   font-size: 11px;
   font-weight: 700;
-  color: #1e293b;
+  color: #94a3b8;
   white-space: nowrap;
 }
 
@@ -13629,7 +13696,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-name  { color: #94a3b8; }
 .ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-dept  { color: #94a3b8; }
 .ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-addr  { color: #94a3b8; }
-.ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-sep   { color: #1e293b; }
+.ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-sep   { color: #94a3b8; }
 .ps-orch4-inst-header--compact.ps-orch4-inst-header--dark .ps-orch4-inst-logo-text { color: #38bdf8; }
 
 /* LIS header collapse button */
@@ -14212,7 +14279,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   height: 100vh;
   background: #1a2332;
   font-family: 'Georgia', 'Times New Roman', serif;
-  color: #1a1a1a;
+  color: #e2e8f0;
 }
 
 .rp-topbar {
@@ -14400,7 +14467,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 
 .rp-inst-left { display: flex; flex-direction: column; gap: 2px; }
-.rp-inst-name { font-size: 13px; font-weight: 700; color: #0f172a; }
+.rp-inst-name { font-size: 13px; font-weight: 700; color: #e2e8f0; }
 .rp-inst-dept { font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.06em; font-family: sans-serif; }
 .rp-inst-addr, .rp-inst-phone { font-size: 10px; color: #64748b; font-family: sans-serif; }
 .rp-inst-right { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
@@ -14419,7 +14486,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .rp-accession {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
   letter-spacing: -0.01em;
 }
 
@@ -14441,7 +14508,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 
 .rp-field-key { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 1px; }
-.rp-field-val { font-size: 13px; color: #1e293b; font-weight: 500; }
+.rp-field-val { font-size: 13px; color: #94a3b8; font-weight: 500; }
 
 .rp-template-bar { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-family: sans-serif; }
 .rp-template-label { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
@@ -14455,7 +14522,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .rp-section-heading {
   display: flex; align-items: center; gap: 10px;
-  font-size: 13px; font-weight: 700; color: #0f172a;
+  font-size: 13px; font-weight: 700; color: #e2e8f0;
   text-transform: uppercase; letter-spacing: 0.06em;
   border-left: 3px solid #0891b2;
   padding: 8px 0 8px 12px; margin-bottom: 10px;
@@ -14470,7 +14537,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .rp-section-badge--edited   { background: rgba(139,92,246,0.1); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.25); }
 .rp-section-badge--ai       { background: rgba(8,145,178,0.08); color: #0891b2; border: 1px solid rgba(8,145,178,0.2); }
 
-.rp-section-body { font-size: 12pt; line-height: 1.7; color: #1a1a1a; padding-left: 15px; }
+.rp-section-body { font-size: 12pt; line-height: 1.7; color: #e2e8f0; padding-left: 15px; }
 .rp-section-body p { margin-bottom: 8pt; orphans: 3; widows: 3; white-space: pre-wrap; }
 .rp-section-empty { font-size: 11px; color: #94a3b8; font-style: italic; padding-left: 15px; font-family: sans-serif; }
 
@@ -15833,7 +15900,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmpla-warn-banner ul { margin: 6px 0 0 16px; padding: 0; }
 
 .ps-tmpla-desc        { margin-bottom: 24px; text-align: center; }
-.ps-tmpla-desc-title  { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.ps-tmpla-desc-title  { font-size: 20px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
 .ps-tmpla-desc-sub    { font-size: 13px; color: #64748b; }
 
 .ps-tmpla-page-label  { font-size: 11px; font-weight: 800; color: #64748b; letter-spacing: 0.08em;
@@ -15866,7 +15933,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmpla-body-row-index { font-size: 11px; font-weight: 700; color: #94a3b8; min-width: 20px; text-align: center; }
 .ps-tmpla-body-row-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
   background: #dcfce7; color: #166534; flex-shrink: 0; }
-.ps-tmpla-body-row-name  { flex: 1; font-size: 13px; font-weight: 600; color: #0f172a;
+.ps-tmpla-body-row-name  { flex: 1; font-size: 13px; font-weight: 600; color: #e2e8f0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps-tmpla-body-row-name--disabled { color: #94a3b8; text-decoration: line-through; }
 .ps-tmpla-body-row-toggle { background: none; border: none; cursor: pointer; font-size: 14px; color: #cbd5e1; flex-shrink: 0; }
@@ -15897,7 +15964,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmpla-slotrow-handle { color: #cbd5e1; font-size: 14px; flex-shrink: 0; cursor: default; }
 .ps-tmpla-slotrow-handle--draggable { cursor: grab; }
 .ps-tmpla-slotrow-info   { flex: 1; min-width: 0; }
-.ps-tmpla-slotrow-name   { font-size: 13px; font-weight: 600; color: #0f172a;
+.ps-tmpla-slotrow-name   { font-size: 13px; font-weight: 600; color: #e2e8f0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps-tmpla-slotrow-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 .ps-tmpla-slotrow-toggle  { background: none; border: none; cursor: pointer; padding: 4px 6px;
@@ -15959,10 +16026,10 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmpla-picker-modal { width: 560px; max-height: 70vh; background: #fff; border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; }
 .ps-tmpla-picker-header  { padding: 20px 24px 16px; border-bottom: 1px solid #e2e8f0; }
-.ps-tmpla-picker-title   { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.ps-tmpla-picker-title   { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
 .ps-tmpla-picker-subtitle { font-size: 12px; color: #64748b; margin-bottom: 12px; }
 .ps-tmpla-picker-search  { width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 7px;
-  border: 1.5px solid #e2e8f0; font-size: 13px; outline: none; color: #0f172a; font-family: inherit; }
+  border: 1.5px solid #e2e8f0; font-size: 13px; outline: none; color: #e2e8f0; font-family: inherit; }
 .ps-tmpla-picker-search:focus { border-color: #0891b2; }
 .ps-tmpla-picker-list    { flex: 1; overflow-y: auto; padding: 8px 12px; }
 .ps-tmpla-picker-loading,
@@ -15976,7 +16043,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmpla-picker-row-icon--footer { background: #faf5ff; color: #7c3aed; }
 .ps-tmpla-picker-row-icon--body   { background: #f0fdf4; color: #166534; }
 .ps-tmpla-picker-row-info { min-width: 0; flex: 1; }
-.ps-tmpla-picker-row-name { font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 2px; }
+.ps-tmpla-picker-row-name { font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 2px; }
 .ps-tmpla-picker-row-desc { font-size: 11px; color: #64748b; line-height: 1.4; }
 .ps-tmpla-picker-row-status { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
   background: #f0fdf4; color: #166534; flex-shrink: 0; align-self: center; }
@@ -16071,7 +16138,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   justify-content: center; height: 100vh; background: #f8fafc;
   font-family: 'Inter','Segoe UI',system-ui,sans-serif; gap: 32px; }
 .ps-partb-picker-intro { text-align: center; }
-.ps-partb-picker-title { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.ps-partb-picker-title { font-size: 22px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
 .ps-partb-picker-sub   { font-size: 13px; color: #475569; }
 .ps-partb-picker-cards { display: flex; gap: 16px; }
 .ps-partb-picker-card  { width: 200px; padding: 28px 20px; border-radius: 14px;
@@ -16087,7 +16154,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-partb-picker-card-icon--header { color: #1e40af; }
 .ps-partb-picker-card-icon--body   { color: #166534; }
 .ps-partb-picker-card-icon--footer { color: #7c3aed; }
-.ps-partb-picker-card-title { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.ps-partb-picker-card-title { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
 .ps-partb-picker-card-desc  { font-size: 11px; color: #334155; line-height: 1.5; }
 .ps-partb-picker-back { background: none; border: none; color: #94a3b8; cursor: pointer;
   font-size: 13px; text-decoration: underline; font-family: inherit; }
@@ -16202,7 +16269,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tinsp-preview-label   { color: #475569; font-size: var(--lc-fontsize, 11px);
   font-weight: var(--lc-weight, 600); text-decoration: var(--lc-decoration, none);
   text-transform: var(--lc-transform, none); margin-bottom: 2px; flex-shrink: 0; }
-.ps-tinsp-preview-value   { font-size: 13px; color: #0f172a; }
+.ps-tinsp-preview-value   { font-size: 13px; color: #e2e8f0; }
 
 /* ============================================================
    PART LIBRARY CONFIG TAB — ps-plib-*
@@ -16287,6 +16354,10 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-plib-card__badge--draft     { background: rgba(234,179,8,0.16);  color: #facc15; }
 .ps-plib-card__badge--archived  { background: rgba(100,116,139,0.2); color: #b9c4d4; }
 .ps-plib-card__badge--builtin   { background: rgba(8,145,178,0.18);  color: #38bdf8; }
+/* Real, new — per direct guidance ("Parts Library... should also be
+   tied to a Performing Lab facility"). Neutral, not a status color —
+   this is informational (which lab, or Global), not a state signal. */
+.ps-plib-card__badge--lab       { background: rgba(130,145,168,0.13); color: #8291a8; border: 1px solid rgba(130,145,168,0.27); }
 
 .ps-plib-card__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 .ps-plib-card__btn { font-size: 11.5px; font-weight: 600; padding: 5px 12px; border-radius: 6px;
@@ -16482,7 +16553,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   background: color-mix(in srgb, var(--node-color) 13%, transparent); color: var(--node-color); }
 
 .ps-tc-node-label-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.ps-tc-node-label { font-size: 12px; font-weight: 600; color: #1e293b; overflow: hidden;
+.ps-tc-node-label { font-size: 12px; font-weight: 600; color: #94a3b8; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .ps-tc-node-label--selected { color: var(--node-color); }
 
@@ -16551,14 +16622,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tpp-field-label  { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase;
   letter-spacing: 0.04em; flex-shrink: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
-.ps-tpp-field-value  { font-size: 12px; color: #0f172a; line-height: 1.4; flex: 1; min-width: 0; }
+.ps-tpp-field-value  { font-size: 12px; color: #e2e8f0; line-height: 1.4; flex: 1; min-width: 0; }
 
 /* ── Static label variants (printed headings) ────────────────── */
 .ps-tpp-static-label { display: block; }
-.ps-tpp-static-label--h1      { font-size: 15px; font-weight: 700; color: #0f172a; margin: 10px 0 3px; }
-.ps-tpp-static-label--h2      { font-size: 13px; font-weight: 700; color: #1e293b; margin: 8px 0 3px; }
+.ps-tpp-static-label--h1      { font-size: 15px; font-weight: 700; color: #e2e8f0; margin: 10px 0 3px; }
+.ps-tpp-static-label--h2      { font-size: 13px; font-weight: 700; color: #94a3b8; margin: 8px 0 3px; }
 .ps-tpp-static-label--h3      { font-size: 12px; font-weight: 600; color: #94a3b8; margin: 6px 0 2px; }
-.ps-tpp-static-label--body    { font-size: 12px; color: #1e293b; margin: 2px 0; }
+.ps-tpp-static-label--body    { font-size: 12px; color: #94a3b8; margin: 2px 0; }
 .ps-tpp-static-label--caption { font-size: 10px; color: #64748b; margin: 2px 0; font-style: italic; }
 .ps-tpp-static-label--bold    { font-weight: 700; }
 .ps-tpp-static-label--italic  { font-style: italic; }
@@ -16567,8 +16638,8 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tpp-paragraph       { margin-bottom: 10px; }
 .ps-tpp-paragraph-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
   letter-spacing: 0.05em; margin-bottom: 4px; }
-.ps-tpp-paragraph-text  { font-size: 12px; color: #0f172a; line-height: 1.7; white-space: pre-wrap; }
-.ps-tpp-richtext        { color: #0f172a; line-height: 1.7; margin-bottom: 8px; }
+.ps-tpp-paragraph-text  { font-size: 12px; color: #e2e8f0; line-height: 1.7; white-space: pre-wrap; }
+.ps-tpp-richtext        { color: #e2e8f0; line-height: 1.7; margin-bottom: 8px; }
 .ps-tpp-no-content      { color: #94a3b8; font-style: italic; }
 .ps-tpp-no-items        { font-size: 11px; color: #94a3b8; font-style: italic; margin-bottom: 8px; }
 .ps-tpp-repeat-item     { margin-bottom: 12px; }
@@ -16595,7 +16666,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tpp-print-header-logo   { font-size: 15px; font-weight: 800; color: #0891b2; }
 .ps-tpp-print-header-sub    { font-size: 10px; color: #94a3b8; margin-top: 1px; }
 .ps-tpp-print-header-right  { text-align: right; }
-.ps-tpp-print-header-accession { font-size: 12px; font-weight: 700; color: #0f172a; }
+.ps-tpp-print-header-accession { font-size: 12px; font-weight: 700; color: #e2e8f0; }
 .ps-tpp-print-header-patient   { font-size: 11px; color: #94a3b8; }
 .ps-tpp-print-footer { display: flex; justify-content: space-between; align-items: center;
   padding-top: 6px; margin-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #64748b; }
@@ -16673,7 +16744,16 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-accession-shell {
   height: 100%;
-  background-color: var(--ps-navy-base);
+  /* Real, per direct UI-review follow-up ("Fix the root"):
+     background-color removed — this used to hardcode
+     var(--ps-navy-base), one of two, subtly different navy shades
+     this app had drifted into (the other being AppShell.tsx's own,
+     now-removed inline #020617). Not overriding at all now means
+     this page falls through to AppShell's own real, corrected
+     .ps-app-root background, the same one Configuration/Quality
+     Assurance/Intraop Queue/Contribution already show — one real
+     source of truth instead of pages each trying to independently
+     match a moving target. */
   color: var(--ps-text-primary);
   overflow-y: auto;
 }
@@ -17406,7 +17486,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 
 /* ============================================================
-   CONFIGURATION — additions for Physicians / Specimen Categories
+   CONFIGURATION — additions for Physicians / Departments
    (migrated off the inline-style-constant pattern, off modalStyles.ts)
    ============================================================ */
 
@@ -17511,7 +17591,21 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-conf-table-scroll {
   max-height: calc(100vh - 480px);
   overflow-y: auto;
+  /* overflow-x added - real, safe addition: only ever shows a
+     horizontal scrollbar when a table's real content genuinely
+     exceeds its container width (e.g. BillingLogsSection.tsx's own
+     widened Detail column, below) - invisible/no-op for every other
+     real .ps-conf-table consumer whose columns already fit. */
+  overflow-x: auto;
 }
+
+/* Real, deliberately scoped to this one column - not a change to the
+   shared .ps-conf-th/.ps-conf-td classes themselves, which 31 real
+   tables across this app share. Per direct feedback: the Detail
+   column (charge RVU/rule-version detail, deficiency triggers, audit
+   event descriptions, etc.) was reading as too narrow to comfortably
+   read. */
+.ps-billinglog-detail-col { min-width: 340px; }
 
 .ps-conf-table {
   width: 100%;
@@ -17573,6 +17667,46 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   cursor: pointer; white-space: nowrap; text-decoration: underline;
 }
 .ps-conf-callout-banner-link:hover { color: #fbbf24; }
+
+/* Real, new — the Workstation & Hardware group's own facility
+   selector, per direct guidance. Deliberately its own, neutral
+   styling rather than reusing ps-conf-callout-banner as-is: that
+   class's amber/warning color language is right for an actionable
+   alert (an unmapped stub, an inherited-settings notice), but wrong
+   for a passive, always-present picker with nothing to warn about. */
+.ps-confsys-facility-selector {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--ps-conf-border);
+  justify-content: flex-start; gap: 10px;
+}
+.ps-confsys-facility-selector .ps-conf-callout-banner-text { color: var(--ps-conf-text-3); font-weight: 600; }
+.ps-confsys-facility-selector .ps-conf-select { width: auto; min-width: 220px; }
+
+/* Real, new — quiet, informational callout (as opposed to
+   ps-conf-callout-banner's prominent, actionable one above): a
+   numbered explainer sequence, first used by Case Routing's own
+   "how routing works" steps. Muted by default; each step's own tone
+   modifier is the only real color signal. */
+.ps-conf-callout {
+  padding: 16px 20px; margin-bottom: 16px; border-radius: 10px;
+  background: rgba(138, 180, 248, 0.04); border: 1px solid rgba(138, 180, 248, 0.12);
+}
+.ps-conf-callout-title {
+  font-size: 12px; font-weight: 700; color: #8AB4F8; margin-bottom: 12px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.ps-conf-callout-steps { display: flex; flex-direction: column; gap: 8px; }
+.ps-conf-callout-step { display: flex; align-items: center; gap: 10px; }
+.ps-conf-callout-step-num {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  font-size: 10px; font-weight: 700; color: var(--ps-conf-text-3);
+}
+.ps-conf-callout-step-label { font-size: 12px; }
+.ps-conf-callout-step-label--neutral { color: var(--ps-conf-text-3); }
+.ps-conf-callout-step-label--good { color: var(--ps-conf-green); }
+.ps-conf-callout-step-label--warn { color: var(--ps-conf-amber); }
+.ps-conf-callout-step-label--bad { color: #f87171; }
 
 .ps-conf-auto-note {
   font-size: 10px;
@@ -19298,12 +19432,23 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
    own toggle color) avoids the two being visually confused. */
 .ps-hb-status-pill.ps-case-status--pending-release { background: #eff6ff; border: 1px solid #93c5fd; }
 .ps-hb-status-pill.ps-case-status--amended         { background: #fff7ed; border: 1px solid #fdba74; }
+/* Real, per direct guidance ("Yes we should scope 'Return to
+   Trainee'/'Reject with Notes'"): deliberately deep brown, matching
+   WorklistPage.tsx/WorklistTable.tsx/SearchPage.tsx's own consistent
+   choice for this status — kept notably darker than pending-review's
+   own #92400e text color below (same broad family, real accessibility
+   risk not fully, rigorously verified here — no colorblind-simulation
+   tooling available in this pass, unlike the earlier session that did
+   verify pool/countersign/etc. with actual computed distances). Flagged
+   honestly rather than silently assumed fine. */
+.ps-hb-status-pill.ps-case-status--returned        { background: #fef3ec; border: 1px solid #d6a374; }
 
 .ps-hb-status-pill.ps-case-status--draft .ps-hb-status-dot          { background: #3b82f6; }
 .ps-hb-status-pill.ps-case-status--finalized .ps-hb-status-dot      { background: #22c55e; }
 .ps-hb-status-pill.ps-case-status--pending-review .ps-hb-status-dot { background: #f59e0b; }
 .ps-hb-status-pill.ps-case-status--pending-release .ps-hb-status-dot { background: #1C8DE3; }
 .ps-hb-status-pill.ps-case-status--amended .ps-hb-status-dot        { background: #f97316; }
+.ps-hb-status-pill.ps-case-status--returned .ps-hb-status-dot       { background: #78350F; }
 
 .ps-hb-status-pill.ps-case-status--draft .ps-hb-status-text,
 .ps-hb-confidence-pct.ps-case-status--draft          { color: #1d4ed8; }
@@ -19315,6 +19460,8 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-hb-confidence-pct.ps-case-status--pending-release { color: #1d4ed8; }
 .ps-hb-status-pill.ps-case-status--amended .ps-hb-status-text,
 .ps-hb-confidence-pct.ps-case-status--amended         { color: #c2410c; }
+.ps-hb-status-pill.ps-case-status--returned .ps-hb-status-text,
+.ps-hb-confidence-pct.ps-case-status--returned        { color: #78350F; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    SynopticReportPage.tsx — full inline-style cleanup.
@@ -20116,7 +20263,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-login-submit {
   background: #0891b2;
   border: 1.5px solid #0891b2;
-  color: #0b1120;
+  color: #e2e8f0;
   font-weight: 700;
   margin-top: 18px;
   transition: background 0.15s, border-color 0.15s, transform 0.05s;
@@ -21061,8 +21208,11 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #000;
-  color: #fff;
+  /* Real, per direct UI-review follow-up ("Fix the root"):
+     background-color/color removed — this used to hardcode #000/#fff,
+     the same drifted-color issue as .ps-search-page-root (see that
+     rule's own comment). Falls through to AppShell's real background/
+     color now, matching every other consistent page. */
   font-family: 'Inter', sans-serif;
   opacity: 0;
   transition: opacity 0.6s ease;
@@ -21071,21 +21221,10 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 .ps-auditlog-page--loaded { opacity: 1; }
 
-.ps-auditlog-bg {
-  position: absolute;
-  inset: 0;
-  background-image: url(/main_background.jpg);
-  background-size: cover;
-  background-position: center;
-  z-index: 0;
-  filter: brightness(0.3) contrast(1.1);
-}
-.ps-auditlog-bg-grad {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, #000 100%);
-  z-index: 1;
-}
+/* Real, per direct UI-review follow-up ("Fix the root"):
+   .ps-auditlog-bg/.ps-auditlog-bg-grad deleted entirely — this
+   page's own competing background image no longer renders (JSX
+   updated in the same pass); these rules had no other consumer. */
 .ps-auditlog-content { position: relative; z-index: 10; display: flex; flex-direction: column; height: 100%; }
 .ps-auditlog-main { flex: 1; min-height: 0; padding: 28px 40px 20px; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -21362,7 +21501,20 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   cursor: pointer;
   overflow: hidden;
   transition: all 0.3s ease;
-  background: rgba(255,255,255,0.02);
+  /* Real, per direct UI-review feedback ("Increase Tile Solidness &
+     Add Glass Frosting"): rgba(255,255,255,0.02) was so close to
+     invisible it gave the tile almost no foundation of its own
+     against a busy, moving background — background-color raised to a
+     real, visible tint, built from this app's own dark-navy surface
+     token (--ps-surface) rather than a generic white glass look, so
+     the frosting reads as this app's own material, not a borrowed
+     default. backdrop-filter is the actual "glass" part — blurs
+     whatever page background shows through the tile's own
+     semi-transparent fill, the same real technique behind every
+     genuine glassmorphism surface, not just a tinted overlay. */
+  background: rgba(13, 24, 41, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
@@ -21370,6 +21522,45 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   transform: translateY(-8px);
   border: 2px solid var(--card-accent);
   box-shadow: 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--card-accent-dim);
+  /* Real, per direct UI-review feedback ("enhance the hover
+     transition... a gentle background fill lift so hover feels
+     responsive and intentional"): pairs the existing translateY lift
+     with a real, visible fill-opacity increase — the tile gets
+     physically AND visually heavier at once, rather than the fill
+     staying static while only position/border/shadow change. */
+  background: rgba(13, 24, 41, 0.72);
+}
+
+/* Real, per direct UI-review follow-up ("Fix them all" — keyboard
+   accessibility): these cards previously had NO visible focus state
+   at all — :hover only, meaning a keyboard user tabbing through the
+   page got zero visual feedback about which card was selected, on
+   top of not being able to reach them at all before the same pass's
+   role/tabIndex/onKeyDown fix in Home.tsx. :focus-visible (not bare
+   :focus) so this only shows for real keyboard navigation, not a
+   mouse click — matches this rule's own real accent-color system
+   rather than a generic browser outline, since var(--card-accent) is
+   already the established "this card is active" signal .ps-home-card
+   --hovered uses. Real outline, not just box-shadow — outline draws
+   outside the card's own border-radius/overflow:hidden clipping,
+   staying visible regardless of where inside the card focus lands. */
+.ps-home-card:focus-visible {
+  outline: 3px solid var(--card-accent);
+  outline-offset: 2px;
+}
+
+/* Real, per direct UI-review follow-up ("Fix them all" — motion
+   sensitivity): the translateY lift and background-fill transition
+   above never checked prefers-reduced-motion at all — confirmed
+   directly, this was the ONLY real motion in the whole page besides
+   the two, unrelated PubMedTicker rules already scoped to it
+   elsewhere. Keeps the real, functional state change (border/
+   background/box-shadow still change on hover/focus, so a reduced-
+   motion user still gets clear feedback that a card is active) —
+   only the animated MOVEMENT itself is removed, not the feedback. */
+@media (prefers-reduced-motion: reduce) {
+  .ps-home-card { transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+  .ps-home-card--hovered { transform: none; }
 }
 
 .ps-home-card-image {
@@ -21385,7 +21576,35 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-home-card-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6), transparent); transition: background 0.3s ease; }
 .ps-home-card-text { position: relative; z-index: 2; height: 100%; padding: 30px; display: flex; flex-direction: column; justify-content: flex-end; }
 .ps-home-card-title { font-size: 28px; font-weight: 800; margin: 0; }
-.ps-home-card-desc { font-size: 14px; margin-top: 6px; opacity: 0.7; }
+.ps-home-card-desc {
+  font-size: 14px;
+  margin-top: 6px;
+  /* Real, per direct UI-review feedback ("Boost Idle Text Contrast"):
+     this used to be the inherited body color (--ps-text-primary,
+     #e2e8f0) dimmed via opacity: 0.7 — opacity lets whatever sits
+     behind the text (the busy background image, bleeding through the
+     tile's own semi-transparent fill) blend into and further wash
+     out the text itself, on top of the intended dimming. Replaced
+     with a real, solid color instead — --ps-text-muted (#94A3B8,
+     Slate 400, the exact value named in the request) — so the text's
+     own legibility stays constant regardless of what's rendering
+     underneath it, rather than compounding with the tile's own
+     transparency. */
+  color: var(--ps-text-muted);
+  /* Real, per direct UI-review follow-up ("Fix them all" — text
+     overflow risk): no overflow handling existed here at all, on a
+     fixed-height card (clamp(160px, 20vh, 200px)) with a grid that
+     can shrink cells to 260px wide — the longest real description
+     ("Deficiencies, Intraoperative Linkage, and Discordance &
+     Reconciliation reporting", Quality Assurance) had no graceful
+     fallback if it wrapped past the card's own bounds. Real,
+     standard multi-line clamp — 2 lines, ellipsis — rather than
+     letting text silently overflow or get clipped mid-character. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 .ps-home-footer {
   padding: 30px var(--ps-layout-padding-x);
@@ -21830,7 +22049,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-searchpage-cat-pill--active {
   background: var(--accent, #0891B2);
   outline-color: var(--accent, #0891B2);
-  color: #0f172a;
+  color: #e2e8f0;
 }
 .ps-searchpage-cat-pill--dim { opacity: 0.4; }
 
@@ -21958,6 +22177,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   color: #fde68a;
 }
 .ps-searchpage-date-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* Same real grid mechanics as .ps-searchpage-date-grid above, but for
+   two independent, fully-labeled fields side by side (each with its
+   own real SectionLabel) rather than a shared label with From/To
+   sub-labels underneath - real, per direct feedback: Type and Billing
+   Type's own real option values are short enough that stacking them
+   as two separate full-width rows wasted real vertical space in an
+   already-tall filter sidebar. */
+.ps-searchpage-inline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .ps-searchpage-date-label { font-size: 10px; color: #94a3b8; margin-bottom: 2px; transition: color 0.15s; }
 .ps-searchpage-date-label--active { color: #7dd3fc; }
 
@@ -21985,7 +22212,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 .ps-searchpage-identifier-clear:hover { background: rgba(255,255,255,0.16); color: #e2e8f0; }
 .ps-searchpage-identifier-clear + .ps-searchpage-identifier-badge { right: 30px; }
-.ps-searchpage-section-mb4 { margin-bottom: 4px; }
+/* margin-top added - real, per direct feedback: with no gap between
+   the form's own stacked field groups, a label sat visually touching
+   whatever field came before it, reading as cramped. margin-bottom
+   stays small/unchanged - that tight coupling between a label and its
+   OWN input below it is correct and intentional; the fix is real
+   separation from the PRECEDING field, not from this label's own
+   input. */
+.ps-searchpage-section-mb4 { margin-top: 12px; margin-bottom: 4px; }
 .ps-searchpage-section-mb6 { margin-bottom: 6px; }
 .ps-searchpage-section-mb8 { margin-bottom: 8px; }
 .ps-searchpage-mini-label {
@@ -22016,7 +22250,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-searchpage-summary-text { margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5; flex: 1; }
 .ps-searchpage-summary-part { color: #7dd3fc; font-weight: 500; }
 .ps-searchpage-summary-part--first { color: #cbd5e1; font-weight: 400; }
-.ps-searchpage-summary-sep { color: #1e293b; margin: 0 5px; }
+.ps-searchpage-summary-sep { color: #94a3b8; margin: 0 5px; }
 .ps-searchpage-summary-empty { margin: 0; font-size: 12px; color: #94a3b8; }
 .ps-searchpage-summary-cta { color: #22c55e; }
 .ps-searchpage-result-count { font-size: 12px; color: #94a3b8; }
@@ -22035,7 +22269,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   color: #7dd3fc;
   background: rgba(8,145,178,0.08);
 }
-.ps-searchpage-no-search { display: flex; align-items: center; justify-content: center; height: 100%; color: #1e293b; font-size: 13px; }
+.ps-searchpage-no-search { display: flex; align-items: center; justify-content: center; height: 100%; color: #94a3b8; font-size: 13px; }
 .ps-searchpage-loadmore-row { display: flex; justify-content: center; padding: 12px 0 4px; flex-shrink: 0; }
 .ps-searchpage-loadmore-btn {
   padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
@@ -22960,9 +23194,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   }
   .ps-mth-header-actions, .ps-mth-search-row, .ps-mth-splitpane { display: none !important; }
   .ps-mth-print-only-body { display: block !important; padding: 14px 22px; }
-  .ps-mth-title, .ps-mth-node-title { color: #0f172a !important; }
+  .ps-mth-title, .ps-mth-node-title { color: #e2e8f0 !important; }
   .ps-mth-case, .ps-mth-node-subtitle, .ps-mth-event-action, .ps-mth-event-who { color: #475569 !important; }
-  .ps-mth-event-location { color: #0f172a !important; }
+  .ps-mth-event-location { color: #e2e8f0 !important; }
   .ps-mth-event-time { color: #0369a1 !important; }
   .ps-mth-event:nth-child(odd) { background: #f8fafc !important; }
   .ps-mth-node-body { border-left-color: #cbd5e1 !important; }
@@ -22981,7 +23215,13 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Page shell ── */
-.ps-batch-page { height: 100%; display: flex; flex-direction: column; background: var(--ps-bg); }
+/* Real, per direct UI-review follow-up ("Fix the root"): background
+   removed — this used to hardcode var(--ps-bg), the same drifted
+   navy-shade issue as .ps-accession-shell (see that rule's own
+   comment for the full account). Falls through to AppShell's own
+   real .ps-app-root background now, matching Configuration/Quality
+   Assurance/Intraop Queue/Contribution. */
+.ps-batch-page { height: 100%; display: flex; flex-direction: column; }
 .ps-batch-scroll { flex: 1; overflow-y: auto; }
 .ps-batch-inner { max-width: 1100px; margin: 0 auto; padding: 28px 32px 60px; }
 
@@ -23224,7 +23464,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 @media print {
   .ps-batch-overlay, .ps-batch-create-modal { background: #fff !important; }
-  .ps-batch-modal-title, .ps-batch-barcode-value { color: #0f172a !important; }
+  .ps-batch-modal-title, .ps-batch-barcode-value { color: #e2e8f0 !important; }
   .ps-batch-barcode-label, .ps-batch-barcode-meta { color: #475569 !important; }
 }
 
@@ -23256,3 +23496,87 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-batch-duration-input { width: 64px; text-align: center; }
 .ps-batch-duration-unit { font-size: 12px; color: var(--ps-text-dim); }
 .ps-batch-duration-hint { font-size: 11px; color: var(--ps-text-dim); margin-top: 6px; }
+
+/* Real, new — MacroPanel.tsx's three-tier Enterprise/Facility/Personal
+   tab row, per direct guidance ("My Macros - Organize under Facility").
+   Deliberately its own small class set rather than reusing an existing
+   tab component — this one needs a real, per-tab count badge, which
+   none of the existing tab styles carry. */
+.ps-macro-tier-tabs      { display: flex; gap: 4px; padding: 3px; background: rgba(0,0,0,0.2); border-radius: 8px; }
+.ps-macro-tier-tab       { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 8px; border: none; border-radius: 6px; background: transparent; color: var(--ps-conf-text-3); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.ps-macro-tier-tab:hover { color: var(--ps-conf-text-2); }
+.ps-macro-tier-tab--active { background: rgba(8,145,178,0.18); color: #38bdf8; }
+.ps-macro-tier-count     { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+
+/* Real, new — OrchestratorSectionEditor.tsx's Personal Quick Text save
+   modal, per direct guidance ("Personal Quick Text" — Enterprise then
+   Facility then Staff). Deliberately minimal: only the trigger field
+   is ever asked for — everything else is shown, already resolved. */
+.ps-ose-quicktext-modal    { background: #0f172a; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 20px; width: min(440px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+.ps-ose-quicktext-title    { font-size: 15px; font-weight: 700; color: var(--ps-conf-text); }
+.ps-ose-quicktext-preview  { font-size: 13px; color: var(--ps-conf-text-2); background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+.ps-ose-quicktext-meta     { font-size: 11px; color: var(--ps-conf-text-3); }
+.ps-ose-quicktext-actions  { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* Real, new — MacroPanel.tsx's "Import from Word" preview-then-apply
+   modal, per direct guidance ("MS Word AutoText / Building Blocks...
+   load them into personal macros"). Reuses .ps-conf-backdrop/
+   .ps-ose-quicktext-title/-actions already established elsewhere. */
+.ps-macro-import-modal      { background: #0f172a; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 20px; width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.ps-macro-import-list       { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.ps-macro-import-row        { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); cursor: pointer; }
+.ps-macro-import-row-name   { font-size: 13px; font-weight: 600; color: var(--ps-conf-text); display: flex; align-items: center; gap: 8px; }
+.ps-macro-import-row-preview { font-size: 11px; color: var(--ps-conf-text-3); margin-top: 2px; }
+
+/* Real, new — TATConfigSection.tsx's Enterprise/Performing-Facility
+   group section headers, per direct guidance ("enterprise level TAT...
+   at the top... next Group are the Individual Performing Facility"). */
+.ps-tat-group-header {
+  padding: 10px 14px; font-size: 12px; font-weight: 700; color: #8AB4F8;
+  background: rgba(138,180,248,0.08); border-top: 1px solid rgba(255,255,255,0.06);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* Real, new — AccessionPage.tsx's Patient Origin / Intake Type
+   selector, per direct guidance ("replace the checkbox with an
+   explicit Patient Origin / Intake Type selector"). Replaces the old
+   single downtime checkbox. */
+.ps-accession-intake-selector { margin-bottom: 18px; }
+.ps-accession-intake-tabs     { display: flex; gap: 8px; margin-top: 6px; }
+.ps-accession-intake-tab      { flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: #cbd5e1; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.ps-accession-intake-tab:hover { background: rgba(255,255,255,0.06); }
+.ps-accession-intake-tab--active { background: rgba(56,189,248,0.14); border-color: #38bdf8; color: #38bdf8; }
+/* Downtime's own active state overrides the default active color to
+   the same real amber warning treatment used elsewhere on this page —
+   distinct from Outside's neutral teal, per direct guidance ("Uses an
+   alert indicator (amber/yellow)... vs an informational or neutral
+   badge (e.g., blue/teal)"). */
+.ps-accession-intake-tab--downtime.ps-accession-intake-tab--active { background: rgba(245,158,11,0.16); border-color: #f59e0b; color: #f59e0b; }
+.ps-accession-intake-tab--outside.ps-accession-intake-tab--active  { background: rgba(20,184,166,0.16); border-color: #14b8a6; color: #2dd4bf; }
+
+.ps-accession-intake-alert          { margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+.ps-accession-intake-alert--downtime { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fbbf24; }
+.ps-accession-intake-alert--outside  { background: rgba(20,184,166,0.1); border: 1px solid rgba(20,184,166,0.3); color: #5eead4; }
+
+/* Real, new — the Outside Patient Data tab button + panel itself. */
+.ps-accession-outside-tab-btn.active { color: #2dd4bf; border-bottom-color: #14b8a6; }
+.ps-accession-outside-header  { margin-bottom: 18px; }
+.ps-accession-outside-title   { font-size: 16px; font-weight: 700; color: #e2e8f0; margin: 0 0 4px 0; }
+.ps-accession-outside-subtitle { font-size: 13px; color: #94a3b8; margin: 0; }
+.ps-accession-outside-section { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.ps-accession-outside-section:last-child { border-bottom: none; }
+.ps-accession-outside-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #5eead4; margin-bottom: 10px; }
+.ps-accession-outside-secondary-box { margin-top: 12px; padding: 14px; border-radius: 8px; background: rgba(20,184,166,0.06); border: 1px solid rgba(20,184,166,0.2); }
+
+/* Real, new — AccessionPage.tsx's "Check for Existing Patient" real-
+   time link search, per direct guidance ("should the accession do
+   this as they go rather than the current process"). */
+.ps-accession-outside-link-status  { font-size: 12px; color: #94a3b8; margin-top: 8px; }
+.ps-accession-outside-link-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 220px; overflow-y: auto; }
+.ps-accession-outside-link-result  { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; color: #cbd5e1; }
+.ps-accession-outside-link-confirmed { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(20,184,166,0.1); border: 1px solid rgba(20,184,166,0.3); color: #5eead4; font-size: 13px; }
+
+/* Real, new — OutboundMessagePreviewSection.tsx's per-transaction-type
+   input grid. */
+.ps-conf-form-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.ps-conf-form-grid input, .ps-conf-form-grid select { min-width: 220px; flex: 1; }

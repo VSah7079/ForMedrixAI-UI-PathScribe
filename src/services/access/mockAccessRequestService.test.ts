@@ -12,7 +12,7 @@ describe('mockAccessRequestService — real feature, per direct follow-up: "Do w
   it('creates a real, pending pediatric request', async () => {
     const res = await svc.create({
       type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One',
-      caseId: 'S26-1', clientId: 'client-1', clientName: 'Metro General',
+      caseId: 'S26-1', facilityId: 'client-1', facilityName: 'Metro General',
     });
     expect(res.ok).toBe(true);
     if (res.ok) {
@@ -32,7 +32,7 @@ describe('mockAccessRequestService — real feature, per direct follow-up: "Do w
   });
 
   it('a real, pending request shows up in the admin queue', async () => {
-    await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', clientId: 'client-1' });
+    await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', facilityId: 'client-1' });
     const res = await svc.getPending();
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data).toHaveLength(1);
@@ -52,7 +52,7 @@ describe('mockAccessRequestService — real feature, per direct follow-up: "Do w
   });
 
   it('deny moves a real request from pending to denied', async () => {
-    const created = await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', clientId: 'client-1' });
+    const created = await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', facilityId: 'client-1' });
     if (!created.ok) throw new Error('setup failed');
     const denied = await svc.deny(created.data.id, 'admin-1', 'Admin Smith');
     expect(denied.ok).toBe(true);
@@ -69,7 +69,7 @@ describe('mockAccessRequestService — real feature, per direct follow-up: "Do w
   });
 
   it('getAllForUser returns every real request for that user, any status', async () => {
-    await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', clientId: 'client-1' });
+    await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', facilityId: 'client-1' });
     const created2 = await svc.create({ type: 'pool', requestingUserId: 'u1', requestingUserName: 'Dr. One', poolId: 'gi' });
     if (created2.ok) await svc.grant(created2.data.id, 'admin-1', 'Admin Smith');
     await svc.create({ type: 'pool', requestingUserId: 'u2', requestingUserName: 'Dr. Two', poolId: 'derm' });
@@ -80,7 +80,7 @@ describe('mockAccessRequestService — real feature, per direct follow-up: "Do w
   });
 
   it('getAll returns every real request regardless of user or status - for the real turnaround-time metric', async () => {
-    const c1 = await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', clientId: 'client-1' });
+    const c1 = await svc.create({ type: 'pediatric', requestingUserId: 'u1', requestingUserName: 'Dr. One', facilityId: 'client-1' });
     if (c1.ok) await svc.grant(c1.data.id, 'admin-1', 'Admin Smith');
     await svc.create({ type: 'pool', requestingUserId: 'u2', requestingUserName: 'Dr. Two', poolId: 'derm' });
     const res = await svc.getAll();

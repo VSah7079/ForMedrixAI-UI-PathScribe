@@ -5,9 +5,10 @@ import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockExternalResourceService } from '@/services/externalResources/mockExternalResourceService';
 import { mockFacilityService } from '@/services/facilities/mockFacilityService';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
-import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { getSessionUser, resolvePediatricAccess, resolveOrchestrationAccess } from '@/services/auth/caseAccessControl';
 import type { Case } from '@/types/case/Case';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { useLogout } from '@hooks/useLogout';
 import WorklistTable      from '../../components/Worklist/WorklistTable';
 import ResourcesModal     from './ResourcesModal';
@@ -57,6 +58,14 @@ const FILTER_LABELS: Record<string, string> = {
   // countersign above — where a pathologist finds a case they might
   // need to recall before it releases.
   pendingrelease: 'Queued for Release',
+  // Real, per direct guidance ("Yes we should scope 'Return to
+  // Trainee'/'Reject with Notes'... one unified tile instead of
+  // two"): deliberately one, role-neutral tile — combines "returned
+  // to me" (resident) and "returned by me, still awaiting revision"
+  // (attending) into a single real filter, rather than two
+  // permanently-visible tiles most viewers would only ever see one
+  // side of.
+  needsrevision: 'Needs Revision',
   inprogress:    'In Progress',
   draft:         'Draft',
   finalizing:    'Finalizing',
@@ -86,6 +95,26 @@ const WorklistPage: React.FC = () => {
   const navigate = useNavigate();
   const location  = useLocation();
 
+  // Real, per direct investigation: synopticLoader.ts and FullReportPage.tsx
+  // both now redirect here with these two params when a direct case-URL
+  // navigation is blocked by a real pediatric/orchestration restriction —
+  // see caseAccessControl.ts's resolvePediatricAccess/
+  // resolveOrchestrationAccess for the enforcement itself. This just
+  // surfaces why the user landed back on the Worklist instead of the
+  // case they tried to open, then cleans the URL so a refresh doesn't
+  // re-show the same toast.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const denied = params.get('accessDenied');
+    if (!denied) return;
+    if (denied === 'pediatric') {
+      toast.error('This case is pediatric-restricted. You don\'t have the required facility authorization to open it — use "Request Access" from the Worklist to ask an administrator.');
+    } else if (denied === 'orchestration') {
+      toast.error('This is an Orchestration/Outreach case. You don\'t have Orchestration access — use "Request Access" from the Worklist to ask an administrator.');
+    }
+    navigate('/worklist', { replace: true });
+  }, [location.search, navigate]);
+
   // contextFilter: which data source (LIS or Outreach) — the "home" context
   // Sticky for the session — restored from sessionStorage on mount
   const [contextFilter, setContextFilter] = useState<'lis' | 'outreach'>(
@@ -97,7 +126,7 @@ const WorklistPage: React.FC = () => {
   }, [contextFilter]);
 
   // activeFilter:  which sub-filter within that context
-  const [activeFilter, setActiveFilter]       = useState<'all' | 'completed' | 'urgent' | 'physician' | 'pool' | 'delegated' | 'inprogress' | 'amended' | 'draft' | 'finalizing' | 'accessioned' | 'grosscomplete' | 'countersign' | 'pendingrelease' | 'informalreview' | 'onhold'>('all');
+  const [activeFilter, setActiveFilter]       = useState<'all' | 'completed' | 'urgent' | 'physician' | 'pool' | 'delegated' | 'inprogress' | 'amended' | 'draft' | 'finalizing' | 'accessioned' | 'grosscomplete' | 'countersign' | 'pendingrelease' | 'needsrevision' | 'informalreview' | 'onhold'>('all');
   const [realCases, setRealCases]             = useState<Case[]>([]);
 
   // Note: orchestrator mode flag read via localStorage when needed at case open
@@ -338,15 +367,15 @@ const WorklistPage: React.FC = () => {
       const clientsById = new Map(clientsRes.data.map(c => [c.id, c]));
       const labIds = new Set<string>();
       realCases.forEach(c => {
-        const orderingClientId = c?.order?.clientId;
-        const orderingClient = orderingClientId ? clientsById.get(orderingClientId) : undefined;
-        const labId = orderingClient ? resolvePerformingLabFacilityId(orderingClient) : undefined;
+        const orderingFacilityId = c?.order?.facilityId;
+        const orderingFacility = orderingFacilityId ? clientsById.get(orderingFacilityId) : undefined;
+        const labId = orderingFacility ? resolvePerformingLabFacilityId(orderingFacility) : undefined;
         if (labId) labIds.add(labId);
       });
 
       mockExternalResourceService.resolveForViewer({
         organisationId: session.organisationId!,
-        performingLabClientIds: Array.from(labIds),
+        performingLabFacilityIds: Array.from(labIds),
       }).then(resolved => {
         setQuickLinks({
           protocols: resolved.protocols.map(r => ({ title: r.title, url: r.url })),
@@ -388,28 +417,28 @@ const WorklistPage: React.FC = () => {
   }, [displayOrder]); // fires once displayOrder arrives from the table
 
 
-  // Returns true if the current user is allowed to see this case
+  // Returns true if the current user is allowed to see this case. Real,
+  // per direct investigation: delegates to caseAccessControl.ts's
+  // resolvePediatricAccess/resolveOrchestrationAccess — the same real
+  // functions synopticLoader.ts and FullReportPage.tsx now enforce
+  // against — rather than its own, separate implementation. This used
+  // to independently re-implement the same Option C pediatric gate with
+  // OR instead of the documented AND (Facility.
+  // authorizedPediatricPathologistIds's own doc comment, IFacilityService.ts:
+  // "Both this AND canViewPediatric... must be true") — exactly the kind
+  // of drift a single, shared source of truth prevents.
   const canViewCase = React.useCallback((c: any): boolean => {
     if (!thresholdsLoaded) return false;
 
-    // Orchestration gate — checked independently of the pediatric gate below,
-    // since they're unrelated restrictions that can both apply in principle.
-    if ((c as any)?.reportingMode === 'orchestrator') {
-      const canViewOrch = (user as any)?.canViewOrchestration ?? false;
-      if (!canViewOrch) return false;
-    }
+    if (!resolveOrchestrationAccess(user as any, c).granted) return false;
 
-    const dob = c?.patient?.dateOfBirth;
-    const clientId = c?.order?.clientId;
-    const threshold = clientId ? (clientThresholds[clientId] ?? null) : null;
-    if (!dob || threshold === null) return true; // no pediatric threshold configured — always visible
-    const ageYrs = Math.floor((Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
-    if (ageYrs >= threshold) return true; // not pediatric — always visible
-    // Patient is pediatric — check Option C dual gate:
-    // Either user-level flag OR being in the client's authorized list grants access
-    const canViewPeds = (user as any)?.canViewPediatric ?? false;
-    const authorizedIds: string[] = clientId ? (clientAuthorized[clientId] ?? []) : [];
-    return canViewPeds || authorizedIds.includes(user?.id ?? '');
+    const facilityId = c?.order?.facilityId;
+    const facility = facilityId ? {
+      id: facilityId,
+      pediatricAgeThreshold: clientThresholds[facilityId] ?? null,
+      authorizedPediatricPathologistIds: clientAuthorized[facilityId] ?? [],
+    } : null;
+    return resolvePediatricAccess(user as any, c, facility).granted;
   }, [thresholdsLoaded, user, clientThresholds, clientAuthorized]);
 
   // Split by reporting mode
@@ -448,6 +477,23 @@ const WorklistPage: React.FC = () => {
   // specific viewer, since only the real signer can recall one.
   const pendingReleaseCount = useMemo(
     () => sourceCases.filter((c: any) => c.status === 'pending-release' && c.finalizedBy === user?.id).length,
+    [sourceCases, user?.id]
+  );
+
+  // Real, per direct guidance ("Yes we should scope 'Return to
+  // Trainee'/'Reject with Notes'... one unified tile instead of
+  // two"): deliberately counts BOTH real sides of the same real
+  // event — cases returned TO this user (they're the resident,
+  // order.assignedTo now points back to them via
+  // syncPrimaryAssignee()) OR returned BY this user (they're the
+  // attending who sent it back, still awaiting the resident's
+  // revision). A given viewer is usually only ever on one side for
+  // any real case, but the same real filter/tile correctly serves
+  // both.
+  const needsRevisionCount = useMemo(
+    () => sourceCases.filter((c: any) => c.status === 'returned'
+      && (c.order?.assignedTo === user?.id || c.returnedBy === user?.id)
+    ).length,
     [sourceCases, user?.id]
   );
 
@@ -509,6 +555,10 @@ const WorklistPage: React.FC = () => {
       // Buffer. Same real scoping reasoning as pendingReleaseCount's
       // own comment above.
       if (activeFilter === 'pendingrelease') return c.status === 'pending-release' && (c as any).finalizedBy === user?.id;
+      // Real, per direct guidance: same real dual-sided scoping as
+      // needsRevisionCount above.
+      if (activeFilter === 'needsrevision') return c.status === 'returned'
+        && ((c as any).order?.assignedTo === user?.id || (c as any).returnedBy === user?.id);
       return true;
     });
   }, [sourceCases, activeFilter, physicianFilter, amendmentAddendaCaseIds, informalReviewCaseIds, delegatedCaseIds, user?.id, config.facilityTimezone]);
@@ -613,12 +663,28 @@ const WorklistPage: React.FC = () => {
     };
 
     // Read flags for the focused row
+    // Real, confirmed fix (Jira PS-57 + its follow-up "should be able
+    // to assign Flags at either a Case or Specimen level"): caseFlags/
+    // specimenFlags entries are real FlagInstance records now
+    // (flagDefinitionId, no .name of their own) — this used to speak
+    // "undefined" for every real flag. Resolved against allFlags, the
+    // same real catalog this page already fetches for
+    // FlagManagerModal. Specimen-level flags aggregated from each
+    // specimen's own, nested specimenFlags — there's deliberately no
+    // case-level specimenFlags field; each specimen's own is the only
+    // real place a flag applied to a specific specimen can live,
+    // since FlagInstance itself carries no specimenId. Deleted
+    // (removed) flags excluded — the old, wrong type had no real
+    // field for this at all.
     const readFlags = () => {
       const focused = realCases.find(c => c.id === selectedCaseId);
       if (!focused) { speak('No case selected.'); return; }
+      const flagDefById = new Map(allFlags.map(f => [f.id, f]));
+      const resolveNames = (instances: any[]) =>
+        instances.filter(f => !f.deletedAt).map(f => flagDefById.get(f.flagDefinitionId)?.name).filter(Boolean);
       const flags = [
-        ...((focused as any).caseFlags    ?? []).map((f: any) => f.name),
-        ...((focused as any).specimenFlags ?? []).map((f: any) => f.name),
+        ...resolveNames((focused as any).caseFlags ?? []),
+        ...((focused as any).specimens ?? []).flatMap((sp: any) => resolveNames(sp.specimenFlags ?? [])),
       ];
       if (flags.length === 0) {
         speak(`${focused.id} has no flags.`);
@@ -771,13 +837,19 @@ const WorklistPage: React.FC = () => {
   return (
     <div style={{
       position: 'relative', width: '100vw', height: 'var(--app-height, var(--app-height, 100vh))',
-      backgroundColor: '#000000', color: '#ffffff',
       fontFamily: "'Inter', sans-serif",
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* Backgrounds — self-closing, no scroll contribution */}
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/main_background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center', zIndex: 0, filter: 'brightness(0.3) contrast(1.1)' }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, #000000 100%)', zIndex: 1 }} />
+      {/* Real, per direct UI-review follow-up ("Fix the root"): this
+          page's own competing background image/gradient (and the
+          backgroundColor/color pairing that went with them) removed
+          entirely — falls through to AppShell's own real
+          .ps-app-root background now, matching Configuration/Quality
+          Assurance/Intraop Queue/Contribution. Rest of this inline
+          style block (position/width/height/fontFamily/display/
+          flexDirection) left as-is — a full inline-style-to-CSS-class
+          conversion for this page is separate, larger, pre-existing
+          work (tracked elsewhere as PS-74), not part of this pass. */}
 
       {/* All content — fills viewport exactly, no overflow */}
       <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -908,6 +980,14 @@ const WorklistPage: React.FC = () => {
                   // consistency. Border color deliberately differs from
                   // fill — see the accessibility fix note above.
                   { key: 'pendingrelease', label: activeFilter === 'pendingrelease' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.pendingrelease, count: pendingReleaseCount, color: '#1C8DE3', bg: 'rgba(28,141,227,0.05)', border: 'rgba(74,217,38,0.18)', activeBg: 'rgba(28,141,227,0.18)', activeBorder: '#4AD926', glow: '0 0 12px rgba(74,217,38,0.4)', sublabel: undefined },
+                  // Real, per direct guidance ("Yes we should scope
+                  // 'Return to Trainee'/'Reject with Notes'... let's
+                  // not display tiles with 0 entries" — the real,
+                  // dedicated .filter() just below this array, unlike
+                  // every other tile here, which always renders
+                  // regardless of count): a distinct amber/gold, not
+                  // reused from any existing tile's hue.
+                  { key: 'needsrevision', label: activeFilter === 'needsrevision' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.needsrevision, count: needsRevisionCount, color: '#78350F', bg: 'rgba(120,53,15,0.05)', border: 'rgba(120,53,15,0.18)', activeBg: 'rgba(120,53,15,0.18)', activeBorder: '#78350F', glow: '0 0 12px rgba(120,53,15,0.4)', sublabel: undefined },
                   { key: 'urgent',     label: activeFilter === 'urgent'     ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.urgent,          count: stats.urgent,         color: '#EF4444', bg: 'rgba(239,68,68,0.05)',   border: 'rgba(239,68,68,0.18)',   activeBg: 'rgba(239,68,68,0.18)',   activeBorder: '#EF4444',  glow: '0 0 12px rgba(239,68,68,0.4)',   sublabel: urgentPoolCount > 0 ? `+${urgentPoolCount} in Pool` : undefined },
                   { key: 'inprogress', label: activeFilter === 'inprogress' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.inprogress,     count: stats.inProgress,     color: '#536EEA', bg: 'rgba(83,110,234,0.05)',   border: 'rgba(19,236,236,0.18)',   activeBg: 'rgba(83,110,234,0.18)',   activeBorder: '#13ECEC',  glow: '0 0 12px rgba(19,236,236,0.4)',   sublabel: undefined },
                   { key: 'accessioned',   label: activeFilter === 'accessioned'   ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.accessioned, count: stats.accessioned,   color: '#261CE3', bg: 'rgba(38,28,227,0.05)',  border: 'rgba(38,28,227,0.18)',  activeBg: 'rgba(38,28,227,0.18)',  activeBorder: '#261CE3',  glow: '0 0 12px rgba(38,28,227,0.4)',  sublabel: undefined },
@@ -924,7 +1004,19 @@ const WorklistPage: React.FC = () => {
                   // "Needs Review" tile used that green before it was
                   // removed) or grosscomplete's cyan.
                   { key: 'informalreview', label: activeFilter === 'informalreview' ? `← Back to ${contextFilter === 'outreach' ? 'Outreach' : 'LIS Cases'}` : FILTER_LABELS.informalreview, count: stats.informalReview, color: '#8B5CF6', bg: 'rgba(139,92,246,0.05)',  border: 'rgba(139,92,246,0.18)',  activeBg: 'rgba(139,92,246,0.18)',  activeBorder: '#8B5CF6',  glow: '0 0 12px rgba(139,92,246,0.4)',  sublabel: undefined },
-                ] as const).map(tile => {
+                ] as const)
+                  // Real, per direct guidance ("let's not display
+                  // tiles with 0 entries" — deliberately scoped to
+                  // just this new tile, not a retroactive change to
+                  // every other tile above, all of which keep their
+                  // own established "always visible, count included"
+                  // behavior unchanged): the filtered-out tile's own
+                  // filter still works correctly if a viewer had it
+                  // active and its count later drops to 0 — the table
+                  // below just shows its own real "no cases" state,
+                  // it doesn't reset or break.
+                  .filter(tile => tile.key !== 'needsrevision' || tile.count > 0)
+                  .map(tile => {
                   const isActive = activeFilter === tile.key;
                   return (
                     <button

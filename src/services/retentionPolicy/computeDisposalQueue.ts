@@ -17,9 +17,9 @@
 //      — always wins, checked first.
 //   3. The jurisdiction's own retention period has elapsed
 //      (RetentionPolicy.ts's calculateRetentionEligibleDate) — real,
-//      full resolution now: SpecimenCategory-level overrides ARE
+//      full resolution now: Department-level overrides ARE
 //      resolved here (Specimen.specimenDictionaryEntryId ->
-//      SpecimenEntry.specimenCategoryId -> SpecimenCategory.
+//      SpecimenEntry.departmentId -> Department.
 //      retentionOverrideDays), correcting this module's own earlier,
 //      honest scope limitation once that real, existing chain was
 //      confirmed traceable.

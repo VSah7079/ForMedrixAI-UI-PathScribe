@@ -1,18 +1,6 @@
 // src/services/organisation/organisationService.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { resolveMpiScopeEnterpriseId, listAllSites, listOrganisations, getSiteConfig, updateSiteFacilitySetup } from './organisationService';
-
-// Real, minimal localStorage mock - same pattern as
-// mockRvuCodeMapService.test.ts, since updateSiteFacilitySetup
-// genuinely persists via mockStorage now.
-beforeEach(() => {
-  const store: Record<string, string> = {};
-  (globalThis as any).localStorage = {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => { store[k] = v; },
-    removeItem: (k: string) => { delete store[k]; },
-  };
-});
+import { describe, it, expect } from 'vitest';
+import { resolveMpiScopeEnterpriseId, listAllSites } from './organisationService';
 
 describe('listAllSites — real, new: flattens every real Site across every real Organisation', () => {
   it('returns every real site, not just one organisation\'s own', async () => {
@@ -34,70 +22,6 @@ describe('listAllSites — real, new: flattens every real Site across every real
       expect(s.id).toBeTruthy();
       expect(s.organisationId).toBeTruthy();
     });
-  });
-});
-
-describe('updateSiteFacilitySetup — real, new: persisted overlay for Facility Setup edits, never mutating the static seed', () => {
-  it('persists a real edit and returns the updated, real site record', async () => {
-    const sites = await listAllSites();
-    const realSiteId = sites[0].id;
-    const updated = await updateSiteFacilitySetup(realSiteId, { cliaOrIsoNumber: '03D1234567', connectionAuthType: 'oauth2', credentialConfigured: true, updatedBy: 'test-admin' });
-    expect(updated?.cliaOrIsoNumber).toBe('03D1234567');
-    expect(updated?.connectionAuthType).toBe('oauth2');
-    expect(updated?.credentialConfigured).toBe(true);
-    expect(updated?.facilitySetupUpdatedBy).toBe('test-admin');
-  });
-
-  it('returns null, never throws, for a siteId that genuinely does not exist', async () => {
-    const result = await updateSiteFacilitySetup('NOT-A-REAL-SITE', { updatedBy: 'test-admin' });
-    expect(result).toBeNull();
-  });
-
-  it('a real edit is genuinely reflected by listAllSites afterward - not just in the immediate return value', async () => {
-    const sites = await listAllSites();
-    const realSiteId = sites[0].id;
-    await updateSiteFacilitySetup(realSiteId, { cliaOrIsoNumber: '03D9999999', updatedBy: 'test-admin' });
-    const refetched = await listAllSites();
-    const edited = refetched.find(s => s.id === realSiteId);
-    expect(edited?.cliaOrIsoNumber).toBe('03D9999999');
-  });
-
-  it('a real edit is genuinely reflected by getSiteConfig afterward too', async () => {
-    const sites = await listAllSites();
-    const realSiteId = sites[0].id;
-    await updateSiteFacilitySetup(realSiteId, { cliaOrIsoNumber: '03D8888888', updatedBy: 'test-admin' });
-    const refetched = await getSiteConfig(realSiteId);
-    expect(refetched?.cliaOrIsoNumber).toBe('03D8888888');
-  });
-
-  it('a real edit is genuinely reflected within listOrganisations\'s own nested sites too, not just the flat listAllSites view', async () => {
-    const sites = await listAllSites();
-    const realSiteId = sites[0].id;
-    const realOrgId = sites[0].organisationId;
-    await updateSiteFacilitySetup(realSiteId, { cliaOrIsoNumber: '03D7777777', updatedBy: 'test-admin' });
-    const orgs = await listOrganisations();
-    const org = orgs.find(o => o.id === realOrgId);
-    const site = org?.sites?.find(s => s.id === realSiteId);
-    expect(site?.cliaOrIsoNumber).toBe('03D7777777');
-  });
-
-  it('editing one real site never affects a different real site\'s own fields', async () => {
-    const sites = await listAllSites();
-    if (sites.length < 2) return; // real, honest skip if the seed ever has fewer than 2 sites total
-    const [siteA, siteB] = sites;
-    await updateSiteFacilitySetup(siteA.id, { cliaOrIsoNumber: 'ONLY-A', updatedBy: 'test-admin' });
-    const refetched = await listAllSites();
-    const stillB = refetched.find(s => s.id === siteB.id);
-    expect(stillB?.cliaOrIsoNumber).toBeUndefined();
-  });
-
-  it('never stores a raw credential value - credentialConfigured is a plain boolean, no secret-value field exists on the type at all', async () => {
-    const sites = await listAllSites();
-    const updated = await updateSiteFacilitySetup(sites[0].id, { credentialConfigured: true, updatedBy: 'test-admin' });
-    expect(typeof updated?.credentialConfigured).toBe('boolean');
-    expect((updated as any)?.credential).toBeUndefined();
-    expect((updated as any)?.password).toBeUndefined();
-    expect((updated as any)?.apiKey).toBeUndefined();
   });
 });
 

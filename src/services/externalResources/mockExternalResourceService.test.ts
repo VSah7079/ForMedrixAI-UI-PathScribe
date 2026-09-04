@@ -22,7 +22,7 @@ describe('mockExternalResourceService — real relevance filtering', () => {
     await mockExternalResourceService.create({
       title: 'Org A Protocols', url: 'https://example.com/a', category: 'protocols', scope: 'enterprise', organisationId: ORG_A,
     });
-    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabClientIds: [LAB_1] });
+    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabFacilityIds: [LAB_1] });
     expect(resolved.protocols).toHaveLength(1);
     const resolvedNoLab = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A });
     expect(resolvedNoLab.protocols).toHaveLength(1);
@@ -38,12 +38,12 @@ describe('mockExternalResourceService — real relevance filtering', () => {
 
   it('a lab-scoped resource only surfaces for a viewer actually relevant to that specific lab', async () => {
     await mockExternalResourceService.create({
-      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_1,
+      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_1,
     });
-    const atLab1 = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabClientIds: [LAB_1] });
+    const atLab1 = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabFacilityIds: [LAB_1] });
     expect(atLab1.systems).toHaveLength(1);
 
-    const atLab2 = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabClientIds: [LAB_2] });
+    const atLab2 = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabFacilityIds: [LAB_2] });
     expect(atLab2.systems).toHaveLength(0);
 
     const noLabContext = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A });
@@ -55,12 +55,12 @@ describe('mockExternalResourceService — real relevance filtering', () => {
       title: 'Org A Protocols', url: 'https://example.com/a', category: 'protocols', scope: 'enterprise', organisationId: ORG_A,
     });
     await mockExternalResourceService.create({
-      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_1,
+      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_1,
     });
     await mockExternalResourceService.create({
-      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_2,
+      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_2,
     });
-    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabClientIds: [LAB_1] });
+    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabFacilityIds: [LAB_1] });
     expect(resolved.protocols).toHaveLength(1);
     expect(resolved.systems).toHaveLength(1);
     expect(resolved.systems[0].title).toBe('Lab 1 System');
@@ -68,12 +68,12 @@ describe('mockExternalResourceService — real relevance filtering', () => {
 
   it('a viewer relevant to MULTIPLE labs at once (e.g. pool cases spanning several hospitals) sees each of those labs\' own resources together', async () => {
     await mockExternalResourceService.create({
-      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_1,
+      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_1,
     });
     await mockExternalResourceService.create({
-      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_2,
+      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_2,
     });
-    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabClientIds: [LAB_1, LAB_2] });
+    const resolved = await mockExternalResourceService.resolveForViewer({ organisationId: ORG_A, performingLabFacilityIds: [LAB_1, LAB_2] });
     expect(resolved.systems).toHaveLength(2);
     const titles = resolved.systems.map(r => r.title).sort();
     expect(titles).toEqual(['Lab 1 System', 'Lab 2 System']);
@@ -81,10 +81,10 @@ describe('mockExternalResourceService — real relevance filtering', () => {
 
   it('listForOrganisation is the real admin view — sees everything for the org regardless of lab scope, unlike resolveForViewer', async () => {
     await mockExternalResourceService.create({
-      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_1,
+      title: 'Lab 1 System', url: 'https://example.com/lis1', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_1,
     });
     await mockExternalResourceService.create({
-      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, clientId: LAB_2,
+      title: 'Lab 2 System', url: 'https://example.com/lis2', category: 'systems', scope: 'lab', organisationId: ORG_A, facilityId: LAB_2,
     });
     const adminView = await mockExternalResourceService.listForOrganisation(ORG_A);
     expect(adminView).toHaveLength(2);

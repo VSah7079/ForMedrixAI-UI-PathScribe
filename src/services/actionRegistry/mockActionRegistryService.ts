@@ -226,7 +226,7 @@ const SEED_ACTIONS: SystemAction[] = [
     category: 'SYNOPTIC',
     shortcut: 'S',
     internalKey: 'F13+PS162',
-    voiceTriggers: ['skip', 'skip this', 'next field', 'move on', 'skip finding'],
+    voiceTriggers: ['skip', 'skip this', 'skip finding'],
     learnedTriggers: [],
     requiredRole: 'Pathologist',
     isActive: true,
@@ -237,7 +237,7 @@ const SEED_ACTIONS: SystemAction[] = [
     category: 'SYNOPTIC',
     shortcut: 'Escape',
     internalKey: 'F13+PS163',
-    voiceTriggers: ['cancel review', 'exit review', 'stop review', 'go back'],
+    voiceTriggers: ['cancel review', 'exit review', 'stop review'],
     learnedTriggers: [],
     requiredRole: 'Pathologist',
     isActive: true,
@@ -250,7 +250,7 @@ const SEED_ACTIONS: SystemAction[] = [
     category: 'SYNOPTIC',
     shortcut: 'Alt+A',
     internalKey: 'F13+PS165',
-    voiceTriggers: ['accept case', 'take this case', 'assign to me', 'accept'],
+    voiceTriggers: ['accept case', 'take this case', 'assign to me'],
     learnedTriggers: [],
     requiredRole: 'Pathologist',
     isActive: true,
@@ -287,7 +287,7 @@ const SEED_ACTIONS: SystemAction[] = [
   // ── SYSTEM — always available ─────────────────────────────────────────────
   {
     id: 'OPEN_HOME', label: 'Go Home', category: 'SYSTEM',
-    shortcut: 'Alt+H', internalKey: ACTION_MAP['system.openWorklist']?.internalKey ?? 'F13+PS002',
+    shortcut: 'Alt+H', internalKey: 'F13+PS300',
     voiceTriggers: ['go home', 'home page', 'go to home', 'open home'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -407,32 +407,32 @@ const SEED_ACTIONS: SystemAction[] = [
   // ── HOME page actions — SYSTEM category (available from home screen) ───────
   {
     id: 'OPEN_ENHANCEMENT_REQUEST', label: 'Open Enhancement Request', category: 'SYSTEM',
-    shortcut: 'Alt+O', internalKey: ACTION_MAP['system.openMessages']?.internalKey ?? 'F13+PS001',
+    shortcut: 'Alt+O', internalKey: 'F13+PS301',
     voiceTriggers: ['open enhancement request', 'enhancement request', 'open enhancement'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'OPEN_TESTING_FEEDBACK', label: 'Open Testing Feedback', category: 'SYSTEM',
-    shortcut: 'Alt+T', internalKey: ACTION_MAP['system.openMessages']?.internalKey ?? 'F13+PS001',
+    shortcut: 'Alt+T', internalKey: 'F13+PS302',
     voiceTriggers: ['open testing feedback', 'testing feedback', 'QA feedback', 'open feedback'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'VIEW_HELP', label: 'View System Help', category: 'SYSTEM',
-    shortcut: 'Alt+V', internalKey: ACTION_MAP['system.openMessages']?.internalKey ?? 'F13+PS001',
+    shortcut: 'Alt+V', internalKey: 'F13+PS303',
     voiceTriggers: ['view help', 'open help', 'system help', 'show help', 'help'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'OPEN_RESOURCES', label: 'Open Clinical Resources', category: 'SYSTEM',
-    shortcut: 'Alt+C', internalKey: ACTION_MAP['system.openMessages']?.internalKey ?? 'F13+PS001',
+    shortcut: 'Alt+C', internalKey: 'F13+PS304',
     voiceTriggers: ['open resources', 'clinical resources', 'open clinical resources', 'quick links', 'open quick links'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     // "log out" used as trigger — avoids collision with "sign out case" in reporting context
     id: 'SYSTEM_LOGOUT', label: 'Log Out', category: 'SYSTEM',
-    shortcut: 'Alt+L', internalKey: ACTION_MAP['system.openMessages']?.internalKey ?? 'F13+PS001',
+    shortcut: 'Alt+L', internalKey: 'F13+PS308',
     voiceTriggers: ['log out', 'sign out system', 'logout', 'log me out'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -588,19 +588,19 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'TABLE_FILTER_PHYSICIAN', label: 'Filter by Physician', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Alt+Shift+F', internalKey: ACTION_MAP['table.filterUrgent']?.internalKey ?? 'F15+PS016',
+    shortcut: 'Alt+Shift+F', internalKey: 'F15+PS034',
     voiceTriggers: ['filter by', 'cases by', 'show cases by', 'physician filter'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'READ_FLAGS', label: 'Read Flags', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Alt+Shift+R', internalKey: ACTION_MAP['table.filterUrgent']?.internalKey ?? 'F15+PS017',
+    shortcut: 'Alt+Shift+R', internalKey: 'F15+PS035',
     voiceTriggers: ['read flags', 'what are the flags', 'case flags', 'list flags'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'READ_SPECIMEN', label: 'Read Specimen', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Ctrl+Alt+R', internalKey: ACTION_MAP['table.filterUrgent']?.internalKey ?? 'F15+PS018',
+    shortcut: 'Ctrl+Alt+R', internalKey: 'F15+PS036',
     voiceTriggers: ['read specimen', 'what is the specimen', 'specimen type', 'confirm specimen'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -609,7 +609,7 @@ const SEED_ACTIONS: SystemAction[] = [
     label: 'Filter Completed',
     category: VOICE_CONTEXT.WORKLIST,
     shortcut: 'Alt+C', 
-    internalKey: ACTION_MAP['table.filterUrgent']?.internalKey ?? 'F15+PS020',
+    internalKey: 'F15+PS037',
     voiceTriggers: ['filter completed', 'show completed', 'completed cases', 'show completed cases'],
     learnedTriggers: [], 
     requiredRole: 'All Staff', 
@@ -623,13 +623,13 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'TABLE_SORT_BY_COLUMN', label: 'Sort By Column', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Ctrl+Alt+S', internalKey: ACTION_MAP['table.filterUrgent']?.internalKey ?? 'F15+PS019',
+    shortcut: 'Ctrl+Alt+S', internalKey: 'F15+PS038',
     voiceTriggers: ['sort by', 'sort column', 'order by'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'TABLE_CLEAR_SORT', label: 'Clear Sort', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Ctrl+Alt+C', internalKey: ACTION_MAP['table.clearFilter']?.internalKey ?? 'F15+PS016',
+    shortcut: 'Ctrl+Alt+C', internalKey: 'F15+PS033',
     voiceTriggers: ['clear sort', 'remove sort', 'reset sort', 'clear sorting'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -648,33 +648,27 @@ const SEED_ACTIONS: SystemAction[] = [
   {
     // Delete a row in a table — context guards which tables support this
     id: 'TABLE_DELETE', label: 'Delete Row', category: VOICE_CONTEXT.WORKLIST,
-    shortcut: 'Alt+D', internalKey: ACTION_MAP['table.clearSearch']?.internalKey ?? 'F15+PS018',
+    shortcut: 'Alt+D', internalKey: 'F15+PS039',
     voiceTriggers: ['delete row', 'delete this row', 'remove row', 'delete entry'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
 
   // ── REPORTING ACTIONS ─────────────────────────────────────────────────────
   {
-    id: 'SAVE_DRAFT', label: 'Save Draft', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+S', internalKey: ACTION_MAP['system.saveDraft']?.internalKey ?? 'F13+PS005',
-    voiceTriggers: ['save draft', 'save report', 'save my draft', 'save the report'],
-    learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
-  },
-  {
-    id: 'INSERT_MACRO', label: 'Insert Macro', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+M', internalKey: ACTION_MAP['editor.insertMacro']?.internalKey ?? 'F16+PS005',
+    id: 'INSERT_MACRO', label: 'Insert Macro', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+I', internalKey: ACTION_MAP['editor.insertMacro']?.internalKey ?? 'F16+PS005',
     voiceTriggers: ['insert macro', 'add macro'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'SIGN_OUT', label: 'Sign Out Case', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+S', internalKey: ACTION_MAP['system.signOut']?.internalKey ?? 'F13+PS006',
+    id: 'SIGN_OUT', label: 'Sign Out Case', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+X', internalKey: ACTION_MAP['system.signOut']?.internalKey ?? 'F13+PS006',
     voiceTriggers: ['sign out case', 'sign out the case', 'case sign out'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'OPEN_PRE_FINALISE', label: 'Finalise Report', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+F', internalKey: (ACTION_MAP as any)['system.finalise']?.internalKey ?? 'F13+PS010',
+    id: 'OPEN_PRE_FINALISE', label: 'Finalise Report', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+F', internalKey: 'F17+PS043',
     voiceTriggers: [
       'finalise', 'finalize', 'finalise report', 'finalize report',
       'finalise case', 'finalize case', 'sign off', 'sign off report',
@@ -683,29 +677,19 @@ const SEED_ACTIONS: SystemAction[] = [
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'FINALISE_AND_NEXT', label: 'Finalise and Next Case', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+F', internalKey: (ACTION_MAP as any)['system.finaliseNext']?.internalKey ?? 'F13+PS011',
-    voiceTriggers: [
-      'finalise and next', 'finalize and next',
-      'finalise next', 'finalize next',
-      'sign off and next', 'complete and next',
-    ],
-    learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
-  },
-  {
-    id: 'FINALISE_CONFIRM', label: 'Confirm Finalise', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+C', internalKey: '',
+    id: 'FINALISE_CONFIRM', label: 'Confirm Finalise', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+C', internalKey: 'F17+PS044',
     voiceTriggers: ['confirm finalise', 'confirm finalize', 'confirm sign off', 'yes finalise', 'yes finalize'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'FINALISE_CANCEL', label: 'Cancel Finalise', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Escape', internalKey: '',
-    voiceTriggers: ['cancel finalise', 'cancel finalize', 'cancel sign off', 'go back'],
+    id: 'FINALISE_CANCEL', label: 'Cancel Finalise', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Escape', internalKey: 'F17+PS045',
+    voiceTriggers: ['cancel finalise', 'cancel finalize', 'cancel sign off'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'NEXT_FIELD', label: 'Next Field', category: VOICE_CONTEXT.REPORTING,
+    id: 'NEXT_FIELD', label: 'Next Field', category: 'SYNOPTIC',
     shortcut: 'Tab', internalKey: ACTION_MAP['editor.nextField']?.internalKey ?? 'F16+PS001',
     voiceTriggers: [
       'next field', 'next question', 'go forward', 'forward',
@@ -714,7 +698,7 @@ const SEED_ACTIONS: SystemAction[] = [
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'PREVIOUS_FIELD', label: 'Previous Field', category: VOICE_CONTEXT.REPORTING,
+    id: 'PREVIOUS_FIELD', label: 'Previous Field', category: 'SYNOPTIC',
     shortcut: 'Shift+Tab', internalKey: ACTION_MAP['editor.previousField']?.internalKey ?? 'F16+PS002',
     voiceTriggers: [
       'previous field', 'previous question', 'go back', 'back',
@@ -725,8 +709,8 @@ const SEED_ACTIONS: SystemAction[] = [
 
   // ── DICTATION TARGETS ─────────────────────────────────────────────────────
   {
-    id: 'ENTER_GROSS', label: 'Enter Gross Description', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+G', internalKey: ACTION_MAP['diagnosis.grossDescription']?.internalKey ?? 'F17+PS001',
+    id: 'ENTER_GROSS', label: 'Enter Gross Description', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+G', internalKey: ACTION_MAP['diagnosis.grossDescription']?.internalKey ?? 'F17+PS001',
     voiceTriggers: [
       'enter gross', 'start gross', 'dictate gross',
       'gross description', 'enter gross description', 'start gross description',
@@ -734,7 +718,7 @@ const SEED_ACTIONS: SystemAction[] = [
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'ENTER_MICRO', label: 'Enter Microscopic Description', category: VOICE_CONTEXT.REPORTING,
+    id: 'ENTER_MICRO', label: 'Enter Microscopic Description', category: 'SYNOPTIC',
     shortcut: 'Alt+Shift+G', internalKey: ACTION_MAP['diagnosis.microscopicDescription']?.internalKey ?? 'F17+PS002',
     voiceTriggers: [
       'enter micro', 'start micro', 'dictate micro',
@@ -745,204 +729,198 @@ const SEED_ACTIONS: SystemAction[] = [
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'ENTER_DIAGNOSIS', label: 'Enter Diagnosis', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+D', internalKey: ACTION_MAP['diagnosis.enterDiagnosis']?.internalKey ?? 'F17+PS003',
+    id: 'ENTER_DIAGNOSIS', label: 'Enter Diagnosis', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+D', internalKey: ACTION_MAP['diagnosis.enterDiagnosis']?.internalKey ?? 'F17+PS003',
     voiceTriggers: ['enter diagnosis', 'start diagnosis', 'dictate diagnosis', 'add diagnosis'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
   {
-    id: 'ENTER_ADDENDUM', label: 'Enter Addendum', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+D', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS004',
-    voiceTriggers: ['enter addendum', 'add addendum', 'start addendum', 'dictate addendum'],
+    id: 'ENTER_ADDENDUM', label: 'Enter Addendum', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+D', internalKey: 'F17+PS004',
+    voiceTriggers: ['enter addendum', 'start addendum', 'dictate addendum'],
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
 
   // ── Synoptic field navigation ──────────────────────────────────────────────
   {
-    id: 'NEXT_UNANSWERED', label: 'Next Unanswered Field', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+U', internalKey: 'F17+PS005',
-    voiceTriggers: ['next unanswered', 'go to next unanswered', 'next empty field', 'next field', 'next blank'],
+    id: 'NEXT_UNANSWERED', label: 'Next Unanswered Field', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+U', internalKey: 'F17+PS005',
+    voiceTriggers: ['next unanswered', 'go to next unanswered', 'next empty field', 'next blank'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NEXT_REQUIRED', label: 'Next Required Field', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+R', internalKey: 'F17+PS006',
+    id: 'NEXT_REQUIRED', label: 'Next Required Field', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+R', internalKey: 'F17+PS006',
     voiceTriggers: ['next required', 'go to next required', 'next required field', 'show required'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'CONFIRM_FIELD', label: 'Confirm Field', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+C', internalKey: 'F17+PS007',
+    id: 'CONFIRM_FIELD', label: 'Confirm Field', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+A', internalKey: 'F17+PS007',
     // Kept distinct from AI_REVIEW_CONFIRM — this fires in REPORTING context (normal work),
     // AI_REVIEW_CONFIRM fires in SYNOPTIC context (triage modal only)
     voiceTriggers: ['confirm field', 'accept field', 'approve field', 'confirm answer', 'accept answer'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'EDIT_FIELD', label: 'Edit Field', category: VOICE_CONTEXT.REPORTING,
+    id: 'EDIT_FIELD', label: 'Edit Field', category: 'SYNOPTIC',
     shortcut: 'Alt+E', internalKey: 'F17+PS008',
     voiceTriggers: ['edit field', 'change field', 'correct field', 'modify field', 'override field'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'SKIP_FIELD', label: 'Skip Field', category: VOICE_CONTEXT.REPORTING,
+    id: 'SKIP_FIELD', label: 'Skip Field', category: 'SYNOPTIC',
     shortcut: 'Ctrl+Alt+Q', internalKey: 'F17+PS009',
     voiceTriggers: ['skip field', 'skip this field', 'move on', 'leave blank'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'FULL_VIEW', label: 'Full View', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+V', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS010',
+    id: 'FULL_VIEW', label: 'Full View', category: 'SYNOPTIC',
+    shortcut: 'Alt+V', internalKey: 'F17+PS010',
     voiceTriggers: ['full view', 'show full view', 'expand view', 'all sections'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'TABBED_VIEW', label: 'Tabbed View', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+T', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS011',
+    id: 'TABBED_VIEW', label: 'Tabbed View', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+T', internalKey: 'F17+PS011',
     voiceTriggers: ['tabbed view', 'show tabbed view', 'tab view', 'collapse view'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'MAX_VIEW', label: 'Maximise View', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+M', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS012',
+    id: 'MAX_VIEW', label: 'Maximise View', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+M', internalKey: 'F17+PS012',
     voiceTriggers: ['max', 'maximise', 'maximize', 'full screen', 'expand screen'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'MIN_VIEW', label: 'Minimise View', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+V', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS013',
+    id: 'MIN_VIEW', label: 'Minimise View', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+V', internalKey: 'F17+PS013',
     voiceTriggers: ['min', 'minimise', 'minimize', 'exit full screen', 'restore view'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'PREVIEW_REPORT', label: 'Preview Report', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+P', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS014',
+    id: 'PREVIEW_REPORT', label: 'Preview Report', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+P', internalKey: 'F17+PS014',
     voiceTriggers: ['preview report', 'show preview', 'report preview', 'preview'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_CASE_COMMENT', label: 'Case Comment', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+C', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS015',
+    id: 'VOICE_CASE_COMMENT', label: 'Case Comment', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+C', internalKey: 'F17+PS015',
     voiceTriggers: ['case comment', 'open case comment', 'add case comment', 'dictate case comment'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_SPECIMEN_COMMENT', label: 'Specimen Comment', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+S', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS016',
+    id: 'VOICE_SPECIMEN_COMMENT', label: 'Specimen Comment', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+S', internalKey: 'F17+PS016',
     voiceTriggers: ['specimen comment', 'open specimen comment', 'add specimen comment', 'dictate specimen comment'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_INTERNAL_NOTE', label: 'Internal Note', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+I', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS017',
-    voiceTriggers: ['internal note', 'open internal note', 'add note', 'open notes'],
+    id: 'VOICE_INTERNAL_NOTE', label: 'Internal Note', category: 'SYNOPTIC',
+    shortcut: 'Alt+I', internalKey: 'F17+PS017',
+    voiceTriggers: ['internal note', 'open internal note', 'open notes'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_ADD_SYNOPTIC', label: 'Add Synoptic', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+A', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS018',
+    id: 'VOICE_ADD_SYNOPTIC', label: 'Add Synoptic', category: 'SYNOPTIC',
+    shortcut: 'Alt+Z', internalKey: 'F17+PS018',
     voiceTriggers: ['add synoptic', 'open add synoptic', 'add report', 'new synoptic'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_FLAGS', label: 'Flags', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+F', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS019',
-    voiceTriggers: ['flags', 'open flags', 'flag manager', 'manage flags'],
-    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
-  },
-  {
-    id: 'NOTE_ADD', label: 'Add Note', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+N', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS020',
+    id: 'NOTE_ADD', label: 'Add Note', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+N', internalKey: 'F17+PS020',
     voiceTriggers: ['add note', 'new note', 'open add note'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_DICTATE', label: 'Dictate Note', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+N', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS021',
+    id: 'NOTE_DICTATE', label: 'Dictate Note', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+N', internalKey: 'F17+PS021',
     voiceTriggers: ['dictate note', 'dictate', 'dictate into note'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_VISIBILITY_PRIVATE', label: 'Note Visibility Private', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+P', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS022',
+    id: 'NOTE_VISIBILITY_PRIVATE', label: 'Note Visibility Private', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+J', internalKey: 'F17+PS022',
     voiceTriggers: ['visibility private', 'set private', 'private note', 'make private'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_VISIBILITY_SHARED', label: 'Note Visibility Shared', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+N', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS023',
+    id: 'NOTE_VISIBILITY_SHARED', label: 'Note Visibility Shared', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+N', internalKey: 'F17+PS023',
     voiceTriggers: ['visibility shared', 'set shared', 'shared note', 'make shared'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_SAVE', label: 'Save Note', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+A', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS024',
+    id: 'NOTE_SAVE', label: 'Save Note', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+S', internalKey: 'F17+PS024',
     voiceTriggers: ['save note', 'submit note', 'save'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_CANCEL', label: 'Cancel Note', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+B', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS025',
+    id: 'NOTE_CANCEL', label: 'Cancel Note', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+B', internalKey: 'F17+PS025',
     voiceTriggers: ['cancel note', 'discard note'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'NOTE_CLOSE', label: 'Close Notes', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+D', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS026',
+    id: 'NOTE_CLOSE', label: 'Close Notes', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+D', internalKey: 'F17+PS026',
     voiceTriggers: ['close notes', 'close drawer', 'close internal notes'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'ADD_ADDENDUM', label: 'Add Addendum', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+A', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS027',
+    id: 'ADD_ADDENDUM', label: 'Add Addendum', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+B', internalKey: 'F17+PS027',
     voiceTriggers: ['add addendum', 'open addendum', 'addendum request', 'request addendum'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'ADD_AMENDMENT', label: 'Add Amendment', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+E', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS028',
+    id: 'ADD_AMENDMENT', label: 'Add Amendment', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+E', internalKey: 'F17+PS028',
     voiceTriggers: ['add amendment', 'open amendment', 'request amendment', 'amendment'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'SIGNOUT_NEXT', label: 'Sign Out and Next', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+O', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS029',
+    id: 'SIGNOUT_NEXT', label: 'Sign Out and Next', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+O', internalKey: 'F17+PS029',
     voiceTriggers: ['signout next', 'sign out next', 'finalize and next', 'sign out and next', 'next case sign out'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'GOTO_CODES', label: 'Go to Codes', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+G', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS030',
+    id: 'GOTO_CODES', label: 'Go to Codes', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+G', internalKey: 'F17+PS030',
     voiceTriggers: ['goto codes', 'go to codes', 'codes tab', 'open codes'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_ADD_CODE', label: 'Add Code', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+H', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS040',
+    id: 'VOICE_ADD_CODE', label: 'Add Code', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+H', internalKey: 'F17+PS040',
     voiceTriggers: ['add code', 'open add code', 'new code', 'add medical code'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'SELECT_SPECIMEN', label: 'Select Specimen', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+I', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS031',
+    id: 'SELECT_SPECIMEN', label: 'Select Specimen', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+I', internalKey: 'F17+PS031',
     voiceTriggers: ['select specimen', 'goto specimen', 'go to specimen', 'specimen one', 'specimen two', 'specimen three', 'specimen 1', 'specimen 2', 'specimen 3'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'OPEN_HISTORY', label: 'Open History', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+H', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS032',
+    id: 'OPEN_HISTORY', label: 'Open History', category: 'SYNOPTIC',
+    shortcut: 'Alt+H', internalKey: 'F17+PS032',
     voiceTriggers: ['open history', 'show history', 'prior cases', 'similar cases', 'open similar cases'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'CLOSE_HISTORY', label: 'Close History', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Alt+Shift+H', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS033',
+    id: 'CLOSE_HISTORY', label: 'Close History', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+H', internalKey: 'F17+PS033',
     voiceTriggers: ['close history', 'close similar cases', 'close prior cases'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'VOICE_CANCEL', label: 'Cancel', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+J', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS034',
+    id: 'VOICE_CANCEL', label: 'Cancel', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+J', internalKey: 'F17+PS034',
     voiceTriggers: ['cancel', 'close modal', 'dismiss', 'go back to report'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -950,51 +928,51 @@ const SEED_ACTIONS: SystemAction[] = [
   // ── SEARCH context ─────────────────────────────────────────────────────
   {
     id: 'SEARCH_EXECUTE', label: 'Execute Search', category: VOICE_CONTEXT.SEARCH,
-    shortcut: 'Alt+E', internalKey: ACTION_MAP['system.openSearch']?.internalKey ?? 'F13+PS008',
+    shortcut: 'Alt+E', internalKey: 'F13+PS305',
     voiceTriggers: ['execute search', 'run search', 'search now', 'go', 'find'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'SEARCH_CLEAR', label: 'Clear Search', category: VOICE_CONTEXT.SEARCH,
-    shortcut: 'Alt+C', internalKey: ACTION_MAP['system.openSearch']?.internalKey ?? 'F13+PS008',
+    shortcut: 'Alt+C', internalKey: 'F13+PS306',
     voiceTriggers: ['clear search', 'reset search', 'clear all', 'new search'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
     id: 'SEARCH_LOAD_SAVED', label: 'Load Saved Search', category: VOICE_CONTEXT.SEARCH,
-    shortcut: 'Alt+L', internalKey: ACTION_MAP['system.openSearch']?.internalKey ?? 'F13+PS008',
+    shortcut: 'Alt+L', internalKey: 'F13+PS307',
     voiceTriggers: ['load search', 'open saved search', 'search protocol', 'saved search'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
 
   // ── FLAG MANAGER context (REPORTING) ────────────────────────────────
   {
-    id: 'FLAG_SELECT_CASE', label: 'Select Case', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+K', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS035',
+    id: 'FLAG_SELECT_CASE', label: 'Select Case', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+K', internalKey: 'F17+PS035',
     voiceTriggers: ['select case', 'flag case', 'case flag'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'FLAG_SELECT_ALL_SPECIMENS', label: 'Select All Specimens', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+L', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS036',
+    id: 'FLAG_SELECT_ALL_SPECIMENS', label: 'Select All Specimens', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+L', internalKey: 'F17+PS036',
     voiceTriggers: ['select all specimens', 'all specimens', 'flag all specimens'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'FLAG_DESELECT_ALL', label: 'Deselect All', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+M', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS037',
+    id: 'FLAG_DESELECT_ALL', label: 'Deselect All', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+M', internalKey: 'F17+PS037',
     voiceTriggers: ['deselect all', 'clear selection', 'deselect all specimens'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'FLAG_SAVE', label: 'Save Flags', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+O', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS038',
-    voiceTriggers: ['save flags', 'apply flags', 'save changes'],
+    id: 'FLAG_SAVE', label: 'Save Flags', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+O', internalKey: 'F17+PS038',
+    voiceTriggers: ['save flags', 'apply flags'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
   {
-    id: 'FLAG_CANCEL', label: 'Cancel Flags', category: VOICE_CONTEXT.REPORTING,
-    shortcut: 'Ctrl+Alt+P', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS039',
+    id: 'FLAG_CANCEL', label: 'Cancel Flags', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+X', internalKey: 'F17+PS039',
     voiceTriggers: ['cancel flags', 'discard flag changes', 'close flag manager'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -1036,7 +1014,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'MSG_MARK_READ_ALL', label: 'Mark All as Read', category: VOICE_CONTEXT.MESSAGES,
-    shortcut: 'Alt+A', internalKey: ACTION_MAP['messages.markRead']?.internalKey ?? 'F18+PS005',
+    shortcut: 'Alt+A', internalKey: 'F18+PS024',
     voiceTriggers: ['read all', 'mark all read', 'mark all as read', 'read all messages'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -1142,7 +1120,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'MSG_VIEW_MESSAGES', label: 'View Messages', category: VOICE_CONTEXT.MESSAGES,
-    shortcut: 'Alt+Shift+V', internalKey: ACTION_MAP['messages.next']?.internalKey ?? 'F18+PS001',
+    shortcut: 'Alt+Shift+V', internalKey: 'F18+PS023',
     voiceTriggers: ['view messages', 'show messages list', 'back to messages', 'inbox'],
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -1319,7 +1297,7 @@ const SEED_ACTIONS: SystemAction[] = [
     category: 'SYNOPTIC',
     shortcut: 'Alt+F',
     internalKey: 'F13+PS240',
-    voiceTriggers: ['open flags', 'manage flags', 'show flags', 'flag case', 'add flag'],
+    voiceTriggers: ['open flags', 'manage flags', 'show flags', 'add flag'],
     learnedTriggers: [],
     requiredRole: 'All Staff',
     isActive: true,
@@ -1446,10 +1424,40 @@ const SEED_ACTIONS: SystemAction[] = [
     label: 'Request Consultation',
     category: 'SYNOPTIC',
     shortcut: 'Ctrl+Alt+R',
-    internalKey: 'F18+PS014',
+    internalKey: 'F17+PS046',
     voiceTriggers: ['request consultation', 'request review', 'send for review', 'consult colleague', 'second opinion', 'peer review'],
     learnedTriggers: [],
     requiredRole: 'All Staff',
+    isActive: true,
+  },
+
+  // ── Attending sign-out decisions — real, per direct follow-up ("the
+  // actions list is out of sync... actions that have yet to be
+  // recorded"): both added here, real features built this session,
+  // neither had ever been registered. Both genuinely restricted to
+  // Pathologist — the same real, attending-only actions
+  // useSignOutWorkflow.ts's own handleReturnToTrainee()/
+  // ReleaseBufferBanner.tsx's own handleRecall() already gate to.
+  {
+    id: 'RETURN_TO_TRAINEE',
+    label: 'Return to Trainee',
+    category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+T',
+    internalKey: 'F17+PS041',
+    voiceTriggers: ['return to trainee', 'reject with notes', 'send back to resident', 'return case to resident'],
+    learnedTriggers: [],
+    requiredRole: 'Pathologist',
+    isActive: true,
+  },
+  {
+    id: 'RECALL_REPORT',
+    label: 'Recall Report',
+    category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+V',
+    internalKey: 'F17+PS042',
+    voiceTriggers: ['recall report', 'pull back report', 'recall the report'],
+    learnedTriggers: [],
+    requiredRole: 'Pathologist',
     isActive: true,
   },
 
@@ -1575,6 +1583,47 @@ const SEED_ACTIONS: SystemAction[] = [
     isActive: true,
   },
 
+  // ── AUDIT — real, per direct follow-up ("the actions list is out
+  // of sync... actions that have yet to be recorded"): both real
+  // features, neither had ever been registered, and the page itself
+  // (AuditLogPage.tsx) never even had its own voice context before
+  // this same pass — see that page's own new setCurrentContext call.
+  // No pre-existing shortcuts/triggers to collide with in this
+  // context, since it's genuinely new.
+  //
+  // isActive: false on both, per direct follow-up: each real button
+  // (OutboundInterfaceDlqSection.tsx's own onClick={() =>
+  // retryDispatch(e)} / dispatchNow(e)) is genuinely per-row — one
+  // specific queue entry, sending a real payload to a real receiving
+  // endpoint. There's no reliable, safe default for "which entry"
+  // a bare voice/keyboard trigger would mean, and a wrong guess here
+  // isn't a cosmetic miss, it's the real risk of re-dispatching the
+  // wrong message. Kept registered rather than deleted — so the
+  // catalog stays accurate about what real actions this page has —
+  // just deliberately never eligible for voice or keyboard dispatch.
+  {
+    id: 'DISPATCH_NOW',
+    label: 'Dispatch Now',
+    category: 'AUDIT',
+    shortcut: 'Alt+D',
+    internalKey: 'F25+PS009',
+    voiceTriggers: ['dispatch now', 'send now', 'dispatch this message'],
+    learnedTriggers: [],
+    requiredRole: 'All Staff',
+    isActive: false,
+  },
+  {
+    id: 'RETRY_DISPATCH',
+    label: 'Retry Dispatch',
+    category: 'AUDIT',
+    shortcut: 'Alt+R',
+    internalKey: 'F25+PS010',
+    voiceTriggers: ['retry dispatch', 'retry send', 'resend'],
+    learnedTriggers: [],
+    requiredRole: 'All Staff',
+    isActive: false,
+  },
+
 // ─────────────────────────────────────────────────────────────────────────────
 ];
 
@@ -1585,6 +1634,35 @@ const SEED_ACTIONS: SystemAction[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ACTIONS_STORAGE_KEY = 'ps_action_registry';
+
+// Real, critical fix, per direct follow-up ("the actions list is out
+// of sync... it has to be flawless"): loadActions() below only ever
+// ADDS genuinely new-by-id seed actions on top of whatever's already
+// in localStorage — it never re-applies an existing id's own updated
+// fields. That meant every real fix this whole pass made (49 actions
+// recategorized off the orphaned REPORTING context, 45 internalKey
+// collisions resolved, 10 voice-trigger overlaps de-duplicated, the
+// two confirmed stale ActionId references, the new AUDIT context
+// actions, RETURN_TO_TRAINEE/RECALL_REPORT) would have been silently
+// invisible to any real browser that already had prior
+// ps_action_registry data stored — which, for anyone who's been
+// actively using this app, is the common case, not an edge one. Same
+// real version-bump pattern services/users/mockUserService.ts's own
+// USERS_VERSION already uses for this identical problem — increment
+// ACTIONS_VERSION whenever SEED_ACTIONS changes meaningfully.
+const ACTIONS_VERSION = '2'; // bumped: the whole "flawless" action-registry pass
+const ACTIONS_VERSION_KEY = 'pathscribe_actions_version';
+try {
+  if (localStorage.getItem(ACTIONS_VERSION_KEY) !== ACTIONS_VERSION) {
+    localStorage.removeItem(ACTIONS_STORAGE_KEY);
+    localStorage.setItem(ACTIONS_VERSION_KEY, ACTIONS_VERSION);
+  }
+} catch {
+  // localStorage unavailable (e.g. test environment) — degrade
+  // gracefully, matching loadActions()'s own established pattern
+  // just below; loadActions() falls back to SEED_ACTIONS directly
+  // in that case anyway, so there's nothing stale to clear.
+}
 
 function loadActions(): SystemAction[] {
   try {

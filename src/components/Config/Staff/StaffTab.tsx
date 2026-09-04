@@ -3,7 +3,7 @@ import { VOICE_PROFILES, type VoiceProfileId } from '../../../constants/voicePro
 import '../../../pathscribe.css';
 import RoleDictionary, { Role, DEFAULT_ROLES } from './RoleDictionary';
 import FppeAssignmentsSection from '../System/FppeAssignmentsSection';
-import { userService, subspecialtyService, Subspecialty } from '../../../services';
+import { userService, subspecialtyService, roleService, Subspecialty } from '../../../services';
 import { ServiceResult } from '../../../services/types';
 import { Dropdown } from '@/components/Common/Dropdown';
 
@@ -299,7 +299,7 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
                   Pediatric Access
                 </div>
                 <div className="ps-st-peds-desc">
-                  Qualifies this pathologist to report pediatric cases. Client-level authorization is also required per client.
+                  Qualifies this pathologist to report pediatric cases. Facility-level authorization is also required per facility.
                 </div>
               </div>
             </label>
@@ -320,7 +320,7 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
                 <div className="ps-st-peds-desc">
                   Grants visibility into PathScribe Orchestration/Outreach cases (a separate data
                   source from this user's LIS cases) across Search and Worklist. Unlike Pediatric
-                  Access, there's no second per-client authorization layer — this single flag is
+                  Access, there's no second per-facility authorization layer — this single flag is
                   the entire gate.
                 </div>
               </div>
@@ -382,9 +382,18 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
   if (loading) return <div className="ps-st-loading">Loading staff...</div>;
 
   const filtered = users.filter(u => {
-    const name = fullName(u).toLowerCase();
-    return (name.includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
-      && (roleFilter === 'All' || u.roles.includes(roleFilter));
+    // Real, per direct guidance: widened from name/email only to every
+    // real identifying field a staff person might actually be found
+    // by — an admin who doesn't recall a name's spelling but has an
+    // NPI, or is looking someone up by phone/license, shouldn't come
+    // up empty. Each field checked defensively (a person can genuinely
+    // have no credentials/GMC number) rather than assuming every field
+    // is always populated.
+    const q = search.toLowerCase();
+    const matchesSearch = !q || [
+      fullName(u), u.email, u.credentials, u.npi, u.gmcNumber, u.license, u.phone,
+    ].some(field => field?.toLowerCase().includes(q));
+    return matchesSearch && (roleFilter === 'All' || u.roles.includes(roleFilter));
   });
 
   const handleSave = async (draft: Draft) => {
@@ -430,6 +439,111 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
     setModal(null);
   };
 
+  const renderStaffRow = (u: StaffUser) => {
+    const subs = userSubsMap[u.id] || [];
+    return (
+      <tr key={u.id} className="ps-st-tr">
+        <td className="ps-st-td">
+          <div className="ps-st-member-cell">
+            <div className="ps-st-avatar">{initials(u)}</div>
+            <div>
+              <span className="ps-st-name" data-phi="name">{fullName(u)}</span>
+              {u.credentials && <span className="ps-st-credentials">{u.credentials}</span>}
+              {u.canViewPediatric && <span className="ps-st-peds-badge">Peds</span>}
+              {(u as any).canViewOrchestration && <span className="ps-st-peds-badge">Orch</span>}
+              {/* Real, small marker, per direct guidance: this table is
+                  now grouped by primary role only, so a secondary role
+                  wouldn't otherwise be obvious at a glance without
+                  checking the Role column separately. Title attribute
+                  names the real secondary role(s) directly on hover,
+                  not just a bare count. */}
+              {u.roles.length > 1 && (
+                <span className="ps-st-multirole-badge" title={`Also: ${u.roles.slice(1).join(', ')}`}>
+                  +{u.roles.length - 1}
+                </span>
+              )}
+            </div>
+          </div>
+        </td>
+        <td className="ps-st-td ps-st-td--email">{u.email}</td>
+        <td className="ps-st-td">
+          <div className="ps-st-role-cell">
+            {u.roles.slice(0, 2).map(r => {
+              const roleObj = roles.find(x => x.name === r);
+              const color   = roleObj?.color ?? '#8AB4F8';
+              return (
+                <span key={r} className="ps-st-role-badge"
+                  style={{ color, background: `${color}22`, border: `1px solid ${color}44` }}>
+                  {r}
+                </span>
+              );
+            })}
+            {u.roles.length > 2 && (
+              <span className="ps-st-role-more" title={u.roles.slice(2).join(', ')}>
+                +{u.roles.length - 2}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="ps-st-td">
+          {subs.length === 0
+            ? <span className="ps-st-sub-none">None</span>
+            : <div className="ps-st-sub-cell">
+                {subs.map(s => <span key={s} className="ps-st-sub-badge">{s}</span>)}
+              </div>
+          }
+        </td>
+        <td className="ps-st-td">
+          <div className="ps-st-status-cell">
+            <span className={`ps-st-status-dot ${u.status === 'Active' ? 'ps-st-status-dot--active' : 'ps-st-status-dot--inactive'}`} />
+            <span className={u.status === 'Active' ? 'ps-st-status-label--active' : 'ps-st-status-label--inactive'}>
+              {u.status}
+            </span>
+          </div>
+        </td>
+        <td className="ps-st-td">
+          <button className="ps-st-edit-btn" onClick={() => setModal({ mode: 'edit', user: u })}>Edit</button>
+        </td>
+      </tr>
+    );
+  };
+
+  const STAFF_TABLE_HEADERS = ['Staff Member', 'Email', 'Role', 'Subspecialties', 'Status', 'Actions'];
+
+  // Real, per direct guidance (Staff member Organized under Role) —
+  // revised per direct follow-up: groups the same real `filtered` list
+  // (search text already applied) into one section per real role,
+  // scaling to however many real roles exist (6, 60, doesn't matter —
+  // this always iterates the real, live `roles` list, never a fixed
+  // count). A staff member with more than one role shows under their
+  // FIRST/primary role only (`u.roles[0]`) in this default,
+  // "All Roles" organizational view — never duplicated across every
+  // role they hold, so the same real person isn't counted twice when
+  // browsing the whole roster. Physician is excluded here for the same
+  // reason the existing role filter above already excludes it —
+  // directory-only, no app access, not staff organized the same way.
+  //
+  // When a SPECIFIC role is picked from the filter dropdown instead,
+  // that's a deliberate, explicit query ("show me this role's real
+  // members") — real membership via `.includes()` still applies there,
+  // same as before this change, so filtering to "Admin" still finds a
+  // real admin even when Admin isn't their primary role. Only the
+  // default, unfiltered browsing view groups strictly by primary.
+  const groupsToShow = (roleFilter === 'All' ? roles.filter(r => r.name !== 'Physician') : roles.filter(r => r.name === roleFilter))
+    .map(r => ({
+      role: r,
+      members: filtered.filter(u => roleFilter === 'All' ? u.roles[0] === r.name : u.roles.includes(r.name)),
+    }))
+    .filter(g => g.members.length > 0);
+
+  // Real, defensive bucket — a staff member whose own PRIMARY role
+  // doesn't match any currently real, known role (e.g. a role was
+  // renamed or deleted after being assigned) never silently disappears
+  // from this screen entirely; shown only when "All Roles" is
+  // selected, since a specific role filter is explicitly asking to see
+  // just that role's real members.
+  const unassigned = roleFilter === 'All' ? filtered.filter(u => !roles.some(r => r.name === u.roles[0])) : [];
+
   return (
     <div className="ps-st-root">
       <div className="ps-st-header">
@@ -441,7 +555,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
       </div>
 
       <div data-capture-hide="true" className="ps-st-filter-bar">
-        <input type="text" placeholder="Search staff..." value={search}
+        <input type="text" placeholder="Search by name, email, NPI, credentials, license, or phone..." value={search}
           onChange={e => setSearch(e.target.value)} className="ps-st-search" />
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
           title="Filter by role" className="ps-st-role-filter">
@@ -452,78 +566,56 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
         </select>
       </div>
 
-      <div data-capture-hide="true" className="ps-st-table-wrap">
-        <div className="ps-st-table-scroll">
-          <table className="ps-st-table">
-            <thead className="ps-st-thead">
-              <tr>
-                {['Staff Member', 'Email', 'Role', 'Subspecialties', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="ps-st-th">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(u => {
-                const subs = userSubsMap[u.id] || [];
-                return (
-                  <tr key={u.id} className="ps-st-tr">
-                    <td className="ps-st-td">
-                      <div className="ps-st-member-cell">
-                        <div className="ps-st-avatar">{initials(u)}</div>
-                        <div>
-                          <span className="ps-st-name" data-phi="name">{fullName(u)}</span>
-                          {u.credentials && <span className="ps-st-credentials">{u.credentials}</span>}
-                          {u.canViewPediatric && <span className="ps-st-peds-badge">Peds</span>}
-                          {(u as any).canViewOrchestration && <span className="ps-st-peds-badge">Orch</span>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="ps-st-td ps-st-td--email">{u.email}</td>
-                    <td className="ps-st-td">
-                      <div className="ps-st-role-cell">
-                        {u.roles.slice(0, 2).map(r => {
-                          const roleObj = roles.find(x => x.name === r);
-                          const color   = roleObj?.color ?? '#8AB4F8';
-                          return (
-                            <span key={r} className="ps-st-role-badge"
-                              style={{ color, background: `${color}22`, border: `1px solid ${color}44` }}>
-                              {r}
-                            </span>
-                          );
-                        })}
-                        {u.roles.length > 2 && (
-                          <span className="ps-st-role-more" title={u.roles.slice(2).join(', ')}>
-                            +{u.roles.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="ps-st-td">
-                      {subs.length === 0
-                        ? <span className="ps-st-sub-none">None</span>
-                        : <div className="ps-st-sub-cell">
-                            {subs.map(s => <span key={s} className="ps-st-sub-badge">{s}</span>)}
-                          </div>
-                      }
-                    </td>
-                    <td className="ps-st-td">
-                      <div className="ps-st-status-cell">
-                        <span className={`ps-st-status-dot ${u.status === 'Active' ? 'ps-st-status-dot--active' : 'ps-st-status-dot--inactive'}`} />
-                        <span className={u.status === 'Active' ? 'ps-st-status-label--active' : 'ps-st-status-label--inactive'}>
-                          {u.status}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="ps-st-td">
-                      <button className="ps-st-edit-btn" onClick={() => setModal({ mode: 'edit', user: u })}>Edit</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {groupsToShow.map(({ role, members }) => (
+        <div key={role.id} data-capture-hide="true" className="ps-st-role-group">
+          <div className="ps-st-role-group-header">
+            <span className="ps-st-role-badge"
+              style={{ color: role.color, background: `${role.color}22`, border: `1px solid ${role.color}44` }}>
+              {role.name}
+            </span>
+            <span className="ps-st-role-group-count">{members.length}</span>
+          </div>
+          <div className="ps-st-table-wrap">
+            <div className="ps-st-table-scroll">
+              <table className="ps-st-table">
+                <thead className="ps-st-thead">
+                  <tr>{STAFF_TABLE_HEADERS.map(h => <th key={h} className="ps-st-th">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {members.map(renderStaffRow)}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      ))}
+
+      {unassigned.length > 0 && (
+        <div data-capture-hide="true" className="ps-st-role-group">
+          <div className="ps-st-role-group-header">
+            <span className="ps-st-role-badge" style={{ color: '#8291a8', background: 'rgba(130,145,168,0.13)', border: '1px solid rgba(130,145,168,0.27)' }}>
+              No Matching Role
+            </span>
+            <span className="ps-st-role-group-count">{unassigned.length}</span>
+          </div>
+          <div className="ps-st-table-wrap">
+            <div className="ps-st-table-scroll">
+              <table className="ps-st-table">
+                <thead className="ps-st-thead">
+                  <tr>{STAFF_TABLE_HEADERS.map(h => <th key={h} className="ps-st-th">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {unassigned.map(renderStaffRow)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {groupsToShow.length === 0 && unassigned.length === 0 && (
+        <div className="ps-st-table-wrap"><p className="ps-st-subtitle" style={{ padding: 16 }}>No staff match.</p></div>
+      )}
 
       {modal && <StaffModal mode={modal.mode} user={modal.user} roles={roles} subspecialties={subspecialties} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
@@ -537,6 +629,30 @@ type StaffSubTab = 'members' | 'roles' | 'credentialing';
 const StaffTab: React.FC = () => {
   const [subTab, setSubTab] = useState<StaffSubTab>('members');
   const [roles,  setRoles]  = React.useState<Role[]>(DEFAULT_ROLES);
+
+  // Real fix, per direct guidance (Staff member Organized under Role):
+  // `roles` used to only ever become the real, live role list once an
+  // admin happened to visit the Role Dictionary sub-tab first (via its
+  // own onRolesChange callback) — landing directly on Staff Members
+  // left this stuck at the 4 hardcoded DEFAULT_ROLES for the whole
+  // session. A real, easy-to-miss gap that would have silently broken
+  // the new role-grouped view below: any real custom role's own
+  // members would never get a group at all, since no default role
+  // name would match it. Same real fetch+mapping RoleDictionary.tsx
+  // itself already does, so both stay genuinely in sync regardless of
+  // which sub-tab loads first.
+  React.useEffect(() => {
+    roleService.getAll().then(res => {
+      if (res.ok) {
+        const mapped = res.data.map(r => ({
+          ...r,
+          canViewPediatric:     (r as any).canViewPediatric ?? false,
+          participationTypeIds: r.participationTypeIds ?? [],
+        })) as Role[];
+        setRoles(mapped);
+      }
+    });
+  }, []);
 
   return (
     <div>

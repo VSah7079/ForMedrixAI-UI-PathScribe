@@ -48,19 +48,18 @@ with no folder of their own — filled in incrementally as the
   on the new `.ps-cfgpage-tab-btn` class — the JS version bypassed
   React's rendering model for something CSS already does natively.
   **Real bug found and fixed since, per direct report**: switching a
-  top-level tab, or a section within System/Integrations, never reset
+  top-level tab, or a section within System, never reset
   scroll position — the next tab/section could load already scrolled
   down, hiding its own add button and column headers until manually
   scrolled up. Root cause: `.ps-cfgpage-scroll` (confirmed via its own
   `overflow-y: auto`) is the real, single, shared scroll container for
-  the whole page, but two of the three real state changes that can
-  trigger a switch (`Config/System/index.tsx` and
-  `Config/Integrations/index.tsx`'s own internal `setActive`) happen
+  the whole page, but the real state change that can trigger a switch
+  (`Config/System/index.tsx`'s own internal `setActive`) happens
   two component levels below it — a prop couldn't reach it without a
   larger refactor. Fixed with a small, shared, tested utility
   (`utils/resetConfigScroll.ts`) called from all real trigger paths:
-  this file's own `handleTabChange`, both sub-tabs' sidebar clicks,
-  both sub-tabs' URL-deep-link `useEffect`, and System's voice-navigation
+  this file's own `handleTabChange`, System's own sidebar clicks,
+  System's own URL-deep-link `useEffect`, and System's voice-navigation
   event listener. Verified live, every path independently, with a
   forced-scrollable viewport and a confirmed non-zero scroll position
   before each switch — not assumed from one working case.
@@ -153,6 +152,11 @@ with no folder of their own — filled in incrementally as the
     compliance/inspection purposes) now lives separately, in System
     Logs' new "Quality Control" tab — see `AuditLogPage.tsx`'s entry
     below. This page stays focused on active work.
+  - **Real, new tab, per direct guidance ("Perhaps a new section of
+    Quality Assurance maybe Patient Management")**: `patient-management`
+    (`components/QualityAssurance/PatientManagementSection.tsx`),
+    registered under the same `'operations'` pillar as
+    `patient-match-review` — full account in that folder's own README.
 
 - **`AuditLogPage.tsx`** — System audit/error log viewer with role-based
   scoping (pathologists see only their own case activity; validation
@@ -171,7 +175,10 @@ with no folder of their own — filled in incrementally as the
   `localStorage.getItem('pathscribe-user')` role-parsing duplication
   (a module-level `getRole()` plus a component-level `storedUser` IIFE,
   both bypassing `AuthContext`) onto `useAuth()` — same fix already
-  applied to `ConfigurationPage.tsx`.
+  applied to `ConfigurationPage.tsx`. **Real, small update (PS-113,
+  Stage 4):** the reconciliation log tab reads from the new, generic
+  `qaActivityRecordService` now, filtered to the real Frozen vs Final
+  activity type, not the old `reconciliationService`.
 
   **Real bug found and fixed:** the page rendered `ResourcesModal` and
   tracked `isResourcesOpen` state, but had no way to ever set it to
@@ -287,6 +294,132 @@ with no folder of their own — filled in incrementally as the
   clearance well past that 80px) fixes this for those two modals
   specifically — the shared class itself was deliberately left alone,
   since 28 other real modals across the app depend on it unchanged.
+  **Real, per direct guidance ("Any existing gaps to deal with?" — no
+  DLQ/retry UI for the two new real outbound patient-ADT/result
+  queues, unlike billing's own `OutboundDlqSection.tsx`):** the
+  `'interfaces'` tab now has its own real sub-tab structure, mirroring
+  `'financial'`'s existing `financialSubTab` pattern exactly
+  (`interfacesSubTab: 'exceptions' | 'outbound_dlq'`) — the pre-existing
+  Interface Exceptions content moved under its own `'exceptions'`
+  sub-tab, unchanged, alongside the new `'outbound_dlq'` sub-tab
+  rendering `OutboundInterfaceDlqSection.tsx`. Deliberately placed
+  under this tab, not `'financial'` — Patient-ADT/Result dispatch
+  failures are a genuinely different real domain from billing, and
+  `'interfaces'` (inbound HL7 exception review) is architecturally the
+  same "operational, day-to-day monitoring queue belongs in Audit, not
+  admin configuration" category `OutboundDlqSection.tsx`'s own header
+  already established, just for outbound instead of inbound.
+
+  **Real, per direct UI-review follow-up ("Fix the root" — background
+  inconsistency across pages): this page's own `.ps-auditlog-bg`/
+  `.ps-auditlog-bg-grad` background-image layer, and `.ps-auditlog-page`'s
+  own hardcoded `background-color: #000; color: #fff;`, both removed
+  entirely.** This page now falls through to `AppShell.tsx`'s own,
+  real `.ps-app-root` background (see that folder's own README for
+  the fuller account of the inline-style bug this whole pass traced
+  back to) — matching Configuration/Quality Assurance/Intraop Queue/
+  Contribution's existing, correct behavior.
+
+- **`OutboundInterfaceDlqSection.tsx`** — new, real, per the same
+  direct guidance above. Mirrors `OutboundDlqSection.tsx`'s proven
+  FAILED/QUEUED table structure closely (Retry Dispatch, Simulate
+  Failure, Capture as CAPA), consolidated into one screen covering
+  both new queues via a type selector — same "one cohesive outbound
+  interface message domain" grouping `Config/System/
+  OutboundMessagePreviewSection.tsx` already established for all four
+  real transaction types together. Deliberately simpler than the
+  billing DLQ in one real way: no "Fix & Retry" flow for a detectable
+  data gap — neither new queue has an equivalent real error category
+  to billing's `MISSING_ICD10`/`MISSING_PROVIDER_NPI`; every real
+  failure here is `DISPATCH_TIMEOUT`/`DISPATCH_REJECTED`, so Retry
+  Dispatch alone is the complete, correct action.
+  `services/hl7/simulateInterfaceDispatchFailure.ts` is a new,
+  deliberately separate function from billing's own
+  `simulateDispatchFailure.ts` — that one's messages specifically name
+  "RCM endpoint," which would be factually wrong for a patient-identity
+  or pathology-result dispatch to the interface engine. Same for the
+  new `def-outbound-interface-dispatch-failure` deficiency type
+  (`services/deficiencies/mockDeficiencyTypeService.ts`) — kept
+  genuinely separate from billing's own `def-outbound-dispatch-failure`
+  rather than reused, since that one is explicitly RCM/billing-scoped
+  in its own name and description.
+
+  **Real, per direct follow-up (gap #7 — bringing assist-mode's
+  `sendSynopticReportToLis` up to the same honest queue standard):**
+  extended from two queue types to three
+  (`patient_adt`/`result`/`lis_sync`). Restructured around a small,
+  real `QUEUE_CONFIG` object (one entry per queue type: column labels,
+  identifier/kind field accessors, the three real service methods)
+  rather than growing every ternary in the file into a three-way
+  chain — confirmed directly this was the right call before rewriting:
+  the file already had the same `queueType === 'patient_adt' ? X : Y`
+  pattern repeated across 7 real places (both table headers, both
+  table bodies, `retryDispatch`, `simulateFailure`, `captureAsCapa`),
+  and a third branch on all seven would have made the file
+  meaningfully harder to read for a gain that only grows with every
+  future queue type. Config-driven means a fourth queue type later is
+  one new config entry, not seven touched call sites.
+
+  **Real, per direct follow-up ("do we implement... actual outbound
+  HTTP dispatch transport" → "Dispatch needs to be generic so all
+  transactions can be checked"): Retry Dispatch and a new Dispatch Now
+  action now genuinely send.** Real, worthwhile bug found before real
+  dispatch could even be correct: `patient_adt`'s own `transactionType`
+  was a fixed `null` — the comment said "resolved per-entry below,"
+  but that resolution was never actually implemented, meaning real
+  dispatch for A08/A40/A47 would have silently no-op'd forever, every
+  time. Fixed by turning `transactionType` into `getTransactionType(e)`,
+  the same real per-entry-function pattern `getIdentifier`/`getKind`
+  already use. See `services/reports/README.md`'s own account for the
+  full real dispatch-transport story, including the real receiving
+  end, the real dispatch function, the LIS-sync queue's own honest
+  scope boundary (its full payload can't be rebuilt here, so Dispatch
+  Now/Retry Dispatch are deliberately disabled for it with a clear
+  reason shown), and a real `strictNullChecks: false` TypeScript
+  gotcha worth remembering for future work in this codebase.
+
+  **Real, per direct follow-up ("We are logging interface errors with
+  human readable error messaging?" → "continue with the error log
+  refinements"): the DLQ's own displayed error, previously coarse and
+  inconsistent, is now genuinely clear and complete.** A new "Engine
+  unreachable" status/Simulate button joins Dispatch timeout/rejected —
+  `errorCode` is real, per-entry-resolved now (`'DISPATCH_TIMEOUT' |
+  'DISPATCH_UNREACHABLE' | 'DISPATCH_REJECTED'`), not hardcoded to
+  `'DISPATCH_REJECTED'` at every real call site regardless of what
+  actually happened, which was the real gap found while investigating
+  this. See `services/reports/README.md`'s own fuller account of the
+  underlying fix, which lives in `dispatchInterfaceMessage.ts` itself.
+
+- **Real, per direct follow-up ("Continue" — the still-open "log
+  reports" half of "All this must be audited and should be available
+  to create log reports"): the `'audit'` tab now has a real, dedicated
+  "🧬 Patient Management Only" filter**, right alongside the existing
+  Type pills — independent of them (not folded into that mutually
+  exclusive group), combinable with every other real filter already on
+  this tab (user, date range, search), and covered automatically by
+  the existing CSV export (`exportAuditCSV`'s own filter-metadata
+  object gained a `'Patient Management Only'` entry, so an exported
+  file honestly records whether this filter was active). Prefix-based
+  (`log.event.startsWith('mpi.')`), not a hardcoded list of event
+  names — a future new real `mpi.*` event type is included
+  automatically, never silently missed. Covers all 8 real event types
+  this app currently logs under that prefix — not just the four
+  "operation" events (merged/case.moved/breakglass.rebind/match.linked)
+  named in the original request, but also the ambiguous-match review
+  queue's own three events and the newly-added `mpi.demographics.updated`
+  below — the whole real patient-identity-management domain, not an
+  arbitrarily narrowed subset.
+  **Real, found-and-fixed gap surfaced while verifying this**: a
+  genuinely successful `updateDemographics()` call (ADT^A08) previously
+  left NO real audit trail at all — only the rejected/stale-event path
+  logged anything. Fixed in `services/patients/mockPatientIndexService.ts`
+  — a new `mpi.demographics.updated` event, PHI-safe by the same,
+  established precedent as the stale-event log right above it: names
+  only WHICH real fields changed, never the actual new values. See
+  `services/patients/README.md`'s own entry for the full account and
+  the new, dedicated test proving the PHI-safety (asserts the real
+  changed field names appear in the audit detail, the real new values
+  never do).
 
 - **`Home.tsx`** — Landing page: navigation cards, footer, a "User
   Preferences" modal (theme picker + support links), and an About
@@ -330,6 +463,108 @@ with no folder of their own — filled in incrementally as the
   its role text — fixed that one line, though `AppShell.tsx` as a
   whole is outside today's review.
 
+  **Real, per direct UI-review feedback on the Homepage tiles (three
+  requests, all in `pathscribe.css`, not this file):** (1) `.ps-page-bg`
+  — the stock background photo's own bright highlights and distinct
+  geometric shapes (keyboards, monitors) were fighting the cards on
+  top of it; darkened further (`brightness(0.4)` → `0.3`) and a real
+  `blur(10px)` added — `inset` extended to `-40px` (was `0`) so the
+  blur doesn't sample past its own edge and leave a visible,
+  unblurred fringe at the page boundary; `.ps-page`'s own `overflow:
+  hidden` clips the overflow safely. Confirmed `.ps-page-bg` is
+  genuinely only ever used here before touching it — no other page
+  affected. (2) `.ps-home-card`'s own idle-state `background` raised
+  from a nearly-invisible `rgba(255,255,255,0.02)` to a real, visible
+  `rgba(13,24,41,0.55)` (built from this app's own `--ps-surface` dark
+  navy, not a generic white-glass default) plus a real
+  `backdrop-filter: blur(14px)` — the actual glass-frosting mechanism,
+  blurring whatever page background shows through the tile rather
+  than just tinting over it. `.ps-home-card--hovered` gained a real
+  fill-opacity increase (`rgba(13,24,41,0.72)`) to pair with the
+  existing `translateY(-8px)` lift — already-existing `transition:
+  all 0.3s ease` on the base class covers the new property, no
+  separate transition rule needed. (3) `.ps-home-card-desc`'s
+  `opacity: 0.7` (dimming whatever color showed through, compounding
+  with the tile's own transparency) replaced with a real, solid
+  `color: var(--ps-text-muted)` — the existing `#94A3B8`/Slate-400
+  token, the exact value the request named, reused rather than a new
+  hardcoded hex. Title color (`.ps-home-card-title`) left untouched —
+  the request was specifically about the dimmer, secondary
+  description text.
+
+  **Real, per direct UI-review follow-up ("Can we check the new screen
+  for color blindness and other visual issues?" → "Fix them all"):
+  computed, not eyeballed.** Ran a real WCAG contrast computation and
+  a colorblindness simulation (protanopia/deuteranopia/tritanopia,
+  Brettel/Vienot-style linear-RGB matrices) against the actual color
+  values in the code before changing anything. Text contrast turned
+  out already excellent (7.3-15.9:1 in both a worst-case and typical
+  scenario, clearing WCAG AAA) — confirmed the earlier tile-text fix
+  above already worked; no further change needed there.
+
+  Four real, distinct issues found and fixed:
+  1. **Keyboard accessibility (the most serious finding, unrelated to
+     color at all)** — the cards were plain `<div onClick>`: no
+     `tabIndex`, no `role`, no `onKeyDown`, no `:focus` CSS rule
+     anywhere. A keyboard-only user could not reach or activate a
+     single tile on the page that is the primary way to navigate the
+     whole app — a real WCAG 2.1.1 failure. Fixed: `role="button"`,
+     `tabIndex={0}`, and a real `onKeyDown` activating on Enter/Space;
+     `onFocus`/`onBlur` reuse the existing `hoveredCard` state so a
+     keyboard user gets the same visible highlight a mouse user
+     already did, not a second, separate visual language.
+     `.ps-home-card:focus-visible` added (real `outline`, not just a
+     `box-shadow`, so it stays visible regardless of the card's own
+     `border-radius`/`overflow: hidden`) — `:focus-visible`
+     specifically, not bare `:focus`, so it only shows for real
+     keyboard navigation, not a mouse click.
+  2. **A genuine, exact color duplicate — not colorblindness-specific
+     at all.** Intraop Queue and My Contribution both used `#0EA5E9`,
+     confirmed identical under every simulation type (distance 0.0)
+     because they were already identical to normal vision.
+  3. **The full 9-color accent palette replaced, fully verified.**
+     Real convergence existed under protanopia/deuteranopia (the two
+     common forms of red-green colorblindness, ~8% of men) —
+     Configuration/Audit/Quality Assurance compressed toward the same
+     yellow-green band, and Search/Intraop Queue/Batch Management
+     compressed in the blue-violet range. Iterated a real
+     pairwise-distance check (9 colors × 3 simulation types = 27
+     checks) until every pair cleared a genuine separation threshold
+     under all three simultaneously, AND every color still holds at
+     least 3:1 contrast (WCAG 1.4.11) against the dark tile background
+     it renders on as a hover border/glow — a color that "solved"
+     colorblindness by becoming invisible would have solved nothing.
+     Greens/yellows/reds mostly drawn from the real, published Wong
+     (2011, *Nature Methods*) 8-color colorblind-safe palette; the
+     remaining blue/violet/magenta slots verified individually since
+     Wong's own set doesn't have enough entries for all 9 tiles this
+     app needs. Full account and exact values in `Home.tsx`'s own
+     `cards` array comment.
+  4. **Two smaller, real hardening fixes.** The hover lift/fill
+     transition never checked `prefers-reduced-motion` (confirmed
+     directly — the only two existing rules using that media query in
+     the whole CSS file are for an unrelated ticker animation,
+     nowhere near Home) — a real `@media (prefers-reduced-motion:
+     reduce)` block now removes the `translateY` movement specifically
+     while keeping the border/background/box-shadow state-change
+     feedback, so a reduced-motion user still gets clear confirmation
+     a card is active. `.ps-home-card-desc` had no overflow handling
+     at all on a fixed-height card that can shrink to a 260px-wide
+     grid cell — added a real 2-line clamp with ellipsis (the
+     longest real description, Quality Assurance's, was the concrete
+     risk case) rather than letting text silently overflow.
+
+  **New test file, `Home.test.tsx`** — none existed before this pass,
+  despite this being the primary keyboard-navigation surface for the
+  whole app. 5 real tests: a card is genuinely reachable via `Tab`
+  (`tabIndex`/`role` both checked), Enter and Space each independently
+  trigger real navigation to the card's own route, an unrelated key
+  does *not* trigger navigation, and a permanent regression guard
+  reading the real `--card-accent` CSS custom property off every
+  rendered card confirms no two ever share a color again — cheap
+  (no need to hardcode a palette copy that could drift), and reads
+  from the same data the page itself renders from.
+
 - **`ContributionDashboardPage.tsx`** — "My Contribution" dashboard:
   Overview (KPIs, weekly chart, quality flags, teaching cases),
   Productivity, Quality, and AI Contribution tabs. The biggest file
@@ -339,7 +574,12 @@ with no folder of their own — filled in incrementally as the
   all 10 `any` casts removed (verified none load-bearing), and a real
   business-logic-in-JSX IIFE (the Teaching Cases tile) extracted to a
   proper named component matching the pattern this file already used
-  correctly elsewhere.
+  correctly elsewhere. **Real, current status (PS-113, Stage 4):** all
+  three real reconciliation-data usages (quality flags, the Teaching
+  Cases tile's `teachingRecords`, the trainee case-log export) migrated
+  to the new, generic `qaActivityRecordService`, filtered to the real
+  Frozen vs Final activity type — including the tile's own
+  `attendingFeedback` → `reviewerFeedback` rename.
 
   **Real bug found and fixed:** `WarningIcon` was styled via
   `style={{ color: ... }}`, but its stroke is bound to a `color` prop,
@@ -434,6 +674,12 @@ with no folder of their own — filled in incrementally as the
   custom-property assignments for genuinely per-instance dynamic
   accent colors.
 
+  **Real, new (gap #6 — the proactive `moveCaseToPatient()` trigger):**
+  a "🪪 Reassign Patient" action, shown once a real result row is
+  selected, opening `components/Search/ReassignCasePatientPanel.tsx` —
+  full account there. Reuses this page's own already-real
+  `selectedResultIndex`/`runSearch()`, no new selection mechanism.
+
   **All 14 `any` casts removed, two of which were hiding a real,
   repeated bug:** `SpecimenFlag`/`CaseFlag` have a `.label` field, not
   `.name`. The computational-flags search filter and the CSV export's
@@ -496,6 +742,16 @@ confirmation step, since that would undo the exact click-reduction
 being asked for. Guarded with a ref (not just an effect dependency) so
 a later re-render can't re-trigger a second auto-attach over a report
 the pathologist has already started editing or deliberately replaced.
+
+**Real, per direct UI-review follow-up ("Fix the root" — background
+inconsistency across pages): this page's own `.ps-search-bg-image`/
+`.ps-search-bg-gradient` background-image layer, and
+`.ps-search-page-root`'s own hardcoded `background-color: #000; color:
+#fff;`, both removed entirely.** This page now falls through to
+`AppShell.tsx`'s own, real `.ps-app-root` background (see that
+folder's own README for the fuller account of the inline-style bug
+this whole pass traced back to) — matching Configuration/Quality
+Assurance/Intraop Queue/Contribution's existing, correct behavior.
 
 ---
 

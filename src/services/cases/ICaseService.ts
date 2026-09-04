@@ -147,8 +147,8 @@ export interface CaseFilterParams {
   compFlagCodes?: string[];
 
   // ── Submitting client ──────────────────────────────────────────────────────
-  /** Real client ids from clientService.getAll(), matched against order.clientId */
-  clientIds?: string[];
+  /** Real client ids from clientService.getAll(), matched against order.facilityId */
+  facilityIds?: string[];
 
   // ── Pagination ─────────────────────────────────────────────────────────────
   /**

@@ -29,6 +29,8 @@ import '../pathscribe.css';
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import type { Case } from "@/types/case/Case";
 import { caseRouter } from "@/services/cases/CaseRouter";
+import { facilityService } from "@/services";
+import { resolvePediatricAccess, resolveOrchestrationAccess } from "@/services/auth/caseAccessControl";
 import { useAuth } from "../contexts/AuthContext";
 import { useMessaging } from "../contexts/MessagingContext";
 import { PoolClaimModal } from "../components/Worklist/PoolClaimModal";
@@ -88,10 +90,41 @@ export default function FullReportPage() {
     if (!cleanedCaseId) { setLoading(false); return; }
     setLoading(true);
     caseRouter.getCase(cleanedCaseId)
-      .then(c => setCaseData(c ?? null))
+      .then(async c => {
+        if (!c) { setCaseData(null); return; }
+
+        // Real, per direct investigation: this page previously loaded and
+        // rendered any case unconditionally — same pre-existing gap
+        // synopticLoader.ts had. See caseAccessControl.ts's own header
+        // comment on resolvePediatricAccess/resolveOrchestrationAccess for
+        // the full reasoning; this is the second of the two real case-view
+        // entry points that needed the same real enforcement.
+        const orchDecision = resolveOrchestrationAccess(user as any, c as any);
+        if (!orchDecision.granted) {
+          console.warn(`Orchestration access denied for case ${cleanedCaseId}: ${orchDecision.reason}`);
+          setCaseData(null);
+          navigate(`/worklist?accessDenied=orchestration&caseId=${cleanedCaseId}`, { replace: true });
+          return;
+        }
+
+        const facilityId = (c as any)?.order?.facilityId;
+        if (facilityId) {
+          const facilityRes = await facilityService.getById(facilityId).catch(() => undefined);
+          const facility = facilityRes?.ok ? facilityRes.data : null;
+          const pedDecision = resolvePediatricAccess(user as any, c as any, facility);
+          if (!pedDecision.granted) {
+            console.warn(`Pediatric access denied for case ${cleanedCaseId}: ${pedDecision.reason}`);
+            setCaseData(null);
+            navigate(`/worklist?accessDenied=pediatric&caseId=${cleanedCaseId}`, { replace: true });
+            return;
+          }
+        }
+
+        setCaseData(c);
+      })
       .catch(() => setCaseData(null))
       .finally(() => setLoading(false));
-  }, [cleanedCaseId]);
+  }, [cleanedCaseId, user, navigate]);
 
   const isPool = caseData?.status === 'pool';
 

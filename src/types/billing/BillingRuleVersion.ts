@@ -38,7 +38,7 @@
 // Organisation/Site hierarchy), NEVER called "Facility" anywhere in
 // this file, its consumers, or any UI built on it. "Facility" already
 // names a real, different, heavily-used concept in this codebase (the
-// client/referring/ordering dictionary - services/facilities/), and
+// facility/referring/ordering dictionary - services/facilities/), and
 // reusing that word here for "the site actually performing the work"
 // would create exactly the kind of internal-vs-external naming
 // confusion that risks real client- or regulator-facing ambiguity.

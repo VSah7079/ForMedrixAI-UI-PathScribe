@@ -27,7 +27,7 @@
 // findOrCreateByStructuredName (the real, preferred path) directly.
 // Same real, established "match or auto-create pending, never block
 // processing" posture already proven for
-// Client.findOrCreateByAssigningAuthority / SpecimenCategory /
+// Client.findOrCreateByAssigningAuthority / Department /
 // SpecimenDictionaryEntry resolution (PS-80).
 //
 // Real, deliberate: does NOT write into the real ParticipationType
@@ -137,7 +137,7 @@ export interface StructuredProviderName {
 export interface ResolvedProvider {
   physician: Physician;
   /** Real, same convention as PS-80's own dictionaryEntryWasAutoCreated/
-   *  categoryWasAutoCreated — true whenever the resolved Physician
+   *  departmentWasAutoCreated — true whenever the resolved Physician
    *  record carries autoCreated: true, whether that happened on THIS
    *  call or a past one. Matches the established, already-proven
    *  precedent in this app rather than inventing a stricter

@@ -21,6 +21,38 @@ function err(msg: string): ServiceResult<never> {
   return { ok: false, error: msg } as any;
 }
 
+/**
+ * Real, per direct guidance ("Routing Rules should also be tied to a
+ * Performing Lab facility"): builds the { entityId: templateId } map
+ * TemplateRoutingService actually consumes, resolving the single most
+ * specific real rule per entityId when more than one exists for it —
+ * a rule scoped to performingLabFacilityId always wins over a Global
+ * one (undefined performingLabFacilityId) for that same lab's own
+ * cases, same most-specific-wins precedence TAT Configuration and
+ * Template Routing's own Pass 0 already use elsewhere. Exported (not
+ * just used internally) so RoutingRulesTab.tsx's own Test panel can
+ * reuse the exact same resolution logic against its own, not-yet-saved
+ * draft rules, rather than a second, parallel implementation that
+ * could drift from this one.
+ */
+export function buildRoutingRuleMap(rules: RoutingRule[], performingLabFacilityId?: string): Record<string, string> {
+  const byEntity = new Map<string, RoutingRule[]>();
+  rules.forEach(r => {
+    const list = byEntity.get(r.entityId) ?? [];
+    list.push(r);
+    byEntity.set(r.entityId, list);
+  });
+  const map: Record<string, string> = {};
+  byEntity.forEach((candidates, entityId) => {
+    const labSpecific = performingLabFacilityId
+      ? candidates.find(r => r.performingLabFacilityId === performingLabFacilityId)
+      : undefined;
+    const winner = labSpecific ?? candidates.find(r => !r.performingLabFacilityId);
+    if (winner) map[entityId] = winner.templateId;
+  });
+  return map;
+}
+
 export const mockRoutingRuleService: IRoutingRuleService = {
   async getAll() {
     return ok(load());
@@ -57,22 +89,16 @@ export const mockRoutingRuleService: IRoutingRuleService = {
     save(load().filter(r => r.id !== id));
     return ok(undefined as void);
   },
-  async getClientMap() {
+  async getFacilityMap(performingLabFacilityId) {
     const rules = load().filter(r => r.type === 'client' && r.active);
-    const map: Record<string, string> = {};
-    rules.forEach(r => { map[r.entityId] = r.templateId; });
-    return ok(map);
+    return ok(buildRoutingRuleMap(rules, performingLabFacilityId));
   },
-  async getPhysicianMap() {
+  async getPhysicianMap(performingLabFacilityId) {
     const rules = load().filter(r => r.type === 'physician' && r.active);
-    const map: Record<string, string> = {};
-    rules.forEach(r => { map[r.entityId] = r.templateId; });
-    return ok(map);
+    return ok(buildRoutingRuleMap(rules, performingLabFacilityId));
   },
-  async getProtocolMap() {
+  async getProtocolMap(performingLabFacilityId) {
     const rules = load().filter(r => r.type === 'protocol' && r.active);
-    const map: Record<string, string> = {};
-    rules.forEach(r => { map[r.entityId] = r.templateId; });
-    return ok(map);
+    return ok(buildRoutingRuleMap(rules, performingLabFacilityId));
   },
 };

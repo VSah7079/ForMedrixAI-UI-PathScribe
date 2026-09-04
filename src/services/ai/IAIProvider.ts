@@ -8,7 +8,7 @@
 //   • Provider swapping without code changes (Claude ↔ GPT ↔ Bedrock)
 //   • Mock provider for demos and offline testing (zero API cost)
 //   • Audit logging at a single choke point
-//   • Future multi-provider routing per client/subspecialty
+//   • Future multi-provider routing per facility/subspecialty
 // ─────────────────────────────────────────────────────────────
 
 export interface AIGenerationRequest {

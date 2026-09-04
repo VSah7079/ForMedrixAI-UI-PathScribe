@@ -93,6 +93,19 @@ const persist = (data: Flag[]) => storageSet('pathscribe_flags_v2', data);
 
 let MOCK_FLAGS: Flag[] = load();
 
+// Real, confirmed fix (Jira PS-57's own follow-up): caseFilterUtils.ts
+// needs the real flag catalog to resolve a FlagInstance's
+// flagDefinitionId to its real display name/lisCode when filtering,
+// but applyCaseFilters() is a genuinely synchronous function (no
+// caller currently awaits it) — the normal, async getAll() below
+// can't be used there. This mirrors the real, current in-memory
+// MOCK_FLAGS state directly, for that one, specific synchronous
+// caller — not a replacement for the real, async service interface
+// everywhere else.
+export function getFlagsSync(): Flag[] {
+  return [...MOCK_FLAGS];
+}
+
 const ok    = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data  });
 const err   = <T>(msg: string): ServiceResult<T> => ({ ok: false, error: msg });
 const delay = ()                                  => new Promise(r => setTimeout(r, 80));

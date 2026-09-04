@@ -12,7 +12,7 @@
 //
 // Covers both real request types that already share the same
 // underlying message-send helper: pediatric access (a case-level,
-// per-client authorization), pool access (subspecialty/workgroup
+// per-facility authorization), pool access (subspecialty/workgroup
 // membership), and orchestration access (the user-level
 // canViewOrchestration flag) — found while wiring pediatric and pool
 // in; leaving it untracked would have meant two of three request
@@ -34,12 +34,12 @@ export interface AccessRequest {
   caseId?: string;
 
   /** Pediatric only — the request is genuinely resolved only once BOTH
-   *  the user-level canViewPediatric flag AND this client's own
+   *  the user-level canViewPediatric flag AND this facility's own
    *  authorizedPediatricPathologistIds list include the requester (the
    *  same real, two-part condition the request message itself already
    *  explains to the admin). */
-  clientId?: string;
-  clientName?: string;
+  facilityId?: string;
+  facilityName?: string;
 
   /** Pool only — the real Subspecialty this request is asking to join. */
   poolId?: string;
@@ -55,5 +55,5 @@ export interface AccessRequest {
 export type NewAccessRequest = Pick<
   AccessRequest,
   'type' | 'requestingUserId' | 'requestingUserName' | 'organisationId' | 'caseId'
-  | 'clientId' | 'clientName' | 'poolId' | 'poolName'
+  | 'facilityId' | 'facilityName' | 'poolId' | 'poolName'
 >;

@@ -9,7 +9,7 @@ import { callAi } from '@/services/aiIntegration/aiProviderService';
 import { resolveAiConfigOverrideForClient } from '@/components/Config/AI/resolveClientAiModel';
 import '../../../pathscribe.css';
 import type { MedicalCode } from '../synopticTypes';
-import { searchCodes, type CodeResult, type SnomedFilter } from '../../../services/terminologySearch/codeSearchService';
+import { searchCodes, filterToVerifiedCodes, type CodeResult, type SnomedFilter } from '../../../services/terminologySearch/codeSearchService';
 import { getOrganisationByHospitalId, type CodingSystem } from '@/services/organisation/organisationService';
 import { CODE_MAP_TABLE, resolveSpecimenDictionaryBaseCptCode } from '@/services/billing/codeMapTable';
 
@@ -55,11 +55,11 @@ export interface AddCodeModalProps {
   synopticDerivedCodes?: AiCodeSuggestion[];
   /** Whether Orchestrator/narrative mode is active */
   narrativeText?: string;
-  /** The case's ordering client — needed to resolve which AI model this
-   *  specific client is actually approved to use for AI code
-   *  suggestions. Optional so callers without a resolvable client
+  /** The case's ordering facility — needed to resolve which AI model this
+   *  specific facility is actually approved to use for AI code
+   *  suggestions. Optional so callers without a resolvable facility
    *  still fall back safely to the org-wide default. */
-  clientId?: string;
+  facilityId?: string;
   /** Real, per direct requirement: "the Pathologist has the right to
    *  update all billing, even those that are deterministic ... LIS
    *  will handle the billing in assist mode" alongside a real,
@@ -78,7 +78,7 @@ export interface AddCodeModalProps {
 
 type CodeSystem = 'SNOMED' | 'ICD10' | 'ICD11' | 'LOINC' | 'ICDO' | 'CPT' | 'OPCS4';
 
-interface PendingCode {
+export interface PendingCode {
   /** Real, per direct feedback ("if an IHC interp was done on 4
    *  slides, they have to enter the code 4 times?"): a stable,
    *  per-instance identifier - the old code+specimenIndex matching
@@ -91,6 +91,22 @@ interface PendingCode {
   system: string;
   specimenIndex: number | null;
   pendingDelete: boolean;
+}
+
+/**
+ * Real, per direct guidance: "if the code exists already it is
+ * flagged so the Pathologist knows it has been applied. From there
+ * the Pathologist can assign the code to a different case specimen or
+ * maybe they want it at the case level." Finds every real, active
+ * (non-pending-delete) application of this exact code to a target
+ * OTHER than the one currently selected — the real, cross-target
+ * awareness this app's own existing "applied to THIS target" check
+ * never had. Extracted as its own, pure, testable function since the
+ * same real logic is needed in both the search-results list and the
+ * AI-suggestions panel.
+ */
+export function findAppliedElsewhere(applied: PendingCode[], code: string, currentTarget: number | null): PendingCode[] {
+  return applied.filter(c => c.code === code && c.specimenIndex !== currentTarget && !c.pendingDelete);
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -163,7 +179,7 @@ const IcoUndo = () => (
 export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   existingCodes, allSpecimens, specimenDictionary = [], onAddToSpecimens, onClose,
   caseText, synopticAnswers, templateName, synopticDerivedCodes, narrativeText,
-  originHospitalId, activeSpecimenIndex, initialSystem, clientId, isOrchestrationMode = false,
+  originHospitalId, activeSpecimenIndex, initialSystem, facilityId, isOrchestrationMode = false,
 }) => {
   // ── Site coding config ────────────────────────────────────────────────────
   // Coding systems shown are driven by site config from organisationService.
@@ -519,7 +535,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
 - SNOMED morphology example: {"code":"413448000","display":"Invasive carcinoma of breast, no special type","system":"SNOMED","confidence":95,"rationale":"Primary diagnosis morphology","rvu":null}
 - Only include codes you are highly confident are correct`,
         maxTokens: 1200,
-        configOverride: await resolveAiConfigOverrideForClient(clientId),
+        configOverride: await resolveAiConfigOverrideForClient(facilityId),
       });
 
       const clean = raw.replace(/```json|```/g, '').trim();
@@ -563,7 +579,19 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
             return true;
           })
         : [];
-      setAiSuggestions(filtered);
+      // Real, per direct guidance: "before any suggestion is [shown],
+      // verify that code actually exists and is a real code. Machine
+      // verified. Then the Practitioner makes the medical decision to
+      // use or not use that code" — applies to every real system this
+      // modal presents (SNOMED, ICD-10, ICD-11, ICD-O, LOINC — CPT
+      // already got its own, separate re-verification just above,
+      // short-circuited to true inside filterToVerifiedCodes rather
+      // than checked twice). A hallucinated code is dropped here,
+      // silently, before the practitioner ever sees it as an option —
+      // their own review still decides whether a genuinely-real code
+      // is the medically right one for this case, exactly as before.
+      const verified = await filterToVerifiedCodes(filtered);
+      setAiSuggestions(verified);
       setAiRan(true);
     } catch (e: any) {
       setAiError(e?.message ?? 'AI suggestion failed');
@@ -1016,10 +1044,17 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 {!aiPanelCollapsed && visibleSuggestions
                   .map((sug) => {
                   const activeCount = applied.filter(c => c.code === sug.code && c.specimenIndex === target && !c.pendingDelete).length;
+                  // Real, per direct guidance — same real fix as the
+                  // search results list above: a suggestion for a code
+                  // already applied to a DIFFERENT specimen previously
+                  // showed as if entirely fresh here too.
+                  const elsewhere = activeCount === 0
+                    ? findAppliedElsewhere(applied, sug.code, target)
+                    : [];
                   return (
                     <div
                       key={sug.code}
-                      onClick={() => addCode({ code: sug.code, display: sug.display, system: sug.system })}
+                      onClick={() => elsewhere.length === 0 && addCode({ code: sug.code, display: sug.display, system: sug.system })}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8,
                         padding: '10px 14px', cursor: 'pointer',
@@ -1057,6 +1092,19 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                       )}
                       {activeCount > 0 ? (
                         <span className="acd-added-check" title={`Applied ${activeCount}× — click to add another instance`}>✓ ×{activeCount}</span>
+                      ) : elsewhere.length > 0 ? (
+                        <span
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#fbbf24' }}
+                          title={`Already applied to: ${elsewhere.map(e => e.specimenIndex === null ? 'Case' : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? 'another specimen')).join(', ')}`}
+                        >
+                          Elsewhere
+                          <button
+                            className="ps-conf-btn-row"
+                            onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
+                          >
+                            Move here
+                          </button>
+                        </span>
                       ) : (
                         <span className="acd-add-btn" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                       )}
@@ -1170,6 +1218,23 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 </div>
               ) : results.map((r, i) => {
                 const activeCount = applied.filter(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete).length;
+                // Real, per direct guidance: "if the code exists
+                // already it is flagged so the Pathologist knows it
+                // has been applied. From there the Pathologist can
+                // assign the code to a different case specimen or
+                // maybe they want it at the case level." The existing
+                // activeCount check above only ever looked at the
+                // CURRENTLY-selected target — a code applied to a
+                // different specimen showed as if it had never been
+                // applied at all anywhere on the case. This surfaces
+                // that real, cross-target state and reuses the
+                // already-existing, already-working moveCode() (the
+                // same real reassignment this app's own drag-and-drop
+                // already performs) rather than building a second,
+                // separate reassignment mechanism.
+                const elsewhere = activeCount === 0
+                  ? findAppliedElsewhere(applied, r.code, target)
+                  : [];
                 const isFocus  = focused === i;
                 return (
                   <div
@@ -1177,7 +1242,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                     className={`fm-flag-card${activeCount > 0 ? ' applied' : ''}`}
                     style={{ background: isFocus && activeCount === 0 ? 'rgba(255,255,255,0.05)' : undefined }}
                     onMouseEnter={() => setFocused(i)}
-                    onClick={() => addCode(r)}
+                    onClick={() => elsewhere.length === 0 && addCode(r)}
                   >
                     <span className={`fm-code-chip${activeCount > 0 ? ' applied' : ''}`} style={{ fontFamily: 'monospace', fontSize: 11 }}>
                       {r.code}
@@ -1187,6 +1252,19 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                     </span>
                     {activeCount > 0 ? (
                       <span className="acd-added-text" title={`Applied ${activeCount}× — click to add another instance`}>✓ Applied ×{activeCount}</span>
+                    ) : elsewhere.length > 0 ? (
+                      <span
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#fbbf24' }}
+                        title={`Already applied to: ${elsewhere.map(e => e.specimenIndex === null ? 'Case' : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? 'another specimen')).join(', ')}`}
+                      >
+                        Applied elsewhere
+                        <button
+                          className="ps-conf-btn-row"
+                          onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
+                        >
+                          Move here
+                        </button>
+                      </span>
                     ) : (
                       <span className="fm-apply-btn acd-apply-btn-right" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                     )}

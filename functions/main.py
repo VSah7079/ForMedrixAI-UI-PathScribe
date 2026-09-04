@@ -1,8 +1,18 @@
 # functions/main.py
 # ─────────────────────────────────────────────────────────────────────────────
-# Firebase Cloud Function (Python, firebase_functions SDK) — generates the
-# real, structured PDF for a PathScribe Orchestration case report, replacing
-# the old window.open() + win.print() approach in SynopticReportPage.tsx.
+# Firebase Cloud Functions (Python, firebase_functions SDK). Two real,
+# separate functions:
+#
+#   render_report — generates the real, structured PDF (or, since the
+#   outputFormat: 'text' extension, plain text) for a PathScribe
+#   Orchestration case report, replacing the old window.open() +
+#   win.print() approach in SynopticReportPage.tsx. See its own header
+#   comment below for the full real request/response contract.
+#
+#   receive_interface_message — the real receiving end for PathScribe's
+#   real outbound interface dispatch (A08/A40/A47/ORU^R01/LIS sync). See
+#   its own header comment below for the full real request/response
+#   contract.
 #
 # IMPORTANT — keep this in sync with ReportPreviewRenderer.tsx:
 #   This file re-implements the same node-tree walk as renderNode() in
@@ -32,21 +42,39 @@
 #     "sections": [ {"id","label","text","committed","userEdited","aiGenerated","required"} ],
 #     "renderScope": { ...buildRenderScope() output... },
 #     "synopticAnswers": [ {"fieldId","fieldLabel","displayValue"} ],
+#     "outputFormat": "pdf" | "text",  # optional, defaults to "pdf" — see below
 #   }
 #
-# Response: application/pdf bytes.
+# Response:
+#   outputFormat "pdf" (default, and every existing real caller as of this
+#   change): application/pdf bytes, exactly as before this field existed.
+#   outputFormat "text": application/json, {"text": str} — a real, plain-
+#   text rendering of the same real report, built via a second, real,
+#   deliberately separate node-tree walk (render_node_as_text(), see its
+#   own header comment for why) rather than reused from the PDF path's
+#   own ReportLab-specific flowables. Added for buildOruR01Payload.ts's
+#   own reportNarrativeText field (services/reports/ in the frontend
+#   repo) — an interface engine building an FT (Formatted Text) HL7
+#   segment for a client that can't consume ED/PDF data needs this same
+#   real, authoritative narrative as plain text, not a second,
+#   independently-reconstructed approximation of it.
 # ─────────────────────────────────────────────────────────────────────────────
 
+import json
 import re
 from io import BytesIO
 
 from firebase_functions import https_fn, options
 from firebase_functions.options import set_global_options
-# Admin SDK is imported by the firebase init scaffold but deliberately not
-# initialized here — this function doesn't touch Firestore/Auth/Storage,
-# it's pure rendering. Skipping initialize_app() avoids unnecessary cold
-# start overhead and credential setup this function doesn't need.
-# from firebase_admin import initialize_app
+# Real, per direct guidance (the real receiving end for PathScribe's real
+# outbound interface dispatch — receive_interface_message below): this
+# function genuinely does write to Firestore, unlike render_report, which
+# stays pure rendering and correctly skips this. initialize_app() is
+# called once, here, for the whole file — both real functions in this
+# file share the one real Firebase app instance.
+from firebase_admin import initialize_app, firestore
+
+initialize_app()
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -187,6 +215,23 @@ def field_row(label: str, value: str, label_config: dict | None, default_positio
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     return [t]
+
+
+# ── Shared setup ─────────────────────────────────────────────────────────────
+
+def resolve_scope_and_sections(payload: dict) -> tuple[dict, dict]:
+    """Real, per direct guidance (outputFormat: 'text' — the real
+    extension for buildOruR01Payload.ts's own reportNarrativeText field):
+    the one small, genuinely shared, node-type-agnostic piece of setup
+    build_report_pdf() and build_report_text() both need identically —
+    extracted here so it's stated once, not duplicated. Everything after
+    this (walking the real node tree) is genuinely format-specific and
+    stays in its own real, separate function per format — see
+    render_node_as_text()'s own header comment for why."""
+    scope = dict(payload.get('renderScope') or {})
+    scope['__synopticAnswers__'] = payload.get('synopticAnswers') or []
+    sections_by_id = {s['id']: s for s in (payload.get('sections') or [])}
+    return scope, sections_by_id
 
 
 # ── Node rendering ───────────────────────────────────────────────────────────
@@ -347,6 +392,179 @@ def render_children(nodes: list, scope: dict, sections_by_id: dict) -> list:
     return flows
 
 
+# ── Text-mode node rendering ─────────────────────────────────────────────────
+# Real, per direct guidance (outputFormat: 'text' — the real extension for
+# buildOruR01Payload.ts's own reportNarrativeText field, "requested from
+# the same real, authoritative rendering service as the PDF"). Genuinely
+# considered extracting plain text back out of the already-built PDF
+# flowables above instead of a second tree-walk here — rejected on
+# reflection: ReportLab's Table doesn't expose its real cell contents
+# through any stable, public attribute (only the private, undocumented
+# _cellvalues), so that path meant reaching into ReportLab's own
+# internals rather than this file's own real data. Building text
+# directly from the same raw node tree, before it ever becomes a
+# ReportLab-specific object, is the real, sound approach instead.
+#
+# IMPORTANT — same real obligation as the file's own top header comment
+# already states for ReportPreviewRenderer.tsx: keep this in sync with
+# render_node()/render_children() above. Deliberately mirrors that
+# function's own real dispatch order and every real node_type branch,
+# node type for node type, precisely so a future change to one is easy
+# to compare directly against the other — this is not a rewrite, it's
+# the same real tree walk, twice, once per real output format.
+
+_BR_RE = re.compile(r'<br\s*/?>', re.IGNORECASE)
+_CLOSE_P_RE = re.compile(r'</p>', re.IGNORECASE)
+_ANY_TAG_RE = re.compile(r'<[^>]+>')
+_MULTI_NEWLINE_RE = re.compile(r'\n{3,}')
+
+
+def strip_html_to_text(html: str) -> str:
+    """Real, per direct guidance: converts the same safe HTML subset this
+    file's own Paragraph rendering already relies on (see render_ai_section()'s
+    own comment — <p>/<b>/<i>/<u>/<br>, "within the safe subset ReportLab's
+    Paragraph mini-markup already supports directly") into real plain
+    text. <br>/</p> become real newlines; every other tag is dropped
+    outright — plain text has no bold/italic/underline to preserve.
+    Never a general-purpose HTML-to-text converter; scoped to exactly
+    the same known, small tag set the PDF path already assumes."""
+    if not html:
+        return ''
+    text = _BR_RE.sub('\n', html)
+    text = _CLOSE_P_RE.sub('\n', text)
+    text = _ANY_TAG_RE.sub('', text)
+    text = _MULTI_NEWLINE_RE.sub('\n\n', text)
+    return text.strip()
+
+
+def field_row_as_text(label: str, value, label_config: dict | None) -> list[str]:
+    """Real, text-mode mirror of field_row() above. position ('above' vs
+    'adjacent') is a real, purely visual PDF layout distinction with no
+    plain-text equivalent — both collapse to the same real 'Label:
+    Value' line here. 'none' still means no real label at all, exactly
+    the same real authored intent field_row() already respects for PDF."""
+    position = (label_config or {}).get('position')
+    value_text = str(value) if value else '—'
+    if position == 'none':
+        return [value_text]
+    return [f'{label}: {value_text}']
+
+
+def render_ai_section_as_text(node: dict, sections_by_id: dict) -> list[str]:
+    """Real, text-mode mirror of render_ai_section() above."""
+    section = sections_by_id.get(node['id'])
+    label = node.get('printHeading') or node.get('label', '')
+    if not section:
+        return [label, 'Not yet generated']
+
+    lines = [label]
+    text = section.get('text') or ''
+    if text:
+        # Real, per direct guidance: AI/editor output is real HTML from
+        # textToHtml() (same real source the PDF path already handles) —
+        # stripped to real plain text here, never left as raw HTML in a
+        # plain-text field.
+        lines.append(strip_html_to_text(text))
+    else:
+        lines.append('⚠ Required — not yet completed' if node.get('required') else 'No content')
+    return lines
+
+
+def render_node_as_text(node: dict, scope: dict, sections_by_id: dict) -> list[str]:
+    show_when = node.get('showWhen')
+    if show_when and not eval_condition(show_when, scope):
+        return []
+
+    node_type = node.get('type')
+
+    if node_type == 'synoptic-block':
+        answers = scope.get('__synopticAnswers__') or []
+        if not answers:
+            return ['No synoptic data recorded.']
+        return [f"{a.get('fieldLabel', '')}: {a.get('displayValue', '')}" for a in answers]
+
+    if node_type == 'expression-value':
+        text = interpolate(node['template'], scope).strip() or node.get('fallback', '')
+        if node.get('hideIfEmpty') and not text:
+            return []
+        return field_row_as_text(node['label'], text, node.get('labelConfig'))
+
+    if node_type == 'static-label':
+        # Real, per direct guidance: node['text'] is a real, plain string
+        # in the real schema (never HTML) — the PDF path's own <i> wrap
+        # is a pure visual style applied at render time, with no real
+        # plain-text equivalent to preserve.
+        return [node['text']]
+
+    if node_type == 'paragraph':
+        raw = get_path(scope, node.get('bindingKey')) if node.get('bindingKey') else None
+        html = str(raw) if raw not in (None, '') else (node.get('freeformContent') or '')
+        if node.get('hideIfEmpty') and not html:
+            return []
+        value = strip_html_to_text(html) or (node.get('placeholder') or '—')
+        return field_row_as_text(node['label'], value, node.get('labelConfig'))
+
+    if node_type == 'dropdown':
+        raw = get_path(scope, node.get('bindingKey'))
+        values = raw if isinstance(raw, list) else ([raw] if raw is not None else [])
+        opt_by_value = {o['value']: o['label'] for o in node.get('options', [])}
+        labels = [opt_by_value.get(str(v), str(v)) for v in values]
+        if node.get('hideIfEmpty') and not labels:
+            return []
+        return field_row_as_text(node['label'], ', '.join(labels) if labels else '—', node.get('labelConfig'))
+
+    if node_type == 'column-layout':
+        # Real, per direct guidance: the PDF path's own n-column chunking
+        # is a purely visual grid layout — plain text has no columns, so
+        # this is just the real, flattened children, same real content,
+        # no real information lost.
+        return render_children_as_text(node.get('children', []), scope, sections_by_id)
+
+    if node_type == 'section':
+        ai = node.get('ai') or {}
+        if ai.get('enabled'):
+            return render_ai_section_as_text(node, sections_by_id)
+        lines = []
+        if node.get('printHeading'):
+            lines.append(node['printHeading'])
+        lines += render_children_as_text(node.get('children', []), scope, sections_by_id)
+        return lines
+
+    if node_type == 'repeat-group':
+        items = get_path(scope, node.get('iterateOver')) or []
+        if not isinstance(items, list) or not items:
+            return []
+        alias = node.get('itemAlias', 'item')
+        lines = []
+        for item in items:
+            child_scope = {**scope, alias: item}
+            lines += render_children_as_text(node.get('children', []), child_scope, sections_by_id)
+            lines.append('')
+        return lines
+
+    if node_type == 'if-block':
+        children = node.get('children', []) if eval_condition(node.get('condition'), scope) else node.get('elseChildren', [])
+        return render_children_as_text(children, scope, sections_by_id)
+
+    if node_type == 'switch-block':
+        match = next((c for c in node.get('cases', []) if eval_condition(c.get('when'), scope)), None)
+        children = match['children'] if match else node.get('defaultChildren', [])
+        return render_children_as_text(children, scope, sections_by_id)
+
+    # Real, same real scope decision as render_node() above, for the same
+    # real reason: render nothing rather than guess at an unverified
+    # format. Implement in both real functions together if/when a real
+    # Part needs one of these.
+    return []
+
+
+def render_children_as_text(nodes: list, scope: dict, sections_by_id: dict) -> list[str]:
+    lines = []
+    for n in nodes:
+        lines += render_node_as_text(n, scope, sections_by_id)
+    return lines
+
+
 # ── Document assembly ────────────────────────────────────────────────────────
 
 def build_report_pdf(payload: dict) -> bytes:
@@ -399,9 +617,7 @@ def build_report_pdf(payload: dict) -> bytes:
 
     flows.append(Spacer(1, 12))
 
-    scope = dict(payload.get('renderScope') or {})
-    scope['__synopticAnswers__'] = payload.get('synopticAnswers') or []
-    sections_by_id = {s['id']: s for s in (payload.get('sections') or [])}
+    scope, sections_by_id = resolve_scope_and_sections(payload)
 
     body_assembly = sorted(payload.get('bodyAssembly') or [], key=lambda p: p.get('order', 0))
     for part in body_assembly:
@@ -414,6 +630,63 @@ def build_report_pdf(payload: dict) -> bytes:
 
     doc.build(flows)
     return buf.getvalue()
+
+
+def build_report_text(payload: dict) -> str:
+    """Real, per direct guidance (outputFormat: 'text' — the real
+    extension for buildOruR01Payload.ts's own reportNarrativeText field).
+    Text-mode mirror of build_report_pdf() above — same real header/case/
+    template/body content, same real order, joined as plain lines instead
+    of assembled into a PDF. See render_node_as_text()'s own header
+    comment for why this walks the real node tree a second time rather
+    than reusing build_report_pdf()'s own already-built ReportLab
+    flowables."""
+    lines: list[str] = []
+    inst = payload.get('institution') or {}
+    header = payload.get('caseHeader') or {}
+
+    if inst.get('name'):
+        lines.append(inst['name'])
+    if inst.get('dept'):
+        lines.append(inst['dept'])
+    if inst.get('address'):
+        lines.append(inst['address'])
+    lines.append('')
+
+    if header.get('accession'):
+        lines.append(header['accession'])
+
+    for label, value in [
+        ('Patient', header.get('patient')),
+        ('MRN', header.get('mrn')),
+        ('Date of Birth', header.get('dob')),
+        ('Referring', header.get('referring')),
+        ('Clinician', header.get('clinician')),
+    ]:
+        if value:
+            lines.append(f'{label}: {value}')
+
+    template_name = payload.get('templateName')
+    if template_name:
+        resolved_by = (payload.get('resolvedBy') or '').replace('-', ' ')
+        suffix = f' (resolved by {resolved_by})' if resolved_by else ''
+        lines.append('')
+        lines.append(f'Report Template: {template_name}{suffix}')
+
+    lines.append('')
+
+    scope, sections_by_id = resolve_scope_and_sections(payload)
+
+    body_assembly = sorted(payload.get('bodyAssembly') or [], key=lambda p: p.get('order', 0))
+    for part in body_assembly:
+        for node in part.get('nodes', []):
+            lines += render_node_as_text(node, scope, sections_by_id)
+        lines.append('')
+
+    lines.append('')
+    lines.append('CONFIDENTIAL — PATHOLOGY REPORT')
+
+    return '\n'.join(lines)
 
 
 # ── HTTP entrypoint ──────────────────────────────────────────────────────────
@@ -438,6 +711,23 @@ def render_report(req: https_fn.Request) -> https_fn.Response:
     if not payload:
         return https_fn.Response('Missing or invalid JSON body', status=400)
 
+    # Real, per direct guidance (outputFormat: 'text' — the real
+    # extension for buildOruR01Payload.ts's own reportNarrativeText
+    # field): missing/undefined defaults to 'pdf', so every existing
+    # real caller of this function is completely unaffected.
+    output_format = payload.get('outputFormat', 'pdf')
+
+    if output_format == 'text':
+        try:
+            text = build_report_text(payload)
+        except Exception as e:  # noqa: BLE001 — same real posture as the PDF path below
+            return https_fn.Response(f'Report generation failed: {e}', status=500)
+        return https_fn.Response(
+            json.dumps({'text': text}),
+            status=200,
+            headers={'Content-Type': 'application/json'},
+        )
+
     try:
         pdf_bytes = build_report_pdf(payload)
     except Exception as e:  # noqa: BLE001 — return a clean 500, don't leak internals/stack traces
@@ -451,4 +741,122 @@ def render_report(req: https_fn.Request) -> https_fn.Response:
             'Content-Type': 'application/pdf',
             'Content-Disposition': f'inline; filename="{accession}.pdf"',
         },
+    )
+
+
+# ── receive_interface_message ────────────────────────────────────────────────
+# Real, per direct guidance ("we can setup just the receiving end for now
+# and look to see that the json packages coming out of PS are correct" —
+# a real, generic receiving end so all real outbound transaction types can
+# be checked, not one receiver per type).
+#
+# Deliberately never generates HL7 itself, same real "PathScribe sends
+# JSON, the interface engine builds HL7" posture as this whole outbound
+# architecture — this function is a real stand-in for that interface
+# engine's receiving side, not a Mirth Connect replacement.
+#
+# Request body (JSON), POSTed to this function's URL — one real, generic
+# envelope shape used by every real transaction type, rather than four
+# independently-shaped request bodies this function would need separate
+# validation for:
+#   {
+#     "queueEntryId": str,  # the real DLQ queue entry id this dispatch came from
+#     "transactionType": "A08" | "A40" | "A47" | "ORU_R01" | "LIS_SYNC" | "ORDER_CREATED",
+#     "dispatchedAt": str,  # real ISO timestamp of this dispatch attempt
+#     "payload": { ... },   # the real, actual payload — Adt08DemographicUpdatePayload /
+#                           # Adt40MergePatientPayload / Adt47ChangeIdentifierPayload /
+#                           # OruR01Payload (all defined in the frontend repo,
+#                           # services/patients/buildPatientAdtPayload.ts and
+#                           # services/reports/buildOruR01Payload.ts), the real
+#                           # LIS-sync detail object (see the frontend's own
+#                           # useLisIntegration.ts) for LIS_SYNC, or
+#                           # OrderCreationEventPayload (services/interfaceEngine/
+#                           # IInterfaceEngineService.ts) for ORDER_CREATED.
+#   }
+#
+# Validation deliberately stays at the real envelope level (every field
+# above present, transactionType a real known value, payload a real
+# object) rather than deep-validating each of the four real payload
+# shapes field-by-field — those shapes are already defined and enforced
+# by TypeScript on the sending side; re-implementing that same validation
+# here in Python would be a second, real place for the two to drift out
+# of sync, for real fields this function has no real use for beyond
+# storing them.
+#
+# Response: application/json.
+#   Success: {"ok": true, "id": str}  — the real Firestore document id.
+#   Validation failure: {"ok": false, "error": str}, HTTP 422.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_VALID_TRANSACTION_TYPES = {'A08', 'A40', 'A47', 'ORU_R01', 'LIS_SYNC', 'ORDER_CREATED'}
+
+
+def validate_envelope(body: dict) -> str | None:
+    """Real, per direct guidance: validates the real, generic envelope
+    shape every real transaction type sends — see this file's own module
+    header comment above for the full real contract and why validation
+    deliberately stops here rather than reaching into payload's own
+    real, per-type shape."""
+    for field in ('queueEntryId', 'transactionType', 'dispatchedAt', 'payload'):
+        if not body.get(field):
+            return f'Missing required field: {field}'
+    transaction_type = body['transactionType']
+    if transaction_type not in _VALID_TRANSACTION_TYPES:
+        return f'Unknown transactionType: {transaction_type!r}. Expected one of {sorted(_VALID_TRANSACTION_TYPES)}.'
+    if not isinstance(body['payload'], dict):
+        return 'payload must be a real JSON object, not a string/array/primitive.'
+    return None
+
+
+@https_fn.on_request(
+    cors=options.CorsOptions(
+        # Same real, restricted origin list as render_report above — see
+        # its own comment for the real reasoning.
+        cors_origins=[
+            "https://pathscribe-ai-ui.vercel.app",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        cors_methods=["POST"],
+    ),
+)
+def receive_interface_message(req: https_fn.Request) -> https_fn.Response:
+    if req.method != 'POST':
+        return https_fn.Response('Method not allowed', status=405)
+
+    body = req.get_json(silent=True)
+    if not body:
+        return https_fn.Response('Missing or invalid JSON body', status=400)
+
+    validation_error = validate_envelope(body)
+    if validation_error:
+        return https_fn.Response(
+            json.dumps({'ok': False, 'error': validation_error}),
+            status=422,
+            headers={'Content-Type': 'application/json'},
+        )
+
+    try:
+        db = firestore.client()
+        doc_ref = db.collection('received_interface_messages').document()
+        doc_ref.set({
+            **body,
+            # Real, server-assigned receipt timestamp — deliberately
+            # separate from the real, client-supplied dispatchedAt above,
+            # so a genuine clock-skew or network-delay gap between "PathScribe
+            # sent this" and "the receiver actually got it" stays visible,
+            # not silently collapsed into one real timestamp.
+            'receivedAt': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:  # noqa: BLE001 — return a clean 500, don't leak internals/stack traces
+        return https_fn.Response(
+            json.dumps({'ok': False, 'error': f'Storage failed: {e}'}),
+            status=500,
+            headers={'Content-Type': 'application/json'},
+        )
+
+    return https_fn.Response(
+        json.dumps({'ok': True, 'id': doc_ref.id}),
+        status=200,
+        headers={'Content-Type': 'application/json'},
     )

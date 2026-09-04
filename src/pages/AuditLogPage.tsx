@@ -5,6 +5,8 @@ import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getFacilityDateParts, getFacilityMidnightUtc } from '@/utils/facilityTime';
 import ResourcesModal from './WorklistPage/ResourcesModal';
+import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
+import { VOICE_CONTEXT } from '@/constants/systemActions';
 
 // ── Types & Data ─────────────────────────────────────────────────────────────
 // Components import ONLY from services/index.ts — never directly from mock/firestore files.
@@ -16,7 +18,7 @@ import type { AuditLog, ErrorLog } from '../services/auditlog/IAuditService';
 import type { SpecimenDeficiency, DeficiencyType } from '../services/deficiencies/IDeficiencyService';
 import type { ManagementReview } from '../services/deficiencies/IDeficiencyService';
 import type { IntraoperativeEntry } from '../types/intraop/IntraoperativeEntry';
-import type { ReconciliationRecord } from '../types/quality/ReconciliationRecord';
+import type { QaActivityRecord } from '../types/quality/QaActivityRecord';
 import type { CountersignRecord } from '../types/case/CountersignRecord';
 import type { FppeAssignment } from '../types/case/FppeAssignment';
 import type { MasterPatientRecord } from '../services/patients/IPatientIndexService';
@@ -25,15 +27,17 @@ import InterfaceExceptionReviewModal from '../components/Audit/InterfaceExceptio
 import BreakGlassRebindModal from '../components/Audit/BreakGlassRebindModal';
 import {
   auditService, specimenDeficiencyService, deficiencyTypeService,
-  intraoperativeService, reconciliationService, countersignService,
+  intraoperativeService, qaActivityRecordService, countersignService,
   fppeAssignmentService, managementReviewService, interfaceExceptionService,
 } from '../services';
 import { mockPatientIndexService } from '../services/patients/mockPatientIndexService';
 import { listOrganisations } from '../services/organisation/organisationService';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '../services/quality/mockQaActivityTypeService';
 import { formatAuditTimestamp } from '../utils/formatDate';
 import { downloadCSV, buildMetaHeader } from '../utils/csvExport';
 import BillingLogsSection from './BillingLogsSection';
 import OutboundDlqSection from './OutboundDlqSection';
+import OutboundInterfaceDlqSection from './OutboundInterfaceDlqSection';
 
 type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality' | 'financial';
 
@@ -237,7 +241,7 @@ const AuditLogPage: React.FC = () => {
   const [deficiencyLogs,      setDeficiencyLogs]      = useState<SpecimenDeficiency[]>([]);
   const [deficiencyTypes,     setDeficiencyTypes]     = useState<DeficiencyType[]>([]);
   const [intraopEntries,      setIntraopEntries]      = useState<IntraoperativeEntry[]>([]);
-  const [reconciliationLogs,  setReconciliationLogs]  = useState<ReconciliationRecord[]>([]);
+  const [reconciliationLogs,  setReconciliationLogs]  = useState<QaActivityRecord[]>([]);
   const [countersignLogs,     setCountersignLogs]     = useState<CountersignRecord[]>([]);
   const [fppeLogs,            setFppeLogs]            = useState<FppeAssignment[]>([]);
   const [driftLogs,           setDriftLogs]           = useState<AuditLog[]>([]);
@@ -246,12 +250,26 @@ const AuditLogPage: React.FC = () => {
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
   const [activeTab,       setActiveTab]       = useState<ActiveTab>('audit');
   const [financialSubTab, setFinancialSubTab] = useState<'billing_logs' | 'outbound_dlq'>('billing_logs');
+  const [interfacesSubTab, setInterfacesSubTab] = useState<'exceptions' | 'outbound_dlq'>('exceptions');
   const [searchParams] = useSearchParams();
 
   // Real feature, per direct confirmation: a high-priority message
   // about pending interface exceptions should land the recipient
   // directly on the relevant view, not the generic page. Real, per
   // direct redesign: interfaces is now its own real top-level tab
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control... has to be flawless"): this page never called
+  // setCurrentContext at all, confirmed directly — the only major
+  // page in the whole app that didn't. Whatever context the previous
+  // page (almost always Worklist) last set just stayed stuck the
+  // entire time anyone was on this page, orphaning "Dispatch Now"/
+  // "Retry Dispatch" below and any future real Audit-context action.
+  // Same one-line pattern every other page already uses.
+  useEffect(() => {
+    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.AUDIT);
+    return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+  }, []);
+
   // (?tab=interfaces), not a pill within errors — the old
   // ?tab=errors&pill=interfaces scheme (still the one real, live
   // deep-link CrosswalkSection.tsx's own Unmapped Stubs banner uses)
@@ -302,6 +320,17 @@ const AuditLogPage: React.FC = () => {
 
   // Audit filters
   const [typeFilter,  setTypeFilter]  = useState<'all' | 'ai' | 'user' | 'system'>('all');
+  // Real, per direct guidance ("Any existing gaps to deal with?" — the
+  // "log reports" half of "All this must be audited and should be
+  // available to create log reports" was never actually built; only
+  // the outbound-queue half was). A real, independent filter dimension
+  // (not folded into the type pills above, which are mutually
+  // exclusive) — combinable with every other real filter here (user,
+  // date range, search), matching how every other filter on this tab
+  // already composes. Prefix-based (mpi.*) rather than a hardcoded
+  // event-name list, so a future new mpi.* event type is included
+  // automatically, never silently missed.
+  const [patientManagementOnly, setPatientManagementOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userFilter,  setUserFilter]  = useState('all');
   const [dateRange,   setDateRange]   = useState('7days');
@@ -341,7 +370,7 @@ const AuditLogPage: React.FC = () => {
     specimenDeficiencyService.getAll().then(r => { if (r.ok) setDeficiencyLogs(r.data); });
     deficiencyTypeService.getAll().then(r => { if (r.ok) setDeficiencyTypes(r.data); });
     intraoperativeService.getAll().then(r => { if (r.ok) setIntraopEntries(r.data); });
-    reconciliationService.getAll().then(r => { if (r.ok) setReconciliationLogs(r.data); });
+    qaActivityRecordService.getAll().then(r => { if (r.ok) setReconciliationLogs(r.data.filter(rec => rec.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID)); });
     countersignService.getAll().then(r => { if (r.ok) setCountersignLogs(r.data); });
     fppeAssignmentService.getAll().then(r => { if (r.ok) setFppeLogs(r.data); });
     managementReviewService.getAll().then(r => { if (r.ok) setManagementReviews(r.data); });
@@ -398,6 +427,7 @@ const AuditLogPage: React.FC = () => {
 
   const filteredAuditLogs = roleFilteredLogs.filter(log => {
     if (typeFilter !== 'all' && log.type !== typeFilter) return false;
+    if (patientManagementOnly && !log.event.startsWith('mpi.')) return false;
     if (isSuperAdmin && userFilter !== 'all' && log.user !== userFilter) return false;
     const logDate = parseDateStr(log.timestamp);
     if (dateRange === 'custom') {
@@ -457,7 +487,7 @@ const AuditLogPage: React.FC = () => {
       }));
       case 'reconciliation': return reconciliationLogs.map(r => ({
         id: r.id, group: 'reconciliation' as const, date: r.recordedAt, caseId: r.caseId, specimen: r.caseType,
-        detail: r.outcome === 'discordant' ? `${r.frozenDx} → ${r.finalDx}${r.comments ? ' — ' + r.comments : ''}` : `${r.frozenDx} → ${r.finalDx}`,
+        detail: r.outcome === 'discordant' ? `${r.fieldValues.frozenDx} → ${r.fieldValues.finalDx}${r.comments ? ' — ' + r.comments : ''}` : `${r.fieldValues.frozenDx} → ${r.fieldValues.finalDx}`,
         statusValue: r.outcome, statusLabel: r.outcome === 'concordant' ? 'Concordant' : 'Discordant',
         user: r.recordedBy?.userName,
       }));
@@ -533,9 +563,11 @@ const AuditLogPage: React.FC = () => {
   return (
     <div className={`ps-auditlog-page${isLoaded ? ' ps-auditlog-page--loaded' : ''}`}>
 
-      {/* Background */}
-      <div className="ps-auditlog-bg" />
-      <div className="ps-auditlog-bg-grad" />
+      {/* Real, per direct UI-review follow-up ("Fix the root"): this
+          page's own competing background image/gradient removed —
+          falls through to AppShell's own real .ps-app-root
+          background now, matching Configuration/Quality Assurance/
+          Intraop Queue/Contribution. */}
 
       <div className="ps-auditlog-content">
 
@@ -589,6 +621,16 @@ const AuditLogPage: React.FC = () => {
                   ))}
                 </div>
                 <div className="ps-auditlog-filter-divider" />
+                {/* Real, per direct guidance: a real, dedicated
+                    "Patient Management" report — Merge/Move/Link/
+                    Rebind/demographic-update events, filterable
+                    independently of (and combinable with) the type
+                    pills above. */}
+                <label className="ps-auditlog-pill" style={{ cursor: 'pointer', gap: 6 }}>
+                  <input type="checkbox" checked={patientManagementOnly} onChange={e => setPatientManagementOnly(e.target.checked)} />
+                  🧬 Patient Management Only
+                  <span className="ps-auditlog-pill-badge">{roleFilteredLogs.filter(l => l.event.startsWith('mpi.')).length}</span>
+                </label>
                 {/* User filter — superadmin only to prevent bias in validation studies */}
                 {isSuperAdmin && (
                 <select value={userFilter} onChange={e => setUserFilter(e.target.value)} aria-label="Filter by user" className="ps-auditlog-select ps-auditlog-select--wide">
@@ -623,7 +665,7 @@ const AuditLogPage: React.FC = () => {
                 <button onClick={() => exportAuditCSV(
                     filteredAuditLogs,
                     requestedByLabel,
-                    { 'Type': typeFilter, 'User': userFilter, 'Date Range': dateRange === 'custom' ? `${dateFrom} to ${dateTo}` : dateRange, 'Search': searchQuery }
+                    { 'Type': typeFilter, 'Patient Management Only': patientManagementOnly ? 'Yes' : 'No', 'User': userFilter, 'Date Range': dateRange === 'custom' ? `${dateFrom} to ${dateTo}` : dateRange, 'Search': searchQuery }
                   )} className="ps-auditlog-export-btn">
                   ↓ Export CSV
                 </button>
@@ -743,6 +785,23 @@ const AuditLogPage: React.FC = () => {
               real, distinct domain, not one flavor of general error. */}
           {activeTab === 'interfaces' && (
             <>
+              <div className="ps-auditlog-tabswitch" style={{ marginBottom: 16 }}>
+                {([
+                  { key: 'exceptions' as const, label: 'Interface Exceptions' },
+                  { key: 'outbound_dlq' as const, label: 'Outbound Interface DLQ' },
+                ]).map(t => (
+                  <button
+                    key={t.key}
+                    className={`ps-auditlog-tabswitch-btn${interfacesSubTab === t.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+                    onClick={() => setInterfacesSubTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {interfacesSubTab === 'outbound_dlq' && <OutboundInterfaceDlqSection />}
+              {interfacesSubTab === 'exceptions' && (
+            <>
               {/* Filters — real counts on every pill, per direct
                   redesign, same convention as Audit/Error Log above. */}
               <div className="ps-auditlog-filter-row">
@@ -842,6 +901,8 @@ const AuditLogPage: React.FC = () => {
                 </div>
               </div>
               <div className="ps-auditlog-count-footer">Showing {filteredInterfaceExceptions.length} of {interfaceExceptions.length} interface exceptions</div>
+            </>
+              )}
             </>
           )}
 

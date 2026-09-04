@@ -1,7 +1,7 @@
 # src/services/referenceCheck/
 
 One file: `referenceCheckService.ts` — checks whether a foundational
-config entity (Client, Subspecialty, Specimen Category) is still
+config entity (Client, Subspecialty, Department) is still
 referenced elsewhere before it gets deactivated.
 
 Closes a real, confirmed gap noted in its own header:
@@ -17,7 +17,7 @@ static compile-time lookup table, not a live stored reference that
 could go stale).
 
 Confirmed genuinely used by 3 real components:
-`SpecimenCategoriesSection.tsx`, `SubspecialtiesSection.tsx`, and
+`DepartmentsSection.tsx`, `SubspecialtiesSection.tsx`, and
 `ClientDictionaryPage.tsx`. Worth noting `checkSubspecialtyReferences`
 here reads from real, live data sources (`loadRoutingRules()`,
 localStorage-backed TAT entries) — confirmed it has no relationship to

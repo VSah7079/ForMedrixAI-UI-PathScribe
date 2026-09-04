@@ -140,6 +140,13 @@ export const PatientMatchReviewSection: React.FC = () => {
     await mockPatientIndexService.linkPatients(
       linkTarget.provisional.id,
       linkTarget.candidate.id,
+      // Real, per direct guidance: this real review queue only ever
+      // handles the MPI's own automatic 'ambiguous' matcher output —
+      // the same real, single real person under two source-system
+      // identities, never a family relation (which is never surfaced
+      // to this queue in the first place, since it's not something
+      // resolveOrCreatePatient()'s own matching logic ever flags).
+      'same_person',
       session?.id ?? 'unknown',
       linkTarget.provisional.reviewReason,
     );

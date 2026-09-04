@@ -613,7 +613,7 @@ export const TemplateRenderer: React.FC = () => {
                         {isPast ? '✓ ' : ''}{getStateLabel(s, template.source)}
                       </span>
                       {i < arr.length - 1 && (
-                        <span style={{ color: '#1e293b', fontSize: '12px' }}>→</span>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>→</span>
                       )}
                     </React.Fragment>
                   );

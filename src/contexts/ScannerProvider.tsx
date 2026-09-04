@@ -37,9 +37,8 @@
 
 import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useSystemConfig } from './SystemConfigContext';
 import { useAuth } from './AuthContext';
-import { IDENTIFIER_FORMAT_LIBRARY } from '../types/systemConfig';
+import { useEnabledIdentifierFormats } from '../hooks/useEnabledIdentifierFormats';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,7 +74,7 @@ const MIN_SCAN_LENGTH = 5;
 export const ScannerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate      = useNavigate();
   const location       = useLocation();
-  const { config }    = useSystemConfig();
+  const enabledFormats = useEnabledIdentifierFormats();
   const { user }      = useAuth();
   const bufferRef     = useRef<string>('');
   const lastKeyTime   = useRef<number>(0);
@@ -83,17 +82,16 @@ export const ScannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lastScan, setLastScan] = React.useState<ScanEvent | null>(null);
 
   // Every ENABLED format of a given kind, not just one derived pattern.
-  // Falls back to the library's own defaults if config hasn't got a
-  // formats[] list yet (e.g. a session predating this field).
+  // Real, per direct guidance: enabledFormats itself already falls
+  // back to IDENTIFIER_FORMAT_LIBRARY's own defaults when no real
+  // Enterprise has configured this yet — see
+  // useEnabledIdentifierFormats.ts's own doc comment.
   const getEnabledPatterns = useCallback((kind: 'accession' | 'mrn'): RegExp[] => {
-    const formats = config?.identifierFormats?.formats?.length
-      ? config.identifierFormats.formats
-      : IDENTIFIER_FORMAT_LIBRARY;
-    return formats
+    return enabledFormats
       .filter(f => f.kind === kind && f.enabled)
       .map(f => { try { return new RegExp(f.pattern, 'i'); } catch { return null; } })
       .filter((r): r is RegExp => r !== null);
-  }, [config?.identifierFormats]);
+  }, [enabledFormats]);
 
   const handleScan = useCallback((raw: string) => {
     const cleaned = raw.trim();

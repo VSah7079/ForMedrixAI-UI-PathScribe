@@ -105,8 +105,8 @@ export type ActionId =
   // ── Synoptic ──────────────────────────────────────────────────────────────
   | 'synoptic.jumpNextUnanswered' | 'synoptic.jumpNextRequired'
   | 'synoptic.markDeferred' | 'synoptic.confirmField' | 'synoptic.overrideField'
-  // ── Client & Physician ────────────────────────────────────────────────────
-  | 'client.view' | 'client.edit'
+  // ── Facility & Physician ────────────────────────────────────────────────────
+  | 'facility.view' | 'facility.edit'
   | 'physician.view' | 'physician.edit' | 'physician.verify'
   // ── Configuration ─────────────────────────────────────────────────────────
   | 'config.access' | 'config.staff' | 'config.roles' | 'config.subspecialties'
@@ -388,13 +388,13 @@ export const ACTION_GROUPS: ActionGroup[] = [
     ],
   },
 
-  // ── F23: Client & Physician ───────────────────────────────────────────────
+  // ── F23: Facility & Physician ───────────────────────────────────────────────
   {
-    id: 'clientPhysician',
-    title: 'Client & Physician',
+    id: 'facilityPhysician',
+    title: 'Facility & Physician',
     actions: [
-      { id: 'client.view',      label: 'View Client List',         internalKey: 'F23+PS001' },
-      { id: 'client.edit',      label: 'Add / Edit Client',        internalKey: 'F23+PS002' },
+      { id: 'facility.view',    label: 'View Facility List',       internalKey: 'F23+PS001' },
+      { id: 'facility.edit',    label: 'Add / Edit Facility',      internalKey: 'F23+PS002' },
       { id: 'physician.view',   label: 'View Physician Directory', internalKey: 'F23+PS003' },
       { id: 'physician.edit',   label: 'Add / Edit Physician',     internalKey: 'F23+PS004' },
       { id: 'physician.verify', label: 'Verify Physician Record',  internalKey: 'F23+PS005' },
@@ -418,7 +418,7 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'config.lis',            label: 'Manage LIS Integration Settings', internalKey: 'F24+PS010' },
       { id: 'config.auditLog',          label: 'View Audit Log',                  internalKey: 'F24+PS011' },
       { id: 'config.reportTemplates',   label: 'Manage Report Templates',         internalKey: 'F24+PS030' },
-      { id: 'config.routingRules',      label: 'Manage Template Routing Rules',   internalKey: 'F24+PS031', description: 'Client and physician overrides for report template resolution' },
+      { id: 'config.routingRules',      label: 'Manage Template Routing Rules',   internalKey: 'F24+PS031', description: 'Facility and physician overrides for report template resolution' },
       { id: 'config.validationStudies', label: 'Manage Validation Studies',       internalKey: 'F24+PS032', description: 'Admin and superadmin only' },
     ],
   },
@@ -539,10 +539,20 @@ export const SHORTCUT_GROUPS = ACTION_GROUPS
   .filter(g => g.actions.length > 0);
 
 // ─── Voice context names — use these constants when calling setCurrentContext ─
+// Real, per direct follow-up ("the actions list is out of sync...
+// voice control... has to be flawless"): REPORTING removed here —
+// confirmed genuinely dead after this pass's fix (every action that
+// used it recategorized to SYNOPTIC, which is the real context
+// SynopticReportPage.tsx actually sets; zero pages ever set
+// REPORTING). Left in place, it would have been a real, standing
+// invitation to reintroduce the exact orphaned-category bug this
+// whole pass exists to fix. AUDIT added — a new, genuinely needed
+// context, since AuditLogPage.tsx never had one of its own before
+// (confirmed directly), leaving its own real actions with no way to
+// ever become eligible.
 export const VOICE_CONTEXT = {
   WORKLIST:      'WORKLIST',
   CASE_VIEW:     'CASE_VIEW',
-  REPORTING:     'REPORTING',
   SYNOPTIC:      'SYNOPTIC',
   MESSAGES:      'MESSAGES',
   SEARCH:        'SEARCH',
@@ -550,6 +560,7 @@ export const VOICE_CONTEXT = {
   ACCESSION:     'ACCESSION',
   CONTRIBUTION:  'CONTRIBUTION',
   INTRAOP:       'INTRAOP',
+  AUDIT:         'AUDIT',
 } as const;
 
 export type VoiceContextName = typeof VOICE_CONTEXT[keyof typeof VOICE_CONTEXT];
@@ -597,7 +608,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.claimReview': true, 'qc.submitReview': true,
     'qc.escalateDiscordance': true, 'qc.viewDashboard': true,
     // AI Assist
@@ -652,7 +663,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.viewDashboard': true,
     // AI Assist — residents can use AI but not narrative generation
     'ai.reviewTriage': true, 'ai.codeSuggest': true,
@@ -674,7 +685,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'table.select': true, 'table.selectAll': true, 'table.refresh': true, 'table.search': true,
     'case.viewWorklist': true, 'case.assign': true, 'case.reassign': true,
     'case.archive': true, 'case.delete': true,
-    'client.view': true, 'client.edit': true,
+    'facility.view': true, 'facility.edit': true,
     'physician.view': true, 'physician.edit': true, 'physician.verify': true,
     'config.access': true, 'config.staff': true, 'config.roles': true,
     'config.subspecialties': true, 'config.specimens': true, 'config.flags': true,
@@ -762,7 +773,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.claimReview': true, 'qc.submitReview': true,
     'qc.escalateDiscordance': true, 'qc.viewDashboard': true,
     // Teaching/leadership — the real differentiator from Resident.
@@ -825,7 +836,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     // Synoptic Navigation — same as Resident/Pathologist; this is how a PA
     // navigates the Grossing checklist itself, same schema-driven panel
     // diagnostic synoptics use.

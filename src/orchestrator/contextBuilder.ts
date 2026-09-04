@@ -614,7 +614,7 @@ export async function buildContext(
   const specimenSynoptics = await resolveAllSpecimenSynoptics(caseData, warnings);
 
   // ── Narrative template — resolved via TemplateRoutingService ──
-  // Pass 0 (Client Override) uses order.clientId — a real, stable ID.
+  // Pass 0 (Facility Override) uses order.facilityId — a real, stable ID.
   // Pass 0b (Physician Preference) now prefers order.orderingPhysicianId —
   // a real, stable ID matching the Physician Preferences admin screen — and
   // falls back to order.requestingProvider (a display name) only when that
@@ -636,7 +636,7 @@ export async function buildContext(
   try {
     routingResult = await resolveReportTemplateAsync({
       synopticTemplateIds,
-      performingClientId:  caseData.order?.clientId,
+      performingFacilityId: caseData.order?.facilityId,
       orderingPhysicianId: caseData.order?.orderingPhysicianId ?? caseData.order?.requestingProvider,
       subspecialtyId,
     });

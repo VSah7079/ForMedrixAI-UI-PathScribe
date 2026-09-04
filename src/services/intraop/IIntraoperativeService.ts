@@ -31,7 +31,7 @@ export interface IIntraoperativeService {
     surgeon: string;
     /** Real feature, per direct confirmation: "Let's wire in Facility
      *  and Location (Room) for Intraop." */
-    clientId?: string;
+    facilityId?: string;
     locationId?: string;
   }): Promise<ServiceResult<IntraoperativeEntry>>;
 

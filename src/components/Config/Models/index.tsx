@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
 import { modelService, facilityService } from '../../../services';
 import { AIModel, ModelVendor } from '../../../services/models/IModelService';
-import type { Facility as Client } from '../../../services/facilities/IFacilityService';
+import type { Facility } from '../../../services/facilities/IFacilityService';
 import { hasPassingValidationForVoiceModel } from '../AI/resolveVoiceAiModel';
 
 const statusStyle: Record<string, React.CSSProperties> = {
@@ -22,13 +22,13 @@ const vendorLabel: Record<ModelVendor, string> = {
 
 const ModelsTab: React.FC = () => {
   const [models,  setModels]  = useState<AIModel[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([modelService.getAll(), facilityService.getAll()]).then(([modelsRes, clientsRes]) => {
+    Promise.all([modelService.getAll(), facilityService.getAll()]).then(([modelsRes, facilitiesRes]) => {
       if (modelsRes.ok) setModels(modelsRes.data);
-      if (clientsRes.ok) setClients(clientsRes.data);
+      if (facilitiesRes.ok) setFacilities(facilitiesRes.data);
       setLoading(false);
     });
   }, []);
@@ -39,8 +39,8 @@ const ModelsTab: React.FC = () => {
     setBlockedMessage(null);
     const target = models.find(m => m.id === id);
     // Real fix, per direct product decision: voice models have no
-    // per-client override layer the way report-generation models do
-    // (Client.internalAiModelId) — this "Set Default" action IS the
+    // per-facility override layer the way report-generation models do
+    // (Facility.internalAiModelId) — this "Set Default" action IS the
     // only point where a voice model actually goes live, so this is
     // the only place the hard block can meaningfully apply. Same
     // absolute-block posture as resolveClientAiModel.ts: an
@@ -73,7 +73,7 @@ const ModelsTab: React.FC = () => {
   // its own explicit internalAiModelId override — there's no separate
   // tracking table to fall out of sync, this reads the exact same
   // field the hard-block enforcement itself checks.
-  const clientsOnModel = (modelId: string) => clients.filter(c => c.internalAiModelId === modelId);
+  const facilitiesOnModel = (modelId: string) => facilities.filter(c => c.internalAiModelId === modelId);
 
   if (loading) return (
     <div style={{ padding: '40px 24px', textAlign: 'center', color: '#6b7280', fontSize: 14 }}>Loading models...</div>
@@ -92,14 +92,14 @@ const ModelsTab: React.FC = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-              {['Model', 'Vendor', 'Type', 'Accuracy', 'Cases Processed', 'Status', 'Clients Approved', 'Default'].map(h => (
+              {['Model', 'Vendor', 'Type', 'Accuracy', 'Cases Processed', 'Status', 'Facilities Approved', 'Default'].map(h => (
                 <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#9AA0A6', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {models.map((m, i) => {
-              const approved = clientsOnModel(m.id);
+              const approved = facilitiesOnModel(m.id);
               return (
               <tr key={m.id} style={{ borderBottom: i < models.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', opacity: m.status === 'Retired' ? 0.6 : 1 }}>
                 <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600, color: '#DEE4E7' }}>
@@ -120,7 +120,7 @@ const ModelsTab: React.FC = () => {
                       style={{ color: '#81C995', fontWeight: 600, cursor: 'default' }}
                       title={approved.map(c => c.name).join(', ')}
                     >
-                      {approved.length} client{approved.length === 1 ? '' : 's'}
+                      {approved.length} facilit{approved.length === 1 ? 'y' : 'ies'}
                     </span>
                   )}
                 </td>

@@ -36,11 +36,11 @@ export interface AIModel {
    *  actually call it, and are what make multi-vendor support genuine
    *  rather than theoretical: two AIModel entries can point at
    *  completely different vendors, and the app will actually call the
-   *  right one per client. */
+   *  right one per facility. */
   vendor:        ModelVendor;
   /** Which request shape this vendor's API needs — reuses the same
    *  AiProviderId already used for the org-wide .env-configured
-   *  default, so a per-client override is built from the exact same
+   *  default, so a per-facility override is built from the exact same
    *  vocabulary as the fallback it can override. */
   requestFormat: AiProviderId;
   /** The literal model string sent to that vendor's API —

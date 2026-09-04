@@ -57,7 +57,7 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
       availableTemplates: availableProtocols.map(p => ({
         id: p.id, name: p.name, category: p.category ?? 'Other',
       })),
-      clientId: caseData?.order?.clientId,
+      facilityId: caseData?.order?.facilityId,
     }).then(result => {
       if (!cancelled) setSuggestions(result.suggestions);
     }).catch(() => { /* suggestion fetch failing must never block manual selection */ });

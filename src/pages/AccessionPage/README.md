@@ -53,6 +53,20 @@ Grossing Template assignment per specimen, and creates the Case.
     accordingly — a type like "Missing Requisition" only makes sense
     case-wide, "Container Damaged" only makes sense per-specimen; both
     used to show up in both contexts.
+
+  **Per FEAT-ROUT-01 / per-facility Specimen Deficiencies (later
+  session):** `categoryOverride` (built from the resolved specimen
+  category for `mockCaseRegistryService.allocateNextCaseNumber`) gained
+  `categoryName`, feeding Case Mask's new `{DEPT}` token — see
+  `services/caseRegistry/README.md`. Separately, `deficiencyTypes` is no
+  longer loaded once on mount — it now resolves this case's own
+  performing lab from `clientId` (`resolvePerformingLabFacilityId()`,
+  same resolution `casePoolAssignmentService.ts` uses) and re-filters
+  whenever `clientId` changes, so only Global and this lab's own
+  `DeficiencyType`s are ever offered when raising one. One real bug hit
+  while wiring this, caught by `tsc` not by inspection: the new effect
+  was first placed *before* `clientId`'s own `useState` declaration — a
+  genuine block-scope TDZ error, not a style nit — moved after it.
   - The page had zero connection to the app's shared unsaved-changes
     system (`DirtyStateContext`) — filling in real patient/specimen
     data and navigating away lost everything with no warning at all.
@@ -85,6 +99,15 @@ Grossing Template assignment per specimen, and creates the Case.
   from a different facility. Sets the new `Case.order.locationId` +
   `locationDisplay` (`types/case/Case.ts`), mirroring the existing
   `clientId`/`clientName` pair exactly.
+
+  **Real, per direct UI-review follow-up ("Fix the root" — background
+  inconsistency across pages): `.ps-accession-shell`'s own hardcoded
+  `background-color: var(--ps-navy-base)` removed.** This page now
+  falls through to `AppShell.tsx`'s own, real `.ps-app-root`
+  background (see that folder's own README for the fuller account of
+  the inline-style bug this whole pass traced back to) — matching
+  Configuration/Quality Assurance/Intraop Queue/Contribution's
+  existing, correct behavior.
 
 - **`OrderLookupModal.tsx`** — New file, real feature per direct
   specification: "Order Lookup & Patient Verification" modal for the
@@ -176,7 +199,11 @@ Grossing Template assignment per specimen, and creates the Case.
   that context, always keeping the currently-selected type visible even
   if it wouldn't otherwise match — an admin can reclassify a type's
   level after the fact, and an existing record's own edit dropdown
-  shouldn't lose its own selection because of that.
+  shouldn't lose its own selection because of that. **Per-facility
+  Specimen Deficiencies:** the `deficiencyTypes` array it receives is
+  now already pre-filtered by performing lab upstream (`AccessionPage.tsx`
+  — see that entry above) — this modal's own context filter composes on
+  top of that, not instead of it.
 
 ## Notes
 
@@ -185,7 +212,10 @@ above) are clean of inline styles — verified via `grep -n "style="`
 across the whole folder, zero matches.
 
 **`AccessionPage.tsx`, added for Phase B of the "Interface Exception &
-Case-Binding Module," per direct confirmation**: a real, deliberately
+Case-Binding Module," per direct confirmation** (superseded below —
+see "Real, superseding fix... Patient Origin / Intake Type selector"
+further down for the current, real UI; this paragraph is kept for
+history): a real, deliberately
 de-emphasized checkbox — "This is a temporary/downtime placeholder
 identity" — right after the Patient ID field. Reuses the existing,
 real `.ps-accession-checkbox-row` class (found and confirmed already
@@ -471,6 +501,142 @@ amber-banner look. Verified live in both states: collapsed (banner
 sits cleanly above the untouched grid) and checked (the Downtime
 Reason dropdown expands within the same banner, not pushed awkwardly
 into the grid below).
+
+**Real, superseding fix, per direct guidance ("replace the checkbox
+with an explicit Patient Origin / Intake Type selector")**: the single
+downtime checkbox described immediately above is gone — replaced by a
+real, explicit three-way segmented control (`intakeType`: `'standard'`
+/ `'downtime'` / `'outside'`) at the exact same top-of-form position.
+Downtime mode's own submit behavior is completely unchanged
+(`MasterPatientRecord.isDowntimeRecord`/`downtimeReasonCode`, same
+mandatory reason dropdown, same amber alert treatment) — only the
+trigger changed, from a checked boolean to `intakeType === 'downtime'`.
+The new third mode, Outside/Contract Case (Outside Client Support &
+International Financial Class Architecture Specification), gets its
+own neutral teal/informational badge — deliberately distinct from
+Downtime's amber, since this is a real, expected external billing
+workflow, not a data-quality exception — and dynamically reveals a new
+"Outside Patient Data" tab after Specimens.
+
+That new tab (`OrderMetadata.outsidePatientData`,
+`types/billing/OutsidePatientFinancialData.ts`) implements all three
+of the source spec's own dynamic-behavior rules: Client Account
+selection auto-populates Account Billing Type from the selected
+Facility's new `defaultAccountBillingType`
+(`services/facilities/IFacilityService.ts`) — always editable, never
+locked; Primary Jurisdiction drives a genuinely dynamic Local ID Number
+label sourced live from the real Jurisdiction Payment Mapping
+dictionary (`services/billing/`, Step 1 of this same spec) rather than
+a separate, hardcoded per-country label map that could drift from it;
+Payment Category options are filtered to only what's actually
+reachable from the selected jurisdiction's own real local schemes, and
+the Split-Billing toggle reveals the secondary coverage fields. Client
+Account and Ordering Provider are deliberately NOT duplicated on this
+new tab — they reuse the existing Case & Patient tab's own
+`clientId`/`requestingProvider` selections directly, since there's no
+separate outside-client directory to build (any real `Facility` can
+already represent an outside/reference-lab client).
+
+**Real, deliberate scope boundary, confirmed directly before
+building — now resolved, see `services/patients/README.md`'s own
+`resolvePatientWithoutMatching()` entry for the full account**: "completely
+bypassing the identity reconciliation queue" for Outside Patient cases
+is now real and built. `mockPatientIndexService.resolveOrCreatePatient()`'s
+result feeding directly into Encounter resolution turned out not to be
+the real blocker it first appeared — Encounter resolution is already
+optional (skipped entirely when no `encounterNumber` is given, exactly
+the "routine outpatient referral with no real visit/FIN concept" case
+this app already had). The real, narrower remaining question — what an
+Outside Patient case's own `Case.patient.id` comes from — is answered
+by the new `resolvePatientWithoutMatching()`: an Outside/Contract Case
+now always gets a genuinely fresh identity, never forced through this
+lab's own domestic fuzzy matching. This is complementary to, not a
+replacement for, the "Check for Existing Patient" search right below
+on this same tab — a human explicitly recognizing a real, returning
+outside patient and confirming a real link afterward remains a
+completely separate, still-valuable real mechanism.
+
+**Real, confirmed correction, per direct follow-up ("is the data
+captured that a downstream fin application can manage this")**: the
+Payment Category / Secondary Category pickers on the Outside Patient
+Data tab now select the SPECIFIC `JurisdictionPaymentMapping` row
+directly (e.g. "Statutory / Social Health Insurance — Sécurité Sociale
+(CPAM)"), not a deduplicated Master Payment Type list. The earlier
+design captured only the master category, which is genuinely
+ambiguous the moment a country has more than one real local scheme
+mapping to it — nothing in the dictionary schema prevents that. The
+Local ID Number label was corrected alongside this, now deriving from
+the specific selected scheme rather than "the first scheme found in
+this jurisdiction," an approximation the original design used before a
+specific scheme was ever actually selectable. See
+`services/billing/README.md`'s own `buildFinancialClassPayload.ts`
+entry for the real, downstream-facing payload this precise capture now
+makes possible.
+
+**Real, per direct guidance ("should the accession do this as they go
+rather than the current process")**: the Outside Patient Data tab now
+has a real, proactive "Check for Existing Patient" search — the
+accessioner already has this patient's demographics in front of them,
+so this is the moment to ask "does this look like someone already in
+our system," not a separate step depending on someone remembering to
+go do it later. Reuses `mockPatientIndexService.searchPatients()`
+directly — the exact same real search `OrderLookupModal.tsx` already
+uses, same 250ms debounce convention, never a second, parallel search
+implementation. Deliberately does NOT change how patient resolution
+itself works for Outside Patients: `resolveOrCreatePatient()` still
+runs exactly as it does for every other accession, unchanged. What's
+new is only the opportunity to explicitly confirm a real link
+immediately afterward, in the same accessioning transaction — the real
+`linkPatients()` call fires right after MPI resolution completes,
+using the fresh patient id and whatever candidate the accessioner
+confirmed, fire-and-forget (a link failing must never block or fail
+the case creation it's attached to). Same real, tested mechanism
+`PatientMatchReviewSection.tsx` already uses for its own human-
+confirmed links — no new linking capability invented, just a second,
+proactive real trigger point for the one that already existed.
+
+**Real, deliberate scope boundary, confirmed and flagged directly, not
+silently built past** — see `services/patients/README.md`'s own "the
+`relationshipType` split" entry for the full account: your two named
+use cases for linking — maiden/married name, and newborn linked to
+mother — turned out to be genuinely different relationships needing
+genuinely different real fixes, worked through directly rather than
+guessed at. The real `PatientLink.relationshipType` split
+(`'same_person'` vs. `'family_relation'`) is built, and
+`PatientHistoryModal.tsx` correctly treats them differently. But a
+`'family_relation'` field briefly added to this page's Case & Patient
+tab was removed again in the same pass, once it became clear its one
+motivating scenario doesn't actually belong here: a newborn
+accessioned under their mother's identity (because the newborn has no
+real MRN yet) isn't something an accessioner can search-and-link at
+THIS moment — there's no separate newborn identity yet to find. That
+scenario's real fix already exists — `moveCaseToPatient()` (HL7 A43,
+`services/patients/IPatientIndexService.ts`), triggered once the
+newborn's own real identity is established and the ADT feed sends the
+real move event, or reviewed via `InterfaceExceptionReviewModal.tsx`
+when it can't auto-resolve. Nothing new needed here for that case.
+
+What DID generalize correctly, per direct follow-up: the "Check for
+Existing Patient" (`same_person`) search itself. It used to live only
+on the Outside Patient Data tab; it's now on the Case & Patient tab,
+available for every real intake type — a maiden/married-name match is
+just as real for a Standard accession as an Outside one, and gating it
+to Outside Patients only was the actual mistake, not the search
+capability itself.
+
+**Real, flagged, not-yet-built, per direct follow-up ("you might have
+to do those operations on the outside patient pull where the EMR may
+not have awareness")**: `moveCaseToPatient()`'s only two real triggers
+today — the inbound ADT^A43 path and `InterfaceExceptionReviewModal.tsx`'s
+own review queue — both depend on a real, external ADT feed sending
+the move event in the first place. An Outside/Contract Case's own
+referring EMR has no awareness of this lab's own patient records to
+ever generate that event against — meaning `moveCaseToPatient()` is
+functionally *unreachable* for an Outside Patient's own case, not just
+rare. A real, proactive trigger — likely exposed from `SearchPage.tsx`,
+letting a real user find a misattributed case directly and move it
+without depending on an ADT event that will never arrive — is real,
+separate, next-step work, not built in this pass.
 
 **Real feature, per direct, detailed specification: "Encounter
 Selector & Auto-Fill."** Built on real, substantial pre-existing

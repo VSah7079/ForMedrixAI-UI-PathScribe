@@ -61,6 +61,7 @@ import type { ICaseService, CaseFilterParams } from './ICaseService';
 import type { ServiceResult }                                 from '../types';
 import { AuditLogger }                                        from './AuditLogger';
 import { ConcurrencyConflictError }                            from './ConcurrencyConflictError';
+import { mockFlagService } from '../flags/mockFlagService';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 // TODO: confirm these match your Firestore schema
@@ -153,13 +154,13 @@ export const firestoreCaseService: ICaseService = {
           constraints.push(where('order.priority', 'in', params.priorityList));
         }
       }
-      if (params?.clientIds?.length) {
+      if (params?.facilityIds?.length) {
         // Firestore 'in' supports up to 30 values — a real, hard limit, not
         // arbitrary. A selection larger than that (unlikely from the
         // picker UI, but not impossible) needs the excess applied
         // client-side rather than silently dropped or erroring the query.
-        const ids = params.clientIds.slice(0, 30);
-        constraints.push(where('order.clientId', 'in', ids));
+        const ids = params.facilityIds.slice(0, 30);
+        constraints.push(where('order.facilityId', 'in', ids));
       }
       if ((params as any)?.pathologistIds?.length) {
         const ids = ((params as any).pathologistIds as string[]).slice(0, 30);
@@ -303,23 +304,38 @@ export const firestoreCaseService: ICaseService = {
         );
       }
       if ((params as any)?.compFlagCodes?.length) {
-        // Real, per direct guidance's own follow-up: same real check
-        // (sf.lisCode === code || sf.id === code || sf.label === code)
-        // as caseFilterUtils.ts's own mock-path implementation -
-        // specimenFlags is an array of objects, and Firestore has no
-        // native way to query "does any array element's property X
-        // equal Y" without a separate, denormalized scalar index
-        // field this app's data model doesn't maintain. Applied here,
-        // same real "no index required but post-fetch" posture as the
-        // DOB/age range fallback above - inherits that same,
-        // already-documented pagination trade-off (hasMore/nextCursor
-        // reflect the pre-filter page), not a new limitation.
+        // Real, confirmed fix (Jira PS-57 + its follow-up "should be
+        // able to assign Flags at either a Case or Specimen level"):
+        // same real resolution as caseFilterUtils.ts's own mock-path
+        // implementation — specimenFlags entries are real FlagInstance
+        // records now (flagDefinitionId, no .label/.lisCode of their
+        // own), resolved against the real flag catalog. mockFlagService
+        // used here deliberately (see its own import comment) —
+        // firestoreFlagService.ts is a documented stub, mockFlagService
+        // is the real, active flag catalog regardless of this file's
+        // own cutover status. Aggregated across every specimen on the
+        // case — there's deliberately no case-level specimenFlags
+        // field; each specimen's own specimenFlags is the only real
+        // place a flag applied to a specific specimen can live, since
+        // FlagInstance itself carries no specimenId. specimenFlags is
+        // an array of objects, and Firestore has no native way to
+        // query "does any array element's property X equal Y" without
+        // a separate, denormalized scalar index field this app's data
+        // model doesn't maintain. Applied here, same real "no index
+        // required but post-fetch" posture as the DOB/age range
+        // fallback above - inherits that same, already-documented
+        // pagination trade-off (hasMore/nextCursor reflect the
+        // pre-filter page), not a new limitation.
         const codes = (params as any).compFlagCodes as string[];
+        const flagCatalog = await mockFlagService.getAll();
+        const flagDefById = new Map(flagCatalog.ok ? flagCatalog.data.map(f => [f.id, f]) : []);
         results = results.filter(c =>
           codes.some(code =>
-            ((c as any).specimenFlags ?? []).some((sf: any) =>
-              sf.lisCode === code || sf.id === code || sf.label === code
-            )
+            ((c as any).specimens ?? []).flatMap((sp: any) => sp.specimenFlags ?? []).some((sf: any) => {
+              if (sf.deletedAt) return false;
+              const def = flagDefById.get(sf.flagDefinitionId);
+              return !!def && (def.lisCode === code || def.id === code || def.name === code);
+            })
           )
         );
       }

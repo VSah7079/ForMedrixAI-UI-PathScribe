@@ -40,6 +40,8 @@ import { mockCaseService }             from './mockCaseService';
 import { mockOrchestratorCaseService } from './mockOrchestratorCaseService';
 import { getSessionUser, canAccessCaseWithPools, filterAccessibleCasesWithPools, deriveEligibleFinalizerIds, type CaseAccessSubspecialty } from '../auth/caseAccessControl';
 import { mockSubspecialtyService as subspecialtyService } from '../subspecialties/mockSubspecialtyService';
+import { mockFacilityService } from '../facilities/mockFacilityService';
+import type { Facility } from '../facilities/IFacilityService';
 import { isOrchCaseId } from './reportingModeRouting';
 import { mergeDualSourcePages } from './caseFilterUtils';
 import { getEffectiveScanStationId } from '../../utils/effectiveScanStation';
@@ -73,6 +75,25 @@ async function getSubspecialtyLookup(): Promise<Map<string, CaseAccessSubspecial
     subspecialtyLookupPromise.catch(() => { subspecialtyLookupPromise = null; });
   }
   return subspecialtyLookupPromise;
+}
+
+// Phase 1 of the Organisation/Site -> Facility migration (see
+// caseAccessControl.ts's own updated design principle #2): the tenant
+// check needs every real, isEnterprise: true Facility to resolve
+// session.organisationId/Case.originHospitalId's legacy string values
+// against (resolveTenantFacility.ts). Same real caching reasoning and
+// pattern as getSubspecialtyLookup right above — admin-managed data,
+// changes rarely, memoizes the in-flight promise so concurrent calls
+// share one fetch.
+let enterpriseFacilityLookupPromise: Promise<Facility[]> | null = null;
+async function getEnterpriseFacilityLookup(): Promise<Facility[]> {
+  if (!enterpriseFacilityLookupPromise) {
+    enterpriseFacilityLookupPromise = mockFacilityService.getAll()
+      .then(res => (res.ok ? res.data.filter(f => f.isEnterprise) : []))
+      .catch(() => []);
+    enterpriseFacilityLookupPromise.catch(() => { enterpriseFacilityLookupPromise = null; });
+  }
+  return enterpriseFacilityLookupPromise;
 }
 
 
@@ -113,7 +134,8 @@ class CaseRouter implements ICaseService {
       }
       const session = getSessionUser();
       const subspecialties = await getSubspecialtyLookup();
-      if (!canAccessCaseWithPools(session, c as any, subspecialties)) {
+      const enterpriseFacilities = await getEnterpriseFacilityLookup();
+      if (!canAccessCaseWithPools(session, c as any, subspecialties, enterpriseFacilities)) {
         audit.log({ eventType: 'case.read', caseId, userId, outcome: 'failure' });
         console.debug('[CaseRouter] Access denied (organisation mismatch, no session, or pool restriction):', { caseId, sessionUserId: session?.id });
         return undefined;
@@ -167,7 +189,8 @@ class CaseRouter implements ICaseService {
     // implied — a caller has to explicitly opt in, and it's still fully
     // audited below like every other path.
     const subspecialties = opts?.bypassAccessControl ? null : await getSubspecialtyLookup();
-    const applyFilter = (cases: Case[]) => opts?.bypassAccessControl ? cases : filterAccessibleCasesWithPools(session, cases as any, subspecialties);
+    const enterpriseFacilities = opts?.bypassAccessControl ? [] : await getEnterpriseFacilityLookup();
+    const applyFilter = (cases: Case[]) => opts?.bypassAccessControl ? cases : filterAccessibleCasesWithPools(session, cases as any, subspecialties, enterpriseFacilities);
 
     if (!opts?.includeOrchestration) {
       // Single-source case — the common path (most users don't have
@@ -283,7 +306,8 @@ class CaseRouter implements ICaseService {
     ]);
 
     const subspecialties = await getSubspecialtyLookup();
-    return filterAccessibleCasesWithPools(session, [...lisCases, ...orchCases] as any, subspecialties) as Case[];
+    const enterpriseFacilities = await getEnterpriseFacilityLookup();
+    return filterAccessibleCasesWithPools(session, [...lisCases, ...orchCases] as any, subspecialties, enterpriseFacilities) as Case[];
   }
 
   // ── updateCase ────────────────────────────────────────────────────────────────

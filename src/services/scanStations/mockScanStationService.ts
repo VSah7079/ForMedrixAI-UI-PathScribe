@@ -6,12 +6,23 @@
 // documents — enough for the real scan-tracking flow
 // (useMaterialScanTracking.ts) to have real, matchable data to
 // dispatch against, not an empty dictionary with nothing configured.
-// facilityId here is deliberately a single, generic lab-facility
-// value ('lab-main') — genuinely distinct from Location's own
-// facilityId (a REFERRING hospital, where a patient physically is),
-// since a scan station is about PathScribe's own lab bench, not a
-// referring facility's ward. Real, multi-site scoping is real
-// follow-up work if this ever needs it.
+// Real fix, per direct guidance: facilityId used to be a single,
+// fabricated placeholder string ('lab-main') that matched no real
+// Facility record at all, paired with a free-text UI field an admin
+// had to type correctly by hand — genuinely unvalidated, confirmed
+// directly (validateScanStationDraft.ts had no rule for it whatsoever).
+// Now a real reference to an existing performing_lab Facility
+// (services/facilities/) — same real "performing lab" concept
+// resolvePerformingLabFacilityId()/getActivePerformingLabs() already
+// establish everywhere else in this app — resolved via a real
+// dropdown in ScanStationsSection.tsx, not free text. Still genuinely
+// distinct from Location's own facilityId (a REFERRING hospital, where
+// a patient physically is) — a scan station is about PathScribe's own
+// lab bench, not a referring facility's ward; that distinction is
+// unchanged, only which real value represents the bench's own lab is
+// fixed here. Real, multi-site scoping (station-per-site rather than
+// one shared facility across every seeded station) is real follow-up
+// work if this ever needs it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { ServiceResult, ID } from '../types';
@@ -25,14 +36,14 @@ const SEED_STATIONS: ScanStation[] = [
   // stations are left with neither flag set, since which real
   // hardware a given lab actually has is genuinely site-specific and
   // shouldn't be fabricated here.
-  { id: 'station-gross-1', name: 'Grossing Station 1', barcodeCode: 'GROSSING-01', facilityId: 'lab-main', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: true, cassetteSlidePrinterProfileId: 'printer-zt411-example' },
-  { id: 'station-gross-2', name: 'Grossing Station 2', barcodeCode: 'GROSSING-02', facilityId: 'lab-main', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: false },
-  { id: 'station-gross-3', name: 'Grossing Station 3', barcodeCode: 'GROSSING-03', facilityId: 'lab-main', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: false },
-  { id: 'station-embed-1', name: 'Histology — Embedding', barcodeCode: 'EMBEDDING-A', facilityId: 'lab-main', workflowStage: 'Embedding', status: 'Active', supportsEngraving: false, supportsPrinting: false },
-  { id: 'station-micro-1', name: 'Microtomy — Bench 1', barcodeCode: 'MICROTOMY-01', facilityId: 'lab-main', workflowStage: 'Microtomy / Sectioning', status: 'Active', supportsEngraving: false, supportsPrinting: true, cassetteSlidePrinterProfileId: 'printer-zt411-example' },
-  { id: 'station-stain-1', name: 'Staining Station 1', barcodeCode: 'STAINING-01', facilityId: 'lab-main', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
-  { id: 'station-stain-2', name: 'Staining Station 2', barcodeCode: 'STAINING-02', facilityId: 'lab-main', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
-  { id: 'station-archive-1', name: 'Slide Archive — Shelf 12', barcodeCode: 'ARCHIVE-12', facilityId: 'lab-main', workflowStage: 'Slide Archival', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-gross-1', name: 'Grossing Station 1', barcodeCode: 'GROSSING-01', facilityId: 'c-fenwick-general', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: true, cassetteSlidePrinterProfileId: 'printer-zt411-example' },
+  { id: 'station-gross-2', name: 'Grossing Station 2', barcodeCode: 'GROSSING-02', facilityId: 'c-fenwick-general', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-gross-3', name: 'Grossing Station 3', barcodeCode: 'GROSSING-03', facilityId: 'c-fenwick-general', workflowStage: 'Grossing', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-embed-1', name: 'Histology — Embedding', barcodeCode: 'EMBEDDING-A', facilityId: 'c-fenwick-general', workflowStage: 'Embedding', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-micro-1', name: 'Microtomy — Bench 1', barcodeCode: 'MICROTOMY-01', facilityId: 'c-fenwick-general', workflowStage: 'Microtomy / Sectioning', status: 'Active', supportsEngraving: false, supportsPrinting: true, cassetteSlidePrinterProfileId: 'printer-zt411-example' },
+  { id: 'station-stain-1', name: 'Staining Station 1', barcodeCode: 'STAINING-01', facilityId: 'c-fenwick-general', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-stain-2', name: 'Staining Station 2', barcodeCode: 'STAINING-02', facilityId: 'c-fenwick-general', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  { id: 'station-archive-1', name: 'Slide Archive — Shelf 12', barcodeCode: 'ARCHIVE-12', facilityId: 'c-fenwick-general', workflowStage: 'Slide Archival', status: 'Active', supportsEngraving: false, supportsPrinting: false },
 ];
 
 const STORAGE_KEY = 'scan_stations';

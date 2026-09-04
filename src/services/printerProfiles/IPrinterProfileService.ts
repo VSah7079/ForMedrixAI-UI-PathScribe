@@ -6,7 +6,7 @@
 // ensures correct template selection and prevents unreadable
 // barcodes." Real, standalone dictionary, matching the same
 // established pattern as every other real registry in this app
-// (Protocol Dictionary, Stain Dictionary, Specimen Categories) —
+// (Protocol Dictionary, Stain Dictionary, Departments) —
 // interface + mock service + admin UI, not a one-off.
 //
 // Real, honest scope note: this registry is real and complete on the
@@ -111,6 +111,18 @@ export interface PrinterProfile {
    *  targetPrinter payload shape, not just describe its capabilities. */
   ipAddress?: string;
   port?: number;
+  /**
+   * Real, per direct guidance (Workstation & Hardware redesign):
+   * which real performing-lab Facility this printer is physically
+   * registered at — same Global/scoped convention as everywhere else
+   * in this app (ContainerType.performingLabFacilityId,
+   * ScanStation.facilityId). Undefined/empty is real and valid, not a
+   * placeholder — a genuinely shared, network-pool printer reachable
+   * from more than one facility's own benches has no single owner;
+   * scoped is the default an admin actively chooses, not a fallback
+   * for "hasn't been set yet."
+   */
+  facilityId?: string;
   active: boolean;
   createdAt: string;
   updatedAt: string;

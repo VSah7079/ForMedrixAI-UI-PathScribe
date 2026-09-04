@@ -1,8 +1,8 @@
 // src/services/referenceCheck/referenceCheckService.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Checks whether a foundational config entity (Client, Subspecialty, Specimen
+// Checks whether a foundational config entity (Facility, Subspecialty, Specimen
 // Category) is still referenced elsewhere before it gets deactivated. This
-// closes a real, confirmed gap: ClientDictionaryPage's deactivate() previously
+// closes a real, confirmed gap: FacilityDictionaryPage's deactivate() previously
 // just flipped status with zero check for whether Physicians, TAT entries, or
 // Grossing Route Overrides still pointed at it.
 //
@@ -15,7 +15,7 @@
 // checker: that relationship is a static, compile-time ICD-10-variant lookup
 // table (getIcd10VariantForBody), not a live stored reference that could go
 // stale — deactivating a Governing Body record doesn't corrupt any data the
-// way deactivating a Client while Physicians/TAT/overrides still reference it
+// way deactivating a Facility while Physicians/TAT/overrides still reference it
 // would.
 // ─────────────────────────────────────────────────────────────────────────────
 import { physicianService, grossingRoutingOverrideService, specimenDictionaryService } from '../index';
@@ -45,14 +45,14 @@ function toResult(sources: ReferenceSource[]): ReferenceCheckResult {
   return { hasReferences: nonZero.length > 0, sources: nonZero };
 }
 
-export async function checkClientReferences(clientId: string): Promise<ReferenceCheckResult> {
+export async function checkFacilityReferences(facilityId: string): Promise<ReferenceCheckResult> {
   const [physiciansRes, overridesRes] = await Promise.all([
     physicianService.getAll(),
     grossingRoutingOverrideService.getAll(),
   ]);
-  const physicianCount = physiciansRes.ok ? physiciansRes.data.filter((p) => p.clientIds?.includes(clientId)).length : 0;
-  const overrideCount = overridesRes.ok ? overridesRes.data.filter((o) => o.clientId === clientId && o.active !== false).length : 0;
-  const tatCount = loadTatEntries().filter(e => e.active && e.clientId === clientId).length;
+  const physicianCount = physiciansRes.ok ? physiciansRes.data.filter((p) => p.clientIds?.includes(facilityId)).length : 0;
+  const overrideCount = overridesRes.ok ? overridesRes.data.filter((o) => o.clientId === facilityId && o.active !== false).length : 0;
+  const tatCount = loadTatEntries().filter(e => e.active && e.facilityId === facilityId).length;
   return toResult([
     { label: 'Physicians', count: physicianCount },
     { label: 'Grossing Route Overrides', count: overrideCount },
@@ -69,8 +69,8 @@ export async function checkSubspecialtyReferences(subspecialtyId: string): Promi
   ]);
 }
 
-export async function checkSpecimenCategoryReferences(specimenCategoryId: string): Promise<ReferenceCheckResult> {
+export async function checkDepartmentReferences(departmentId: string): Promise<ReferenceCheckResult> {
   const res = await specimenDictionaryService.getAll();
-  const count = res.ok ? res.data.filter((e) => e.specimenCategoryId === specimenCategoryId).length : 0;
+  const count = res.ok ? res.data.filter((e) => e.departmentId === departmentId).length : 0;
   return toResult([{ label: 'Specimen Dictionary entries', count }]);
 }

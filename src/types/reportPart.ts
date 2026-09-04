@@ -137,6 +137,20 @@ export interface ReportPart {
   /** Institution this part belongs to */
   institutionId: string;
 
+  /**
+   * Real, per direct guidance: which real performing lab this part
+   * belongs to — same Global/scoped convention as everywhere else in
+   * this app (ContainerType/RoutingRule/PrinterProfile). Undefined =
+   * Global, available to every performing lab; set = only offered when
+   * assembling a template for that lab's own cases. Deliberately a new,
+   * dedicated field rather than repurposing institutionId above — that
+   * field is always an empty string in every real call site today
+   * (mockReportPartService.ts), confirmed directly, and its own
+   * original intent is undocumented; safer to leave it alone than
+   * guess at overloading it.
+   */
+  performingLabFacilityId?: string;
+
   /** Who created / last edited this part */
   createdBy: string;
   updatedBy?: string;

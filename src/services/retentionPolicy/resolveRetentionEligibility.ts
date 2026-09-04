@@ -1,6 +1,6 @@
 // src/services/retentionPolicy/resolveRetentionEligibility.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Real, shared extraction — resolveCategoryOverride and
+// Real, shared extraction — resolveDepartmentOverride and
 // resolveFacilityIdForLocation previously lived as two, identical,
 // independently-maintained copies in computeDisposalQueue.ts and
 // disposeItemByScan.ts (the exact "two copies that could silently
@@ -12,7 +12,7 @@
 // Real, new addition, per direct follow-up: "computeDisposalQueue.ts
 // doesn't know matrix blocks exist." A real matrix block is shared by
 // MULTIPLE specimens, each with its own, potentially different,
-// SpecimenCategory.retentionOverrideDays — resolveMostConservativeEligibleDate
+// Department.retentionOverrideDays — resolveMostConservativeEligibleDate
 // is the real, single resolution point for that case: the LATEST
 // (most conservative) real eligible date across every real
 // participant's own, individual retention clock, since a shared,
@@ -38,7 +38,7 @@
 // prospective/grandfathered by default) this implements.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { specimenDictionaryService, specimenCategoryService } from '@/services';
+import { specimenDictionaryService, departmentService } from '@/services';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
 import { mockGoverningBodyService } from '@/services/governingBodies/mockGoverningBodyService';
 import type { RetentionPolicyVersion } from '@/services/governingBodies/IGoverningBodyService';
@@ -47,22 +47,22 @@ import type { RetainableMaterialType, RetentionOverrideDays } from './RetentionP
 import type { Jurisdiction } from '@/types/systemConfig';
 
 /** Real, single resolution point — Specimen's own real
- *  specimenDictionaryEntryId -> SpecimenEntry.specimenCategoryId ->
- *  SpecimenCategory.retentionOverrideDays. Returns undefined (not an
+ *  specimenDictionaryEntryId -> SpecimenEntry.departmentId ->
+ *  Department.retentionOverrideDays. Returns undefined (not an
  *  empty object) at any real, missing step along that chain, so
  *  callers correctly fall through to the jurisdiction default rather
  *  than treating a missing link as "no override" in a way that could
  *  be confused with a real, deliberately-empty override. */
-export async function resolveCategoryOverride(specimenDictionaryEntryId: string | undefined): Promise<RetentionOverrideDays | undefined> {
+export async function resolveDepartmentOverride(specimenDictionaryEntryId: string | undefined): Promise<RetentionOverrideDays | undefined> {
   if (!specimenDictionaryEntryId) return undefined;
   const dictRes = await specimenDictionaryService.getAll();
   if (!dictRes.ok) return undefined;
   const entry = dictRes.data.find(e => e.id === specimenDictionaryEntryId);
-  if (!entry?.specimenCategoryId) return undefined;
-  const catRes = await specimenCategoryService.getAll();
+  if (!entry?.departmentId) return undefined;
+  const catRes = await departmentService.getAll();
   if (!catRes.ok) return undefined;
-  const category = catRes.data.find(c => c.id === entry.specimenCategoryId);
-  return category?.retentionOverrideDays;
+  const department = catRes.data.find(c => c.id === entry.departmentId);
+  return department?.retentionOverrideDays;
 }
 
 /** Real, single resolution point — a station-name string (whatever a
@@ -140,10 +140,10 @@ export async function resolveGoverningBodyRetentionDays(
 }
 
 /** Real, single resolution point, per direct follow-up: "A regular
- *  admin can currently set a per-category override below the
+ *  admin can currently set a per-department override below the
  *  governing body's own floor with no guard at all." The real, live,
  *  CURRENT (today's date) floor for every material type at once —
- *  used by SpecimenCategoriesSection.tsx as the real reference an
+ *  used by DepartmentsSection.tsx as the real reference an
  *  admin's own retentionOverrideDays entry gets checked against
  *  before it's allowed to go lower. Deliberately "today's version,"
  *  not a specific case's own finalizedAt-resolved version — this is
@@ -173,7 +173,7 @@ export async function resolveCurrentGoverningBodyFloor(
  * The MOST CONSERVATIVE (latest) real eligible date across every real
  * participant's own, individual retention clock — never the earliest,
  * and never just the jurisdiction default ignoring per-participant
- * category overrides, since that could let a shared cassette become
+ * department overrides, since that could let a shared cassette become
  * "eligible" while one real participant's own, longer requirement
  * hasn't actually been satisfied yet.
  *
@@ -195,7 +195,7 @@ export async function resolveMostConservativeEligibleDate(
   if (jurisdictionDefaultDays === undefined) return null;
   const dates = await Promise.all(
     specimenDictionaryEntryIds.map(async id => {
-      const override = await resolveCategoryOverride(id);
+      const override = await resolveDepartmentOverride(id);
       const effectiveDays = override?.[materialType] ?? jurisdictionDefaultDays;
       return calculateRetentionEligibleDate(effectiveDays, finalizedAt);
     }),

@@ -508,13 +508,8 @@ export function deriveLegacyFormats(formats: IdentifierFormat[]): {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SystemConfig {
-  lisIntegrationEnabled:           boolean;
-  lisEndpoint:                     string;
-  lisOwnsStatuses:                 boolean;
-  allowPathScribePostFinalActions: boolean;
   approvedFonts:                   string[];
   jurisdiction:                    Jurisdiction;
-  identifierFormats:               IdentifierFormats;
   terminologyConfig:               InstitutionTerminologyConfig;
   voiceEnabled:                    boolean;
   /** Whether pathologists (role === 'pathologist' specifically) see peer-
@@ -547,29 +542,16 @@ export interface SystemConfig {
 
 // Defaults enable US formats (defaultFormatsForJurisdiction only ever
 // returns one jurisdiction's set) plus UK accession + NHS Number on top —
-// this trial serves both US and UK clients simultaneously (see
-// Client.jurisdiction, added earlier for the same reason on the date-
+// this trial serves both US and UK facilities simultaneously (see
+// Facility.jurisdiction, added earlier for the same reason on the date-
 // formatting side), so identifier detection shouldn't default to
 // US-only and require an admin to remember to enable UK formats before
 // a UK scan will work. Admins can still toggle any of these off (or add
 // Scotland/NI/AU/NZ) via the Identifier Formats config screen — this
 // just changes what ships enabled out of the box.
-const _defaultFormats = defaultFormatsForJurisdiction('US').map(f =>
-  (f.id === 'accession_generic_uk' || f.id === 'mrn_nhs') ? { ...f, enabled: true } : f
-);
-const _defaultLegacy  = deriveLegacyFormats(_defaultFormats);
-
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
-  lisIntegrationEnabled:           false,
-  lisEndpoint:                     '',
-  lisOwnsStatuses:                 true,
-  allowPathScribePostFinalActions: true,
   approvedFonts: ['Arial', 'Times New Roman', 'Courier New'],
   jurisdiction: 'US',
-  identifierFormats: {
-    formats: _defaultFormats,
-    ..._defaultLegacy,
-  },
   terminologyConfig: {
     snomed: { active: true,  mode: 'mock' },
     icd10:  { active: true,  mode: 'mock' },

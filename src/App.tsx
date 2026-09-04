@@ -38,6 +38,8 @@ const LoginPage = lazy(() => import("./pages/LoginPage"));
 const AccessionPage = lazy(() => import("./pages/AccessionPage/AccessionPage"));
 
 const WorklistPage = lazy(() => import("./pages/WorklistPage/WorklistPage"));
+const CytologyWorklistPage = lazy(() => import("./pages/CytologyWorklistPage/CytologyWorklistPage"));
+const CytologyScreeningPage = lazy(() => import("./pages/CytologyWorklistPage/CytologyScreeningPage"));
 const QualityAssurancePage = lazy(() => import("./pages/QualityAssurancePage"));
 const BatchManagementPage = lazy(() => import("./pages/BatchManagement/BatchManagementPage"));
 const DisposalQueuePage = lazy(() => import("./pages/BatchManagement/DisposalQueuePage"));
@@ -124,6 +126,8 @@ const App: React.FC = () => (
                           <Route path="/" element={<Home />} />
                           <Route path="/accession" element={<AccessionPage />} />
                           <Route path="/worklist" element={<WorklistPage />} />
+                          <Route path="/cytology-worklist" element={<CytologyWorklistPage />} />
+                          <Route path="/cytology-worklist/:caseId" element={<CytologyScreeningPage />} />
                           <Route path="/quality-assurance" element={<QualityAssurancePage />} />
                           <Route path="/batch-management" element={<BatchManagementPage />} />
                           <Route path="/batch-management/disposal" element={<DisposalQueuePage />} />

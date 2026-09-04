@@ -7,10 +7,11 @@
 //   • CAP synoptic reporting
 //   • PathScribe flag + reporting workflows
 // ─────────────────────────────────────────────────────────────────────────────
-import { SpecimenFlag } from "./SpecimenFlag";
+import type { FlagInstance } from "../flagsRuntime";
 import { CaseComment } from "./CaseComment";
 import type { CasePriority } from "@/services/cases/ICaseService";
 import type { MaterialLocation } from "./Material";
+import type { CytologyCategorySelection } from "@/types/cytology/CytologyReviewRecord";
 
 export interface SpecimenCollection {
   collectedAt?: string;
@@ -203,6 +204,50 @@ export interface StainOrder {
    *  what calculateMolecularUnits.ts actually bills against - never
    *  the dictionary's own default count once an order exists. */
   selectedTargets?: import('@/types/billing/MolecularBillingRule').MolecularTarget[];
+  /**
+   * Real, per direct billing-expert guidance (PS-93): which of this
+   * shared MatrixBlock stain's participating specimens the order was
+   * actually targeted at — captured at real order time (the Array
+   * Mapper's own "Order Ancillary Stain" action, per direct spec) or,
+   * for an older stain predating that flow, whatever the best
+   * available record is. Only ever meaningful when this StainOrder
+   * lives inside MatrixBlock.slides[] (types/case/MatrixBlock.ts) —
+   * an ordinary specimen-owned HistologyBlock's own stains already
+   * have unambiguous attribution via nesting, this field stays
+   * undefined there, always.
+   *
+   * Deliberately NOT what billing is computed from — see
+   * evaluatedSpecimenIds below for that. Which cores were physically
+   * targeted when the stain was ordered and which cores a pathologist
+   * actually diagnostically evaluated on the resulting slide are two
+   * real, genuinely different facts (a targeted core's tissue can
+   * turn out non-diagnostic, artifactual, or simply not what the
+   * final read relied on) — billing on intent-to-evaluate rather than
+   * confirmed-evaluation is exactly the kind of automatic split-
+   * billing without clinical intent this whole feature exists to
+   * prevent.
+   */
+  targetSpecimenIds?: string[];
+  /**
+   * Real, per direct billing-expert guidance (PS-93): the actual
+   * billing trigger — which of this shared MatrixBlock stain's
+   * participating specimens the pathologist has explicitly confirmed
+   * as "Evaluated / Reviewed for Diagnosis" at the slide viewer /
+   * diagnostic sign-out stage (BillingReviewPanel.tsx's own Evaluated
+   * Cores Checklist). Only ever meaningful alongside targetSpecimenIds
+   * above, same MatrixBlock-only scope.
+   *
+   * Deliberately separate from, and never defaulted from,
+   * targetSpecimenIds — a core can be targeted at order time and
+   * genuinely not end up evaluated (non-diagnostic tissue, artifact,
+   * simply not what the read relied on), and never automatically
+   * bills. Deliberately undefined/empty by default: "ensuring zero
+   * risk of unbundled or improper claims" — see
+   * computeMatrixStainBillingUnits (services/billing/codeMapTable.ts)
+   * for the real calculation this drives: empty/undefined yields zero
+   * billing units, not a guess.
+   */
+  evaluatedSpecimenIds?: string[];
 }
 
 /** Real, shared shape for a stain-attributed applied or rejected
@@ -511,8 +556,42 @@ export interface Specimen {
    *  every real charge-building path falls back to the existing,
    *  case-wide Order.icd10Codes when a specimen has none of its own,
    *  so nothing already working changes unless a real,
-   *  specimen-specific code is actually assigned. */
-  coding?: { cpt?: string[]; icd10?: { code: string; description: string }[] };
+   *  specimen-specific code is actually assigned.
+   *
+   *  coding.snomed follows this exact same reasoning - real, per
+   *  direct guidance (PS-105/Code Manager work): distinct SNOMED
+   *  codes should never be assumed to equal distinct diagnoses, and
+   *  the same real concept can legitimately appear more than once
+   *  (multiple observations producing the same concept, the same
+   *  concept genuinely attached to different components of one
+   *  specimen, a repeated/updated observation over the case's
+   *  lifecycle). This array is deliberately never deduplicated on
+   *  write - every real, individual association is retained for
+   *  traceability, exactly as this file's own icd10 array already
+   *  does. A distinct, deduplicated concept SET for analytics/billing
+   *  is a real, separate DERIVATION over this raw data
+   *  (deriveUniqueConcepts, services/terminologySearch/), never baked
+   *  into storage itself. */
+  coding?: { cpt?: string[]; icd10?: { code: string; description: string }[]; snomed?: { code: string; description: string }[] };
+  /**
+   * Real, per direct billing-expert guidance (PS-93): this specimen's
+   * own applied/rejected ancillary codes for stains it was explicitly
+   * attributed on (StainOrder.evaluatedSpecimenIds) sourced
+   * from a shared MatrixBlock (Case.matrixBlocks[]) it participates
+   * in — keyed by matrixBlockId since a specimen could in principle
+   * participate in more than one. Deliberately separate from this
+   * specimen's own blocks[].coding (HistologyBlock.coding, same file)
+   * rather than reusing it: the exact same physical stain can
+   * correctly bill differently to different specimens sharing it (a
+   * shared block's first IHC can be 88342 for Specimen A but the
+   * correct, NCCI-sequenced code for Specimen B's own first IHC on
+   * that identical physical slide is 88341), so this can never be a
+   * single, shared value stored once on the MatrixBlock itself — see
+   * services/billing/README.md's own PS-93 disclosure for the full
+   * reasoning. Same AppliedBlockCode shape as HistologyBlock.coding,
+   * for consistency.
+   */
+  matrixBlockCoding?: { matrixBlockId: string; cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] }[];
   /** Specimen letter or number (A, B, C…) */
   label: string;
   /** Human-readable description ("Left breast biopsy") */
@@ -577,8 +656,11 @@ export interface Specimen {
    *  specimen missing both dates at once still only needs one real
    *  explanation, not two duplicate comments. */
   preAnalyticDateOverrideComment?: string;
-  /** Flags applied to this specimen */
-  specimenFlags?: SpecimenFlag[];
+  /** Real, confirmed fix (Jira PS-57) — see Case.ts's own, fuller
+   *  comment on caseFlags/specimenFlags: was SpecimenFlag[], the
+   *  wrong, inline-definition shape; the real, live flag-application
+   *  workflow has always written FlagInstance[] here. */
+  specimenFlags?: FlagInstance[];
   /**
    * Specimen-level comment thread — distinct from `description`. Changed
    * from a single overwritable string to a real append-only thread, same
@@ -683,7 +765,157 @@ export interface Specimen {
    *  the retention math itself). */
   disposedAt?: string;
   disposedBy?: string;
+  /**
+   * Real, per direct guidance: any configuration for the Cytology &
+   * Cervical Screening module lives as a new System subtab
+   * (services/cytology/), and a real GYN cytology specimen is just a
+   * regular Specimen — SpecimenEntry.type: 'Cytology'/'FNA' already
+   * distinguishes it, same as any other specimen type — not a
+   * separate, parallel case system. This is that specimen's own real
+   * screening state once one exists; undefined for every non-cytology
+   * specimen and for a cytology specimen not yet screened. Real,
+   * deliberately SLIM: every actual review (the primary screen, each
+   * secondary screening event, the pathologist's own review) is its
+   * own, separate, immutable CytologyReviewRecord
+   * (types/cytology/CytologyReviewRecord.ts,
+   * services/cytology/mockCytologyReviewRecordService.ts) — per direct
+   * correction, "Each review is distinct and persists as part of the
+   * Case's auditable History," not mutable fields here. What
+   * genuinely IS specimen-level state, not review-level history,
+   * stays here: which review is authoritative, and the real, minimal
+   * HPV/educational-notes fields below.
+   */
+  cytologyScreening?: CytologyScreeningRecord;
   /** Audit metadata */
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * A GYN cytology specimen's real screening state — deliberately slim.
+ * See this field's own doc comment above for why every actual review
+ * lives in the separate CytologyReviewRecord collection instead of
+ * here.
+ */
+export interface CytologyScreeningRecord {
+  /**
+   * Real, per direct guidance ("the ability to select one of the
+   * reviews on record and select that review to be the Final
+   * Diagnosis for the report... used in discordance reporting against
+   * the Primary Cytotechs initial review"): explicit selection of
+   * which one, real, already-recorded CytologyReviewRecord is
+   * authoritative for the report. Undefined until someone with real,
+   * sufficient authority actually makes this selection — never
+   * defaulted or inferred.
+   */
+  finalDiagnosis?: CytologyFinalDiagnosisSelection;
+  /**
+   * Real, per direct follow-up: a "QC" tile/pool needs somewhere real
+   * to draw from. Real, honest scoping: the actual automatic
+   * SELECTION algorithm (random 10% sample per PS-157's own rate
+   * settings, or high-risk targeting per PS-164's own algorithm) is
+   * still separate, not-yet-built work — neither one is wired to real
+   * cases yet. This field is the real, minimal, explicit, MANUAL
+   * interim mechanism: a specimen can be flagged for mandatory QC
+   * directly, by a real, attributed action, so the QC pool has real
+   * data to show right now rather than staying permanently empty
+   * until the full automatic algorithm exists. Cleared (not merely
+   * left stale) the moment a real, matching CytologyReviewRecord
+   * clears it — see resolveCytologyQcPoolMembership
+   * (services/cytology/).
+   */
+  qcFlag?: {
+    reason: 'random_selection' | 'targeted_high_risk';
+    flaggedBy: string;
+    flaggedByName: string;
+    flaggedAt: string;
+  };
+  /** Real, minimal HPV co-testing placeholder — full reflex/cotesting
+   *  rule automation (HPV Test Integration, a genuinely separate,
+   *  later module phase) is explicitly NOT built here; this only
+   *  records the real, current status a screener/pathologist can see
+   *  and manually enter. */
+  hpvCoTestOrdered?: boolean;
+  hpvResult?: 'Positive' | 'Negative' | 'Pending' | 'Not Performed';
+  /** Real, per direct guidance's own international workflow roadmap
+   *  (Phase 1: US/CA — "Dual-result views that show cytological slide
+   *  data and molecular HPV status side-by-side"): real, standard
+   *  co-testing assay genotype reporting — only meaningful when
+   *  hpvResult === 'Positive'. Mirrors PS-164's own existing
+   *  CytologyHighRiskFactors.hpvHighRiskGenotype grouping ("HPV 16 or
+   *  HPV 18/45") exactly, so this real, newly-captured data can
+   *  finally feed that real, previously-input-less factor — see
+   *  resolveHpvHighRiskFactors.ts (services/cytology/). */
+  hpvGenotypeDetail?: {
+    hpv16: boolean;
+    hpv18Or45: boolean;
+    otherHighRisk: boolean;
+  };
+  /** Real, per direct correction: the real molecular platform's own
+   *  HL7 OBX-8 abnormal flag and OBX-7 reference range, persisted
+   *  exactly as received — see HpvResultEventPayload
+   *  (types/events/) and processInboundHpvResultEvent.ts
+   *  (services/hl7/) for the real, inbound ingestion path that sets
+   *  these. Never set by manual UI entry — a real, inbound-only pair. */
+  hpvAbnormalFlag?: 'A' | 'N';
+  hpvReferenceRange?: string;
+  /** Real, per direct guidance's own South Korea information: HPV
+   *  testing outside KNCSP's own free public program (which offers
+   *  conventional Pap only, no HPV) genuinely serves distinct clinical
+   *  purposes — co-testing, real ASC-US reflex/secondary triage, and
+   *  post-treatment surveillance — that the system should represent
+   *  as real clinical context, not leave indistinguishable from one
+   *  another. Optional, per direct guidance — the triage logic
+   *  (resolveCytologyTriageState.ts) does not depend on this field;
+   *  it exists purely for real clinical accuracy and reporting. */
+  hpvOrderReason?: 'co_test' | 'ascus_reflex' | 'post_treatment_surveillance';
+  /** Bethesda's own real, optional "Educational Notes and Suggestions"
+   *  report component — free text, not a structured category. */
+  educationalNotes?: string;
+  /** Real, per direct guidance's own standard report structure (§2,
+   *  Specimen Type): "State whether the specimen is a Liquid-Based
+   *  Cytology (LBC) preparation... or a Conventional Pap Smear." */
+  preparationMethod?: 'Liquid-Based' | 'Conventional';
+  /** Real, per direct guidance's own standard report structure (§6,
+   *  Adjunctive Testing): "If an automated imaging system... was used
+   *  in screening, this must be explicitly documented." */
+  computerAssistedScreening?: { used: boolean; system?: string };
+}
+
+/**
+ * Real, per direct guidance: the explicit Final Diagnosis selection —
+ * which CytologyReviewRecord is authoritative for the report, and a
+ * SNAPSHOT of what it found. Real, deliberate simplification once
+ * every review shares one common, real record type with its own
+ * stable id (CytologyReviewRecord.id) — this no longer needs the
+ * earlier, more awkward discriminated-union source (a bespoke
+ * 'primary'/'pathologist_review' marker alongside a
+ * secondaryScreenings-event-id case), since a "primary screen" and a
+ * "pathologist review" are now just CytologyReviewRecord entries like
+ * any other, identified the same, simple way. Deliberately a snapshot
+ * (not a live reference) — the same "snapshot, don't re-derive live"
+ * reasoning CytologyReviewRecord.requiresPathologistReview already
+ * uses: editing or re-querying the source review after the fact can
+ * never silently change what a report already used as its Final
+ * Diagnosis. See resolveCytologyFinalDiagnosisSnapshot
+ * (services/cytology/) for the real, shared logic that builds this
+ * snapshot from a given CytologyReviewRecord.
+ */
+export interface CytologyFinalDiagnosisSelection {
+  /** References the real, immutable CytologyReviewRecord.id this
+   *  selection was made from. */
+  reviewRecordId: string;
+  primaryInterpretationId: string;
+  primaryInterpretationComment?: string;
+  additionalInterpretations?: CytologyCategorySelection[];
+  recommendations?: CytologyCategorySelection[];
+  adequacySelections?: CytologyCategorySelection[];
+  generalCategorizationId?: string;
+  /** Who made this selection, and when — real, per direct guidance's
+   *  own framing ("As the System Architect, there needs the
+   *  ability..."): this is a real, deliberate, attributable act, not
+   *  an automatic default. */
+  selectedBy?: string;
+  selectedByName?: string;
+  selectedAt?: string;
 }

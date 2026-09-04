@@ -25,6 +25,8 @@ import { mockReportPartService, onReportPartsChanged } from '../../services/repo
 import type { LabelConfig } from '../../types/template';
 import { Label, TextInput, Toggle, Sel } from './TemplateInspector';
 import { getOrgDocumentStyleDefault, getOrgHeaderStyleDefault, getOrgFooterStyleDefault } from '../Config/System/documentStyleConfig';
+import { getActivePerformingLabs } from '../../utils/performingLabs';
+import type { Facility } from '../../services/facilities/IFacilityService';
 
 const svc  = mockReportTemplateService;
 const pSvc = mockReportPartService;
@@ -60,9 +62,11 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
 const PartPicker: React.FC<{
   role: AssemblyRole;
+  labFilter: string;
+  labs: Facility[];
   onPick: (part: ReportPart) => void;
   onClose: () => void;
-}> = ({ role, onPick, onClose }) => {
+}> = ({ role, labFilter, labs, onPick, onClose }) => {
   const validTypes = Object.entries(VALID_ROLES_FOR_PART)
     .filter(([, roles]) => roles.includes(role))
     .map(([t]) => t);
@@ -83,10 +87,18 @@ const PartPicker: React.FC<{
     return onReportPartsChanged(loadPickerParts);
   }, [loadPickerParts]);
 
+  // Real, per direct guidance ("Parts Library... should also be tied
+  // to a Performing Lab facility"): no lab selected shows every real
+  // part unfiltered (same "All Facilities means no filter" convention
+  // as the Workstation & Hardware group-level selector) — a specific
+  // lab shows that lab's own parts plus every Global one, never a
+  // lab-specific part belonging to a DIFFERENT lab.
   const filtered = parts.filter(p =>
     p.status === 'published' &&
-    (!search || p.name.toLowerCase().includes(search.toLowerCase()))
+    (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
+    (!labFilter || !p.performingLabFacilityId || p.performingLabFacilityId === labFilter)
   );
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
 
   return (
     <div className="ps-tmpla-picker-overlay" onClick={onClose}>
@@ -133,6 +145,9 @@ const PartPicker: React.FC<{
               <div className="ps-tmpla-picker-row-status">
                 {part.status}
               </div>
+              <div className="ps-tmpla-picker-row-status">
+                {labName(part.performingLabFacilityId)}
+              </div>
             </div>
           ))}
         </div>
@@ -158,8 +173,11 @@ const PART_TYPE_CONFIG = {
 const PartsPanel: React.FC<{
   activeRole:  AssemblyRole | null;
   usedPartIds: Set<string>;
+  labFilter:   string;
+  labs:        Facility[];
+  onLabFilterChange: (labId: string) => void;
   onAdd:       (part: ReportPart, role: AssemblyRole) => void;
-}> = ({ activeRole, usedPartIds, onAdd }) => {
+}> = ({ activeRole, usedPartIds, labFilter, labs, onLabFilterChange, onAdd }) => {
   const [parts, setParts] = useState<ReportPart[]>([]);
   const [search, setSearch] = useState('');
 
@@ -175,7 +193,8 @@ const PartsPanel: React.FC<{
   }, [loadParts]);
 
   const filtered = parts.filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase())
+    (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
+    (!labFilter || !p.performingLabFacilityId || p.performingLabFacilityId === labFilter)
   );
 
   return (
@@ -204,6 +223,20 @@ const PartsPanel: React.FC<{
           className="ps-tmpla-panel-search"
         />
       </div>
+
+      {/* Real, per direct guidance ("Parts Library... should also be
+          tied to a Performing Lab facility") — shared with the
+          PartPicker modal via the same lifted labFilter state, so
+          browsing here and picking via "+ Add slot" always agree on
+          which lab's context is active. */}
+      {labs.length > 0 && (
+        <div className="ps-tmpla-panel-search-wrap">
+          <select className="ps-conf-select" value={labFilter} onChange={e => onLabFilterChange(e.target.value)}>
+            <option value="">All Labs (Global + every lab)</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Part groups */}
       <div className="ps-tmpla-panel-groups">
@@ -435,6 +468,15 @@ export const TemplateAssemblyPage: React.FC = () => {
   // snapshot stored on the slot at the moment it was added — see Known
   // Limitations in the Admin Guide for why this previously went stale.
   const [partsById, setPartsById] = useState<Record<string, ReportPart>>({});
+  // Real, per direct guidance ("Parts Library... should also be tied
+  // to a Performing Lab facility") — lifted here (not local to
+  // PartsPanel) specifically so the picker modal (PartPicker, opened
+  // separately) and the always-visible sidebar agree on the same real
+  // lab context, rather than two independent filters that could
+  // silently disagree.
+  const [labs, setLabs] = useState<Facility[]>([]);
+  const [labFilter, setLabFilter] = useState('');
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
 
   useEffect(() => {
     const loadPartsById = () => {
@@ -695,6 +737,9 @@ export const TemplateAssemblyPage: React.FC = () => {
         <PartsPanel
           activeRole={activeRole}
           usedPartIds={usedPartIds}
+          labFilter={labFilter}
+          labs={labs}
+          onLabFilterChange={setLabFilter}
           onAdd={handlePanelAdd}
         />
 
@@ -852,7 +897,7 @@ export const TemplateAssemblyPage: React.FC = () => {
 
       {/* ── Part picker modal ── */}
       {picker && (
-        <PartPicker role={picker} onPick={part => addSlot(picker, part)}
+        <PartPicker role={picker} labFilter={labFilter} labs={labs} onPick={part => addSlot(picker, part)}
           onClose={() => setPicker(null)} />
       )}
 

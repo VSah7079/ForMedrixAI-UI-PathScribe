@@ -178,7 +178,7 @@ export function buildRenderScope(caseData: Case | null): Record<string, any> {
     order: {
       fullAccession:      accession?.fullAccession ?? accession?.accessionNumber,
       requestingProvider: order?.requestingProvider,
-      clientName:         order?.clientName,
+      facilityName:       order?.facilityName,
       receivedDate:       order?.receivedDate
         ? new Date(order.receivedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
         : undefined,
@@ -288,7 +288,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
     ? new Date(caseData.patient.dateOfBirth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
   const sex        = caseData?.patient?.sex ?? '';
   const priority   = (caseData?.order as any)?.priority ?? '';
-  const referring  = caseData?.order?.clientName ?? '';
+  const referring  = caseData?.order?.facilityName ?? '';
   const clinician  = caseData?.order?.requestingProvider ?? '';
   const inst       = getInstitution(caseData?.originHospitalId);
 

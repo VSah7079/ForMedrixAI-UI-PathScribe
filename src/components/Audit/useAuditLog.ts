@@ -222,7 +222,7 @@ export type AuditPayload = {
   tat_entry_deleted:          { id: string; type: string };
   tat_entry_toggled:          { id: string; type: string; active: boolean };
   tat_entry_updated:          { id: string; type: string; changes: string[] };
-  tat_entry_created:          { type: string; targetHours: number; clientId: string | null; roleId: string | null };
+  tat_entry_created:          { type: string; targetHours: number; facilityId: string | null; roleId: string | null };
 
   // ── Flag Manager (real apply/remove — not the removed Computational ordering) ──
   flag_applied:                { caseId: string; flagName: string; specimenId?: string };

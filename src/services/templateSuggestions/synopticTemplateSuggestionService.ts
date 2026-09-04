@@ -66,7 +66,7 @@ Return ONLY a JSON array (no markdown, no preamble). Include an entry ONLY for s
     const { text: raw } = await callAi({
       system: 'You are a pathology AI assistant. You return only valid JSON — no markdown, no preamble.',
       prompt,
-      configOverride: await resolveAiConfigOverrideForClient(input.clientId),
+      configOverride: await resolveAiConfigOverrideForClient(input.facilityId),
     });
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean) as Array<{

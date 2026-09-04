@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin CRUD screen for the Container Type Dictionary
 // (src/services/containerTypes/mockContainerTypeService.ts). Same
-// table+modal pattern as SpecimenCategoriesSection — full create/edit,
+// table+modal pattern as DepartmentsSection — full create/edit,
 // deactivate rather than delete, not a fixed list with only the
 // description editable. A site's real bench may need containers beyond
 // the 9 seeded APLIS-standard defaults.

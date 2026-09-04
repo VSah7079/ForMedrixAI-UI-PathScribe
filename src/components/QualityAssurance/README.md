@@ -28,7 +28,13 @@ context, and renders real charts/tables client-side.
   pending vs. merged intraoperative entries, real merge-log correlation
   via the audit trail (`Intraop Entry Merged` events).
 - **`ReconciliationTab.tsx`** — Frozen/permanent diagnostic concordance
-  rate — discordance tracking distinct from the above two.
+  rate — discordance tracking distinct from the above two. **Real,
+  current status (PS-113, Stage 4):** migrated to read from the new,
+  generic `qaActivityRecordService` (filtered to the real Frozen vs
+  Final activity type), not the old `reconciliationService` — every
+  field access updated (`fieldValues.frozenCategory`/`finalCategory`,
+  `isTeachingOnboardingCase`, `reviewerFeedback`), including the real
+  export function and both render tables.
 - **`FppeTrackingTab.tsx`** — Department-wide FPPE/Credentialing Review
   oversight (Joint Commission new-hire credentialing verification, not
   ACGME trainee milestones — a genuinely different regulatory context
@@ -75,6 +81,60 @@ context, and renders real charts/tables client-side.
   where it already lives (`RetentionHoldModal`, on the case itself);
   this tab links straight there via "Open Case" rather than duplicating
   that action.
+- **`PatientManagementSection.tsx`** — **NEW.** Real, per direct
+  guidance ("Since we have this PathScribe patient concept we need a
+  mechanism to perform Merge, encounter record move or link. Those
+  aren't accession activities. Perhaps a new section of Quality
+  Assurance maybe Patient Management"). The second half of that
+  request — the first half (fixing `mergeIntoExistingPatient()`/
+  `moveCaseToPatient()` to also correctly repoint a patient's real
+  Encounter records, not just Cases) is already real and done, see
+  `services/patients/README.md`. Real, proactive search (reuses
+  `mockPatientIndexService.searchPatients()` directly, same real
+  cross-tenant scoping `PatientMatchReviewSection.tsx` already uses —
+  a standard user searches only their own organisation, a
+  cross-tenant-permitted admin searches every real, active one) lets a
+  real user find any patient and act on them immediately — Merge,
+  Link (either `relationshipType`), or Move a specific case — rather
+  than depending on one of this app's three other, real but scattered
+  entry points (`PatientMatchReviewSection.tsx`'s own review queue,
+  system-flagged only; the inbound A24/A40 HL7 path, also
+  system-triggered only; `AccessionPage.tsx`'s own "Check for Existing
+  Patient" search, accessioning-time only, `same_person` only). This
+  screen doesn't replace any of those three — it's the one, real,
+  on-demand place for any real patient at any time. Reuses
+  `pages/AccessionPage/PatientLinkSearch.tsx` for every real
+  "search for a second/target patient" step across all three actions
+  — never a fourth, separate implementation of the same real search.
+  Every action gets a real, explicit `ConfirmModal` before executing,
+  with action-specific language (Merge is flagged irreversible; Link
+  and Move both explicitly state neither identity gets merged or
+  retired). No new component-level test file — same established
+  convention as `Config/System/DftExportPreviewSection.tsx`/
+  `OutboundMessagePreviewSection.tsx`: a thin UI wrapper over
+  already-tested service functions (every real action here is already
+  covered by `services/patients/mockPatientIndexService.test.ts`'s own
+  extensive suite) doesn't need a second, duplicate layer of coverage.
+  **Real, known limitation, not silently glossed over**: the
+  second/target patient search (via `PatientLinkSearch.tsx`) is scoped
+  to the primary patient's own single organisation — that shared
+  component takes one `organisationId`, not a list. A genuine
+  cross-organisation merge/link (the same real person seen at two
+  different facilities within the same lab enterprise) isn't
+  reachable from this screen yet; extending `PatientLinkSearch.tsx`
+  itself to support multiple organisations would affect its other real
+  caller (`AccessionPage.tsx`) too, so it's flagged as real, separate,
+  next-step work rather than changed here.
+  **Real, per direct follow-up ("Molecular testing across siblings")**:
+  the `family_relation` option's own label is now genuinely general —
+  "e.g. newborn/mother, or siblings for cascade molecular testing" —
+  not narrowly worded around only the one scenario that originally
+  motivated the `relationshipType` split. See
+  `components/PatientHistory/README.md`'s own entry for the matching
+  real fix on the display side — "Related Patients" is now navigable,
+  not just plain text, exactly the kind of real, useful capability the
+  siblings scenario needs (quickly reaching a sibling's own prior
+  molecular finding, not just seeing their name).
 - **`AccessRequestResponseTab.tsx`** — real feature, per direct
   follow-up: "Do we Track the request to gain access? ... How long did
   the Admins take?" The department-wide equivalent of what "My

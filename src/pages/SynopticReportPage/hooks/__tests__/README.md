@@ -1,6 +1,6 @@
 # Testing the SynopticReportPage hooks
 
-188 tests across 8 of the 10 hooks in this directory (`useMicroscopicEntry.ts`
+192 tests across 8 of the 10 hooks in this directory (`useMicroscopicEntry.ts`
 and `useReleaseBufferCountdown.ts` — both new, Aug 2026 — don't yet have a
 dedicated test file; see "Test files" below). This is the first React-hook
 test coverage in this codebase — the existing suite (~520 tests before

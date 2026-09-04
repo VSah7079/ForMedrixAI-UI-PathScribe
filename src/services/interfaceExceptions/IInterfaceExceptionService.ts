@@ -88,10 +88,10 @@ export interface InterfaceException {
    *  a reviewer creates when resolving this exception —
    *  SpecimenCodeCrosswalkEntry.clientId is the same code string
    *  meaning different things at different sending systems, so a
-   *  crosswalk entry without a real clientId can't be created
+   *  crosswalk entry without a real facilityId can't be created
    *  correctly. Genuinely absent for every exception type that
    *  predates this field. */
-  clientId?: string;
+  facilityId?: string;
   status: InterfaceExceptionStatus;
   createdAt: string;
   resolvedAt?: string;

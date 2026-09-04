@@ -473,7 +473,7 @@ export function useAmendmentWorkflow({
           const bySpecimen = await generateGrossingFieldSuggestionsFromDictation(
             grossingProtoDictatedText,
             [{ specimenId: change.specimenId, specimenLabel: change.specimenLabel, specimenDesc: change.specimenDesc, fields: allFields }],
-            caseData.order?.clientId,
+            caseData.order?.facilityId,
           );
           newFieldSuggestions = bySpecimen[change.specimenId] ?? {};
         }

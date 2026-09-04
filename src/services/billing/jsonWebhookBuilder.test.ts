@@ -152,13 +152,14 @@ describe('buildJsonWebhookPayload - real billing date-of-service wiring', () => 
   it('resolves a real, per-specimen billingDOS on each charge from the specimen\'s own collectedAt', async () => {
     const caseData = {
       id: 'CASE-DOS-1', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      originSiteId: 'SITE-MRI', // real, seeded UK site - see organisationService.ts
+      originHospitalId: 'HOSP-MFT', // real, seeded UK organisation - see organisationService.ts
+      originSiteId: 'c-site-mft-mri', // real, seeded child Facility of MFT's Enterprise
       specimens: [{ id: 'SP-1', label: 'A', description: 'Test specimen', collectedAt: '2026-08-01T00:00:00.000Z' }],
       accession: { accessionedAt: '2026-08-02T00:00:00.000Z' } as any,
     };
     const charge = baseCharge({ id: 'chg-dos-1', specimenId: 'SP-1', resolvedAt: '2026-08-05T00:00:00.000Z' });
     const payload = await buildJsonWebhookPayload(caseData as any, [charge]);
-    // SITE-MRI resolves to a real UK organisation -> SIGNOUT_DATE default per resolveBillingDateOfService.ts
+    // HOSP-MFT resolves to a real UK organisation -> SIGNOUT_DATE default per resolveBillingDateOfService.ts
     expect(payload.charges[0].billingDOS).toBe('2026-08-05T00:00:00.000Z');
   });
 
@@ -172,7 +173,8 @@ describe('buildJsonWebhookPayload - real billing date-of-service wiring', () => 
 
     const caseData = {
       id: 'CASE-DOS-2', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      originSiteId: 'SITE-DVMC-MAIN', // real, seeded US site
+      originHospitalId: 'HOSP-001', // real, seeded US organisation (DVMC)
+      originSiteId: 'c-ent-dvmc', // real, seeded DVMC Enterprise Facility (DVMC has only one real site)
       encounterId,
       accession: { accessionedAt: '2026-07-20T00:00:00.000Z' } as any, // 19 real days post-discharge
     };
@@ -246,44 +248,58 @@ describe('buildJsonWebhookPayload - real diagnosis-to-specimen structured linkag
 });
 
 describe('buildJsonWebhookPayload — real, per direct follow-up: performingFacility (CLIA/POS gaps)', () => {
-  it('resolves performingFacility from the real, seeded site when Case.originSiteId matches one', async () => {
+  it('resolves performingFacility from the real, seeded facility when Case.order.facilityId resolves one via resolvePerformingLabFacilityId', async () => {
     const caseData = {
-      id: 'CASE-FACILITY-1', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      specimens: [], originSiteId: 'SITE-DVMC-MAIN',
+      id: 'CASE-FACILITY-1', patient: undefined as any, participants: [], specimens: [],
+      // c-fenwick-general holds the performing_lab role directly, so it
+      // resolves to itself - a real, seeded fixture, not invented.
+      order: { icd10Codes: [], facilityId: 'c-fenwick-general' } as any,
     };
     const payload = await buildJsonWebhookPayload(caseData as any, []);
-    expect(payload.performingFacility?.siteId).toBe('SITE-DVMC-MAIN');
+    expect(payload.performingFacility?.facilityId).toBe('c-fenwick-general');
   });
 
-  it('a real, admin-set cliaOrIsoNumber and performingLabType are genuinely reflected in the payload', async () => {
-    const { updateSiteFacilitySetup } = await import('@/services/organisation/organisationService');
-    await updateSiteFacilitySetup('SITE-DVMC-MAIN', { cliaOrIsoNumber: '05D1234567', performingLabType: 'hospital_based', updatedBy: 'test-admin' });
+  it('a real, admin-set cliaOrIsoNumber is genuinely reflected in the payload', async () => {
+    const { mockFacilityService } = await import('@/services/facilities/mockFacilityService');
+    await mockFacilityService.update('c-fenwick-general', { cliaOrIsoNumber: '05D1234567' });
     const caseData = {
-      id: 'CASE-FACILITY-2', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      specimens: [], originSiteId: 'SITE-DVMC-MAIN',
+      id: 'CASE-FACILITY-2', patient: undefined as any, participants: [], specimens: [],
+      order: { icd10Codes: [], facilityId: 'c-fenwick-general' } as any,
     };
     const payload = await buildJsonWebhookPayload(caseData as any, []);
     expect(payload.performingFacility?.cliaOrIsoNumber).toBe('05D1234567');
-    expect(payload.performingFacility?.performingLabType).toBe('hospital_based');
   });
 
-  it('performingFacility is genuinely undefined - never fabricated - when the case has no real, resolvable originSiteId', async () => {
+  it('performingFacility is genuinely undefined - never fabricated - when the case has no real, resolvable order.facilityId', async () => {
     const caseData = {
-      id: 'CASE-FACILITY-3', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      specimens: [], originSiteId: undefined,
+      id: 'CASE-FACILITY-3', patient: undefined as any, participants: [], specimens: [],
+      order: { icd10Codes: [] } as any,
     };
     const payload = await buildJsonWebhookPayload(caseData as any, []);
     expect(payload.performingFacility).toBeUndefined();
   });
 
-  it('cliaOrIsoNumber/performingLabType are genuinely undefined - never fabricated - when a real site exists but hasn\'t had these fields set', async () => {
+  it('performingFacility is genuinely undefined when the ordering facility holds no performing_lab role and no override', async () => {
     const caseData = {
-      id: 'CASE-FACILITY-4', patient: undefined as any, order: { icd10Codes: [] } as any, participants: [],
-      specimens: [], originSiteId: 'SITE-MRI',
+      id: 'CASE-FACILITY-4', patient: undefined as any, participants: [], specimens: [],
+      // c1 (Metro General) is external_ordering_client only - no
+      // performing_lab role, no performingLabFacilityId override, so
+      // resolvePerformingLabFacilityId() correctly returns undefined.
+      order: { icd10Codes: [], facilityId: 'c1' } as any,
     };
     const payload = await buildJsonWebhookPayload(caseData as any, []);
-    expect(payload.performingFacility?.siteId).toBe('SITE-MRI');
+    expect(payload.performingFacility).toBeUndefined();
+  });
+
+  it('cliaOrIsoNumber is genuinely undefined - never fabricated - when a real performing facility resolves but hasn\'t had it set', async () => {
+    const caseData = {
+      id: 'CASE-FACILITY-5', patient: undefined as any, participants: [], specimens: [],
+      // c-fenwick-womens - a real, seeded performing_lab facility that
+      // has never had cliaOrIsoNumber set.
+      order: { icd10Codes: [], facilityId: 'c-fenwick-womens' } as any,
+    };
+    const payload = await buildJsonWebhookPayload(caseData as any, []);
+    expect(payload.performingFacility?.facilityId).toBe('c-fenwick-womens');
     expect(payload.performingFacility?.cliaOrIsoNumber).toBeUndefined();
-    expect(payload.performingFacility?.performingLabType).toBeUndefined();
   });
 });

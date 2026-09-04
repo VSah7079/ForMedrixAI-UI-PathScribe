@@ -6,13 +6,13 @@
 
 import { Patient } from "./Patient";
 import { Specimen } from "./Specimen";
-import { CaseFlag } from "./CaseFlag";
-import { SpecimenFlag } from "./SpecimenFlag";
+import type { FlagInstance } from "../flagsRuntime";
 import type { RetentionHold } from "./RetentionHold";
 import type { CaseHold } from "./CaseHold";
 import type { MatrixBlock } from "./MatrixBlock";
 import { CaseComment } from "./CaseComment";
 import type { Icd10Code } from "@/services/diagnosisCodes/IDiagnosisCodesService";
+import type { OutsidePatientFinancialData } from "@/types/billing/OutsidePatientFinancialData";
 import { CaseStatus } from "./CaseStatus";
 import type { FieldLineageEntry } from '@/types/reports/FieldLineage';
 import type { RevisionType } from '@/types/reports/AmendmentRecord';
@@ -59,23 +59,23 @@ export interface OrderMetadata {
    */
   orderingPhysicianId?: string;
   /** ID reference to Facility Configuration — the institution that sent the specimen */
-  clientId?: string;
+  facilityId?: string;
   /** Cached display name — avoids async lookup on every render */
-  clientName?: string;
+  facilityName?: string;
   /**
    * Real feature, per direct confirmation: "add the Client and
    * Location as fields to be seen in the accession page." ID
    * reference to services/locations/ (Location) — which specific
-   * ward/room/bed at clientId this specimen came from. Optional: not
+   * ward/room/bed at facilityId this specimen came from. Optional: not
    * every specimen has a known, specific inpatient location (e.g.
    * outpatient/clinic specimens genuinely have none) — never
-   * fabricated when not selected. Scoped to clientId; a location
+   * fabricated when not selected. Scoped to facilityId; a location
    * belongs to exactly one facility, so this should only ever be set
-   * alongside a real clientId.
+   * alongside a real facilityId.
    */
   locationId?: string;
   /** Cached display string ("Ward 3 / 101 / A") — same "avoid an
-   *  async lookup on every render" reasoning as clientName above. */
+   *  async lookup on every render" reasoning as facilityName above. */
   locationDisplay?: string;
   /** Physical facility within originHospitalId's organisation — Site.id
    *  from Organisation.sites[] (e.g. 'SITE-MRI'), NOT a bare shortName
@@ -135,6 +135,28 @@ export interface OrderMetadata {
   assignedTo?: string;
   /** Participation type of the assigned pathologist — e.g. 'primary', 'consultant' */
   assignedParticipationTypeId?: string;
+  /**
+   * Real, per direct guidance ("replace the checkbox with an explicit
+   * Patient Origin / Intake Type selector"): the real, explicit
+   * top-level accessioning mode. 'standard' is the real default —
+   * Standard/EMR Order accessioning. 'downtime' is the existing,
+   * unchanged temporary/placeholder-identity mode — same real
+   * MasterPatientRecord.isDowntimeRecord/downtimeReasonCode submit
+   * behavior as before this change
+   * (services/patients/IPatientIndexService.ts), just now driven by
+   * this explicit selector instead of a checkbox. 'outside' is the
+   * new Outside/Contract Case mode — real, per direct guidance,
+   * "completely bypassing the identity reconciliation queue" is real,
+   * separate, larger work (see AccessionPage.tsx's own header comment
+   * on why); for now this mode activates the real Outside Patient
+   * Data tab and captures outsidePatientData below, while still going
+   * through normal MPI resolution like every other accession.
+   */
+  intakeType?: 'standard' | 'downtime' | 'outside';
+  /** Real, per direct guidance: only ever populated when intakeType
+   *  is 'outside' — see OutsidePatientFinancialData.ts's own header
+   *  for the full field-by-field account. */
+  outsidePatientData?: OutsidePatientFinancialData;
 }
 
 export interface DiagnosticMetadata {
@@ -167,9 +189,9 @@ export interface AccessionMetadata {
    *  CaseRouter.isOrchCase() and friends key off Case.id specifically
    *  because it has to be resolvable before the Case object is even
    *  fetched, so it can never be allowed to vary with an org's mask
-   *  config. fullAccession is what's actually driven by the org-scoped
-   *  CaseMaskConfig registry (services/caseRegistry/) — see
-   *  AccessionPage.tsx's handleSubmit. */
+   *  config. fullAccession is what's actually driven by the real
+   *  CaseMask record governing this case (services/caseRegistry/) —
+   *  see AccessionPage.tsx's handleSubmit. */
   fullAccession?: string;
   /** Which mask pattern actually produced fullAccession — kept as its
    *  own field (not re-derived) specifically so that if an organisation
@@ -502,6 +524,27 @@ export interface ProtocolChange {
 export interface Case {
   id: string;
 
+  /** Real, per direct guidance (PS-105): the case's own real, confirmed
+   *  abnormal-detection status — set only when a pathologist actually
+   *  confirms a suggestion (records a real notification via
+   *  handleRecordCriticalNotification, services/clinical/), never from
+   *  an unconfirmed AI/discrete-rule suggestion alone. Denormalized
+   *  here specifically so WorklistTable.tsx can render a real status
+   *  indicator without re-running detection (an AI call, a real
+   *  cost/latency concern) for every row on every render. null/undefined
+   *  = no confirmed abnormal finding on this case. */
+  abnormalDetectionStatus?: { severity: 'Abnormal' | 'Critical' | 'Malignant'; confirmedAt: string } | null;
+  /** Real, per direct guidance: architecture-testing only, NEVER a
+   *  real, licensed SNOMED CT / ICD-O-3 code — PS-130 (the real
+   *  implementation) stays genuinely blocked on a real terminology
+   *  source. See resolveSyntheticCoding.ts (services/abnormalDetection/)
+   *  for the full safety reasoning — every real code value here is
+   *  structurally, unmistakably fake even read completely alone,
+   *  never relying on this field's own name/comment as the only
+   *  safeguard. Set alongside abnormalDetectionStatus above, same
+   *  real confirm moment, same lifecycle. */
+  syntheticAbnormalCoding?: { system: 'TEST-SNOMED' | 'TEST-ICDO3'; code: string; display: string }[];
+
   /** When grossing was first, genuinely completed for this case - real
    *  fix, added specifically for TAT (turnaround time) calculation
    *  (components/Contribution/qualityCalculations.ts). Set once, at the
@@ -579,16 +622,18 @@ export interface Case {
 
   accession: AccessionMetadata;
   originHospitalId: string;
-  /** Physical facility within originHospitalId's organisation — e.g.
-   *  'SITE-MRI' (Site.id, from Organisation.sites[]), not a bare
-   *  shortName like 'MRI'. Optional: most orgs today have exactly one
-   *  site, and originHospitalId alone is sufficient for anything that
-   *  doesn't need facility-level routing. Only populated where it's
-   *  actually captured — see AccessionPage.tsx. Added specifically for
-   *  ModeAInterfaceService's site-level hardware routing (an
-   *  organisation like MFT can have multiple physical Vantage/Cerebro
-   *  endpoints, one per site, which originHospitalId alone can't
-   *  distinguish between). */
+  /** Real, per direct guidance — Phase 3 of the Organisation/Site ->
+   *  Facility migration. Real, admin-editable Facility.id (a child of
+   *  the origin Enterprise Facility, via parentId) — e.g.
+   *  'c-site-mft-mri' for Manchester Royal Infirmary. Migrated from
+   *  Site.id (Organisation.sites[]); Optional: most orgs today have
+   *  exactly one real site, and originHospitalId alone is sufficient
+   *  for anything that doesn't need facility-level routing. Only
+   *  populated where it's actually captured — see AccessionPage.tsx.
+   *  Added specifically for ModeAInterfaceService's site-level
+   *  hardware routing (an enterprise like MFT can have multiple
+   *  physical Vantage/Cerebro endpoints, one per site, which
+   *  originHospitalId alone can't distinguish between). */
   originSiteId?: string;
   originEnterpriseId: string;
   isReferenceLabCase?: boolean;
@@ -618,8 +663,28 @@ export interface Case {
   assignmentHistory?: AssignmentEvent[];
   diagnostic?: DiagnosticMetadata;
   coding?: CaseCoding;
-  caseFlags?: CaseFlag[];
-  specimenFlags?: SpecimenFlag[];
+  // Real, confirmed fix, per direct follow-up (Jira PS-57: "two
+  // incompatible flag-tracking systems corrupt each other's data",
+  // plus the follow-up "should be able to assign Flags at either a
+  // Case or Specimen level"): was CaseFlag[]/SpecimenFlag[] — an
+  // inline copy of a flag DEFINITION's own display fields (label,
+  // color, lisCode) — but the only real, live workflow that applies a
+  // flag to a case (FlagManagerModal.tsx, via caseFlagsApi.ts) has
+  // always written FlagInstance[] instead: an application RECORD
+  // referencing a real FlagDefinition by id (flagDefinitionId), with
+  // real audit fields (appliedAt/appliedBy/source/deletedAt/
+  // deletedBy) the old type never had room for.
+  //
+  // There is deliberately no case-level specimenFlags field —
+  // specimen-level flags live only on each Specimen's own
+  // specimenFlags (types/case/Specimen.ts), the only real way to know
+  // which specimen a flag belongs to, since FlagInstance itself
+  // carries no specimenId of its own. A prior, separate bug had
+  // HeaderBar.tsx's LIS-sync path writing specimen-level flags to a
+  // case-level specimenFlags field that the real flag-application
+  // workflow never read from or wrote to at all — fixed alongside
+  // this change to write to the correct, real location instead.
+  caseFlags?: FlagInstance[];
   status: CaseStatus;
   /** Real gap fixed alongside pendingAddendumId: both finalizedAt and a
    *  top-level finalizedBy were already real, established, widely-used
@@ -727,6 +792,11 @@ export interface Case {
   version?: number;
   sharedWith?: string[];
   acceptedBy?: string;
+  /** Real, per direct guidance ("Return to Trainee"/"Reject with
+   *  Notes" — see CaseStatus.ts's own 'returned' entry for the full
+   *  real account): the attending who rejected a resident's
+   *  countersign submission and sent it back. Set alongside
+   *  status: 'returned'. */
   returnedBy?: string;
   closedBy?: string;
   /** See ReportingMode's doc comment below for the full history of this

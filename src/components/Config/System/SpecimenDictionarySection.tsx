@@ -23,10 +23,10 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
-import { specimenCategoryService, subspecialtyService, Subspecialty } from '../../../services';
+import { departmentService, subspecialtyService, Subspecialty } from '../../../services';
 import { protocolService } from '../../../services';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
-import type { SpecimenCategory } from '../../../services/specimenCategories/ISpecimenCategoryService';
+import type { Department } from '../../../services/departments/IDepartmentService';
 import type { Protocol } from '../../../services/protocols/IProtocolService';
 
 // ─── Draft type ─────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ type Draft = Omit<SpecimenEntry, 'id' | 'normalizedLabel' | 'version' | 'updated
 
 const emptyDraft = (): Draft => ({
   name: '', description: '', subspecialty: '', type: '', procedure: '', site: '', laterality: '',
-  synonyms: [], synonymsText: '', active: true, specimenCategoryId: undefined,
+  synonyms: [], synonymsText: '', active: true, departmentId: undefined,
   requireFixativeTimeBeforeSignout: false, specimenCode: '',
   defaultStains: [], defaultStainsText: '', processingNotes: '',
 });
@@ -46,13 +46,13 @@ interface EditorModalProps {
   mode: 'add' | 'edit';
   entry?: SpecimenEntry;
   subspecialtyNames: string[];
-  categories: SpecimenCategory[];
+  departments: Department[];
   protocols: Protocol[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, subspecialtyNames, categories, protocols, onSave, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, subspecialtyNames, departments, protocols, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(() =>
     entry ? { ...entry, synonymsText: (entry.synonyms ?? []).join(', '), defaultStainsText: (entry.defaultStains ?? []).join(', ') } : emptyDraft()
   );
@@ -140,10 +140,10 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, subspecialtyName
               </datalist>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="specdict-category">Specimen Category</label>
-              <select id="specdict-category" className="ps-conf-select" value={draft.specimenCategoryId ?? ''} onChange={e => set('specimenCategoryId', e.target.value || undefined)}>
+              <label className="ps-conf-label" htmlFor="specdict-department">Department</label>
+              <select id="specdict-department" className="ps-conf-select" value={draft.departmentId ?? ''} onChange={e => set('departmentId', e.target.value || undefined)}>
                 <option value="">— not linked —</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {departments.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
           </div>
@@ -229,13 +229,13 @@ const TEMPLATE_EXAMPLE_ROWS = [
   {
     Name: 'Colon Biopsy', Description: 'Biopsy of colon tissue', Subspecialty: 'GI', SpecimenCode: 'GI-COL-BX',
     Type: 'Colon', Procedure: 'Endoscopic Biopsy', Site: 'Colon', Laterality: '', Synonyms: 'colonic bx',
-    Category: 'Surgical Tissue', RequiresFixativeTime: 'No', Active: 'Yes',
+    Department: 'Surgical Tissue', RequiresFixativeTime: 'No', Active: 'Yes',
     DefaultStains: 'H&E', ProcessingNotes: 'Submit entirely',
   },
   {
     Name: 'Core Needle Biopsy — Breast', Description: 'Core biopsy of breast tissue', Subspecialty: 'Breast', SpecimenCode: 'BR-CORE-BX',
     Type: 'Breast', Procedure: 'Core Needle Biopsy', Site: 'Breast', Laterality: 'Left', Synonyms: 'core bx, CNB',
-    Category: 'Surgical Tissue', RequiresFixativeTime: 'Yes', Active: 'Yes',
+    Department: 'Surgical Tissue', RequiresFixativeTime: 'Yes', Active: 'Yes',
     DefaultStains: 'H&E, ER, PR', ProcessingNotes: 'Submit all cores',
   },
 ];
@@ -245,11 +245,11 @@ const TEMPLATE_EXAMPLE_ROWS = [
 const SpecimenDictionarySection: React.FC = () => {
   const { dictionary, addEntries, updateEntries } = useSpecimenDictionary();
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
-  const [categories, setCategories] = useState<SpecimenCategory[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
 
   useEffect(() => {
-    specimenCategoryService.getAll().then(res => { if (res.ok) setCategories(res.data); });
+    departmentService.getAll().then(res => { if (res.ok) setDepartments(res.data); });
     protocolService.getAll().then(res => { if (res.ok) setProtocols(res.data.filter(p => p.active)); });
     subspecialtyService.getAll().then(res => { if (res.ok) setSubspecialties(res.data); });
   }, []);
@@ -290,7 +290,7 @@ const SpecimenDictionarySection: React.FC = () => {
     version: (existing?.version ?? 0) + 1,
     updatedBy: 'admin',
     updatedAt: new Date().toISOString(),
-    specimenCategoryId: draft.specimenCategoryId || undefined,
+    departmentId: draft.departmentId || undefined,
     requireFixativeTimeBeforeSignout: draft.requireFixativeTimeBeforeSignout || undefined,
     specimenCode: draft.specimenCode?.trim() || undefined,
     defaultStains: draft.defaultStains?.length ? draft.defaultStains : undefined,
@@ -329,8 +329,8 @@ const SpecimenDictionarySection: React.FC = () => {
         const name = get('Name', 'name');
         if (!name) return;
         const code = get('SpecimenCode', 'specimenCode', 'Specimen Code');
-        const categoryName = get('Category', 'category');
-        const category = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+        const departmentName = get('Department', 'department', 'Category', 'category');
+        const department = departments.find(c => c.name.toLowerCase() === departmentName.toLowerCase());
         const requiresFixative = /^(yes|true|y|1)$/i.test(get('RequiresFixativeTime', 'RequireFixativeTime', 'Requires Fixative Time'));
         const activeText = get('Active', 'active');
         const active = activeText ? /^(yes|true|y|1)$/i.test(activeText) : true;
@@ -359,7 +359,7 @@ const SpecimenDictionarySection: React.FC = () => {
           version: (existing?.version ?? 0) + 1,
           updatedBy: 'upload',
           updatedAt: new Date().toISOString(),
-          specimenCategoryId: category?.id ?? existing?.specimenCategoryId,
+          departmentId: department?.id ?? existing?.departmentId,
           requireFixativeTimeBeforeSignout: requiresFixative || existing?.requireFixativeTimeBeforeSignout || undefined,
           specimenCode: code || existing?.specimenCode,
           defaultStains: defaultStains.length ? defaultStains : existing?.defaultStains,
@@ -426,7 +426,7 @@ const SpecimenDictionarySection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
-              <tr>{['Specimen', 'Type · Procedure · Site', 'Category', 'Base CPT', 'Protocol', 'Fixative Req.', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+              <tr>{['Specimen', 'Type · Procedure · Site', 'Department', 'Base CPT', 'Protocol', 'Fixative Req.', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map(e => (
@@ -436,7 +436,7 @@ const SpecimenDictionarySection: React.FC = () => {
                     {e.specimenCode && <div className="ps-specreq-meta">{e.specimenCode}</div>}
                   </td>
                   <td className="ps-conf-td"><div className="ps-specreq-meta">{[e.type, e.procedure, e.site].filter(Boolean).join(' · ') || '—'}</div></td>
-                  <td className="ps-conf-td">{categories.find(c => c.id === e.specimenCategoryId)?.name ?? '—'}</td>
+                  <td className="ps-conf-td">{departments.find(c => c.id === e.departmentId)?.name ?? '—'}</td>
                   <td className="ps-conf-td">{e.defaultBaseCptCode || '—'}</td>
                   <td className="ps-conf-td">{e.protocolId ? (protocols.find(p => p.id === e.protocolId)?.name ?? e.protocolId) : '—'}</td>
                   <td className="ps-conf-td">{e.requireFixativeTimeBeforeSignout ? <span className="ps-specreq-required-badge">Required</span> : '—'}</td>
@@ -460,7 +460,7 @@ const SpecimenDictionarySection: React.FC = () => {
       </div>
 
       {modal && (
-        <EditorModal mode={modal.mode} entry={modal.entry} subspecialtyNames={subspecialtyNames} categories={categories} protocols={protocols}
+        <EditorModal mode={modal.mode} entry={modal.entry} subspecialtyNames={subspecialtyNames} departments={departments} protocols={protocols}
           onSave={handleSaveEntry} onClose={() => setModal(null)} />
       )}
 
@@ -473,13 +473,13 @@ const SpecimenDictionarySection: React.FC = () => {
               <div className="ps-conf-table-wrap">
                 <div className="ps-conf-table-scroll">
                   <table className="ps-conf-table">
-                    <thead className="ps-conf-thead-sticky"><tr>{['Name', 'Type · Procedure', 'Category', 'Fixative Req.'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                    <thead className="ps-conf-thead-sticky"><tr>{['Name', 'Type · Procedure', 'Department', 'Fixative Req.'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
                     <tbody>
                       {uploadPreview.map((e, i) => (
                         <tr key={i} className="ps-conf-tr">
                           <td className="ps-conf-td">{e.name}</td>
                           <td className="ps-conf-td">{[e.type, e.procedure].filter(Boolean).join(' · ')}</td>
-                          <td className="ps-conf-td">{categories.find(c => c.id === e.specimenCategoryId)?.name ?? '—'}</td>
+                          <td className="ps-conf-td">{departments.find(c => c.id === e.departmentId)?.name ?? '—'}</td>
                           <td className="ps-conf-td">{e.requireFixativeTimeBeforeSignout ? 'Required' : '—'}</td>
                         </tr>
                       ))}

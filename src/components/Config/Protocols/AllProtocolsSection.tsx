@@ -131,7 +131,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
                     </div>
                     <span style={{ fontSize: '11px', fontWeight: isCurrent ? 700 : 400, color: isCurrent ? sStyle.color : isPast ? '#475569' : '#334155', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{s.replace('_', ' ')}</span>
                   </div>
-                  {i < LIFECYCLE_ORDER.length - 1 && <span style={{ color: '#1e293b', fontSize: '12px', flexShrink: 0 }}>—</span>}
+                  {i < LIFECYCLE_ORDER.length - 1 && <span style={{ color: '#64748b', fontSize: '12px', flexShrink: 0 }}>—</span>}
                 </React.Fragment>
               );
             })}

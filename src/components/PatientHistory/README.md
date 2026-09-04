@@ -33,5 +33,22 @@ there's no other "case panel" concept it was distinguishing itself from).
   itself; flagged here rather than attempted, since that's a data-model
   change beyond this file's scope.
 
+- **Real, per direct guidance ("Molecular testing across siblings")**:
+  the "Related Patients" section (`family_relation` links, distinct
+  real people — e.g. newborn/mother, or siblings sharing a real
+  molecular finding) is now navigable, not just plain text. Clicking a
+  related patient re-targets this same modal instance in place — a
+  real, internal `viewingRelatedPatient` state overrides the props-
+  driven identity (`patientName`/`mrn`/`dateOfBirth`/`patientId`) —
+  with a real "← Back to [original patient]" breadcrumb to return,
+  and `currentCaseId` deliberately dropped for the related patient's
+  own view (we're no longer viewing from one of their own cases). The
+  `view` state (list vs. an open report) resets on both navigations,
+  so a stale report from the previous patient never lingers into the
+  new one. Real, deliberate design: re-targets the existing modal
+  instance rather than requiring changes to its one real caller
+  (`SynopticReportPage.tsx`) — confirmed directly there's only the one
+  real caller before choosing this approach.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

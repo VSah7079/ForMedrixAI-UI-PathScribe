@@ -21,6 +21,11 @@ interface CaseSignOutModalProps {
   residentName?: string;
   countersignFeedback?: string;
   onCountersignFeedbackChange?: (value: string) => void;
+  /** Real, per direct guidance ("Yes we should scope 'Return to
+   *  Trainee'/'Reject with Notes'"): the attending's real alternative
+   *  to countersigning — sends the case back for revision instead.
+   *  Only ever rendered when isCountersign is true. */
+  onReject?: () => void;
   /** Real fix, Piece 3 of the workflow-friction plan: this case's real
    *  specimens (with their real, current coding/blocks/stains), used
    *  to compute a live pre-signout coding summary right where a person
@@ -28,7 +33,12 @@ interface CaseSignOutModalProps {
    *  trip through the codes modal to find out. Optional - a case
    *  without a real, populated specimen list simply shows no summary,
    *  same as before this feature existed. */
-  specimens?: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { stainName: string }[]; coding?: { cpt?: AppliedBlockCode[] } }[] }[];
+  specimens?: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { stainName: string }[]; coding?: { cpt?: AppliedBlockCode[] } }[]; matrixBlockCoding?: { matrixBlockId: string; cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] }[] }[];
+  /** Real, per direct billing-expert guidance (PS-93) — see
+   *  BillingReviewPanel.tsx's own identical prop for the full
+   *  reasoning. Defaults to [] — a case with no Biopsy Arrays renders
+   *  exactly as it always did before this feature existed. */
+  matrixBlocks?: { id: string; label: string; participants: { specimenId: string; positionInBlock: number }[]; slides: { id?: string; stainName: string; evaluatedSpecimenIds?: string[] }[] }[];
   /** Real fix: lets the soft warning's "Assign" link jump straight to
    *  the real, contextual codes modal for the specific specimen that's
    *  missing its base code - the same real callback MaterialTreePanel's
@@ -39,9 +49,9 @@ interface CaseSignOutModalProps {
 
 const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
   show, accession, signOutUser, signOutPassword, signOutError,
-  onClose, onUserChange, onPasswordChange, onConfirm,
+  onClose, onUserChange, onPasswordChange, onConfirm, onReject,
   isCountersign, residentName, countersignFeedback, onCountersignFeedbackChange,
-  specimens, onAssignBaseCode,
+  specimens, matrixBlocks = [], onAssignBaseCode,
 }) => {
   // Real fix, Piece 3: same self-contained data-fetch pattern this
   // app's other modals already use (e.g. BlockStainEditorModal.tsx),
@@ -53,7 +63,7 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
   }, [show]);
 
-  const codingSummary = specimens ? computeCaseCodingSummary(specimens, stainTypes) : [];
+  const codingSummary = specimens ? computeCaseCodingSummary(specimens, stainTypes, matrixBlocks) : [];
   const specimenIndexById = new Map((specimens ?? []).map((sp, i) => [sp.id, i]));
 
   if (!show) return null;
@@ -79,7 +89,7 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
 
         {isCountersign && (
           <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-            <label className="ps-modal-dark-label">Feedback for {residentName ?? 'the resident'} — optional</label>
+            <label className="ps-modal-dark-label">Feedback for {residentName ?? 'the resident'} — optional to countersign, required to return</label>
             <textarea
               className="ps-conf-input ps-conf-textarea"
               value={countersignFeedback ?? ''}
@@ -114,6 +124,26 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
                         {b.appliedAncillaryCodes.map(c => c.code).join(', ')}
                         {b.unappliedSuggestions.length > 0 && (
                           <span style={{ color: '#f59e0b' }}> (suggested, not applied: {b.unappliedSuggestions.join(', ')})</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  {/* Real, per direct billing-expert guidance (PS-93) —
+                      this specimen's own real contribution from a
+                      shared Biopsy Array block it participates in.
+                      Labeled "(shared)" since, unlike an ordinary
+                      block above, this one physical cassette also
+                      belongs to other specimens — see
+                      SpecimenCodingSummary.matrixBlockContributions's
+                      own doc comment (services/billing/codeMapTable.ts)
+                      for the full reasoning. */}
+                  {sp.matrixBlockContributions.filter(mb => mb.appliedAncillaryCodes.length > 0 || mb.unappliedSuggestions.length > 0).map(mb => (
+                    <div key={mb.matrixBlockId} style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 12, color: '#64748b' }}>
+                      <span>{sp.specimenLabel}{mb.matrixBlockLabel} (shared)</span>
+                      <span>
+                        {mb.appliedAncillaryCodes.map(c => c.code).join(', ')}
+                        {mb.unappliedSuggestions.length > 0 && (
+                          <span style={{ color: '#f59e0b' }}> (suggested, not applied: {mb.unappliedSuggestions.join(', ')})</span>
                         )}
                       </span>
                     </div>
@@ -162,6 +192,16 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
 
         <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
           <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={onClose}>Cancel</button>
+          {isCountersign && onReject && (
+            <button
+              onClick={onReject}
+              disabled={!countersignFeedback?.trim()}
+              title={!countersignFeedback?.trim() ? 'Feedback is required to return a case to the trainee' : 'Return this case to the trainee for revision'}
+              className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn"
+            >
+              ↩️ Return to Trainee
+            </button>
+          )}
           <button onClick={onConfirm} className="ps-btn-green ps-modal-dark-footer__flex-btn">✍️ Sign Out Case</button>
         </div>
 

@@ -12,10 +12,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
-import { protocolService, stainTypeService, specimenCategoryService } from '../../../services';
+import { protocolService, stainTypeService, departmentService } from '../../../services';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
-import type { SpecimenCategory } from '../../../services/specimenCategories/ISpecimenCategoryService';
+import type { Department } from '../../../services/departments/IDepartmentService';
 import type { Protocol, ProtocolPathway, PathwayTask, StainType } from '../../../services';
 
 type Draft = Omit<Protocol, 'id' | 'version' | 'updatedBy' | 'updatedAt'>;
@@ -551,18 +551,18 @@ const ProtocolDictionarySection: React.FC = () => {
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: Protocol } | null>(null);
   const { dictionary } = useSpecimenDictionary();
   // Real feature, per direct follow-up's own Hybrid Model: "Sensible
-  // UI fallback: SpecimenCategory provides defaults... the
+  // UI fallback: Department provides defaults... the
   // configuration UI pre-selects materialKind: 'decant'." Real,
   // deliberate scope: matches by NAME ("Fluid / Cytology"), not a
   // hardcoded id — the real seed id could change, but the real,
-  // human-facing category name is what an admin actually configures
-  // against. A category renamed away from "Fluid" would correctly
+  // human-facing department name is what an admin actually configures
+  // against. A department renamed away from "Fluid" would correctly
   // stop being treated as fluid/cytology here too.
-  const [specimenCategories, setSpecimenCategories] = useState<SpecimenCategory[]>([]);
-  useEffect(() => { specimenCategoryService.getAll().then(res => { if (res.ok) setSpecimenCategories(res.data); }); }, []);
-  const fluidCategoryIds = useMemo(() =>
-    new Set(specimenCategories.filter(c => c.name.toLowerCase().includes('fluid') || c.name.toLowerCase().includes('cytology')).map(c => c.id)),
-    [specimenCategories]
+  const [departments, setDepartments] = useState<Department[]>([]);
+  useEffect(() => { departmentService.getAll().then(res => { if (res.ok) setDepartments(res.data); }); }, []);
+  const fluidDepartmentIds = useMemo(() =>
+    new Set(departments.filter(c => c.name.toLowerCase().includes('fluid') || c.name.toLowerCase().includes('cytology')).map(c => c.id)),
+    [departments]
   );
 
   const loadAll = () => {
@@ -675,7 +675,7 @@ const ProtocolDictionarySection: React.FC = () => {
 
       {modal && (
         <EditorModal mode={modal.mode} entry={modal.entry} stainTypes={stainTypes} usage={modal.entry ? usageFor(modal.entry.id) : []}
-          defaultsToDecant={!!modal.entry && usageFor(modal.entry.id).some(e => !!e.specimenCategoryId && fluidCategoryIds.has(e.specimenCategoryId))}
+          defaultsToDecant={!!modal.entry && usageFor(modal.entry.id).some(e => !!e.departmentId && fluidDepartmentIds.has(e.departmentId))}
           onSave={handleSave} onRestore={handleRestore} onClose={() => setModal(null)} />
       )}
     </div>

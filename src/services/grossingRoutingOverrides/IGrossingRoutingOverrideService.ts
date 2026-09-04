@@ -1,7 +1,7 @@
 // src/services/grossingRoutingOverrides/IGrossingRoutingOverrideService.ts
 // ─────────────────────────────────────────────────────────────
 // Admin-managed dictionary for Grossing Route overrides (S0-CF-12) —
-// per-client exceptions to a Specimen Category's own default Grossing
+// per-client exceptions to a Department's own default Grossing
 // Template. The evaluation function this feeds
 // (evaluateGrossingTemplateAssignment, in mockCaseService.ts) already
 // had a real, working input contract for this
@@ -28,7 +28,7 @@ export interface GrossingRoutingOverrideEntry {
    * Free text, matched by exact string equality against
    * GrossingEvaluationSpecimen.specimenType (sp._entry?.type from the
    * Specimen Dictionary — e.g. "Kidney") in the real Pass G0 matching
-   * logic in mockCaseService.ts. Deliberately NOT a Specimen Category
+   * logic in mockCaseService.ts. Deliberately NOT a Department
    * (a coarser, 4-value dictionary) — checked the actual matching
    * code directly rather than assume; a category-keyed override would
    * have silently never matched anything, since the real comparison
@@ -36,8 +36,8 @@ export interface GrossingRoutingOverrideEntry {
    */
   specimenType: string;
   /** One of the three Gold Standard routes — same id space as
-   *  SpecimenCategory.defaultGrossingTemplateId and
-   *  GROSSING_TEMPLATES in SpecimenCategoriesSection.tsx. */
+   *  Department.defaultGrossingTemplateId and
+   *  GROSSING_TEMPLATES in DepartmentsSection.tsx. */
   grossingTemplateId: string;
   active: boolean;
   createdAt: string;

@@ -14,6 +14,7 @@ import {
 } from '@/services/cases/mockCaseService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
+import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
 import { queryRealPatientHistory } from '@/services/patients/patientHistoryQuery';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -326,7 +327,25 @@ function FullReport({ item }: { item: ReportItem }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, patientId, currentCaseId, onClose }: PatientHistoryModalProps) {
+export default function PatientHistoryModal({ patientName: initialPatientName, mrn: initialMrn, dateOfBirth: initialDateOfBirth, patientId: initialPatientId, currentCaseId, onClose }: PatientHistoryModalProps) {
+  // Real, per direct guidance ("Molecular testing across siblings"):
+  // a real, distinct person shown under "Related Patients" below is
+  // exactly who a reviewer would want to actually navigate to — e.g.
+  // seeing a sibling's own prior molecular finding while reviewing
+  // this patient's own case. Rather than requiring changes to this
+  // modal's one real caller (SynopticReportPage.tsx), the modal
+  // manages its own real "who am I actually showing" state — clicking
+  // a related patient re-targets this same modal instance in place,
+  // with a real "← Back to" link to return. currentCaseId
+  // deliberately does NOT carry over to a related patient's own view
+  // — we're no longer viewing from one of their own cases.
+  const [viewingRelatedPatient, setViewingRelatedPatient] = useState<{ id: string; name: string; mrn: string; dateOfBirth: string } | null>(null);
+  const patientName = viewingRelatedPatient?.name ?? initialPatientName;
+  const mrn = viewingRelatedPatient?.mrn ?? initialMrn;
+  const dateOfBirth = viewingRelatedPatient?.dateOfBirth ?? initialDateOfBirth;
+  const patientId = viewingRelatedPatient?.id ?? initialPatientId;
+  const effectiveCurrentCaseId = viewingRelatedPatient ? undefined : currentCaseId;
+
   const [view, setView]                     = useState<'list' | 'report'>('list');
   const [selectedItem, setSelectedItem]     = useState<ReportItem | null>(null);
   const [selectedSource, setSelectedSource] = useState<ReportSource | null>(null);
@@ -359,6 +378,12 @@ export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, pat
   const hasSufficientIdentifiers = !!mrn && !!dateOfBirth && !!patientId;
   const [history, setHistory] = useState<PatientHistoryCase[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Real, per direct guidance: a genuinely separate list from history
+  // above — 'family_relation' linked patients (e.g. newborn/mother,
+  // or siblings for cascade molecular testing)
+  // are distinct real people, shown as their own cross-reference, not
+  // merged case history.
+  const [familyRelatedPatients, setFamilyRelatedPatients] = useState<MasterPatientRecord[]>([]);
 
   // Real fix, from a direct question about how case-searching actually
   // worked: this used to read MOCK_PRIOR_PATHOLOGY[mrn], a hardcoded
@@ -369,18 +394,38 @@ export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, pat
   // confirmed link actually changes what history displays, not just
   // what the MPI record itself says.
   useEffect(() => {
-    if (!hasSufficientIdentifiers || !patientId) { setHistory([]); setHistoryLoading(false); return; }
+    if (!hasSufficientIdentifiers || !patientId) { setHistory([]); setHistoryLoading(false); setFamilyRelatedPatients([]); return; }
     setHistoryLoading(true);
     Promise.all([
-      mockPatientIndexService.getLinkedPatientIds(patientId),
+      // Real, per direct guidance: explicitly 'same_person' — the
+      // only relationship type that should ever fold a linked
+      // patient's own cases into this history view. A
+      // 'family_relation' link (e.g. newborn/mother, or siblings) is two
+      // distinct
+      // real people; merging their histories together here would be
+      // a real, clinically wrong outcome, not a cosmetic one.
+      mockPatientIndexService.getLinkedPatientIds(patientId, 'same_person'),
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: true }),
     ])
       .then(([linkedIds, casesRes]) => {
         if (!casesRes.ok) { setHistory([]); return; }
-        setHistory(queryRealPatientHistory(casesRes.data as any[], linkedIds, currentCaseId));
+        setHistory(queryRealPatientHistory(casesRes.data as any[], linkedIds, effectiveCurrentCaseId));
       })
       .finally(() => setHistoryLoading(false));
-  }, [patientId, hasSufficientIdentifiers, currentCaseId]);
+
+    // Real, per direct guidance: the real 'family_relation' side —
+    // genuinely distinct real people, shown as its own, separate
+    // cross-reference below, never folded into the case-history list
+    // above.
+    mockPatientIndexService.getLinkedPatientIds(patientId, 'family_relation')
+      .then(async ids => {
+        const relatedIds = ids.filter(id => id !== patientId);
+        if (relatedIds.length === 0) { setFamilyRelatedPatients([]); return; }
+        const records = await Promise.all(relatedIds.map(id => mockPatientIndexService.getById(id)));
+        setFamilyRelatedPatients(records.filter((r): r is MasterPatientRecord => !!r));
+      })
+      .catch(() => setFamilyRelatedPatients([]));
+  }, [patientId, hasSufficientIdentifiers, effectiveCurrentCaseId]);
 
   const [showCompose, setShowCompose] = useState(false);
   const [composeNote, setComposeNote]  = useState('');
@@ -479,6 +524,11 @@ export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, pat
               <span style={S.patientName} data-phi="name">{patientName}</span>
               <span style={S.mrn}>· MRN {mrn}</span>
             </div>
+            {viewingRelatedPatient && (
+              <div style={S.breadcrumb}>
+                <button type="button" style={S.crumbBtn} onClick={() => { setViewingRelatedPatient(null); setView('list'); }}>← Back to {initialPatientName}</button>
+              </div>
+            )}
             <div style={S.breadcrumb}>
               {view === 'report' && (
                 <>
@@ -517,6 +567,28 @@ export default function PatientHistoryModal({ patientName, mrn, dateOfBirth, pat
                 history.map(item => (
                   <CaseCard key={item.id} item={item} onClick={() => openReport(item, 'history')} />
                 ))
+              )}
+
+              {/* Real, per direct guidance: a genuinely separate
+                  section from the case-history list above — real,
+                  distinct people (e.g. a newborn and their mother, or
+                  siblings sharing a real molecular finding),
+                  never folded into "this patient's own cases." Only
+                  rendered when at least one real family_relation link
+                  actually exists. */}
+              {familyRelatedPatients.length > 0 && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${border}` }}>
+                  <div style={S.panelTitle}>Related Patients</div>
+                  {familyRelatedPatients.map(r => (
+                    <div
+                      key={r.id}
+                      style={{ ...S.emptyState, cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => { setViewingRelatedPatient({ id: r.id, name: `${r.lastName}, ${r.firstName}`, mrn: r.mrn, dateOfBirth: r.dateOfBirth }); setView('list'); }}
+                    >
+                      {r.firstName} {r.lastName} — MRN {r.mrn} — DOB {new Date(r.dateOfBirth).toLocaleDateString()} →
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

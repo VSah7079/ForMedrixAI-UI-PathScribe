@@ -55,6 +55,7 @@ import { AccessRequestResponseTab } from '@/components/QualityAssurance/AccessRe
 import { FppeTrackingTab } from '@/components/QualityAssurance/FppeTrackingTab';
 import { DriftCorrectionTab } from '@/components/QualityAssurance/DriftCorrectionTab';
 import { PatientMatchReviewSection } from '@/components/QualityAssurance/PatientMatchReviewSection';
+import { PatientManagementSection } from '@/components/QualityAssurance/PatientManagementSection';
 import { exportQaReportRows } from '@/components/QualityAssurance/qaReportUtils';
 import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
 import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
@@ -79,7 +80,7 @@ type Pillar = 'operations' | 'financials' | 'capa';
 // effectiveness check), just previously shown alongside 'open' items
 // in the same tab. This tab split is what changed, not the lifecycle
 // itself.
-type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review';
+type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'patient-management' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review';
 
 // Real, per direct guidance on the QA reorganization: which tabs
 // belong to which pillar. Operations = the raw deficiency list plus
@@ -93,7 +94,7 @@ type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linka
 // no real detection mechanism for those exists yet, and fabricating
 // empty tabs for them would misrepresent what this pillar actually does.
 const PILLAR_TABS: Record<Pillar, Tab[]> = {
-  operations: ['case-specimen', 'intraop-linkage', 'discordance', 'countersign', 'fppe', 'drift-correction', 'patient-match-review', 'access-requests'],
+  operations: ['case-specimen', 'intraop-linkage', 'discordance', 'countersign', 'fppe', 'drift-correction', 'patient-match-review', 'patient-management', 'access-requests'],
   capa: ['escalated', 'closed', 'reviews'],
   financials: ['financials-open', 'financials-resolved', 'financials-code-review'],
 };
@@ -993,6 +994,7 @@ const QualityAssurancePage: React.FC = () => {
           { key: 'fppe', label: '📜 Credentialing Review', count: undefined, color: '#261CE3', sublabel: undefined },
           { key: 'drift-correction', label: '🔄 Post-Final Drift', count: undefined, color: '#EC4899', sublabel: undefined },
           { key: 'patient-match-review', label: '🪪 Patient Match Review', count: undefined, color: '#53E2EA', sublabel: undefined },
+          { key: 'patient-management', label: '🧬 Patient Management', count: undefined, color: '#53E2EA', sublabel: undefined },
           { key: 'access-requests', label: '🔑 Access Requests', count: undefined, color: '#94a3b8', sublabel: undefined },
           { key: 'financials-open', label: '💲 Billing Deficiencies', count: billingDeficienciesOpen.length, color: '#EF4444', sublabel: undefined },
           { key: 'financials-resolved', label: '✓ Resolved', count: billingDeficienciesResolved.length, color: '#10B981', sublabel: undefined },
@@ -1155,6 +1157,7 @@ const QualityAssurancePage: React.FC = () => {
       {tab === 'fppe' && <FppeTrackingTab />}
       {tab === 'drift-correction' && <DriftCorrectionTab />}
       {tab === 'patient-match-review' && <PatientMatchReviewSection />}
+      {tab === 'patient-management' && <PatientManagementSection />}
       {tab === 'access-requests' && <AccessRequestResponseTab />}
 
       {tab === 'closed' && (

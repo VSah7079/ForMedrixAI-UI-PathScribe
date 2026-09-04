@@ -83,7 +83,7 @@ const PETE_CASES: Case[] = [
       { id: 'O26-0001-SP-B', label: 'B', description: 'Ileocolic lymph nodes, separate packet', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
       { id: 'O26-0001-SP-C', label: 'C', description: 'Appendix',                              receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. James Caldwell', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Colorectal adenocarcinoma. CT: 4.2 cm mass at hepatic flexure, no distant metastases. CEA 12.4. Proceeding to right hemicolectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. James Caldwell', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Colorectal adenocarcinoma. CT: 4.2 cm mass at hepatic flexure, no distant metastases. CEA 12.4. Proceeding to right hemicolectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'colorectal-mdt', tagClass: 'ADMINISTRATIVE', name: 'Colorectal MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 3 },
       { id: 'clin-corr',      tagClass: 'ADMINISTRATIVE', name: 'Clinical Correlation',      color: '#f59e0b', level: 'Case', status: 'Active', severity: 2 },
@@ -174,7 +174,7 @@ const PETE_CASES: Case[] = [
         ] },
       { id: 'O26-0002-SP-B', label: 'B', description: 'Station 7 subcarinal lymph nodes', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'STAT', requestingProvider: 'Mr. Andrew Pearce', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Right lower lobe mass 3.1 cm. Core biopsy: adenocarcinoma TTF-1+. EGFR/ALK/ROS1 pending. PET-CT: no distant disease. VATS right lower lobectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'STAT', requestingProvider: 'Mr. Andrew Pearce', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Right lower lobe mass 3.1 cm. Core biopsy: adenocarcinoma TTF-1+. EGFR/ALK/ROS1 pending. PET-CT: no distant disease. VATS right lower lobectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'stat-rush',    tagClass: 'ADMINISTRATIVE', name: 'STAT — Rush Processing', color: '#ef4444', level: 'Case', status: 'Active', severity: 5 },
       { id: 'thoracic-mdt', tagClass: 'ADMINISTRATIVE', name: 'Thoracic MDT Scheduled',  color: '#3b82f6', level: 'Case', status: 'Active', severity: 3 },
@@ -243,7 +243,7 @@ const PETE_CASES: Case[] = [
       { id: 'O26-0003-SP-B', label: 'B', description: 'Right pelvic lymph nodes',  receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
       { id: 'O26-0003-SP-C', label: 'C', description: 'Left pelvic lymph nodes',   receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. Simon Hartley', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Prostate adenocarcinoma. Systematic biopsy: Gleason 3+4=7 (Grade Group 2), PSA 8.2. mpMRI: PI-RADS 4 left mid-gland. Robotic radical prostatectomy with bilateral pelvic lymph node dissection.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. Simon Hartley', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Prostate adenocarcinoma. Systematic biopsy: Gleason 3+4=7 (Grade Group 2), PSA 8.2. mpMRI: PI-RADS 4 left mid-gland. Robotic radical prostatectomy with bilateral pelvic lymph node dissection.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'urology-mdt', tagClass: 'ADMINISTRATIVE', name: 'Urology MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'clin-corr',   tagClass: 'ADMINISTRATIVE', name: 'Clinical Correlation',  color: '#f59e0b', level: 'Case', status: 'Active', severity: 2 },
@@ -332,7 +332,7 @@ const PETE_CASES: Case[] = [
         ] },
       { id: 'O26-0004-SP-B', label: 'B', description: 'Left axillary sentinel lymph node — level I',   receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
     ],
-    order: { priority: 'STAT', requestingProvider: 'Dr. Rachel Kim', clientId: 'c-westside', clientName: 'Westside Surgical Centre', clinicalIndication: 'Triple-negative breast carcinoma. Core biopsy: Grade 3 IDC, Ki-67 78%. BRCA1 pathogenic variant. Neoadjuvant chemotherapy completed. Total mastectomy with sentinel lymph node biopsy.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'STAT', requestingProvider: 'Dr. Rachel Kim', facilityId: 'c-westside', facilityName: 'Westside Surgical Centre', clinicalIndication: 'Triple-negative breast carcinoma. Core biopsy: Grade 3 IDC, Ki-67 78%. BRCA1 pathogenic variant. Neoadjuvant chemotherapy completed. Total mastectomy with sentinel lymph node biopsy.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     firstTouchedAt: isoDaysAgo(0),
     caseFlags: [
       { id: 'stat-rush',   tagClass: 'ADMINISTRATIVE', name: 'STAT — Rush Processing',            color: '#ef4444', level: 'Case', status: 'Active', severity: 5 },
@@ -395,7 +395,7 @@ const PETE_CASES: Case[] = [
       { id: 'O26-0005-SP-A', label: 'A', description: 'Total thyroidectomy',                   receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [] },
       { id: 'O26-0005-SP-B', label: 'B', description: 'Right central compartment lymph nodes',  receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Thomas Walsh', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Papillary thyroid carcinoma. FNA: malignant (Bethesda VI). Ultrasound: 2.4 cm solid hypoechoic nodule right lobe. Total thyroidectomy with right central compartment dissection.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Thomas Walsh', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Papillary thyroid carcinoma. FNA: malignant (Bethesda VI). Ultrasound: 2.4 cm solid hypoechoic nodule right lobe. Total thyroidectomy with right central compartment dissection.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'endocrine-mdt', tagClass: 'ADMINISTRATIVE', name: 'Endocrine MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'clin-corr',     tagClass: 'ADMINISTRATIVE', name: 'Clinical Correlation',    color: '#f59e0b', level: 'Case', status: 'Active', severity: 2 },
@@ -467,7 +467,7 @@ const PAUL_CASES: Case[] = [
         ] },
       { id: 'O26-0006-SP-B', label: 'B', description: 'Renal hilar lymph node',   receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. Gavin Fletcher', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Clear cell renal cell carcinoma. CT: 6.8 cm heterogeneous left renal mass with renal vein thrombus, no distant metastases. Left radical nephrectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. Gavin Fletcher', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Clear cell renal cell carcinoma. CT: 6.8 cm heterogeneous left renal mass with renal vein thrombus, no distant metastases. Left radical nephrectomy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'urology-mdt',  tagClass: 'ADMINISTRATIVE', name: 'Urology MDT Scheduled',                 color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'renal-vein',   tagClass: 'ADMINISTRATIVE', name: 'Renal Vein Invasion — Staging Pending', color: '#f59e0b', level: 'Case', status: 'Active', severity: 4 },
@@ -530,7 +530,7 @@ const PAUL_CASES: Case[] = [
       { id: 'O26-0007-SP-B', label: 'B', description: 'Mediastinal lymph nodes',       receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
       { id: 'O26-0007-SP-C', label: 'C', description: 'Coeliac axis lymph nodes',      receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
     ],
-    order: { priority: 'STAT', requestingProvider: 'Mr. Alistair Drummond', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Oesophageal adenocarcinoma (GOJ). Biopsy: adenocarcinoma. CT/PET: T3N1M0. HER2 equivocal. Neoadjuvant FLOT x6 cycles, partial response. Ivor-Lewis oesophagectomy.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'STAT', requestingProvider: 'Mr. Alistair Drummond', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Oesophageal adenocarcinoma (GOJ). Biopsy: adenocarcinoma. CT/PET: T3N1M0. HER2 equivocal. Neoadjuvant FLOT x6 cycles, partial response. Ivor-Lewis oesophagectomy.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
     firstTouchedAt: isoDaysAgo(0),
     caseFlags: [
       { id: 'stat-rush',   tagClass: 'ADMINISTRATIVE', name: 'STAT — Rush Processing',               color: '#ef4444', level: 'Case', status: 'Active', severity: 5 },
@@ -611,7 +611,7 @@ const PAUL_CASES: Case[] = [
     specimens: [
       { id: 'O26-0008-SP-A', label: 'A', description: 'TURBT — posterior wall bladder', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. David Holloway', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Haematuria. Cystoscopy: 3 cm papillary lesion posterior wall. Prior TURBT 18 months ago: pTa low-grade urothelial carcinoma. Re-resection.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. David Holloway', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Haematuria. Cystoscopy: 3 cm papillary lesion posterior wall. Prior TURBT 18 months ago: pTa low-grade urothelial carcinoma. Re-resection.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'urology-mdt', tagClass: 'ADMINISTRATIVE', name: 'Urology MDT Scheduled',              color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'recurrence',  tagClass: 'ADMINISTRATIVE', name: 'Recurrence — Prior pTa Low-Grade',    color: '#f59e0b', level: 'Case', status: 'Active', severity: 3 },
@@ -665,7 +665,7 @@ const AMBER_CASES: Case[] = [
         ] },
       { id: 'O26-0009-SP-B', label: 'B', description: 'Right axillary sentinel lymph node',       receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'STAT', requestingProvider: 'Dr. Lisa Fontaine', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Cutaneous melanoma right upper back. Shave biopsy: invasive melanoma Breslow 2.8 mm, Clark IV, no ulceration. Wide local excision with 2 cm margins and sentinel lymph node biopsy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'STAT', requestingProvider: 'Dr. Lisa Fontaine', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Cutaneous melanoma right upper back. Shave biopsy: invasive melanoma Breslow 2.8 mm, Clark IV, no ulceration. Wide local excision with 2 cm margins and sentinel lymph node biopsy.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'stat-rush',  tagClass: 'ADMINISTRATIVE', name: 'STAT — Rush Processing',    color: '#ef4444', level: 'Case', status: 'Active', severity: 5 },
       { id: 'second-op',  tagClass: 'ADMINISTRATIVE', name: 'Second Opinion Requested',  color: '#8b5cf6', level: 'Case', status: 'Active', severity: 3 },
@@ -727,7 +727,7 @@ const AMBER_CASES: Case[] = [
       { id: 'O26-0010-SP-A', label: 'A', description: 'Pancreaticoduodenectomy (Whipple)', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
       { id: 'O26-0010-SP-B', label: 'B', description: 'Peripancreatic lymph nodes',         receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Samuel Ortega', clientId: 'c-westside', clientName: 'Westside Surgical Centre', clinicalIndication: 'Pancreatic head adenocarcinoma. EUS-FNA: adenocarcinoma. CT: 2.9 cm mass abutting SMA <180 degrees, no distant disease. CA19-9 841. Neoadjuvant FOLFIRINOX x6 cycles, restaged resectable. Whipple procedure.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Samuel Ortega', facilityId: 'c-westside', facilityName: 'Westside Surgical Centre', clinicalIndication: 'Pancreatic head adenocarcinoma. EUS-FNA: adenocarcinoma. CT: 2.9 cm mass abutting SMA <180 degrees, no distant disease. CA19-9 841. Neoadjuvant FOLFIRINOX x6 cycles, restaged resectable. Whipple procedure.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
     firstTouchedAt: isoDaysAgo(0),
     caseFlags: [
       { id: 'onc-tx-resp', tagClass: 'ADMINISTRATIVE', name: 'Oncology Treatment Response — Pending', color: '#3b82f6', level: 'Case', status: 'Active', severity: 3 },
@@ -794,7 +794,7 @@ const AMBER_CASES: Case[] = [
       { id: 'O26-0011-SP-B', label: 'B', description: 'Left level II/III lymph nodes',  receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [] },
       { id: 'O26-0011-SP-C', label: 'C', description: 'Right level II/III lymph nodes', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Angela Brooks', clientId: 'c-westside', clientName: 'Westside Surgical Centre', clinicalIndication: 'Supraglottic squamous cell carcinoma T2N1M0. Laryngoscopy biopsy: moderately differentiated SCC. PET-CT: supraglottic primary, single left level II node. Supraglottic laryngectomy with bilateral neck dissection.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Angela Brooks', facilityId: 'c-westside', facilityName: 'Westside Surgical Centre', clinicalIndication: 'Supraglottic squamous cell carcinoma T2N1M0. Laryngoscopy biopsy: moderately differentiated SCC. PET-CT: supraglottic primary, single left level II node. Supraglottic laryngectomy with bilateral neck dissection.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'hn-mdt',    tagClass: 'ADMINISTRATIVE', name: 'Head & Neck MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'clin-corr', tagClass: 'ADMINISTRATIVE', name: 'Clinical Correlation',      color: '#f59e0b', level: 'Case', status: 'Active', severity: 2 },
@@ -879,7 +879,7 @@ const BRONWYN_CASES: Case[] = [
       { id: 'O26-0021-SP-A', label: 'A', description: 'Total abdominal hysterectomy with bilateral salpingo-oophorectomy', receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
       { id: 'O26-0021-SP-B', label: 'B', description: 'Pelvic washings',                                                   receivedAt: isoDaysAgo(0), collectedAt: isoDaysAgo(0), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Miss Fiona Radcliffe', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Endometrial carcinoma. Pipelle biopsy: FIGO Grade 2 endometrioid adenocarcinoma. MRI: tumour confined to uterine corpus, no myometrial invasion beyond 50%. Total abdominal hysterectomy with bilateral salpingo-oophorectomy and pelvic washings.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Miss Fiona Radcliffe', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Endometrial carcinoma. Pipelle biopsy: FIGO Grade 2 endometrioid adenocarcinoma. MRI: tumour confined to uterine corpus, no myometrial invasion beyond 50%. Total abdominal hysterectomy with bilateral salpingo-oophorectomy and pelvic washings.', receivedDate: isoDaysAgo(0), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'gynae-onc-mdt', tagClass: 'ADMINISTRATIVE', name: 'Gynae-Oncology MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 3 },
       { id: 'clin-corr',     tagClass: 'ADMINISTRATIVE', name: 'Clinical Correlation',         color: '#f59e0b', level: 'Case', status: 'Active', severity: 2 },
@@ -941,7 +941,7 @@ const BRONWYN_CASES: Case[] = [
     specimens: [
       { id: 'O26-0022-SP-A', label: 'A', description: 'Segmental liver resection, segment VI', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [{ id: 'comp-mol-0022', name: 'Molecular Panel', lisCode: 'MOL', color: '#10b981', severity: 2, tagClass: 'COMPUTATIONAL', orderedVia: 'lis', specimenId: 'O26-0022-SP-A' }] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. Nicholas Farrow', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Colorectal liver metastasis. History of sigmoid colon adenocarcinoma resected 14 months ago. Surveillance CT: solitary 3.6 cm segment VI lesion, biopsy-proven metastatic adenocarcinoma. Segmental liver resection.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. Nicholas Farrow', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Colorectal liver metastasis. History of sigmoid colon adenocarcinoma resected 14 months ago. Surveillance CT: solitary 3.6 cm segment VI lesion, biopsy-proven metastatic adenocarcinoma. Segmental liver resection.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
     firstTouchedAt: isoDaysAgo(0),
     caseFlags: [
       { id: 'hep-mdt',   tagClass: 'ADMINISTRATIVE', name: 'Hepatology MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
@@ -988,7 +988,7 @@ const BRONWYN_CASES: Case[] = [
     specimens: [
       { id: 'O26-0023-SP-A', label: 'A', description: 'Superficial parotidectomy, left', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Mr. Edward Kingsley', clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre', clinicalIndication: 'Left parotid mass. FNA: suspicious for mucoepidermoid carcinoma, low-grade favored. MRI: 2.2 cm well-defined lesion, superficial lobe, facial nerve uninvolved clinically. Superficial parotidectomy with facial nerve preservation.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Mr. Edward Kingsley', facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre', clinicalIndication: 'Left parotid mass. FNA: suspicious for mucoepidermoid carcinoma, low-grade favored. MRI: 2.2 cm well-defined lesion, superficial lobe, facial nerve uninvolved clinically. Superficial parotidectomy with facial nerve preservation.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-UK-003', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'hn-mdt',    tagClass: 'ADMINISTRATIVE', name: 'Head & Neck MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
       { id: 'second-op', tagClass: 'ADMINISTRATIVE', name: 'Second Opinion Requested',  color: '#8b5cf6', level: 'Case', status: 'Active', severity: 3 },
@@ -1055,7 +1055,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'STAT',
       requestingProvider: 'Dr. Jennifer Moss',
-      clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital",
+      facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital",
       clinicalIndication: 'High-grade squamous intraepithelial lesion (HSIL/CIN3) on colposcopy biopsy. HPV 16 positive. Proceeding to LLETZ cone excision. Urgent margin assessment required.',
       receivedDate: isoDaysAgo(0),
       assignedTo: undefined as any,
@@ -1084,7 +1084,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Carol Simmons',
-      clientId: 'c-westside', clientName: 'Westside Surgical Centre',
+      facilityId: 'c-westside', facilityName: 'Westside Surgical Centre',
       clinicalIndication: 'Pigmented lesion left forearm. Punch biopsy: atypical melanocytic proliferation, cannot exclude melanoma. Proceeding to wide local excision with 5 mm margins.',
       receivedDate: isoDaysAgo(1),
       assignedTo: undefined as any,
@@ -1113,7 +1113,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Martin Osei',
-      clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre',
+      facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre',
       clinicalIndication: 'Right breast mass 12 o\'clock position. Mammogram: 18 mm irregular speculated density, BI-RADS 5. Ultrasound-guided core needle biopsy for histological diagnosis prior to surgical planning.',
       receivedDate: isoDaysAgo(1),
       assignedTo: undefined as any,
@@ -1145,7 +1145,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Helen Marsh',
-      clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital",
+      facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital",
       clinicalIndication: 'Abnormal liver function tests with hepatomegaly on imaging. MRI: multiple hypervascular lesions, largest 3.4 cm segment VI. Rule out metastatic disease vs. primary hepatocellular carcinoma.',
       receivedDate: isoDaysAgo(0),
       assignedTo: undefined as any,
@@ -1178,7 +1178,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'STAT',
       requestingProvider: 'Mr. Oliver Bancroft',
-      clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre',
+      facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre',
       clinicalIndication: 'Gastric adenocarcinoma, antrum. Endoscopic biopsy: intestinal-type adenocarcinoma. CT staging: T3N1M0, no distant disease. Subtotal gastrectomy with D2 lymphadenectomy.',
       receivedDate: isoDaysAgo(0),
       assignedTo: undefined as any,
@@ -1210,7 +1210,7 @@ const POOL_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Victor Anand',
-      clientId: 'c-westside', clientName: 'Westside Surgical Centre',
+      facilityId: 'c-westside', facilityName: 'Westside Surgical Centre',
       clinicalIndication: 'Enlarging left thigh mass. MRI: 7.2 cm deep soft tissue mass, heterogeneous enhancement, suspicious for sarcoma. Core biopsy: spindle cell neoplasm, favor sarcoma. Wide local excision with 2 cm margins.',
       receivedDate: isoDaysAgo(1),
       assignedTo: undefined as any,
@@ -1280,7 +1280,7 @@ const STAGE0_CASES: Case[] = [
     order: {
       priority: 'STAT',
       requestingProvider: 'Dr. Wendy Castillo',
-      clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital",
+      facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital",
       clinicalIndication: 'Enlarging pigmented lesion right shoulder, irregular border on dermoscopy. Excisional biopsy for histological diagnosis, urgent given clinical suspicion for melanoma.',
       receivedDate: isoDaysAgo(0),
       assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary',
@@ -1325,7 +1325,7 @@ const STAGE0_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Henry Okoye',
-      clientId: 'c-royal-manchester', clientName: 'Royal Manchester Centre',
+      facilityId: 'c-royal-manchester', facilityName: 'Royal Manchester Centre',
       clinicalIndication: 'New left pleural effusion on chest X-ray, unknown primary. Diagnostic thoracentesis for cytological evaluation, rule out malignant effusion.',
       receivedDate: isoDaysAgo(0),
       assignedTo: 'PATH-UK-001', assignedParticipationTypeId: 'primary',
@@ -1361,7 +1361,7 @@ const STAGE0_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Felicity Adeyemi',
-      clientId: 'c-westside', clientName: 'Westside Surgical Centre',
+      facilityId: 'c-westside', facilityName: 'Westside Surgical Centre',
       clinicalIndication: 'Outside pathology report read as atypical melanocytic proliferation at referring lab. Slides and block requested for second-opinion review prior to surgical planning.',
       receivedDate: isoDaysAgo(0),
       assignedTo: 'PATH-US-001', assignedParticipationTypeId: 'primary',
@@ -1418,7 +1418,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
         ] },
       { id: 'O26-0024-SP-B', label: 'B', description: 'Mediastinal lymph node stations 4R, 7, 10R', receivedAt: isoDaysAgo(9), collectedAt: isoDaysAgo(9), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Helen Marsh', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: 'Incidental 3.1 cm right upper lobe nodule on CT surveillance. PET-avid, SUV 8.4. Proceeding to lobectomy with mediastinal lymph node dissection.', receivedDate: isoDaysAgo(9), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Helen Marsh', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: 'Incidental 3.1 cm right upper lobe nodule on CT surveillance. PET-avid, SUV 8.4. Proceeding to lobectomy with mediastinal lymph node dissection.', receivedDate: isoDaysAgo(9), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'thoracic-mdt', tagClass: 'ADMINISTRATIVE', name: 'Thoracic MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
     ],
@@ -1508,7 +1508,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
         ] },
       { id: 'O26-0025-SP-B', label: 'B', description: 'Left axillary sentinel lymph nodes — three', receivedAt: isoDaysAgo(7), collectedAt: isoDaysAgo(7), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: '2.8 cm left breast mass on screening mammogram, BI-RADS 5. Core biopsy confirmed invasive ductal carcinoma. Proceeding to mastectomy with sentinel node biopsy.', receivedDate: isoDaysAgo(7), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: '2.8 cm left breast mass on screening mammogram, BI-RADS 5. Core biopsy confirmed invasive ductal carcinoma. Proceeding to mastectomy with sentinel node biopsy.', receivedDate: isoDaysAgo(7), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'breast-mdt', tagClass: 'ADMINISTRATIVE', name: 'Breast MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
     ],
@@ -1598,7 +1598,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
         ] },
       { id: 'O26-0026-SP-B', label: 'B', description: 'Right axillary sentinel lymph nodes — two', receivedAt: isoDaysAgo(5), collectedAt: isoDaysAgo(5), specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: '1.6 cm right breast mass, BI-RADS 5. Core biopsy confirmed invasive carcinoma, hormone-receptor studies pending. Proceeding to lumpectomy with sentinel node biopsy.', receivedDate: isoDaysAgo(5), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: '1.6 cm right breast mass, BI-RADS 5. Core biopsy confirmed invasive carcinoma, hormone-receptor studies pending. Proceeding to lumpectomy with sentinel node biopsy.', receivedDate: isoDaysAgo(5), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [
       { id: 'breast-mdt', tagClass: 'ADMINISTRATIVE', name: 'Breast MDT Scheduled', color: '#3b82f6', level: 'Case', status: 'Active', severity: 2 },
     ],
@@ -1694,7 +1694,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     specimens: [
       { id: 'O26-0027-SP-A', label: 'A', description: 'Left thyroid lobe', receivedAt: '2026-07-19T10:03:00.000Z', collectedAt: '2026-07-19T10:03:00.000Z', specimenFlags: [] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Owusu', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: '1.9 cm left thyroid nodule, indeterminate on FNA (Bethesda IV). Proceeding to left lobectomy with intraoperative frozen section.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Owusu', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: '1.9 cm left thyroid nodule, indeterminate on FNA (Bethesda IV). Proceeding to left lobectomy with intraoperative frozen section.', receivedDate: isoDaysAgo(1), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [],
     diagnostic: {
       grossDescription: '', microscopicDescription: '',
@@ -1734,7 +1734,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
           { id: 'stn-0028-a1-4', stainName: 'HER2', status: 'Coverslipped' },
         ] }] },
     ],
-    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital", clinicalIndication: '1.7 cm left breast mass, BI-RADS 5. Core biopsy confirmed invasive ductal carcinoma. Proceeding to lumpectomy.', receivedDate: isoDaysAgo(3), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
+    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Nathan', facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital", clinicalIndication: '1.7 cm left breast mass, BI-RADS 5. Core biopsy confirmed invasive ductal carcinoma. Proceeding to lumpectomy.', receivedDate: isoDaysAgo(3), assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary' },
     caseFlags: [],
     diagnostic: {
       grossDescription: 'Received fresh, labeled "left breast lumpectomy," is an irregular fragment of fibrofatty breast tissue measuring 5.8 x 4.2 x 2.6 cm. Sectioning reveals a firm, gray-white mass measuring 1.7 x 1.5 x 1.2 cm, 0.9 cm from the closest (medial) inked margin. Representative sections submitted.',
@@ -1830,7 +1830,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Anthony Reyes',
-      clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital",
+      facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital",
       clinicalIndication: 'PSA 7.8, rising over 18 months. DRE with palpable nodule, right lobe. mpMRI PI-RADS 4 lesion, right base. Proceeding to 12-core systematic transrectal biopsy with MRI/US fusion targeting.',
       receivedDate: isoDaysAgo(0),
       assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary',
@@ -1878,7 +1878,7 @@ const COMPLETED_DEMO_CASES: Case[] = [
     order: {
       priority: 'Routine',
       requestingProvider: 'Dr. Anthony Reyes',
-      clientId: 'c-stcatherines', clientName: "St. Catherine's University Hospital",
+      facilityId: 'c-stcatherines', facilityName: "St. Catherine's University Hospital",
       clinicalIndication: 'Prostate adenocarcinoma, systematic biopsy Gleason 4+3=7 (Grade Group 3), PSA 9.4. mpMRI PI-RADS 4 right base, no extraprostatic extension. Robotic radical prostatectomy with bilateral pelvic lymph node dissection.',
       receivedDate: isoDaysAgo(0),
       assignedTo: 'PATH-001', assignedParticipationTypeId: 'primary',

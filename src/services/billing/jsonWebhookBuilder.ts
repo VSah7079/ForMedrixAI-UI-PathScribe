@@ -25,7 +25,9 @@ import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 import { mockPatientIndexService as patientIndexService } from '@/services/patients/mockPatientIndexService';
 import { mockEncounterService } from '@/services/encounters/mockEncounterService';
 import { validateChargeMetadata } from './validateChargeMetadata';
-import { getSiteConfig, getOrganisationForSite } from '@/services/organisation/organisationService';
+import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
+import { mockFacilityService } from '@/services/facilities/mockFacilityService';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { resolveBillingDateOfService, checkMolecularPathologyDosException } from './resolveBillingDateOfService';
 import { mockBillingRuleService } from './mockBillingRuleService';
 
@@ -98,19 +100,28 @@ export interface ChargeCaptureEventPayload {
     isPrincipal: boolean;
   }[];
   /** Real, per direct follow-up (Billing Capacity Review's own CLIA/
-   *  POS gaps) - the real, raw facts about the specific site that
-   *  actually performed this case's own work, resolved from
-   *  Case.originSiteId. Same "surface the raw fact, never adjudicate
-   *  the billing decision" posture as complianceFlags below -
-   *  performingLabType is not a computed CMS Place of Service code,
-   *  it's the real, admin-entered fact the interface engine/RCM
-   *  resolves an actual POS code from. Undefined when no real site is
-   *  resolvable, or the admin hasn't set that field yet - never
-   *  guessed. */
+   *  POS gaps) - the real, raw fact about the specific facility that
+   *  actually performed this case's own work, resolved from the
+   *  ordering facility's own resolvePerformingLabFacilityId(). Real,
+   *  deliberate move since this field's own original design: CLIA is
+   *  a real regulatory characteristic of *the entity performing the
+   *  work*, and that's Facility's own performing_lab role (services/
+   *  facilities/), not Site - reconsidered directly against real CMS
+   *  research into Place of Service specifically. Same "surface the
+   *  raw fact, never adjudicate the billing decision" posture as
+   *  complianceFlags below. Undefined when no real performing facility
+   *  is resolvable, or the admin hasn't set that field yet - never
+   *  guessed.
+   *
+   *  performingLabType (independent vs. hospital-based) - the field
+   *  this object used to also carry - is retired, not replaced here.
+   *  It was always a rough proxy for a real Place of Service code,
+   *  per its own old doc comment; a real, direct
+   *  Facility.placeOfServiceCodeId is the real replacement once that
+   *  dictionary is built, not yet wired into this payload. */
   performingFacility?: {
-    siteId: string;
+    facilityId: string;
     cliaOrIsoNumber?: string;
-    performingLabType?: 'independent' | 'hospital_based';
   };
   /** Real, honest EXTENSION beyond the written v1.2 spec (§5.1 itself
    *  has no such field) - per direct guidance's own stated principle,
@@ -190,7 +201,7 @@ function resolvePerformingProvider(caseData: Pick<Case, 'participants'>): { id?:
  *  against the patient's actual MasterPatientRecord - never assumed
  *  or defaulted to the more convenient value. */
 export async function buildJsonWebhookPayload(
-  caseData: Pick<Case, 'id' | 'patient' | 'order' | 'participants' | 'patientMatchOutcome' | 'encounterId' | 'originSiteId' | 'specimens' | 'accession'>,
+  caseData: Pick<Case, 'id' | 'patient' | 'order' | 'participants' | 'patientMatchOutcome' | 'encounterId' | 'originHospitalId' | 'originSiteId' | 'specimens' | 'accession'>,
   charges: ServiceChargeRecord[]
 ): Promise<ChargeCaptureEventPayload> {
   const mpr = caseData.patient?.id ? await patientIndexService.getById(caseData.patient.id) : null;
@@ -198,12 +209,33 @@ export async function buildJsonWebhookPayload(
   const encounter = encounterRes?.ok ? encounterRes.data : null;
 
   // Real, per direct guidance's own billing date-of-service work -
-  // resolves the case's own real site/country and any real,
-  // explicit site-level override.
-  const site = caseData.originSiteId ? await getSiteConfig(caseData.originSiteId) : null;
-  const organisation = site ? getOrganisationForSite(site) : null;
-  const country = organisation?.country;
-  const siteOverrideRule = site?.billingDosRule;
+  // resolves the case's own real country and any real, explicit
+  // site-level override. Split across two real, separate sources as
+  // of Phase 3 of the Organisation/Site -> Facility migration
+  // (originSiteId step): country stays tied to originHospitalId (the
+  // old Organisation system, untouched until its own, later phase),
+  // while the site-level billingDosRule override now resolves through
+  // originSiteId's own real Facility record instead of the old,
+  // retired getSiteConfig/getOrganisationForSite chain — see
+  // Facility.billingDosRule's own doc comment for the full reasoning
+  // on migrating this specific field.
+  const country = getOrganisationByHospitalId(caseData.originHospitalId ?? '')?.country;
+  const originSiteFacility = caseData.originSiteId ? (await mockFacilityService.getById(caseData.originSiteId)) : null;
+  const siteOverrideRule = originSiteFacility?.ok ? originSiteFacility.data.billingDosRule : undefined;
+  // Real, per direct follow-up - the real performing facility for
+  // this case's own CLIA number, resolved the same way every other
+  // performing-lab-scoped Facility setting already is: the case's own
+  // ordering facility (Case.order.facilityId), then
+  // resolvePerformingLabFacilityId() to whichever facility actually
+  // does the work. Deliberately separate from `site` above - Site and
+  // Facility are two real, different concepts (see Facility.
+  // cliaOrIsoNumber's own doc comment), and this payload's own real
+  // performingFacility.cliaOrIsoNumber needs the latter.
+  const orderingFacilityRes = caseData.order?.facilityId ? await mockFacilityService.getById(caseData.order.facilityId) : null;
+  const orderingFacility = orderingFacilityRes?.ok ? orderingFacilityRes.data : null;
+  const performingLabFacilityId = orderingFacility ? resolvePerformingLabFacilityId(orderingFacility) : undefined;
+  const performingFacilityRes = performingLabFacilityId ? await mockFacilityService.getById(performingLabFacilityId) : null;
+  const performingLabFacility = performingFacilityRes?.ok ? performingFacilityRes.data : null;
   // Real, honest proxy for "when the test was ordered" - see
   // resolveBillingDateOfService.ts's own doc comment on orderedAt for
   // why this is Case.accession.accessionedAt, not a genuine order
@@ -251,10 +283,9 @@ export async function buildJsonWebhookPayload(
     eventTimestamp: new Date().toISOString(),
     organisationId: mpr?.organisationId ?? '',
     caseId: caseData.id,
-    performingFacility: site ? {
-      siteId: site.id,
-      cliaOrIsoNumber: site.cliaOrIsoNumber,
-      performingLabType: site.performingLabType,
+    performingFacility: performingLabFacility ? {
+      facilityId: performingLabFacility.id,
+      cliaOrIsoNumber: performingLabFacility.cliaOrIsoNumber,
     } : undefined,
     patient: {
       patientDataScope,
@@ -281,7 +312,7 @@ export async function buildJsonWebhookPayload(
       // Real, per direct guidance's own follow-up - the real, separate
       // (b)(5) exception, gated by this specific charge's own
       // billingCode having been flagged eligible by a real coder.
-      const dosExceptionEligible = await getDosExceptionEligible(c.billingCode, c.ruleVersion, site?.id);
+      const dosExceptionEligible = await getDosExceptionEligible(c.billingCode, c.ruleVersion, caseData.originSiteId);
       const molecularPathologyDosExceptionAdvisory = checkMolecularPathologyDosException({
         dosExceptionEligible,
         encounterClass: encounter?.encounterClass,

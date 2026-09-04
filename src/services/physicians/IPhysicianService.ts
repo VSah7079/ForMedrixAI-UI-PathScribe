@@ -44,6 +44,25 @@ export interface Physician {
   /** Snapshot fields auto-populated from transaction data */
   autoCreated?: boolean;
   autoCreatedAt?: string;
+  /**
+   * Real, per direct guidance (Physician Master File / Interface
+   * Engine sync): which upstream system this physician record was
+   * last synced from, and that system's OWN record id for them —
+   * together the durable, primary re-match key for every subsequent
+   * sync of this same physician, deliberately NOT NPI or name. Not
+   * every physician carries an NPI (confirmed directly — international
+   * customers especially), and name alone is too weak a key for a
+   * periodic authoritative roster feed (two physicians can share a
+   * name; a spelling variance can silently fork one physician into
+   * two records). NPI/structured-name matching (findOrCreateByNpi/
+   * findOrCreateByStructuredName) still resolves the very FIRST sync
+   * of a physician never seen before — this pair is what makes every
+   * sync after that unambiguous regardless of NPI status. Both
+   * optional and additive: a physician entered manually, or synced
+   * before this field existed, simply has neither set.
+   */
+  sourceSystem?: string;
+  sourceRecordId?: string;
 }
 
 export interface IPhysicianService {
@@ -62,7 +81,7 @@ export interface IPhysicianService {
    *  method: exact-match by parsed name, case-insensitive: if found,
    *  merges clientId into its clientIds if not already present; if not
    *  found, auto-creates an 'Unverified' record, same posture as
-   *  Client.findOrCreateByAssigningAuthority / SpecimenCategory.findOrCreateByName —
+   *  Client.findOrCreateByAssigningAuthority / Department.findOrCreateByName —
    *  never blocks case creation on an unrecognized provider. */
   findOrCreateByName(name: string, clientId?: string): Promise<ServiceResult<Physician>>;
   add(physician: Omit<Physician, 'id'>): Promise<ServiceResult<Physician>>;

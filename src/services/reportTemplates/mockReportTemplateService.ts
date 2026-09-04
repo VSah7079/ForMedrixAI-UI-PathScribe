@@ -73,7 +73,7 @@ const reportHeaderSection = (): SectionNode => section(
     { id: 'hdr-accession', type: 'text-field', label: 'Accession',          bindingKey: 'case.accession',        colSpan: 4,  required: true,  hideIfEmpty: false, fhirExport: true  },
     { id: 'hdr-received',  type: 'date',       label: 'Date Received',      bindingKey: 'case.receivedDate',     colSpan: 4,  required: false, hideIfEmpty: false, fhirExport: false, format: 'date' },
     { id: 'hdr-clinician', type: 'text-field', label: 'Requesting Clinician', bindingKey: 'case.requestingProvider', colSpan: 6, required: false, hideIfEmpty: false, fhirExport: false },
-    { id: 'hdr-facility',  type: 'text-field', label: 'Submitting Facility', bindingKey: 'case.clientName',      colSpan: 6,  required: false, hideIfEmpty: false, fhirExport: false },
+    { id: 'hdr-facility',  type: 'text-field', label: 'Submitting Facility', bindingKey: 'case.facilityName',    colSpan: 6,  required: false, hideIfEmpty: false, fhirExport: false },
   ]
 );
 

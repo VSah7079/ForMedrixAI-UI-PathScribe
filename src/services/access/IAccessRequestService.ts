@@ -8,7 +8,7 @@ export interface IAccessRequestService {
 
   /** Every real request this user has ever made, any status — used to
    *  show "you already asked for this" instead of letting a user file
-   *  a genuinely duplicate request for the same pool/client. */
+   *  a genuinely duplicate request for the same pool/facility. */
   getAllForUser(userId: ID): Promise<ServiceResult<AccessRequest[]>>;
 
   /** Every real request, any status — used for the real turnaround-

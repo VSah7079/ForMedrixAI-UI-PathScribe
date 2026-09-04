@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Real, shared helper for the "duplicate this entry, edit it slightly,
 // save as new" pattern used across PathScribe's config dictionaries
-// (Stain Types, Sectioning Protocols, Physicians, Specimen Categories,
+// (Stain Types, Sectioning Protocols, Physicians, Departments,
 // and others following the same shape). Confirmed directly before
 // building this: every dictionary's own add() method already takes
 // Omit<T, 'id' | ...system fields> — never a raw T — so the real,

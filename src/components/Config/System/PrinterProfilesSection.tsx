@@ -11,7 +11,8 @@
 import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
 import { printerProfileService } from '../../../services';
-import type { PrinterProfile, PrinterVendor, PrinterBridgeType } from '../../../services';
+import type { PrinterProfile, PrinterVendor, PrinterBridgeType, Facility } from '../../../services';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
 type Draft = Omit<PrinterProfile, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -35,26 +36,29 @@ const BRIDGE_LABELS: Record<PrinterBridgeType, string> = {
   os_print_dialog: "OS Print Dialog (browser's own print queue)",
 };
 
-const emptyDraft = (): Draft => ({
+const emptyDraft = (defaultFacilityId?: string): Draft => ({
   printerId: '', model: '', dpi: 300, supportsDataMatrix: true, supportsGS1: true,
   zplVersion: '', maxPrintDensity: 300, moduleSize: 4, vendor: 'ZEBRA_ZPL', bridgeType: 'os_print_dialog',
-  ipAddress: '', port: 9100, active: true,
+  ipAddress: '', port: 9100, facilityId: defaultFacilityId ?? '', active: true,
 });
 
 interface EditorModalProps {
   mode: 'add' | 'edit';
   entry?: PrinterProfile;
+  labs: Facility[];
+  defaultFacilityId?: string;
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, onSave, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFacilityId, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(entry ? {
     printerId: entry.printerId, model: entry.model, dpi: entry.dpi,
     supportsDataMatrix: entry.supportsDataMatrix, supportsGS1: entry.supportsGS1,
     zplVersion: entry.zplVersion, maxPrintDensity: entry.maxPrintDensity, moduleSize: entry.moduleSize,
-    vendor: entry.vendor, bridgeType: entry.bridgeType, ipAddress: entry.ipAddress ?? '', port: entry.port, active: entry.active,
-  } : emptyDraft());
+    vendor: entry.vendor, bridgeType: entry.bridgeType, ipAddress: entry.ipAddress ?? '', port: entry.port,
+    facilityId: entry.facilityId ?? '', active: entry.active,
+  } : emptyDraft(defaultFacilityId));
 
   const set = <K extends keyof Draft>(field: K, value: Draft[K]) => setDraft(prev => ({ ...prev, [field]: value }));
   const canSave = draft.printerId.trim().length > 0 && draft.model.trim().length > 0;
@@ -96,6 +100,17 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, onSave, onClose 
               </label>
               <select className="ps-conf-select" value={draft.bridgeType} onChange={e => set('bridgeType', e.target.value as PrinterBridgeType)}>
                 {(Object.keys(BRIDGE_LABELS) as PrinterBridgeType[]).map(b => <option key={b} value={b}>{BRIDGE_LABELS[b]}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="ps-conf-form-row">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" title="A real, shared network-pool printer reachable from more than one facility's own benches has no single owner — leave this on Global for that case.">
+                Facility
+              </label>
+              <select className="ps-conf-select" value={draft.facilityId ?? ''} onChange={e => set('facilityId', e.target.value || undefined)}>
+                <option value="">— Global (shared across facilities) —</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           </div>
@@ -163,12 +178,27 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, onSave, onClose 
   );
 };
 
-const PrinterProfilesSection: React.FC = () => {
+const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ selectedFacilityId }) => {
   const [profiles, setProfiles] = useState<PrinterProfile[]>([]);
+  const [labs, setLabs] = useState<Facility[]>([]);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: PrinterProfile } | null>(null);
 
   const loadAll = () => { printerProfileService.getAll().then(res => { if (res.ok) setProfiles(res.data); }); };
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); getActivePerformingLabs().then(setLabs); }, []);
+
+  // Real, per direct guidance (group-level Facility Selector): when a
+  // facility is chosen at the top of the Workstation & Hardware group,
+  // this list narrows to that facility's own printers PLUS any real,
+  // Global (shared network-pool) profile — a Global printer is
+  // reachable from every facility's own benches by definition, so it
+  // stays visible regardless of which facility is selected, same
+  // most-specific-wins-but-Global-always-applies convention used
+  // throughout this app's other lab-scoped dictionaries.
+  const filteredProfiles = selectedFacilityId
+    ? profiles.filter(p => !p.facilityId || p.facilityId === selectedFacilityId)
+    : profiles;
+
+  const facilityName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
 
   const handleSave = (draft: Draft) => {
     const promise = modal?.mode === 'edit' && modal.entry
@@ -202,10 +232,10 @@ const PrinterProfilesSection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
-              <tr>{['Printer ID', 'Model', 'Vendor', 'Bridge', 'DPI', 'GS1 / DataMatrix', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+              <tr>{['Printer ID', 'Model', 'Vendor', 'Bridge', 'Facility', 'DPI', 'GS1 / DataMatrix', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {profiles.map(p => (
+              {filteredProfiles.map(p => (
                 <tr key={p.id} className="ps-conf-tr">
                   <td className="ps-conf-td">
                     <div className="ps-conf-identity-name">{p.printerId}</div>
@@ -214,6 +244,7 @@ const PrinterProfilesSection: React.FC = () => {
                   <td className="ps-conf-td">{p.model}</td>
                   <td className="ps-conf-td">{VENDOR_LABELS[p.vendor]}</td>
                   <td className="ps-conf-td">{BRIDGE_LABELS[p.bridgeType]}</td>
+                  <td className="ps-conf-td">{facilityName(p.facilityId)}</td>
                   <td className="ps-conf-td">{p.dpi}</td>
                   <td className="ps-conf-td">{p.supportsGS1 && p.supportsDataMatrix ? '✓ Both' : p.supportsDataMatrix ? 'DataMatrix only' : p.supportsGS1 ? 'GS1 only' : '—'}</td>
                   <td className="ps-conf-td">
@@ -228,13 +259,13 @@ const PrinterProfilesSection: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {profiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={8}>No printer profiles yet.</td></tr>}
+              {filteredProfiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={9}>No printer profiles {selectedFacilityId ? 'for this facility' : 'yet'}.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {modal && <EditorModal mode={modal.mode} entry={modal.entry} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <EditorModal mode={modal.mode} entry={modal.entry} labs={labs} defaultFacilityId={selectedFacilityId} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };

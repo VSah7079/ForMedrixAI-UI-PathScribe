@@ -30,6 +30,21 @@ export interface ConfigSearchEntry {
   tabId: ConfigTabId;
   tabLabel: string;
   confidence: 'verified' | 'placeholder';
+  /** Real, per direct report ("the top level search in config found the
+   *  entry, but when clicked on, it did not go to the setting"): v1
+   *  scope (see ConfigSearchBar.tsx's own former header comment) only
+   *  ever switched the top-level tab, never the specific sub-section
+   *  within it — for a tab with many sections (System has 30+), that
+   *  usually landed nowhere near the actual setting searched for.
+   *  Optional, System-tab-only for now: the exact SystemSection id
+   *  (Config/System/index.tsx's own type) this entry corresponds to,
+   *  reusing the same real PATHSCRIBE_SYSTEM_NAVIGATE event
+   *  AppShell.tsx's own config-link chat messages already dispatch —
+   *  not a new mechanism. Left undefined for entries without a
+   *  confirmed, unambiguous section (e.g. 'sys-jurisdiction'/'sys-info'
+   *  aren't real SystemSection sidebar items at all) rather than
+   *  guessed. */
+  section?: string;
 }
 
 export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
@@ -60,42 +75,60 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
     synonyms: ['voice recognition', 'voice commands ai'] },
 
   // ── System tab ─────────────────────────────────────────────────────────────
-  { id: 'sys-lis-enabled', label: 'LIS Integration Enabled', tabId: 'system', tabLabel: 'System', confidence: 'verified',
-    description: 'Master switch for HL7/FHIR integration. Enable only when the endpoint is configured and tested.',
-    synonyms: ['hl7', 'fhir', 'master switch', 'lis integration'] },
-  { id: 'sys-lis-endpoint', label: 'LIS Endpoint URL', tabId: 'system', tabLabel: 'System', confidence: 'verified',
-    description: 'The HL7 or FHIR endpoint for PathScribe outbound synoptic delivery.',
-    synonyms: ['hl7 endpoint', 'fhir endpoint'] },
-  { id: 'sys-lis-owns-status', label: 'LIS Owns Case Statuses', tabId: 'system', tabLabel: 'System', confidence: 'verified',
-    description: 'Case status is read-only in PathScribe — the LIS is authoritative. Turn off only in Standalone mode.',
-    synonyms: ['case status authority', 'standalone mode'] },
-  { id: 'sys-post-final', label: 'Allow Post-Final Actions', tabId: 'system', tabLabel: 'System', confidence: 'verified',
-    description: 'Allows addenda and amendments after sign-out.',
-    synonyms: ['addenda', 'amendments', 'post-final'] },
+  // Real, per direct follow-up ("did we work on this yet? Per-facility
+  // Specimen Deficiencies" → the config search bug this surfaced): five
+  // entries removed here — LIS Integration Enabled/Endpoint/Owns Case
+  // Statuses, Allow Post-Final Actions, and Identifier Formats — all
+  // pointed at screens (LISSection.tsx, IdentifierFormatsSection.tsx)
+  // confirmed to be genuinely dead: a prior session's own real
+  // Facility-level migration had already replaced the global
+  // SystemConfig fields these screens edited, but never finished
+  // deleting the screens themselves. The real replacements now live
+  // inside FacilityEditorModal.tsx's own "LIS Integration" tab and
+  // Facility.identifierFormats — both edited per-facility from the
+  // Facility Configuration screen, not indexed separately here (this
+  // pass is deliberately scoped to the confirmed-stale removals plus
+  // the one section directly asked about below, not a full rebuild of
+  // this index against the current nav).
+  // No `section` here — confirmed 'jurisdiction' isn't a real
+  // SystemSection sidebar item (Config/System/index.tsx's own type
+  // union has no such member); wherever this setting actually lives,
+  // it wasn't traced as part of this pass. Tab-level navigation only,
+  // same limitation this whole index used to have everywhere.
   { id: 'sys-jurisdiction', label: 'Jurisdiction', tabId: 'system', tabLabel: 'System', confidence: 'verified',
     description: 'Sets the SNOMED CT release and ICD variant for the lab\'s region (US, CA, GB, IE).',
     synonyms: ['snomed', 'icd', 'cap', 'rcpath', 'region'] },
-  { id: 'sys-identifier-formats', label: 'Identifier Formats', tabId: 'system', tabLabel: 'System', confidence: 'verified',
-    description: 'Regex patterns for accession number and MRN formats, with live testing.',
-    synonyms: ['accession number', 'mrn', 'regex pattern'] },
-  { id: 'sys-specimens', label: 'Specimens', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  { id: 'sys-specimens', label: 'Specimens', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'specimens',
     description: 'The specimen dictionary that drives autocomplete in Case Search and case creation.',
     synonyms: ['specimen dictionary', 'specimen types'] },
-  { id: 'sys-subspecialties', label: 'Subspecialties', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  { id: 'sys-subspecialties', label: 'Subspecialties', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'subspecialties',
     description: 'Subspecialty pools for the delegation workflow.',
     synonyms: ['subspecialty pools', 'delegation routing'] },
-  { id: 'sys-terminology', label: 'Terminology Services', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  { id: 'sys-terminology', label: 'Terminology Services', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'terminology',
     description: 'Connection status for SNOMED CT, UMLS, and other terminology services (Connected/Degraded/Offline).',
     synonyms: ['snomed ct', 'umls', 'terminology status'] },
-  { id: 'sys-physicians', label: 'Physician Directory', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  { id: 'sys-physicians', label: 'Physician Directory', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'physicians',
     description: 'External referring/ordering physician records used for report routing.',
     synonyms: ['physicians', 'referring doctor', 'ordering physician'] },
-  { id: 'sys-flags', label: 'Flag Management', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  { id: 'sys-flags', label: 'Flag Management', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'flags',
     description: 'Case and specimen flags — visual markers for clinical context or required actions.',
     synonyms: ['case flags', 'specimen flags', 'severity level'] },
-  { id: 'sys-delegation-types', label: 'Delegation Types', tabId: 'system', tabLabel: 'System', confidence: 'verified',
+  // Real, per direct follow-up ("did we work on this yet? Per-facility
+  // Specimen Deficiencies"): this section was confirmed real, built,
+  // and live (Config → System → Integrations group → Specimen
+  // Deficiencies) but had zero index entry at all — added here now.
+  // tabId 'system' since that's this section's own, real, confirmed
+  // home (Config/Integrations/index.tsx, a genuine duplicate at the
+  // time this was first written, has since been deleted entirely —
+  // see components/Config/Integrations/README.md).
+  { id: 'sys-deficiencies', label: 'Specimen Deficiencies', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'deficiencies',
+    description: 'Deficiency Type and Resolution Type dictionaries for the Specimen/Requisition Deficiency workflow, with real per-performing-lab scoping.',
+    synonyms: ['deficiency type', 'resolution type', 'specimen deficiency', 'requisition deficiency', 'could not match specimen'] },
+  { id: 'sys-delegation-types', label: 'Delegation Types', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'delegation_types',
     description: 'Labels for case delegation (Peer Review, Second Opinion, Subspecialty Referral, MDT Discussion).',
     synonyms: ['peer review', 'second opinion', 'mdt discussion'] },
+  // No `section` here either, same reasoning as 'sys-jurisdiction'
+  // above — 'info' isn't a real SystemSection sidebar item.
   { id: 'sys-info', label: 'System Information', tabId: 'system', tabLabel: 'System', confidence: 'verified',
     description: 'Application version, AI provider/model, and API connectivity status for support diagnostics.',
     synonyms: ['build version', 'support report', 'app version'] },

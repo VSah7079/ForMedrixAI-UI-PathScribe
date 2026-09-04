@@ -15,6 +15,35 @@
   your input on whether `RequestReviewModal.tsx`'s reviewer pool is meant
   to be the same directory or a deliberately separate one.
 
+  **Real, per direct UI-review follow-up ("Fix the root" — background
+  inconsistency across pages): the root `<div className="ps-app-root"
+  style={{...}}>` had an inline style silently overriding its own,
+  already-correct, already-existing `.ps-app-root` CSS class.** Found
+  while investigating why several pages' own background colors
+  (`var(--ps-navy-base)`, `var(--ps-bg)`) didn't visually match
+  Configuration/Quality Assurance's real, plain background — the CSS
+  class already defined the right value (`var(--ps-navy-base)`,
+  `#0b1120`) but this inline style silently overrode it with a
+  different, hardcoded `#020617`, so those other pages' own attempts
+  to *match* the app's real background were matching the CSS class's
+  intended value, not what the inline style actually rendered.
+  Same inline style also overrode `color` (`#f1f5f9` vs. the CSS
+  class's own `var(--ps-text-primary)`, `#e2e8f0`) and, most
+  consequentially, `font-family` — the inline version dropped
+  `'Inter'` from the stack entirely, meaning every AppShell-wrapped
+  page had been silently rendering in system fonts instead of this
+  app's own intended typeface. Inline style removed entirely; the
+  real CSS class (which already had every property correctly,
+  including `position`/`width`/`height`, absent from the inline style
+  altogether) now genuinely takes effect. Five other pages' own
+  competing background overrides/images were also removed in the same
+  pass, now correctly falling through to this single, real source —
+  see `pages/README.md`'s own entries for `SearchPage.tsx`/
+  `AuditLogPage.tsx`, and `pages/WorklistPage/README.md` for
+  `WorklistPage.tsx`. `Home.tsx` deliberately kept its own, distinct
+  background — not part of this consistency pass, per explicit
+  direction.
+
   **Complete — messaging drawer inline-style extraction + real mobile
   support (Aug 2026).** Requested directly: the messaging feature
   ("Messages" in the nav) was flagged as generally useful but genuinely

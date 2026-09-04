@@ -7,7 +7,8 @@
 // still needing the refactor — this is that refactor.
 // ─────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { physicianService, facilityService } from '../../../services';
 import type { Physician } from '../../../services';
@@ -66,24 +67,24 @@ interface PhysicianModalProps {
    *  (see PhysiciansSection's own handleClonePhysician), so there's no
    *  name left in `physician` to read for the header text. */
   cloneSourceName?: string;
-  clients: { id: string; name: string }[];
+  facilities: { id: string; name: string }[];
   existingEntries: Physician[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneSourceName, clients, existingEntries, onSave, onClose }) => {
+const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneSourceName, facilities, existingEntries, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(
     physician
       ? { ...physician, active: physician.status === 'Active' }
       : emptyDraft
   );
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
-  const [clientSearch, setClientSearch] = useState('');
+  const [facilitySearch, setFacilitySearch] = useState('');
 
   const set = (k: keyof Draft, v: any) => { setDraft(prev => ({ ...prev, [k]: v })); setErrors(prev => ({ ...prev, [k]: '' })); };
 
-  const toggleClient = (id: string) => {
+  const toggleFacility = (id: string) => {
     setDraft(prev => ({
       ...prev,
       clientIds: prev.clientIds.includes(id) ? prev.clientIds.filter(x => x !== id) : [...prev.clientIds, id],
@@ -129,8 +130,8 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
     onSave(draft);
   };
 
-  const filteredClients = clients.filter(c =>
-    !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase())
+  const filteredFacilities = facilities.filter(c =>
+    !facilitySearch || c.name.toLowerCase().includes(facilitySearch.toLowerCase())
   );
 
   return (
@@ -239,7 +240,7 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
             <Toggle value={draft.active} onChange={v => set('active', v)} />
           </div>
 
-          {/* Client Affiliations — confirmed, not assumed (PS-75): this
+          {/* Facility Affiliations — confirmed, not assumed (PS-75): this
               existing clientIds[] multi-facility model is the right
               mechanism for physicians and is deliberately NOT the same
               thing as ContainerTypesSection/DelegationTypeSection's own
@@ -257,16 +258,16 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
             <label className="ps-conf-label">Facility Affiliations</label>
             <div className="ps-conf-picker">
               <div className="ps-conf-picker-search-wrap">
-                <input type="text" placeholder="Search facilities..." value={clientSearch}
-                  onChange={e => setClientSearch(e.target.value)} className="ps-conf-picker-search" />
+                <input type="text" placeholder="Search facilities..." value={facilitySearch}
+                  onChange={e => setFacilitySearch(e.target.value)} className="ps-conf-picker-search" />
               </div>
               <div className="ps-conf-picker-list">
-                {filteredClients.length === 0
+                {filteredFacilities.length === 0
                   ? <div className="ps-conf-picker-empty">No facilities match.</div>
-                  : filteredClients.map(c => {
+                  : filteredFacilities.map(c => {
                       const checked = draft.clientIds.includes(c.id);
                       return (
-                        <div key={c.id} onClick={() => toggleClient(c.id)}
+                        <div key={c.id} onClick={() => toggleFacility(c.id)}
                           className={`ps-conf-picker-item ${checked ? 'ps-conf-picker-item--checked' : ''}`}>
                           <div className={`ps-conf-picker-checkbox ${checked ? 'ps-conf-picker-checkbox--checked' : ''}`}>
                             {checked && <span className="ps-conf-picker-check-icon">✓</span>}
@@ -281,7 +282,7 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
             {draft.clientIds.length > 0 && (
               <div className="ps-conf-badge-list ps-conf-picker-selected">
                 {draft.clientIds.map(id => {
-                  const c = clients.find(x => x.id === id);
+                  const c = facilities.find(x => x.id === id);
                   return c ? <span key={id} className="ps-conf-badge">{c.name}</span> : null;
                 })}
               </div>
@@ -304,11 +305,22 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
 // ─── Main PhysiciansSection ───────────────────────────────────────────────────
 const PhysiciansSection: React.FC = () => {
   const [physicians,   setPhysicians]   = useState<Physician[]>([]);
-  const [clients,      setClients]      = useState<{ id: string; name: string }[]>([]);
+  const [facilities,   setFacilities]   = useState<{ id: string; name: string }[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive' | 'Unverified'>('All');
   const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; physician?: Physician; cloneSourceName?: string } | null>(null);
+
+  // ── Spreadsheet import/export — same two-step preview-then-apply
+  // shape as Stain Dictionary/Specimen Dictionary, matched rather than
+  // reinvented. Match key preference: NPI first (a real, portable,
+  // external identifier a hospital's own roster will actually carry),
+  // then physicianCode (PathScribe's own internal id, only meaningful
+  // for a re-export/re-import round trip) — either matching an
+  // existing physician is treated as an update, never a duplicate.
+  const physImportFileInputRef = useRef<HTMLInputElement>(null);
+  type PhysImportRow = Omit<Physician, 'id'> & { existingId?: string; codeWasGenerated?: boolean };
+  const [physImportPreview, setPhysImportPreview] = useState<PhysImportRow[] | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -316,7 +328,7 @@ const PhysiciansSection: React.FC = () => {
       facilityService.getAll(),
     ]).then(([physRes, clientRes]) => {
       if (physRes.ok)   setPhysicians(physRes.data);
-      if (clientRes.ok) setClients(clientRes.data.map(c => ({ id: c.id, name: c.name })));
+      if (clientRes.ok) setFacilities(clientRes.data.map(c => ({ id: c.id, name: c.name })));
       setLoading(false);
     });
   }, []);
@@ -370,6 +382,108 @@ const PhysiciansSection: React.FC = () => {
     if (res.ok) setPhysicians(prev => prev.map(p => p.id === id ? res.data : p));
   };
 
+  const handleDownloadPhysicians = () => {
+    const rows = physicians.map(p => ({
+      NamePrefix: p.namePrefix ?? '', GivenNames: p.givenNames, FamilyNames: p.familyNames, NameSuffix: p.nameSuffix ?? '',
+      PhysicianCode: p.physicianCode, NPI: p.npi, Specialty: p.specialty,
+      Phone: p.phone, Fax: p.fax, Email: p.email, PreferredContact: p.preferredContact,
+      Facilities: p.clientIds.map(id => facilities.find(c => c.id === id)?.name ?? id).join('; '),
+      Status: p.status,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Physicians');
+    XLSX.writeFile(wb, 'Physicians.xlsx');
+  };
+
+  // Next sequential PHY-#### code, matching the seed data's own
+  // convention — only ever used for a genuinely new row with no
+  // PhysicianCode column value and no NPI match, so a real customer
+  // roster (which won't have PathScribe's own internal codes) doesn't
+  // need to invent one just to satisfy the required+unique field.
+  const nextPhysicianCode = (taken: Set<string>): string => {
+    let max = 0;
+    for (const p of physicians) {
+      const m = /^PHY-(\d+)$/i.exec(p.physicianCode);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    let n = max + 1;
+    while (taken.has(`PHY-${String(n).padStart(4, '0')}`)) n++;
+    const code = `PHY-${String(n).padStart(4, '0')}`;
+    taken.add(code);
+    return code;
+  };
+
+  const handlePhysicianFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const data = evt.target?.result;
+      if (!data) return;
+      const workbook = XLSX.read(data, { type: 'binary' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+      const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
+      const takenCodes = new Set(physicians.map(p => p.physicianCode));
+
+      const preview: PhysImportRow[] = rows.map(row => {
+        const givenNames  = get(row, 'GivenNames', 'Given Names', 'FirstName', 'First Name');
+        const familyNames = get(row, 'FamilyNames', 'Family Names', 'LastName', 'Last Name');
+        const npi = get(row, 'NPI', 'npi');
+        const codeInSheet = get(row, 'PhysicianCode', 'Physician Code');
+        const existing = (npi && physicians.find(p => p.npi === npi))
+          ?? (codeInSheet && physicians.find(p => p.physicianCode.toLowerCase() === codeInSheet.toLowerCase()));
+
+        let physicianCode = codeInSheet || existing?.physicianCode || '';
+        let codeWasGenerated = false;
+        if (!physicianCode) { physicianCode = nextPhysicianCode(takenCodes); codeWasGenerated = true; }
+        else takenCodes.add(physicianCode);
+
+        const facilitiesText = get(row, 'Facilities', 'Facility', 'Clients');
+        const clientIds = facilitiesText
+          ? facilitiesText.split(/[;,]/).map(n => n.trim()).filter(Boolean)
+            .map(n => facilities.find(c => c.name.toLowerCase() === n.toLowerCase())?.id)
+            .filter((id): id is string => Boolean(id))
+          : (existing?.clientIds ?? []);
+
+        const statusText = get(row, 'Status', 'status');
+        const status = (['Active', 'Inactive', 'Unverified'] as const).find(s => s.toLowerCase() === statusText.toLowerCase())
+          ?? existing?.status ?? 'Active';
+        const preferredContactText = get(row, 'PreferredContact', 'Preferred Contact');
+        const preferredContact = (['Email', 'Fax', 'Phone'] as const).find(c => c.toLowerCase() === preferredContactText.toLowerCase())
+          ?? existing?.preferredContact ?? 'Email';
+
+        return {
+          namePrefix: get(row, 'NamePrefix', 'Name Prefix', 'Prefix') || existing?.namePrefix || 'Dr.',
+          givenNames: givenNames || existing?.givenNames || '',
+          familyNames: familyNames || existing?.familyNames || '',
+          preferredName: get(row, 'PreferredName', 'Preferred Name') || existing?.preferredName,
+          nameSuffix: get(row, 'NameSuffix', 'Name Suffix', 'Suffix') || existing?.nameSuffix,
+          firstName: givenNames || existing?.firstName || '', lastName: familyNames || existing?.lastName || '',
+          physicianCode, npi: npi || existing?.npi || '',
+          specialty: get(row, 'Specialty', 'specialty') || existing?.specialty || '',
+          phone: get(row, 'Phone', 'phone') || existing?.phone || '',
+          fax: get(row, 'Fax', 'fax') || existing?.fax || '',
+          email: get(row, 'Email', 'email') || existing?.email || '',
+          preferredContact, clientIds, status,
+          existingId: existing?.id, codeWasGenerated,
+        };
+      }).filter(r => r.givenNames || r.familyNames);
+
+      setPhysImportPreview(preview);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleApplyPhysicianImport = async () => {
+    if (!physImportPreview) return;
+    await Promise.all(physImportPreview.map(({ existingId, codeWasGenerated, ...draft }) =>
+      existingId ? physicianService.update(existingId, draft) : physicianService.add({ ...draft, autoCreated: false })
+    ));
+    setPhysImportPreview(null);
+    physicianService.getAll().then(res => { if (res.ok) setPhysicians(res.data); });
+  };
+
   if (loading) return <div className="ps-conf-loading">Loading physicians...</div>;
 
   return (
@@ -381,6 +495,23 @@ const PhysiciansSection: React.FC = () => {
         </div>
         <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Physician</button>
       </div>
+
+      <div className="ps-conf-form-row">
+        <button className="ps-conf-btn-secondary" onClick={handleDownloadPhysicians}>Export</button>
+        <button className="ps-conf-btn-secondary" onClick={() => physImportFileInputRef.current?.click()}>Import Spreadsheet</button>
+        <input ref={physImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handlePhysicianFileUpload(e.target.files[0]); e.target.value = ''; }} />
+      </div>
+
+      {physImportPreview && (
+        <div className="ps-conf-import-preview">
+          <p>
+            {physImportPreview.filter(r => r.existingId).length} to update, {physImportPreview.filter(r => !r.existingId).length} new
+            {physImportPreview.some(r => r.codeWasGenerated) && ` (${physImportPreview.filter(r => r.codeWasGenerated).length} assigned a new Physician Code — none was given in the sheet)`}.
+          </p>
+          <button className="ps-conf-btn-primary" onClick={handleApplyPhysicianImport}>Apply Import</button>
+          <button className="ps-conf-btn-row" onClick={() => setPhysImportPreview(null)}>Cancel</button>
+        </div>
+      )}
 
       <div className="ps-conf-form-row">
         <input type="text" placeholder="Search by name, code, NPI, or specialty..." value={search} onChange={e => setSearch(e.target.value)}
@@ -398,7 +529,7 @@ const PhysiciansSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Physician', 'Specialty', 'Contact', 'Clients', 'Status', 'Actions'].map(h => (
+                {['Physician', 'Specialty', 'Contact', 'Facilities', 'Status', 'Actions'].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}
               </tr>
@@ -429,7 +560,7 @@ const PhysiciansSection: React.FC = () => {
                       ? <span className="ps-conf-badge-none">None</span>
                       : <div className="ps-conf-badge-list">
                           {p.clientIds.map(id => {
-                            const c = clients.find(x => x.id === id);
+                            const c = facilities.find(x => x.id === id);
                             return c ? <span key={id} className="ps-conf-badge">{c.name}</span> : null;
                           })}
                         </div>
@@ -470,7 +601,7 @@ const PhysiciansSection: React.FC = () => {
           mode={modal.mode}
           physician={modal.physician}
           cloneSourceName={modal.cloneSourceName}
-          clients={clients}
+          facilities={facilities}
           existingEntries={physicians}
           onSave={handleSave}
           onClose={() => setModal(null)}

@@ -3,7 +3,7 @@
 // Admin UI for template routing rule management and testing.
 //
 // Three sections:
-//   1. Client Overrides    — specific client always gets a specific template
+//   1. Facility Overrides  — specific facility always gets a specific template
 //   2. Physician Preferences — specific physician preference
 //   3. Test Panel          — enter case details, see which template resolves
 //
@@ -14,15 +14,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import '@/pathscribe.css';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
-import { mockRoutingRuleService }       from '@/services/routingRules/mockRoutingRuleService';
+import { mockRoutingRuleService, buildRoutingRuleMap }       from '@/services/routingRules/mockRoutingRuleService';
 import { traceReportTemplateResolution } from '@/services/reportTemplates/TemplateRoutingService';
 import { mockReportTemplateService }    from '@/services/reportTemplates/mockReportTemplateService';
 import { mockFacilityService }            from '@/services/facilities/mockFacilityService';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
+import { getActivePerformingLabs } from '@/utils/performingLabs';
 import { mockPhysicianService }         from '@/services/physicians/mockPhysicianService';
 import { listTemplates as listSynopticProtocols } from '@/services/templates/templateService';
 import type { RoutingRule, RoutingRuleType } from '@/services/routingRules/IRoutingRuleService';
 import type { ReportTemplate }          from '@/types/reportPart';
-import type { Facility as Client } from '@/services/facilities/IFacilityService';
+import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Physician }               from '@/services/physicians/IPhysicianService';
 
 // ── Add/Edit Rule Modal ───────────────────────────────────────────────────────
@@ -31,19 +33,21 @@ const RuleModal: React.FC<{
   type:       RoutingRuleType;
   rule?:      RoutingRule;
   templates:  ReportTemplate[];
-  clients:    Client[];
+  facilities: Facility[];
   physicians: Physician[];
   protocols:  { id: string; name: string; status: string }[];
+  labs:       Facility[];
   onSave:     (rule: Partial<RoutingRule>) => void;
   onClose:    () => void;
-}> = ({ type, rule, templates, clients, physicians, protocols, onSave, onClose }) => {
+}> = ({ type, rule, templates, facilities, physicians, protocols, labs, onSave, onClose }) => {
   const [entityId,    setEntityId]    = useState(rule?.entityId    ?? '');
   const [templateId,  setTemplateId]  = useState(rule?.templateId  ?? '');
   const [note,        setNote]        = useState(rule?.note        ?? '');
+  const [performingLabFacilityId, setPerformingLabFacilityId] = useState(rule?.performingLabFacilityId ?? '');
 
-  const entityLabel = type === 'client' ? 'Client' : type === 'physician' ? 'Physician' : 'Protocol';
+  const entityLabel = type === 'client' ? 'Facility' : type === 'physician' ? 'Physician' : 'Protocol';
   const entityList  = type === 'client'
-    ? clients.map(c => ({ id: c.id as string, name: `${c.name} (${c.assigningAuthority})` }))
+    ? facilities.map(c => ({ id: c.id as string, name: `${c.name} (${c.assigningAuthority})` }))
     : type === 'physician'
     ? physicians.map(p => ({ id: p.id as string, name: `${p.lastName}, ${p.firstName} — ${p.specialty}` }))
     : protocols.map(p => ({ id: p.id, name: `${p.name}${p.status !== 'published' ? ` (${p.status})` : ''}` }));
@@ -104,6 +108,22 @@ const RuleModal: React.FC<{
             />
           </div>
 
+          <div>
+            <div className="ps-conf-label">Performing Lab</div>
+            <select
+              className="ps-conf-select"
+              aria-label="Performing Lab"
+              value={performingLabFacilityId}
+              onChange={e => setPerformingLabFacilityId(e.target.value)}
+            >
+              <option value="">— Global (every performing lab) —</option>
+              {labs.map(l => <option key={l.id as string} value={l.id as string}>{l.name}</option>)}
+            </select>
+            <p className="ps-rr-lab-hint">
+              A lab-specific rule is checked before a Global rule for that lab's own cases.
+            </p>
+          </div>
+
           {entityId && templateId && (
             <div className="ps-rr-preview">
               <span className="ps-rr-preview-arrow">→</span>
@@ -123,6 +143,7 @@ const RuleModal: React.FC<{
               type, entityId, templateId, note,
               entityName:   selectedEntity?.name ?? entityId,
               templateName: selectedTemplate?.name ?? templateId,
+              performingLabFacilityId: performingLabFacilityId || undefined,
               active: true,
             })}
           >
@@ -138,11 +159,15 @@ const RuleModal: React.FC<{
 
 const RuleRow: React.FC<{
   rule:      RoutingRule;
+  labs:      Facility[];
   onEdit:    () => void;
   onDelete:  () => void;
   onToggle:  () => void;
-}> = ({ rule, onEdit, onDelete, onToggle }) => {
+}> = ({ rule, labs, onEdit, onDelete, onToggle }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const labName = rule.performingLabFacilityId
+    ? (labs.find(l => l.id === rule.performingLabFacilityId)?.name ?? rule.performingLabFacilityId)
+    : 'Global';
 
   return (
     <div className={`ps-rr-row${!rule.active ? ' ps-rr-row--inactive' : ''}`}>
@@ -150,6 +175,7 @@ const RuleRow: React.FC<{
         <span className="ps-rr-entity">{rule.entityName}</span>
         <span className="ps-rr-arrow">→</span>
         <span className="ps-rr-template">{rule.templateName}</span>
+        <span className="ps-rr-lab-badge">{labName}</span>
         {rule.note && <span className="ps-rr-note">{rule.note}</span>}
       </div>
       <div className="ps-rr-row-actions">
@@ -179,12 +205,12 @@ const RuleRow: React.FC<{
 
 const TestPanel: React.FC<{
   templates:  ReportTemplate[];
-  clients:    Client[];
+  facilities: Facility[];
   physicians: Physician[];
   rules:      RoutingRule[];
   result:     any;
   onResult:   (r: any) => void;
-}> = ({ templates, clients, physicians, rules, result, onResult }) => {
+}> = ({ templates, facilities, physicians, rules, result, onResult }) => {
   const [synopticId,   setSynopticId]   = useState('');
   const [subspecialty, setSubspecialty] = useState('');
   const [clientId,     setClientId]     = useState('');
@@ -200,22 +226,35 @@ const TestPanel: React.FC<{
   }, []);
 
   const test = () => {
-    // Build dynamic override maps from active rules
-    const clientMap:    Record<string, string> = {};
-    const physicianMap: Record<string, string> = {};
-    const protocolMap:  Record<string, string> = {};
-    rules.filter(r => r.active).forEach(r => {
-      if (r.type === 'client')    clientMap[r.entityId] = r.templateId;
-      if (r.type === 'physician') physicianMap[r.entityId] = r.templateId;
-      if (r.type === 'protocol')  protocolMap[r.entityId] = r.templateId;
-    });
+    // Real, per direct guidance: real Enterprise AND real performing-lab
+    // resolution, same single-facility-lookup reasoning
+    // resolveReportTemplateAsync itself now uses in production — the
+    // Test panel exercises the exact same fallback chain a real case
+    // would, not a simplified stand-in that could drift from it.
+    const selectedFacility = facilities.find(c => c.id === clientId);
+    const enterpriseFacilityId = (selectedFacility && !selectedFacility.isEnterprise && selectedFacility.parentId)
+      ? selectedFacility.parentId
+      : undefined;
+    const performingLabFacilityId = selectedFacility ? resolvePerformingLabFacilityId(selectedFacility) : undefined;
+
+    // Real, per direct guidance ("Routing Rules should also be tied to
+    // a Performing Lab facility"): reuses the exact same
+    // buildRoutingRuleMap most-specific-wins resolution the real
+    // service itself uses (mockRoutingRuleService.ts), against these
+    // not-yet-saved draft `rules`, so a lab-specific rule correctly
+    // wins over a Global one here too — not a second, simplified
+    // implementation that could silently disagree with production.
+    const facilityMap  = buildRoutingRuleMap(rules.filter(r => r.type === 'client'    && r.active), performingLabFacilityId);
+    const physicianMap = buildRoutingRuleMap(rules.filter(r => r.type === 'physician' && r.active), performingLabFacilityId);
+    const protocolMap  = buildRoutingRuleMap(rules.filter(r => r.type === 'protocol'  && r.active), performingLabFacilityId);
 
     const trace = traceReportTemplateResolution({
       synopticTemplateIds:  synopticId.trim() ? [synopticId.trim()] : [],
       subspecialtyId:       subspecialty || undefined,
-      performingClientId:   clientId     || undefined,
+      performingFacilityId: clientId     || undefined,
+      enterpriseFacilityId,
       orderingPhysicianId:  physicianId  || undefined,
-      _clientOverrides:    clientMap,
+      _facilityOverrides:  facilityMap,
       _physicianOverrides: physicianMap,
       _protocolOverrides:  protocolMap,
     } as any);
@@ -225,11 +264,12 @@ const TestPanel: React.FC<{
   };
 
   const PASS_LABELS: Record<string, string> = {
-    'client-override':      'Pass 0 — Client override',
-    'physician-preference': 'Pass 0b — Physician preference',
-    'protocol':              'Pass 1 — Protocol match',
-    'subspecialty':          'Pass 2 — Subspecialty fallback',
-    'gold-standard':         'Pass 3 — Gold standard fallback',
+    'client-override':           'Pass 0 — Facility override',
+    'client-override-enterprise': 'Pass 0a — Enterprise facility override',
+    'physician-preference':      'Pass 0b — Physician preference',
+    'protocol':                   'Pass 1 — Protocol match',
+    'subspecialty':               'Pass 2 — Subspecialty fallback',
+    'gold-standard':              'Pass 3 — Gold standard fallback',
   };
 
   return (
@@ -259,10 +299,10 @@ const TestPanel: React.FC<{
           </select>
         </div>
         <div>
-          <div className="ps-conf-label">Performing Client</div>
-          <select className="ps-conf-select" aria-label="Performing Client" value={clientId} onChange={e => setClientId(e.target.value)}>
+          <div className="ps-conf-label">Performing Facility</div>
+          <select className="ps-conf-select" aria-label="Performing Facility" value={clientId} onChange={e => setClientId(e.target.value)}>
             <option value="">— None —</option>
-            {clients.map(c => <option key={c.id as string} value={c.id as string}>{c.name}</option>)}
+            {facilities.map(c => <option key={c.id as string} value={c.id as string}>{c.name}</option>)}
           </select>
         </div>
         <div>
@@ -303,16 +343,19 @@ const RoutingRulesTab: React.FC = () => {
   const [rules,      setRules]      = useState<RoutingRule[]>([]);
   const [result,     setResult]     = useState<any>(null);
   const [templates,  setTemplates]  = useState<ReportTemplate[]>([]);
-  const [clients,    setClients]    = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [labs,       setLabs]       = useState<Facility[]>([]);
   const [physicians, setPhysicians] = useState<Physician[]>([]);
   const [protocols,  setProtocols]  = useState<{ id: string; name: string; status: string }[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [modal,      setModal]      = useState<{ type: RoutingRuleType; rule?: RoutingRule } | null>(null);
   const { log } = useAuditLog();
 
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [rulesRes, templatesRes, clientsRes, physiciansRes, protocolsRes] = await Promise.all([
+    const [rulesRes, templatesRes, facilitiesRes, physiciansRes, protocolsRes] = await Promise.all([
       mockRoutingRuleService.getAll(),
       mockReportTemplateService.getAll(),
       mockFacilityService.getAll(),
@@ -321,7 +364,7 @@ const RoutingRulesTab: React.FC = () => {
     ]);
     if ((rulesRes as any).ok)      setRules((rulesRes as any).data);
     if ((templatesRes as any).ok)  setTemplates((templatesRes as any).data);
-    if ((clientsRes as any).ok)    setClients((clientsRes as any).data.filter((c: Client) => c.status === 'Active'));
+    if ((facilitiesRes as any).ok) setFacilities((facilitiesRes as any).data.filter((c: Facility) => c.status === 'Active'));
     if ((physiciansRes as any).ok) setPhysicians((physiciansRes as any).data.filter((p: Physician) => p.status === 'Active'));
     setProtocols(protocolsRes as any);
     setLoading(false);
@@ -374,7 +417,7 @@ const RoutingRulesTab: React.FC = () => {
         <div>
           <h2 className="tmpl-list-title">Template Routing Rules</h2>
           <p className="tmpl-list-subtitle">
-            Define which report template is selected for specific clients or physicians.
+            Define which report template is selected for specific facilities or physicians.
             Rules override the default protocol → subspecialty → gold standard chain.
           </p>
         </div>
@@ -387,7 +430,7 @@ const RoutingRulesTab: React.FC = () => {
           <div className="ps-rr-priority">
             <div className="ps-rr-priority-title">Resolution priority</div>
             {[
-              { pass: '0',   key: 'client-override',      label: 'Client override' },
+              { pass: '0',   key: 'client-override',      label: 'Facility override' },
               { pass: '0b',  key: 'physician-preference',  label: 'Physician preference' },
               { pass: '1',   key: 'protocol',              label: 'Protocol match' },
               { pass: '2',   key: 'subspecialty',          label: 'Subspecialty fallback' },
@@ -416,20 +459,20 @@ const RoutingRulesTab: React.FC = () => {
             })}
           </div>
 
-          {/* Client overrides */}
+          {/* Facility overrides */}
           <div className="ps-rr-section">
             <div className="ps-rr-section-header">
-              <span className="ps-rr-section-title">Client Overrides</span>
+              <span className="ps-rr-section-title">Facility Overrides</span>
               <span className="ps-rr-section-pass ps-rr-pass--client-override">Pass 0</span>
               <button className="ps-section-add-btn" onClick={() => setModal({ type: 'client' })}>
-                + Add Client Rule
+                + Add Facility Rule
               </button>
             </div>
             {clientRules.length === 0 ? (
-              <div className="ps-rr-empty">No client overrides defined — routing falls through to protocol matching.</div>
+              <div className="ps-rr-empty">No facility overrides defined — routing falls through to protocol matching.</div>
             ) : clientRules.map(r => (
               <RuleRow
-                key={r.id} rule={r}
+                key={r.id} rule={r} labs={labs}
                 onEdit={() => setModal({ type: 'client', rule: r })}
                 onDelete={() => handleDelete(r.id)}
                 onToggle={() => handleToggle(r)}
@@ -454,7 +497,7 @@ const RoutingRulesTab: React.FC = () => {
               <div className="ps-rr-empty">No admin-defined protocol mappings — routing uses the built-in mapping table only.</div>
             ) : protocolRules.map(r => (
               <RuleRow
-                key={r.id} rule={r}
+                key={r.id} rule={r} labs={labs}
                 onEdit={() => setModal({ type: 'protocol', rule: r })}
                 onDelete={() => handleDelete(r.id)}
                 onToggle={() => handleToggle(r)}
@@ -475,7 +518,7 @@ const RoutingRulesTab: React.FC = () => {
               <div className="ps-rr-empty">No physician preferences defined.</div>
             ) : physicianRules.map(r => (
               <RuleRow
-                key={r.id} rule={r}
+                key={r.id} rule={r} labs={labs}
                 onEdit={() => setModal({ type: 'physician', rule: r })}
                 onDelete={() => handleDelete(r.id)}
                 onToggle={() => handleToggle(r)}
@@ -487,7 +530,7 @@ const RoutingRulesTab: React.FC = () => {
         {/* Test panel */}
         <TestPanel
           templates={templates}
-          clients={clients}
+          facilities={facilities}
           physicians={physicians}
           rules={rules}
           result={result}
@@ -500,9 +543,10 @@ const RoutingRulesTab: React.FC = () => {
           type={modal.type}
           rule={modal.rule}
           templates={templates}
-          clients={clients}
+          facilities={facilities}
           physicians={physicians}
           protocols={protocols}
+          labs={labs}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

@@ -14,8 +14,8 @@
 // averages/rankings alongside those real numbers needs to be an
 // institutional choice, not a default. This is that choice, stored on the
 // real, shared SystemConfig (not a bespoke new service) since it's a
-// simple, single, org-wide boolean, same shape as voiceEnabled or
-// lisIntegrationEnabled already on that same config object.
+// simple, single, org-wide boolean, same shape as voiceEnabled elsewhere
+// on that same config object.
 //
 // Real fix, Pete's own clinical-informatics guidance: added the real
 // facilityTimezone setting - a real, admin-visible way to actually change

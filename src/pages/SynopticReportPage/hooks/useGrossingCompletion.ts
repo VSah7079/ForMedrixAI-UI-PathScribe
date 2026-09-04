@@ -249,7 +249,7 @@ export function useGrossingCompletion({
         },
         specimens,
         availableTemplates,
-        clientId: caseData.order?.clientId,
+        facilityId: caseData.order?.facilityId,
       };
 
       // Persist first — Gross Complete/Update Gross should succeed even if
@@ -435,7 +435,7 @@ export function useGrossingCompletion({
                   };
                 }),
                 availableTemplates: grossingAvailableTemplates,
-                clientId: caseData.order?.clientId,
+                facilityId: caseData.order?.facilityId,
               });
               if (grossingFitResult.warnings.length) {
                 console.warn('[PathScribe] Grossing template fit evaluation warnings:', grossingFitResult.warnings);
@@ -492,7 +492,7 @@ export function useGrossingCompletion({
                   const result = await generateGrossingFieldSuggestionsFromDictation(
                     plainText,
                     [{ specimenId: sp.id, specimenLabel: sp.label, specimenDesc: sp.description, fields: grossingFieldsBySpecimen.get(sp.id) ?? [] }],
-                    caseData.order?.clientId,
+                    caseData.order?.facilityId,
                   );
                   return result;
                 }));
@@ -518,7 +518,7 @@ export function useGrossingCompletion({
                     fields: grossingFieldsBySpecimen.get(sp.id) ?? [],
                   }));
                 suggestionsBySpecimen = await generateGrossingFieldSuggestionsFromDictation(
-                  plainDictatedText, dictationSpecimens, caseData.order?.clientId,
+                  plainDictatedText, dictationSpecimens, caseData.order?.facilityId,
                 );
               }
 

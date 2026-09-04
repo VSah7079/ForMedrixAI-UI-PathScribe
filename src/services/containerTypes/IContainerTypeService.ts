@@ -9,7 +9,7 @@
 //
 // Seeded with 9 real, standard APLIS container classifications as
 // defaults — same pattern as every other dictionary in this app
-// (Specimen Categories, Stain Dictionary): full create/edit/deactivate,
+// (Departments, Stain Dictionary): full create/edit/deactivate,
 // not a fixed list with only description editable. A site's real bench
 // may use containers or terminology beyond the 9 standard defaults, and
 // should be able to add its own rather than being stuck with only what

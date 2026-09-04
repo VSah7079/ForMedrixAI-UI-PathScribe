@@ -10,30 +10,23 @@
 //   Replace each function body with the corresponding fetch() call.
 //   See API_CONTRACT.md Section 10 for full endpoint documentation.
 //
-// Real, deliberate, disclosed limitation added alongside Facility
-// Setup (components/Config/System/FacilitySetupSection.tsx): every
-// function in this file except listOrganisations/getOrganisation/
-// listAllSites/getSiteConfig/updateSiteFacilitySetup is SYNCHRONOUS
-// and reads directly from the static MOCK_ORGANISATIONS seed array,
-// via ORG_BY_ID - confirmed directly before touching this file that
-// getOrganisationByHospitalId alone has 11 real, live call sites
-// elsewhere in this app. Converting every one of those to async to
-// give them a consistent view of live-edited Site data would be a
-// real, large, cross-cutting refactor with meaningful blast radius,
-// not something to take on as a side effect of adding one new admin
-// screen. So: a real edit made through FacilitySetupSection.tsx is
-// genuinely persisted (via mockStorage below) and IS reflected in the
-// four async functions above - but the synchronous helpers
-// (getSiteBySiteCode, getOrganisationByHospitalId,
-// getHospitalIdForOrganisation, getDefaultSiteId,
-// getOrganisationDisplayName, getOrganisationShortName) keep reading
-// the original, static seed values only. This mock-layer inconsistency
-// resolves itself automatically once this file's REAL PHASE cutover
-// happens (a real backend has one single source of truth, not a
-// seed-array-plus-overlay split) - it's specific to this interim mock
-// implementation, not a permanent architectural gap.
+// Real, per direct guidance: Site is now genuinely read-only end to
+// end - no write path exists anywhere in this file. Used to carry a
+// real, persisted overlay (Facility Setup's own LIS connection/CLIA
+// fields), which created a real, disclosed sync-vs-async data
+// consistency gap between the four async functions below (which
+// merged that overlay in) and the several synchronous helpers
+// further down (which didn't). Both the LIS connection fields and
+// CLIA were migrated off Site entirely this session - CLIA to
+// Facility.cliaOrIsoNumber (services/facilities/), and the LIS
+// connection consolidated into Facility.interfaceEngineConnection/
+// lisRouting per a real architectural correction: PathScribe
+// maintains one physical connection to the Interface Engine per real
+// Enterprise, never a direct per-Site connection to an individual
+// LIS. With no write path left, the sync/async split below is purely
+// about matching a future real backend's likely API shape, not a
+// data-consistency concern.
 // ─────────────────────────────────────────────────────────────
-import { storageGet, storageSet } from '../mockStorage';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -95,32 +88,11 @@ export interface Site {
   siteCode:                string;   // accession prefix from LIS
   address:                 string;
   active:                  boolean;
-  lisType:                 LisType;
-  lisEndpoint:             string;
-  lisVersion?:             string;
   defaultTemplateStandard: TemplateStandard;
   defaultLocale:           string;
   defaultWorkflowMode:     WorkflowMode;
   codingSystems:           CodingSystem[];   // ordered list — first is default tab
   secureEmailGateway?:     'Paubox' | 'Virtru' | 'Zix';
-  /** Real, new field for Facility Setup (components/Config/System/
-   *  FacilitySetupSection.tsx). Free text, not a validated format - a
-   *  real CLIA number (US) and a real ISO/UKAS accreditation number
-   *  (UK/other) have genuinely different real formats, and this app
-   *  doesn't have a verified format spec for either to validate
-   *  against, so this deliberately doesn't pretend to. */
-  cliaOrIsoNumber?: string;
-  /** Real, per direct follow-up (Billing Capacity Review's own POS
-   *  codes gap): a real, raw fact about this specific performing lab
-   *  - independent lab vs. hospital-based - not a computed CMS Place
-   *  of Service code. Same deliberate "surface the raw signal, never
-   *  adjudicate the billing decision" posture already established for
-   *  financialClass/encounterClass in jsonWebhookBuilder.ts - which
-   *  specific POS code (11, 22, etc.) actually applies depends on
-   *  payer-specific rules PathScribe has no reliable way to resolve
-   *  itself; the interface engine/RCM makes that call from this raw
-   *  fact, the same way it already does from financialClass. */
-  performingLabType?: 'independent' | 'hospital_based';
   /** Real, per direct guidance's own detailed jurisdictional research
    *  (resolveBillingDateOfService.ts) - a real, explicit override for
    *  which real date this site's own charges use as billing date of
@@ -131,28 +103,6 @@ export interface Site {
    *  private-insurance volume, which should override away from the
    *  NHS-costing SIGNOUT_DATE default to COLLECTION_DATE). */
   billingDosRule?: 'COLLECTION_DATE' | 'SIGNOUT_DATE' | 'ACCESSION_DATE';
-  /** Real, new field for Facility Setup - what kind of credential this
-   *  site's own LIS connection (lisEndpoint above) uses. Deliberately
-   *  NOT a place to store the real secret value itself - see
-   *  credentialConfigured below for why. */
-  connectionAuthType?: 'none' | 'basic' | 'oauth2' | 'api_key';
-  /** Real, new field for Facility Setup, per direct security
-   *  discipline already established elsewhere in this app (a real,
-   *  hardcoded API key was found and revoked earlier in this project's
-   *  own history; several VITE_*_PASS variables were found disconnected
-   *  from real authentication). A plain boolean, not the credential
-   *  itself - this admin screen can show/toggle WHETHER a real
-   *  credential has been provisioned for this connection (presumably
-   *  via a real secrets manager this app doesn't model), never the
-   *  actual secret value. Never persisted alongside a real password/
-   *  key/token field - deliberately, this type has none. */
-  credentialConfigured?: boolean;
-  /** Real edit audit, added alongside the fields above - who last
-   *  changed this site's own Facility Setup fields, and when.
-   *  Undefined for a site that has never been edited through the new
-   *  admin screen (still running on its original seed values). */
-  facilitySetupUpdatedBy?: string;
-  facilitySetupUpdatedAt?: string;
 }
 
 export interface Lab {
@@ -189,8 +139,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'S',
         address: '1234 Desert Blvd, Phoenix, AZ 85001',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.dvmc.org:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -231,8 +179,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Oxford Road, Manchester, M13 9WL',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -246,8 +192,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Southmoor Road, Manchester, M23 9LT',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -261,8 +205,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Delaunays Road, Manchester, M8 5RB',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -302,8 +244,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MPA',
         address: '200 E Illinois St, Chicago, IL 60611',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.midwestpath.com:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -344,8 +284,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'HFHS',
         address: '2799 W Grand Blvd, Detroit, MI 48202',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.henryford.org:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -370,9 +308,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
 // ─── In-memory lookup ─────────────────────────────────────────
 
 const ORG_BY_ID   = new Map(MOCK_ORGANISATIONS.map(o => [o.id, o]));
-const SITE_BY_ID  = new Map(
-  MOCK_ORGANISATIONS.flatMap(o => o.sites ?? []).map(s => [s.id, s])
-);
 const SITE_BY_CODE = new Map(
   MOCK_ORGANISATIONS.flatMap(o => o.sites ?? []).map(s => [s.siteCode, s])
 );
@@ -381,58 +316,10 @@ const SITE_BY_CODE = new Map(
 
 const delay = (ms = 200) => new Promise(res => setTimeout(res, ms));
 
-// ─── Facility Setup — real, persisted overlay ──────────────────────────────
-// Real, new, additive storage layer for Facility Setup's own editable
-// fields (cliaOrIsoNumber/connectionAuthType/credentialConfigured) -
-// deliberately kept separate from MOCK_ORGANISATIONS's own static seed
-// array rather than mutating it in place, same "never edit the seed,
-// persist a real overlay/record instead" convention used throughout
-// this app (e.g. mockBillingRuleService.ts's own append-only versions).
-// Merged onto the real Site record by every async function below, so a
-// real edit through FacilitySetupSection.tsx is genuinely visible
-// wherever a Site is read through this file's own async API - see this
-// file's own header for the one, disclosed exception (the synchronous
-// helpers, which don't merge this in).
-const FACILITY_SETUP_STORAGE_KEY = 'org_site_facility_setup_v1';
-
-interface SiteFacilitySetupOverlay {
-  cliaOrIsoNumber?: string;
-  performingLabType?: Site['performingLabType'];
-  connectionAuthType?: Site['connectionAuthType'];
-  credentialConfigured?: boolean;
-  /** Real, per direct guidance's own explicit "endpoints" scope for
-   *  Facility Setup - these three fields already existed on Site, but
-   *  had no real edit path anywhere before this overlay. */
-  lisType?: LisType;
-  lisEndpoint?: string;
-  lisVersion?: string;
-  facilitySetupUpdatedBy?: string;
-  facilitySetupUpdatedAt?: string;
-}
-
-function loadFacilitySetupOverlays(): Record<string, SiteFacilitySetupOverlay> {
-  return storageGet<Record<string, SiteFacilitySetupOverlay>>(FACILITY_SETUP_STORAGE_KEY, {});
-}
-function persistFacilitySetupOverlays(overlays: Record<string, SiteFacilitySetupOverlay>): void {
-  storageSet(FACILITY_SETUP_STORAGE_KEY, overlays);
-}
-function applyFacilitySetupOverlay(site: Site, overlays: Record<string, SiteFacilitySetupOverlay>): Site {
-  const overlay = overlays[site.id];
-  return overlay ? { ...site, ...overlay } : site;
-}
-function applyOverlayToOrganisation(org: Organisation, overlays: Record<string, SiteFacilitySetupOverlay>): Organisation {
-  // Real, defensive: sites is optional on Organisation - every real
-  // seed organisation happens to have one today, but this shouldn't
-  // throw for a hypothetical one that doesn't.
-  if (!org.sites) return org;
-  return { ...org, sites: org.sites.map(s => applyFacilitySetupOverlay(s, overlays)) };
-}
-
 /** GET /organisations */
 export async function listOrganisations(): Promise<Organisation[]> {
   await delay();
-  const overlays = loadFacilitySetupOverlays();
-  return MOCK_ORGANISATIONS.map(org => applyOverlayToOrganisation(org, overlays));
+  return MOCK_ORGANISATIONS;
   // REAL: const res = await fetch('/api/organisations'); return res.json();
 }
 
@@ -441,22 +328,18 @@ export async function listOrganisations(): Promise<Organisation[]> {
  *  picker (components/Config/System/BillingDictionarySection.tsx) -
  *  no flat, cross-organisation site listing existed before this;
  *  getSiteConfig only fetches one known site by id. Real, defensive
- *  fix alongside Facility Setup: org.sites is optional, ?? [] rather
- *  than assuming every real organisation always has one. */
+ *  fix: org.sites is optional, ?? [] rather than assuming every real
+ *  organisation always has one. */
 export async function listAllSites(): Promise<Site[]> {
   await delay();
-  const overlays = loadFacilitySetupOverlays();
-  return MOCK_ORGANISATIONS.flatMap(org => org.sites ?? []).map(site => applyFacilitySetupOverlay(site, overlays));
+  return MOCK_ORGANISATIONS.flatMap(org => org.sites ?? []);
   // REAL: const res = await fetch('/api/sites'); return res.json();
 }
 
 /** GET /organisations/:id */
 export async function getOrganisation(id: string): Promise<Organisation | null> {
   await delay();
-  const org = ORG_BY_ID.get(id);
-  if (!org) return null;
-  const overlays = loadFacilitySetupOverlays();
-  return applyOverlayToOrganisation(org, overlays);
+  return ORG_BY_ID.get(id) ?? null;
   // REAL: const res = await fetch(`/api/organisations/${id}`); return res.json();
 }
 
@@ -467,116 +350,21 @@ export async function getCurrentOrganisation(organisationId: string): Promise<Or
   // REAL: const res = await fetch('/api/organisations/current'); return res.json();
 }
 
-/** GET /sites/:id/config */
-export async function getSiteConfig(siteId: string): Promise<Site | null> {
-  await delay();
-  const site = SITE_BY_ID.get(siteId);
-  if (!site) return null;
-  const overlays = loadFacilitySetupOverlays();
-  return applyFacilitySetupOverlay(site, overlays);
-  // REAL: const res = await fetch(`/api/sites/${siteId}/config`); return res.json();
-}
-
-/** PATCH /sites/:id/facility-setup — real, new: the only way to
- *  persist a real edit to a site's Facility Setup fields. Never edits
- *  MOCK_ORGANISATIONS's own static seed in place - see this file's own
- *  header, and FACILITY_SETUP_STORAGE_KEY's own comment above, for why.
- *  Returns null (matching this file's own null-for-not-found
- *  convention throughout, not a thrown error) when siteId isn't a
- *  real, known site - never silently creates an overlay for a site
- *  that doesn't exist. Deliberately no raw secret/credential VALUE
- *  parameter - credentialConfigured is a real boolean flag only, per
- *  Site.credentialConfigured's own doc comment. */
-export async function updateSiteFacilitySetup(
-  siteId: string,
-  update: {
-    cliaOrIsoNumber?: string;
-    performingLabType?: Site['performingLabType'];
-    connectionAuthType?: Site['connectionAuthType'];
-    credentialConfigured?: boolean;
-    lisType?: LisType;
-    lisEndpoint?: string;
-    lisVersion?: string;
-    updatedBy: string;
-  }
-): Promise<Site | null> {
-  await delay();
-  const baseSite = SITE_BY_ID.get(siteId);
-  if (!baseSite) return null;
-  const overlays = loadFacilitySetupOverlays();
-  overlays[siteId] = {
-    cliaOrIsoNumber: update.cliaOrIsoNumber,
-    performingLabType: update.performingLabType,
-    connectionAuthType: update.connectionAuthType,
-    credentialConfigured: update.credentialConfigured,
-    lisType: update.lisType,
-    lisEndpoint: update.lisEndpoint,
-    lisVersion: update.lisVersion,
-    facilitySetupUpdatedBy: update.updatedBy,
-    facilitySetupUpdatedAt: new Date().toISOString(),
-  };
-  persistFacilitySetupOverlays(overlays);
-  return applyFacilitySetupOverlay(baseSite, overlays);
-  // REAL: const res = await fetch(`/api/sites/${siteId}/facility-setup`, { method: 'PATCH', body: JSON.stringify(update) }); return res.json();
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Real, complete audit finding (PS-79, Jira) — read before adding a new
-// call site to any of the 6 synchronous functions below
-// (getSiteBySiteCode, getOrganisationByHospitalId,
-// getHospitalIdForOrganisation, getDefaultSiteId,
-// getOrganisationDisplayName, getOrganisationShortName).
-//
-// These all read directly from the static MOCK_ORGANISATIONS seed via
-// ORG_BY_ID/SITE_BY_ID/SITE_BY_CODE — none of them merge in the real,
-// persisted Facility Setup overlay (updateSiteFacilitySetup, above)
-// the way the four async functions (listOrganisations, getOrganisation,
-// listAllSites, getSiteConfig) do. A real edit made through
-// FacilitySetupSection.tsx is invisible to all 6 of these.
-//
-// Confirmed via a real, complete audit of every one of their 16 real
-// call sites across this app (getOrganisationByHospitalId: 11,
-// getHospitalIdForOrganisation: 2, getOrganisationDisplayName: 1,
-// getOrganisationShortName: 2; getSiteBySiteCode and getDefaultSiteId:
-// 0 real call sites, possibly dead code) — not one of them reads any
-// of the 6 real fields Facility Setup can actually edit
-// (Site.cliaOrIsoNumber/connectionAuthType/credentialConfigured/
-// lisEndpoint/lisType/lisVersion). Every real call site only ever
-// reads .id, .name, .shortName, .country, or a hospitalId string —
-// fields these functions have always correctly returned, unaffected
-// by the overlay. So today, this staleness has a real, confirmed
-// structural cause but zero real, confirmed practical impact.
-//
-// That could change the moment a NEW call site reads one of the 6
-// overlay fields through any of these 6 functions instead of through
-// the real async ones. If you're adding one: use listAllSites/
-// getSiteConfig/listOrganisations/getOrganisation instead if you need
-// any of the 6 overlay fields — those genuinely reflect live edits.
-// Converting these 6 synchronous functions to async instead (so every
-// caller gets a consistent view) is real, deliberately-deferred,
-// separate work — a cross-cutting refactor across 16+ real call
-// sites, not something to take on piecemeal.
+// Real, per direct guidance: the sync-vs-async data-consistency gap
+// this block used to document (PS-79) no longer exists. It was
+// specific to Facility Setup's own real, persisted overlay — the 6
+// synchronous functions below never merged it in, while the 4 async
+// functions above did. That overlay (and the LIS/CLIA fields it
+// covered) is retired entirely this session — Site has no write path
+// left at all, so every function in this file, sync or async, now
+// reads the identical static seed data. The sync/async split remains
+// purely to match a likely future real backend's API shape.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Resolve site from accession prefix (siteCode) */
 export function getSiteBySiteCode(siteCode: string): Site | null {
   return SITE_BY_CODE.get(siteCode) ?? null;
-}
-
-/** Real, per direct guidance's own billing date-of-service work
- *  (resolveBillingDateOfService.ts) - resolves a real Site directly by
- *  its own id (Case.originSiteId), using the same real, existing
- *  SITE_BY_ID lookup every other real site resolution in this file
- *  already relies on internally. */
-export function getSiteById(siteId: string): Site | null {
-  return SITE_BY_ID.get(siteId) ?? null;
-}
-
-/** Real, per direct guidance's own work - resolves a real Site's own
- *  parent Organisation (for its real, authoritative .country), via the
- *  same real ORG_BY_ID lookup this file already uses internally. */
-export function getOrganisationForSite(site: Pick<Site, 'organisationId'>): Organisation | null {
-  return ORG_BY_ID.get(site.organisationId) ?? null;
 }
 
 /** Resolve organisation from originHospitalId on a Case */

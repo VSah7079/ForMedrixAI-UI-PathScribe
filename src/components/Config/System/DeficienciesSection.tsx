@@ -3,12 +3,12 @@
 // Admin config for the Specimen/Requisition Deficiency pattern —
 // Deficiency Types and Resolution Types are one section with tabs, not
 // two sidebar entries, because Resolution Type has no independent use
-// anywhere else in the app (unlike e.g. Specimen Category, which Client/
+// anywhere else in the app (unlike e.g. Department, which Facility/
 // TAT/Routing all reference on their own — that pairing gets separate
 // sidebar entries; this one doesn't need to).
 //
 // Built with CSS classes (pathscribe.css), not inline style objects —
-// deliberately not following PhysiciansSection.tsx/SpecimenCategories
+// deliberately not following PhysiciansSection.tsx/Departments
 // Section.tsx's older inline-style-constant convention, since
 // modalStyles.ts (which those lean on) is itself marked deprecated in
 // favor of the .ps-ms-* classes used here.
@@ -19,14 +19,17 @@ import '../../../pathscribe.css';
 import {
   deficiencyTypeService, resolutionTypeService,
 } from '../../../services';
+import type { Facility } from '../../../services/facilities/IFacilityService';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
+import { findDuplicate } from '../../../utils/validateUnique';
 
 // ─── Shared type-dictionary tab (Deficiency Types / Resolution Types) ────────
 
-interface TypeDictItem { id: string; name: string; description?: string; status: 'Active' | 'Inactive'; level?: 'case' | 'specimen' | 'both' }
+interface TypeDictItem { id: string; name: string; description?: string; status: 'Active' | 'Inactive'; level?: 'case' | 'specimen' | 'both'; performingLabFacilityId?: string }
 interface TypeDictService {
   getAll(): Promise<{ ok: boolean; data?: TypeDictItem[] }>;
-  add(item: { name: string; description?: string; status: 'Active' | 'Inactive'; level?: 'case' | 'specimen' | 'both' }): Promise<{ ok: boolean; data?: TypeDictItem }>;
-  update(id: string, changes: Partial<{ name: string; description?: string; status: 'Active' | 'Inactive'; level: 'case' | 'specimen' | 'both' }>): Promise<{ ok: boolean; data?: TypeDictItem }>;
+  add(item: { name: string; description?: string; status: 'Active' | 'Inactive'; level?: 'case' | 'specimen' | 'both'; performingLabFacilityId?: string }): Promise<{ ok: boolean; data?: TypeDictItem }>;
+  update(id: string, changes: Partial<{ name: string; description?: string; status: 'Active' | 'Inactive'; level: 'case' | 'specimen' | 'both'; performingLabFacilityId?: string }>): Promise<{ ok: boolean; data?: TypeDictItem }>;
   deactivate(id: string): Promise<{ ok: boolean; data?: TypeDictItem }>;
   reactivate(id: string): Promise<{ ok: boolean; data?: TypeDictItem }>;
 }
@@ -38,26 +41,46 @@ interface TypeDictService {
  *  form rather than showing an irrelevant field. */
 const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addLabel: string; showLevel?: boolean }> = ({ service, noun, addLabel, showLevel }) => {
   const [items, setItems] = useState<TypeDictItem[]>([]);
+  const [labs, setLabs] = useState<Facility[]>([]);
+  const [labFilter, setLabFilter] = useState<'All' | 'Global' | string>('All');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; item?: TypeDictItem } | null>(null);
-  const [draft, setDraft] = useState<{ name: string; description: string; active: boolean; level: 'case' | 'specimen' | 'both' }>({ name: '', description: '', active: true, level: 'both' });
+  const [draft, setDraft] = useState<{ name: string; description: string; active: boolean; level: 'case' | 'specimen' | 'both'; performingLabFacilityId: string }>({ name: '', description: '', active: true, level: 'both', performingLabFacilityId: '' });
+  const [nameError, setNameError] = useState('');
 
   const load = () => { service.getAll().then(res => { if (res.ok && res.data) setItems(res.data); setLoading(false); }); };
   useEffect(load, [service]);
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
 
   useEffect(() => {
     if (modal?.mode === 'edit' && modal.item) {
-      setDraft({ name: modal.item.name, description: modal.item.description ?? '', active: modal.item.status === 'Active', level: modal.item.level ?? 'both' });
+      setDraft({ name: modal.item.name, description: modal.item.description ?? '', active: modal.item.status === 'Active', level: modal.item.level ?? 'both', performingLabFacilityId: modal.item.performingLabFacilityId ?? '' });
     } else if (modal?.mode === 'add') {
-      setDraft({ name: '', description: '', active: true, level: 'both' });
+      setDraft({ name: '', description: '', active: true, level: 'both', performingLabFacilityId: '' });
     }
+    setNameError('');
   }, [modal]);
 
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
+
+  const filteredItems = items.filter(item =>
+    labFilter === 'All' || (labFilter === 'Global' ? !item.performingLabFacilityId : item.performingLabFacilityId === labFilter)
+  );
+
   const handleSave = async () => {
-    if (!draft.name.trim()) return;
+    if (!draft.name.trim()) { setNameError('Required'); return; }
+    // Real, same shape as ContainerType/DelegationType's own uniqueness
+    // check: only a real collision WITHIN the same scope (same lab, or
+    // both Global) blocks the save — a different lab's own type, or a
+    // Global one, may legitimately share the same name.
+    const excludeId = modal?.mode === 'edit' ? modal.item?.id : undefined;
+    const collision = findDuplicate(items, { performingLabFacilityId: draft.performingLabFacilityId || undefined, name: draft.name.trim() }, ['performingLabFacilityId', 'name'], excludeId);
+    if (collision) { setNameError(`"${collision.name}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`); return; }
+
     const payload = {
       name: draft.name.trim(), description: draft.description.trim() || undefined,
       status: (draft.active ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
+      performingLabFacilityId: draft.performingLabFacilityId || undefined,
       ...(showLevel ? { level: draft.level } : {}),
     };
     if (modal?.mode === 'add') {
@@ -84,13 +107,23 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
         <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ {addLabel}</button>
       </div>
 
+      {labs.length > 0 && (
+        <div className="ps-conf-form-row">
+          <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
+            <option value="All">All Labs</option>
+            <option value="Global">Global only</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
+
       <div className="ps-defic-table-wrap">
         <table className="ps-defic-table">
           <thead>
-            <tr><th>{noun}</th><th>Description</th>{showLevel && <th>Level</th>}<th>Status</th><th>Actions</th></tr>
+            <tr><th>{noun}</th><th>Description</th>{showLevel && <th>Level</th>}{labs.length > 0 && <th>Performing Lab</th>}<th>Status</th><th>Actions</th></tr>
           </thead>
           <tbody>
-            {items.map(item => (
+            {filteredItems.map(item => (
               <tr key={item.id}>
                 <td className="ps-defic-cell-name">{item.name}</td>
                 <td className="ps-defic-cell-desc">{item.description || '—'}</td>
@@ -99,6 +132,7 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
                     {item.level === 'case' ? 'Case/Requisition' : item.level === 'specimen' ? 'Specimen' : 'Both'}
                   </td>
                 )}
+                {labs.length > 0 && <td>{labName(item.performingLabFacilityId)}</td>}
                 <td>
                   <span className={`ps-defic-status-badge ${item.status === 'Active' ? 'ps-defic-status-badge--active' : 'ps-defic-status-badge--inactive'}`}>
                     {item.status}
@@ -114,8 +148,8 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
-              <tr><td colSpan={showLevel ? 5 : 4} className="ps-defic-empty">No {noun.toLowerCase()}s yet.</td></tr>
+            {filteredItems.length === 0 && (
+              <tr><td colSpan={(showLevel ? 1 : 0) + (labs.length > 0 ? 1 : 0) + 4} className="ps-defic-empty">No {noun.toLowerCase()}s match.</td></tr>
             )}
           </tbody>
         </table>
@@ -128,6 +162,7 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
             <div className="ps-ms-field-group">
               <label className="ps-ms-label">Name</label>
               <input className="ps-ms-input" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder={`e.g. "Container Damaged"`} />
+              {nameError && <span className="ps-conf-error-text">{nameError}</span>}
             </div>
             <div className="ps-ms-field-group">
               <label className="ps-ms-label">Description</label>
@@ -143,6 +178,13 @@ const TypeDictionaryTab: React.FC<{ service: TypeDictService; noun: string; addL
                 </select>
               </div>
             )}
+            <div className="ps-ms-field-group">
+              <label className="ps-ms-label">Performing Lab</label>
+              <select className="ps-ms-select" value={draft.performingLabFacilityId} onChange={e => setDraft(d => ({ ...d, performingLabFacilityId: e.target.value }))}>
+                <option value="">— Global (every performing lab) —</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
             <div className="ps-ms-field-group">
               <label className="ps-ms-label">Status</label>
               <select className="ps-ms-select" value={draft.active ? 'active' : 'inactive'} onChange={e => setDraft(d => ({ ...d, active: e.target.value === 'active' }))}>

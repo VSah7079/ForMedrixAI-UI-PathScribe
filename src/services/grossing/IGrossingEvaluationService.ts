@@ -34,7 +34,7 @@ export interface GrossingEvaluationSpecimen {
 }
 
 /**
- * Pass G0 override — a client-specific forced Grossing Template for a
+ * Pass G0 override — a facility-specific forced Grossing Template for a
  * given specimen type, bypassing the AI entirely (S0-CF-11). Passed in so
  * the AI evaluation can see which templates are administratively locked
  * and document its reasoning accordingly, even when the choice wasn't
@@ -43,7 +43,7 @@ export interface GrossingEvaluationSpecimen {
  * function's input contract is ready for it.
  */
 export interface GrossingRoutingOverride {
-  clientId: string;
+  facilityId: string;
   specimenType: string;
   grossingTemplateId: string;
 }
@@ -61,7 +61,7 @@ export interface GrossingEvaluationInput {
   caseContext?: {
     patientAge?: number;
     caseType?: string;
-    clientId?: string;
+    facilityId?: string;
   };
   /**
    * Candidate Grossing Template IDs the AI may choose from — same
@@ -147,7 +147,7 @@ export interface GrossingFitEvaluationInput {
    *  filtered to isDiagnostic === false, same as
    *  evaluateGrossingTemplateAssignment's own callers already do. */
   availableTemplates: Array<{ id: string; name: string; category: string }>;
-  clientId?: string;
+  facilityId?: string;
 }
 
 export interface GrossingFitEvaluationResult {

@@ -36,8 +36,8 @@ export interface ExternalResource {
   scope: ExternalResourceScope;
   organisationId: string;
   /** Only set (and only meaningful) when scope === 'lab' — the specific
-   *  performing lab Client this resource belongs to. */
-  clientId?: string;
+   *  performing lab Facility this resource belongs to. */
+  facilityId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,17 +47,17 @@ export interface ExternalResource {
  *  cases belong to) and passed in, rather than this service reaching
  *  into session/case state itself. Keeps the resolution logic testable
  *  and matches the "pure, data-only" pattern already used by
- *  resolvePerformingLabClientId(). */
+ *  resolvePerformingLabFacilityId(). */
 export interface ExternalResourceViewerContext {
   organisationId: string;
-  /** Every performing-lab Client actually relevant to this viewer right
+  /** Every performing-lab Facility actually relevant to this viewer right
    *  now — e.g. on the Worklist, every lab their currently-visible cases
    *  (including pool cases, which can span multiple hospitals) actually
    *  belong to, not a single fixed "current lab." A viewer working
    *  across several labs' pools sees each of those labs' own resources,
    *  not just the first one or none at all. Absent or empty means no
    *  lab-scoped resources surface, only the enterprise set. */
-  performingLabClientIds?: string[];
+  performingLabFacilityIds?: string[];
 }
 
 export interface IExternalResourceService {

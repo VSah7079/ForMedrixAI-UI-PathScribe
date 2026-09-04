@@ -1,13 +1,13 @@
 // src/components/Contribution/qualityCalculations.test.ts
 import { describe, it, expect } from 'vitest';
 import { reconciliationRecordsToDiscordantCases, amendmentRecordsToAmendedCases, computeTatByClient } from './qualityCalculations';
-import type { ReconciliationRecord } from '@/types/quality/ReconciliationRecord';
+import type { QaActivityRecord } from '@/types/quality/QaActivityRecord';
 import type { AmendmentRecord } from '@/types/reports/AmendmentRecord';
 
-function makeReconciliation(over: Partial<ReconciliationRecord> = {}): ReconciliationRecord {
+function makeReconciliation(over: Partial<QaActivityRecord> = {}, fieldOver: Record<string, string> = {}): QaActivityRecord {
   return {
-    id: 'rec-1', caseId: 'S26-1', specimenId: 'spec-1', caseType: 'Breast Core Bx',
-    frozenCategory: 'benign', finalCategory: 'benign', frozenDx: 'Benign', finalDx: 'Benign',
+    id: 'rec-1', activityTypeId: 'qa-activity-frozen-final', caseId: 'S26-1', specimenId: 'spec-1', caseType: 'Breast Core Bx',
+    fieldValues: { frozenCategory: 'benign', finalCategory: 'benign', frozenDx: 'Benign', finalDx: 'Benign', ...fieldOver },
     outcome: 'concordant', recordedAt: '2026-03-15T00:00:00.000Z',
     recordedBy: { userId: 'u1', userName: 'Dr. Test' },
     ...over,
@@ -51,7 +51,7 @@ describe('reconciliationRecordsToDiscordantCases — real fix: replaces the hard
   });
 
   it('preserves the real frozenDx/finalDx text exactly, not a fabricated summary', () => {
-    const records = [makeReconciliation({ outcome: 'discordant', frozenDx: 'Atypical, favor benign', finalDx: 'DCIS, low grade' })];
+    const records = [makeReconciliation({ outcome: 'discordant' }, { frozenDx: 'Atypical, favor benign', finalDx: 'DCIS, low grade' })];
     const result = reconciliationRecordsToDiscordantCases(records, now);
     expect(result[0].frozenDx).toBe('Atypical, favor benign');
     expect(result[0].finalDx).toBe('DCIS, low grade');
@@ -117,21 +117,21 @@ describe('computeTatByClient — real fix: replaces the entirely hardcoded mockT
     { id: 'client-2', name: 'Second Test Hospital', assigningAuthority: 'STH' },
   ];
   const TAT_ENTRIES = [
-    { id: 'e1', active: true, type: 'FIRST_TOUCH', roleId: null, clientId: 'client-1', specimenId: null, subspecialtyId: null, urgency: null, targetHours: 5 },
-    { id: 'e2', active: true, type: 'TOTAL_CASE',   roleId: null, clientId: 'client-1', specimenId: null, subspecialtyId: null, urgency: null, targetHours: 30 },
+    { id: 'e1', active: true, type: 'FIRST_TOUCH', roleId: null, facilityId: 'client-1', specimenId: null, subspecialtyId: null, urgency: null, targetHours: 5 },
+    { id: 'e2', active: true, type: 'TOTAL_CASE',   roleId: null, facilityId: 'client-1', specimenId: null, subspecialtyId: null, urgency: null, targetHours: 30 },
   ];
 
   it('computes real, honest "mine" averages from actual case timestamps for the given user only', () => {
     const cases = [
       {
         id: 'case-1',
-        order: { clientId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
+        order: { facilityId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
         firstOpenedAt: '2026-01-01T04:00:00.000Z', // 4h real first-touch
         diagnostic: { issuedDate: '2026-01-02T00:00:00.000Z' }, // 24h real total
       },
       {
         id: 'case-2',
-        order: { clientId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-OTHER' }, // a different real pathologist's case
+        order: { facilityId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-OTHER' }, // a different real pathologist's case
         firstOpenedAt: '2026-01-01T10:00:00.000Z',
         diagnostic: { issuedDate: '2026-01-03T00:00:00.000Z' },
       },
@@ -146,7 +146,7 @@ describe('computeTatByClient — real fix: replaces the entirely hardcoded mockT
   it('real, honest target resolution via the same resolveTatTargetHours every other TAT function uses', () => {
     const cases = [{
       id: 'case-1',
-      order: { clientId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
+      order: { facilityId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
       firstOpenedAt: '2026-01-01T04:00:00.000Z',
       diagnostic: { issuedDate: '2026-01-02T00:00:00.000Z' },
     }];
@@ -159,7 +159,7 @@ describe('computeTatByClient — real fix: replaces the entirely hardcoded mockT
     const noTargetClients = [{ id: 'client-no-target', name: 'No Target Hospital', assigningAuthority: 'NTH' }];
     const cases = [{
       id: 'case-1',
-      order: { clientId: 'client-no-target', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
+      order: { facilityId: 'client-no-target', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
       firstOpenedAt: '2026-01-01T04:00:00.000Z',
       diagnostic: { issuedDate: '2026-01-02T00:00:00.000Z' },
     }];
@@ -172,13 +172,13 @@ describe('computeTatByClient — real fix: replaces the entirely hardcoded mockT
     const cases = [
       { // real breach: 10h > 5h target
         id: 'case-breach',
-        order: { clientId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
+        order: { facilityId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
         firstOpenedAt: '2026-01-01T10:00:00.000Z',
         diagnostic: { issuedDate: '2026-01-01T20:00:00.000Z' },
       },
       { // real, within target: 2h < 5h target
         id: 'case-within',
-        order: { clientId: 'client-1', receivedDate: '2026-01-02T00:00:00.000Z', assignedTo: 'user-1' },
+        order: { facilityId: 'client-1', receivedDate: '2026-01-02T00:00:00.000Z', assignedTo: 'user-1' },
         firstOpenedAt: '2026-01-02T02:00:00.000Z',
         diagnostic: { issuedDate: '2026-01-02T10:00:00.000Z' },
       },
@@ -195,7 +195,7 @@ describe('computeTatByClient — real fix: replaces the entirely hardcoded mockT
   it('real, honest peer estimate is derived from the real target, never a fixed, unrelated number', () => {
     const cases = [{
       id: 'case-1',
-      order: { clientId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
+      order: { facilityId: 'client-1', receivedDate: '2026-01-01T00:00:00.000Z', assignedTo: 'user-1' },
       firstOpenedAt: '2026-01-01T04:00:00.000Z',
       diagnostic: { issuedDate: '2026-01-02T00:00:00.000Z' },
     }];

@@ -176,11 +176,11 @@ describe('resolveOrder — real InterfaceException raised alongside (never inste
     expect(real?.codingSystem).toBe('LOINC');
     expect(real?.normalizedOrderCode).toBe('NEVERSEENBEFORE'); // real normalizeOrderCode output — hyphens are stripped, not converted to spaces
     // Real, per the "Map & Link" contextual resolution feature — a
-    // real, resolved clientId is now captured on the exception itself,
+    // real, resolved facilityId is now captured on the exception itself,
     // not just mentioned inside the free-text reason string. Without
     // this, a reviewer couldn't create a correctly-scoped real
     // crosswalk entry from the exception alone.
-    expect(real?.clientId).toBe(realClientId);
+    expect(real?.facilityId).toBe(realClientId);
   });
 
   it('a real, description-only specimen (no code at all) never raises a real InterfaceException - there was never a real code for the crosswalk to have missed', async () => {

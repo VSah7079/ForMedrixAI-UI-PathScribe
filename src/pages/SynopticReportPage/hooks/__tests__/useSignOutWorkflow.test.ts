@@ -13,9 +13,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import React from 'react';
+import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import { SystemConfigProvider } from '@/contexts/SystemConfigContext';
 import { useSignOutWorkflow } from '../useSignOutWorkflow';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
+import { caseRouter } from '@/services/cases/CaseRouter';
+import { abnormalDetectionSignalService, qaActivityRecordService } from '@/services';
+import { ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
 import { mockCriticalResultNotificationService } from '@/services/clinical/mockCriticalResultNotificationService';
 import type { Case } from '@/types/case/Case';
@@ -28,15 +33,26 @@ vi.mock('@/services/auth/caseAccessControl', () => ({
   canFinalizeCase: vi.fn().mockReturnValue({ granted: true, dimension: 'primary', reason: '' }),
 }));
 vi.mock('@/services', () => ({
-  countersignService: { release: vi.fn().mockResolvedValue({ ok: true }), countersign: vi.fn().mockResolvedValue({ ok: true }) },
+  countersignService: { release: vi.fn().mockResolvedValue({ ok: true }), countersign: vi.fn().mockResolvedValue({ ok: true }), reject: vi.fn().mockResolvedValue({ ok: true, data: { residentId: 'PATH-002', residentName: 'Dr. Resident' } }) },
   userService: { getById: vi.fn().mockResolvedValue({ ok: true, data: { email: 'attending@test.com' } }) },
   fppeAssignmentService: { getActiveAssignmentForUser: vi.fn().mockResolvedValue({ ok: true, data: null }), recordCaseReviewed: vi.fn().mockResolvedValue({ ok: true }) },
+  qaSupervisionAssignmentService: { getActiveAssignmentForUser: vi.fn().mockResolvedValue({ ok: true, data: null }), recordCaseReviewed: vi.fn().mockResolvedValue({ ok: true }) },
   intraoperativeService: { getAll: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
   amendmentService: { release: vi.fn().mockResolvedValue({ ok: true, data: {} }) },
   reportVersionService: { create: vi.fn().mockResolvedValue({ ok: true, data: {} }), getByCaseId: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
+  abnormalTriggerRuleService: { getAll: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
+  abnormalDetectionSignalService: { recordSignal: vi.fn().mockResolvedValue({ ok: true, data: {} }), getByCaseId: vi.fn().mockResolvedValue({ ok: true, data: [] }), getStats: vi.fn().mockResolvedValue({ ok: true, data: {} }) },
+  qaActivityRecordService: { create: vi.fn().mockResolvedValue({ ok: true, data: {} }), getAll: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
+  facilityService: { getById: vi.fn().mockResolvedValue({ ok: false, error: 'not mocked' }) },
 }));
 vi.mock('@/services/communications/notificationService', () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/services/reportRelease/mockReportReleaseService', () => ({
+  mockReportReleaseService: { resolveBufferForCase: vi.fn().mockResolvedValue({ applies: true, durationMinutes: 5 }) },
+}));
+vi.mock('@/services/reports/dispatchCaseInstances', () => ({
+  dispatchCaseInstances: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/services/templates/templateService', () => ({
   getTemplate: vi.fn().mockResolvedValue({ template: { sections: [] } }),
@@ -83,6 +99,7 @@ function baseParams(overrides: Partial<Parameters<typeof useSignOutWorkflow>[0]>
     setFixativeGateSpecimens: vi.fn(),
     setPreAnalyticDateGateSpecimens: vi.fn(),
     setPendingFinalizeArgs: vi.fn(),
+    setPendingActionIsSignOut: vi.fn(),
     synopticPanelRef: { current: { validateRequired: vi.fn().mockReturnValue([]), getUncertainRequiredFields: vi.fn().mockReturnValue([]), getBlockingUnverifiedFields: vi.fn().mockReturnValue([]), sweepAndGetFinalState: vi.fn().mockReturnValue({ verificationSummary: {} }) } } as any,
     setAlertFieldId: vi.fn(),
     safeSetLeftTab: vi.fn(),
@@ -98,8 +115,21 @@ function baseParams(overrides: Partial<Parameters<typeof useSignOutWorkflow>[0]>
   };
 }
 
+// Real, per direct guidance (PS-105): useSignOutWorkflow now calls
+// useSystemConfig() (the enterprise-level abnormal detection kill
+// switch), which throws without a <SystemConfigProvider> ancestor.
+// Same shadowing pattern as useSpecimenBlockManagement.test.ts's own
+// AuthProvider wrapper — every renderHook( call below is this one,
+// not @testing-library/react's own, unwrapped version.
+const renderHook: typeof rtlRenderHook = (callback, options) =>
+  rtlRenderHook(callback, { ...options, wrapper: ({ children }) => React.createElement(SystemConfigProvider, null, children) });
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Real, per direct guidance (PS-105): guaranteed clean enterprise-
+  // config state entering every test, even if an earlier test's own
+  // governance-gate test failed before reaching its own cleanup line.
+  localStorage.removeItem('pathscribe_enterprise_config_v2');
 });
 
 describe('useSignOutWorkflow — finalizeSignOut (CoPilot ordering guarantee)', () => {
@@ -211,6 +241,37 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
     expect(updateCalls.some((call: any[]) => call[1]?.status === 'pending-release')).toBe(false);
   });
 
+  it('real, per direct follow-up ("Continue with the version-record creation to the trainee path"): a resident\'s submission now creates a real, immutable ReportVersionRecord — with no instanceId, so it correctly never triggers real ORU^R01 dispatch', async () => {
+    const { countersignService, reportVersionService } = await import('@/services');
+    const showToast = vi.fn();
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['resident'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(reportVersionService.create).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: caseData.id,
+      mode: 'orchestration',
+      trigger: 'initial_signout',
+    }));
+    // Real, deliberate: no instanceId on this real call — the same
+    // real, whole-case snapshot shape every orchestration-mode
+    // create() call in this app already uses. This alone is what
+    // correctly keeps a resident's submission out of the real ORU^R01
+    // dispatch hook inside create() itself.
+    const createCall = (reportVersionService.create as any).mock.calls[0][0];
+    expect(createCall.instanceId).toBeUndefined();
+
+    // Real, deliberate ordering: the snapshot must be created BEFORE
+    // the countersign release, so it genuinely reflects what was
+    // actually submitted for review.
+    const createOrder = (reportVersionService.create as any).mock.invocationCallOrder[0];
+    const releaseOrder = (countersignService.release as any).mock.invocationCallOrder[0];
+    expect(createOrder).toBeLessThan(releaseOrder);
+  });
+
   it('a resident who is ALSO attending on this case bypasses the countersign gate entirely — falls through to normal finalize', async () => {
     const { countersignService } = await import('@/services');
     const caseData = makeTestCase({
@@ -224,6 +285,43 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
     await act(async () => { await result.current.handleSignOutConfirm(); });
 
     expect(countersignService.release).not.toHaveBeenCalled();
+  });
+
+  it('real, per direct follow-up ("Path B Execution Plan"): an attending sign-out with a real buffer applying starts the buffer (status: pending-release) and does NOT dispatch immediately', async () => {
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    const { dispatchCaseInstances } = await import('@/services/reports/dispatchCaseInstances');
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['attending'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    const bufferCall = updateCalls.find((call: any[]) => call[1]?.status === 'pending-release');
+    expect(bufferCall).toBeDefined();
+    expect(bufferCall[1].releaseBufferExpiresAt).toBeDefined();
+    expect(dispatchCaseInstances).not.toHaveBeenCalled();
+  });
+
+  it('real, per direct follow-up ("Path B Execution Plan"): an attending sign-out with NO buffer applying (disabled config, or a real STAT bypass) sets status: finalized and dispatches immediately', async () => {
+    const { mockReportReleaseService } = await import('@/services/reportRelease/mockReportReleaseService');
+    vi.mocked(mockReportReleaseService.resolveBufferForCase).mockResolvedValueOnce({ applies: false, durationMinutes: 0 } as any);
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    const { dispatchCaseInstances } = await import('@/services/reports/dispatchCaseInstances');
+    const caseData = makeTestCase({
+      id: 'TEST-CASE-NOBUFFER',
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['attending'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    const finalizeCall = updateCalls.find((call: any[]) => call[1]?.status === 'finalized');
+    expect(finalizeCall).toBeDefined();
+    expect(finalizeCall[1].releasedAt).toBeDefined();
+    expect(dispatchCaseInstances).toHaveBeenCalledWith('TEST-CASE-NOBUFFER');
   });
 
   it('denies sign-out entirely and shows the real denial reason when the user has no genuine relationship to the case', async () => {
@@ -249,6 +347,112 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
     expect(countersignService.countersign).toHaveBeenCalledWith(expect.objectContaining({ attendingId: 'PATH-001' }));
   });
 
+  // PS-114, Stage 4 — real, dedicated tests for the completed gate
+  // cutover. The existing tests above never exercise any of this: their
+  // shared getActiveAssignmentForUser mocks always resolve
+  // { ok: true, data: null }, so none of these branches run in any of
+  // them.
+
+  it('a provisional hire under an active QaSupervisionAssignment is redirected to release-for-countersign, with the reviewer resolved from supervisorUserId', async () => {
+    const { qaSupervisionAssignmentService, fppeAssignmentService, countersignService, userService } = await import('@/services');
+    vi.mocked(qaSupervisionAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({
+      ok: true, data: { id: 'qa-sup-gate-test-001', status: 'active', supervisorUserId: 'SUPERVISOR-001' } as any,
+    });
+    // Aligned with the new system here so the real drift-check (tested
+    // on its own below) doesn't spuriously warn in this, unrelated test.
+    vi.mocked(fppeAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({
+      ok: true, data: { id: 'fppe-gate-test-001', status: 'active' } as any,
+    });
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['provisional_hire'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    // Real point of this test: the gate redirects to release-for-
+    // countersign (same real mechanism as the resident gate) and
+    // resolves the reviewer from the NEW system's own supervisorUserId
+    // field — never the old proctorUserId name, which no longer exists
+    // on this type.
+    expect(countersignService.release).toHaveBeenCalled();
+    expect(userService.getById).toHaveBeenCalledWith('SUPERVISOR-001');
+  });
+
+  it('a provisional hire with NO active QaSupervisionAssignment (graduated, or never assigned) signs out normally — no countersign redirect', async () => {
+    const { qaSupervisionAssignmentService, countersignService } = await import('@/services');
+    // Explicit, even though it matches the shared default — this is
+    // the real "graduated" shape: getActiveAssignmentForUser returns
+    // null once an assignment's status has moved to 'completed' (see
+    // IQaSupervisionAssignmentService's own doc comment — "not under
+    // supervision" is the expected case once graduated).
+    vi.mocked(qaSupervisionAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({ ok: true, data: null });
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['provisional_hire'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(countersignService.release).not.toHaveBeenCalled();
+  });
+
+  it('logs a real drift warning, but does not change gating behavior, when the old and new systems disagree on active-assignment status', async () => {
+    const { qaSupervisionAssignmentService, fppeAssignmentService, countersignService } = await import('@/services');
+    // New system says active (real gate should follow this); old
+    // system disagrees and says inactive — a real, deliberate
+    // mismatch, only possible during the transition period this
+    // safety net exists for.
+    vi.mocked(qaSupervisionAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({
+      ok: true, data: { id: 'qa-sup-drift-001', status: 'active', supervisorUserId: 'SUPERVISOR-001' } as any,
+    });
+    vi.mocked(fppeAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({ ok: true, data: null });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['provisional_hire'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+    // The drift check fires as an unawaited .then() alongside the main
+    // gate flow — flush the microtask queue once more before asserting.
+    await act(async () => { await Promise.resolve(); });
+
+    // Real gating behavior follows the NEW system (release-for-
+    // countersign fired) regardless of the old system's disagreement.
+    expect(countersignService.release).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('[PS-114 drift] FPPE gate disagreement between old and new systems', expect.objectContaining({ legacyActive: false, newActive: true }));
+    warnSpy.mockRestore();
+  });
+
+  it('shadow-writes the real countersign increment to the OLD fppeAssignmentService, using the same real id the new system resolved, and surfaces (does not swallow) a failure on the new, now-primary system', async () => {
+    const { fppeAssignmentService, qaSupervisionAssignmentService } = await import('@/services');
+    vi.mocked(qaSupervisionAssignmentService.getActiveAssignmentForUser).mockResolvedValueOnce({
+      ok: true, data: { id: 'qa-sup-shadow-test-001', status: 'active', supervisorUserId: 'SUPERVISOR-001' } as any,
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(qaSupervisionAssignmentService.recordCaseReviewed).mockRejectedValueOnce(new Error('write failed'));
+    const caseData = makeTestCase({
+      status: 'pending-countersign',
+      participants: [{ status: 'active', staffId: 'PATH-002', participationTypeIds: ['provisional_hire'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    // Both systems still get the same real id — old-system writes are
+    // NOT retired, since FppeAssignmentsSection.tsx still reads them.
+    expect(qaSupervisionAssignmentService.recordCaseReviewed).toHaveBeenCalledWith('qa-sup-shadow-test-001');
+    expect(fppeAssignmentService.recordCaseReviewed).toHaveBeenCalledWith('qa-sup-shadow-test-001');
+    // Real point of this test: a failure on the new, now-authoritative
+    // system is surfaced, not silently swallowed — the old shadow-write
+    // failing silently is fine (nothing reads it live), but a silent
+    // failure on the new system could leave a graduated pathologist
+    // incorrectly gated on their next sign-out.
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it('holds sign-out for reconciliation when a merged intraop specimen has an unreconciled frozen category, rather than finalizing immediately', async () => {
     const { intraoperativeService } = await import('@/services');
     vi.mocked(intraoperativeService.getAll).mockResolvedValueOnce({
@@ -263,6 +467,71 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
 
     expect(setPendingReconciliation).toHaveBeenCalledWith(expect.objectContaining({ specimenId: 'ISP-1' }));
     expect(setCaseSigned).not.toHaveBeenCalled(); // finalizeSignOut must NOT have run
+  });
+});
+
+describe('useSignOutWorkflow — handleReturnToTrainee ("Return to Trainee"/"Reject with Notes")', () => {
+  it('real, per direct guidance ("Yes we should scope \'Return to Trainee\'/\'Reject with Notes\'"): refuses with no feedback — a rejection with nothing to act on helps no one', async () => {
+    const { countersignService } = await import('@/services');
+    const showToast = vi.fn();
+    const caseData = makeTestCase({ status: 'pending-countersign' } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast, countersignFeedback: '' })));
+
+    await act(async () => { await result.current.handleReturnToTrainee(); });
+
+    expect(countersignService.reject).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Feedback is required'));
+  });
+
+  it('real, per direct guidance: with real feedback, calls countersignService.reject, reassigns ownership back to the resident, and reverts per-instance status to draft', async () => {
+    const { countersignService } = await import('@/services');
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    const showToast = vi.fn();
+    const caseData = makeTestCase({
+      status: 'pending-countersign',
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['attending', 'primary'] }],
+      synopticReports: [{ instanceId: 'INST-1', status: 'pending-countersign', answers: {} }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast, countersignFeedback: 'Please re-check the margin measurements.' })));
+
+    await act(async () => { await result.current.handleReturnToTrainee(); });
+
+    expect(countersignService.reject).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: caseData.id,
+      attendingFeedback: 'Please re-check the margin measurements.',
+    }));
+
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    const returnCall = updateCalls.find((call: any[]) => call[1]?.status === 'returned');
+    expect(returnCall).toBeDefined();
+    const patch = returnCall[1];
+    // Real, per direct guidance: ownership genuinely reassigned back
+    // to the resident (the mocked reject() result's own residentId),
+    // via the same real syncPrimaryAssignee() primitive
+    // delegateCase()'s own ownership-transfer branch uses.
+    expect(patch.order.assignedTo).toBe('PATH-002');
+    expect(patch.returnedBy).toBe('PATH-001');
+    // Real, per direct guidance: the per-instance status set at
+    // release time must be reverted too, or the resident can't
+    // actually re-edit their own synoptic reports.
+    expect(patch.synopticReports[0].status).toBe('draft');
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('returned to Dr. Resident'));
+  });
+
+  it('real, per direct guidance: a genuine reject() failure surfaces the real error and never touches the case', async () => {
+    const { countersignService } = await import('@/services');
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    vi.mocked(countersignService.reject).mockResolvedValueOnce({ ok: false, error: 'No pending countersign record found for case TEST-CASE-SIGNOUT' } as any);
+    const showToast = vi.fn();
+    const caseData = makeTestCase({ status: 'pending-countersign' } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast, countersignFeedback: 'Some real feedback.' })));
+
+    await act(async () => { await result.current.handleReturnToTrainee(); });
+
+    expect(showToast).toHaveBeenCalledWith('No pending countersign record found for case TEST-CASE-SIGNOUT');
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    expect(updateCalls.some((call: any[]) => call[1]?.status === 'returned')).toBe(false);
   });
 });
 
@@ -474,7 +743,7 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
   it('blocks finalize and opens the critical findings modal when a real, detected \'critical\' severity finding is present', async () => {
     vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
       ok: true,
-      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
     });
     const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
@@ -487,10 +756,10 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
     expect(result.current.criticalFindings[0].term).toBe('invasive carcinoma');
   });
 
-  it('does NOT block finalize when only an \'abnormal\' severity finding is detected - only \'critical\' soft-blocks', async () => {
+  it('does NOT block finalize when only an \'abnormal\' severity finding is detected - only \'critical\'/\'malignant\' soft-blocks', async () => {
     vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
       ok: true,
-      data: { flags: [{ term: 'mild dysplasia', sourceField: 'microscopic', sourceQuote: 'mild dysplastic changes noted', severity: 'abnormal' }] },
+      data: { flags: [{ term: 'mild dysplasia', sourceField: 'microscopic', sourceQuote: 'mild dysplastic changes noted', severity: 'Abnormal', confidence: 80 }] },
     });
     const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Mild dysplastic changes noted.' } as any });
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
@@ -508,10 +777,29 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
     expect(detectCriticalFindings).not.toHaveBeenCalled();
   });
 
+  it('PS-105 governance: an enterprise-disabled kill switch skips the entire detection engine — never even calls detectCriticalFindings, regardless of real findings in the text', async () => {
+    localStorage.setItem('pathscribe_enterprise_config_v2', JSON.stringify({
+      id: 'ENT-DEFAULT', name: 'PathScribe Enterprise',
+      features: { reportingPlusEnabled: false, abnormalDetectionEnabled: false },
+    }));
+    vi.mocked(detectCriticalFindings).mockResolvedValue({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+
+    expect(result.current.showCriticalFindingsModal).toBe(false);
+    expect(result.current.showPreFinalise).toBe(true);
+    expect(detectCriticalFindings).not.toHaveBeenCalled();
+  });
+
   it('handleAcknowledgeCriticalFindings dismisses the modal and marks this session\'s findings acknowledged - a second Finalize click no longer re-blocks on the same, unchanged findings', async () => {
     vi.mocked(detectCriticalFindings).mockResolvedValue({
       ok: true,
-      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
     });
     const caseData = makeTestCase({ diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
@@ -530,7 +818,7 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
   it('handleRecordCriticalNotification records a real notification with every required field, then dismisses the modal', async () => {
     vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
       ok: true,
-      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' }] },
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
     });
     const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
     const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
@@ -539,7 +827,7 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
     expect(result.current.showCriticalFindingsModal).toBe(true);
 
     await act(async () => {
-      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', readBackConfirmed: true });
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', readBackConfirmed: true, notifiedByName: 'Test User' });
     });
 
     expect(mockCriticalResultNotificationService.recordNotification).toHaveBeenCalledWith(expect.objectContaining({
@@ -548,9 +836,182 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
       clinicianName: 'Dr. Faulkner',
       method: 'verbal_phone',
       readBackConfirmed: true,
-      notifiedBy: { userId: 'PATH-001', userName: 'Dr. Test' },
+      notifiedBy: { userId: 'PATH-001', userName: 'Test User' },
     }));
     expect(result.current.showCriticalFindingsModal).toBe(false);
+  });
+
+  it('real, per direct guidance: "notified by" is genuinely editable, independent of the signed-in user\'s own name — a representative may have made the real call, with staff simply transcribing the event', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    await act(async () => {
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Jane Representative, RN' });
+    });
+
+    const call = vi.mocked(mockCriticalResultNotificationService.recordNotification).mock.calls[0][0];
+    // Real, per direct guidance: userId always stays the real,
+    // verifiable, currently signed-in user (PATH-001, per this test
+    // file's own mocked signingUser) — only the human-readable name
+    // is genuinely editable, never a different, unverifiable userId.
+    expect(call.notifiedBy).toEqual({ userId: 'PATH-001', userName: 'Jane Representative, RN' });
+  });
+
+  describe('real, per direct correction (PS-134 follow-up: "when would a CAPA be needed?"): confirmation is real audit trail only, never a CAPA trigger on its own', () => {
+    it('a confirmed Malignant finding creates a real, concordant QA activity record — never "discordant," since the primary pathologist confirming their own finding is not a discrepancy', async () => {
+      vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+        ok: true,
+        data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+      });
+      const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+      const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+      await act(async () => { await result.current.handleRequestFinalize(false); });
+      await act(async () => {
+        await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Dr. Test' });
+      });
+
+      const call = vi.mocked(qaActivityRecordService.create).mock.calls[0][0];
+      expect(call.activityTypeId).toBe(ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID);
+      expect(call.caseId).toBe('TEST-CASE-CRITICAL');
+      expect(call.outcome).toBe('concordant');
+      // Real, per QaActivityRecord's own contract: severity is only
+      // ever meaningful when outcome === 'discordant' — a concordant
+      // record has nothing to grade, so it's genuinely never set here.
+      expect(call.severity).toBeUndefined();
+    });
+
+    it('the real finding term and source quote are carried through as this activity\'s own fieldValues, not lost', async () => {
+      vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+        ok: true,
+        data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified in the deep margin', severity: 'Malignant', confidence: 92 }] },
+      });
+      const caseData = makeTestCase({ id: 'TEST-CASE-FIELDVALUES', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified in the deep margin.' } as any });
+      const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+      await act(async () => { await result.current.handleRequestFinalize(false); });
+      await act(async () => {
+        await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Dr. Test' });
+      });
+
+      const call = vi.mocked(qaActivityRecordService.create).mock.calls[0][0];
+      expect(call.fieldValues.findingTerm).toBe('invasive carcinoma');
+      expect(call.fieldValues.findingSource).toBe('invasive ductal carcinoma identified in the deep margin');
+    });
+
+    it('disputing (acknowledging without recording) never creates a QA activity record at all — matches this ticket\'s own "human\'s call is genuinely final" acceptance criterion', async () => {
+      vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+        ok: true,
+        data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+      });
+      const caseData = makeTestCase({ id: 'TEST-CASE-DISPUTED', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+      const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+      await act(async () => { await result.current.handleRequestFinalize(false); });
+      await act(async () => { await result.current.handleAcknowledgeCriticalFindings(); });
+
+      expect(qaActivityRecordService.create).not.toHaveBeenCalled();
+    });
+  });
+
+  it('handleRecordCriticalNotification persists the real, single highest-severity finding to Case.abnormalDetectionStatus — the field WorklistTable.tsx actually renders from', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [
+        { term: 'mild atypia', sourceField: 'microscopic', sourceQuote: 'mild atypia', severity: 'Abnormal', confidence: 70 },
+        { term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 },
+      ] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    await act(async () => {
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Test User' });
+    });
+
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    const abnormalStatusCall = updateCalls.find((c: any[]) => c[1]?.abnormalDetectionStatus);
+    expect(abnormalStatusCall).toBeDefined();
+    expect(abnormalStatusCall[0]).toBe('TEST-CASE-CRITICAL');
+    expect(abnormalStatusCall[1].abnormalDetectionStatus.severity).toBe('Malignant');
+    expect(abnormalStatusCall[1].abnormalDetectionStatus.confirmedAt).toBeTruthy();
+  });
+
+  it('PS-130 architecture test: handleRecordCriticalNotification attaches a real, structurally-synthetic coded term alongside the confirmed status — never a real SNOMED/ICD-O-3 code (PS-130 stays blocked)', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    await act(async () => {
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Test User' });
+    });
+
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    const call = updateCalls.find((c: any[]) => c[1]?.syntheticAbnormalCoding);
+    expect(call).toBeDefined();
+    for (const term of call[1].syntheticAbnormalCoding) {
+      expect(term.code).toMatch(/^TEST-/);
+      expect(term.display).toContain('[SYNTHETIC — TEST ONLY]');
+    }
+  });
+
+  it('PS-137: handleRecordCriticalNotification records a real, "confirmed" agreement signal per finding, de-identifying narrative-sourced ones', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma, 3.2 cm, identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma, 3.2 cm, identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    await act(async () => {
+      await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Test User' });
+    });
+
+    expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: 'TEST-CASE-CRITICAL',
+      source: 'narrative',
+      suggestedSeverity: 'Malignant',
+      suggestedConfidence: 92,
+      outcome: 'confirmed',
+    }));
+    // Real de-identification check: the real measurement value itself
+    // must never reach the stored reasonClean unaltered — the
+    // structural diagnostic term it's preserved alongside is fine,
+    // since deidentifyText() deliberately keeps that (real, valuable,
+    // aggregatable) part intact.
+    const call = vi.mocked(abnormalDetectionSignalService.recordSignal).mock.calls[0][0];
+    expect(call.reasonClean).not.toContain('3.2 cm');
+    expect(call.reasonClean).toContain('invasive ductal carcinoma');
+  });
+
+  it('PS-137: handleAcknowledgeCriticalFindings records a real "dismissed" signal, never a confirmed one, and never touches Case.abnormalDetectionStatus', async () => {
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    act(() => { result.current.handleAcknowledgeCriticalFindings(); });
+
+    expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: 'TEST-CASE-CRITICAL',
+      outcome: 'dismissed',
+    }));
+    const updateCalls = (caseRouter.updateCase as any).mock.calls;
+    expect(updateCalls.find((c: any[]) => c[1]?.abnormalDetectionStatus)).toBeUndefined();
   });
 });
 

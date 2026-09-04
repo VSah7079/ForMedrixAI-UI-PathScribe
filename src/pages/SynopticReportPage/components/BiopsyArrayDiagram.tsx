@@ -34,12 +34,33 @@ interface BiopsyArrayDiagramProps {
 // Grid columns scale gently with count so the block reads as roughly
 // square regardless of how many positions it holds (a 3-core Biopsy Array
 // isn't a single long strip; a 12-core one isn't a single tall column).
-function columnsFor(count: number): number {
+export function columnsFor(count: number): number {
   if (count <= 2) return 2;
   if (count <= 4) return 2;
   if (count <= 6) return 3;
   if (count <= 9) return 3;
   return 4;
+}
+
+/**
+ * Real, per direct spec (PS-93's Array Mapper): a human-facing "Core
+ * Coordinate" (e.g. "A1", "A2", "B1") for a given 1-indexed
+ * MatrixBlockParticipant.positionInBlock, laid out row-major against
+ * the exact same columnsFor(count) shape this diagram already renders
+ * — so a coordinate shown in the Array Mapper always matches the same
+ * cell's real position in this diagram, never a second, independently-
+ * computed layout that could disagree. Deliberately distinct from
+ * MatrixBlock.label ("M1") and matrixBlockIdentifier() (types/labels/
+ * LabelData.ts, the printed cassette identifier) — this is a
+ * within-block position, not an identifier for the block itself.
+ */
+export function positionToCoreCoordinate(position: number, totalCount: number): string {
+  const cols = columnsFor(totalCount);
+  const zeroIndexed = position - 1;
+  const row = Math.floor(zeroIndexed / cols);
+  const col = (zeroIndexed % cols) + 1;
+  const rowLetter = String.fromCharCode(65 + row); // 65 = 'A'
+  return `${rowLetter}${col}`;
 }
 
 const CELL = 46;

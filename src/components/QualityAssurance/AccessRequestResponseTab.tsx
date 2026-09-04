@@ -28,15 +28,15 @@ const TYPE_LABELS: Record<AccessRequest['type'], string> = {
   orchestration: 'Orchestration',
 };
 
-/** AccessRequest doesn't share Case's shape (order.clientId /
+/** AccessRequest doesn't share Case's shape (order.facilityId /
  *  originHospitalId), so this scopes directly against its own real
  *  fields rather than forcing it through caseMatchesScope. Pool and
- *  Orchestration requests have no real clientId (neither is tied to a
- *  referring client) — only match a 'client' scope for Pediatric,
+ *  Orchestration requests have no real facilityId (neither is tied to
+ *  a referring facility) — only match a 'client' scope for Pediatric,
  *  which genuinely has one. */
 function accessRequestMatchesScope(r: AccessRequest, scope: QaScope): boolean {
   if (scope.level === 'enterprise') return true;
-  if (scope.level === 'client') return r.clientId === scope.clientId;
+  if (scope.level === 'client') return r.facilityId === scope.clientId;
   return r.organisationId === scope.organisationId;
 }
 
@@ -59,7 +59,7 @@ export const AccessRequestResponseTab: React.FC = () => {
   );
 
   const visibleClientIds = useMemo(
-    () => Array.from(new Set(scoped.map(r => r.clientId).filter((v): v is string => !!v))),
+    () => Array.from(new Set(scoped.map(r => r.facilityId).filter((v): v is string => !!v))),
     [scoped]
   );
 

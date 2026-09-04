@@ -72,7 +72,7 @@ export async function getEligibleModelIdsForClient(clientId: string): Promise<st
 /**
  * Effective, per-case resolution (async — needs a Facility lookup and the
  * org default model). Pass the case's ordering facility id
- * (caseData?.order?.clientId). Resolves through to whichever facility's
+ * (caseData?.order?.facilityId). Resolves through to whichever facility's
  * lab actually performs the work, same as resolveOrchestratorMode().
  * Falls back to the org default whenever no facility/model can be
  * resolved — same fail-safe posture used everywhere else in this

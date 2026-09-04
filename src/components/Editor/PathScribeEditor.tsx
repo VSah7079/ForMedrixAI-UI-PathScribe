@@ -981,7 +981,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       )}
 
       <style>{`
-        .ps-editor-content { padding: 20px 24px; min-height: ${minHeight}; outline: none; font-size: 12pt; line-height: 1.8; color: #1e293b; font-family: ${approvedFonts[0] || 'Arial'}, sans-serif; }
+        .ps-editor-content { padding: 20px 24px; min-height: ${minHeight}; outline: none; font-size: 12pt; line-height: 1.8; color: ${theme.contentText}; font-family: ${approvedFonts[0] || 'Arial'}, sans-serif; }
         .ps-editor-content:focus { outline: none; }
         .ps-editor-content p { margin: 0 0 10px 0; }
         .ps-editor-content strong { font-weight: 700; }

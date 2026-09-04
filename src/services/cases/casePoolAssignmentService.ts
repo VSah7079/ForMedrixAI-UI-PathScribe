@@ -20,6 +20,8 @@ import { subspecialtyService } from '../index';
 import { mockCaseService }     from '../cases/mockCaseService';
 import { storageGet, storageSet }               from '../mockStorage';
 import { Subspecialty }                         from '../subspecialties/ISubspecialtyService';
+import { mockFacilityService }                  from '../facilities/mockFacilityService';
+import { resolvePerformingLabFacilityId }       from '../facilities/IFacilityService';
 
 // ─── Routing config ───────────────────────────────────────────────────────────
 // In production this comes from LISSection config in the System Tab.
@@ -36,6 +38,16 @@ export interface RoutingConfig {
   assignmentTimeoutSec: number;
   /** Whether STAT cases bypass the timeout and route immediately */
   statRoutesImmediately: boolean;
+  /**
+   * Real, per direct guidance ("General Pathology for the Performing
+   * Lab Facility") — per-lab overrides for the fallback pool used when
+   * no keyword rule matches. Checked before fallbackPoolId/Name above,
+   * same Global-then-specific precedence as RoutingRule.
+   * performingLabFacilityId below. A lab with no override here falls
+   * through to the Global fallbackPoolId/Name — that pair keeps its
+   * existing meaning as the org-wide default, not a specific lab's.
+   */
+  labFallbacks?: { performingLabFacilityId: string; poolId: string; poolName: string }[];
 }
 
 const ROUTING_CONFIG_KEY  = 'pathscribe_routing_config';
@@ -54,6 +66,32 @@ export interface RoutingRule {
   active:         boolean;
   priority:       number;   // lower = checked first
   note?:          string;   // admin notes
+  /**
+   * Real fix, per FEAT-ROUT-01 AC-1/AC-2: the deterministic match key
+   * this spec actually calls for is [Specimen Type] + [Performing Lab
+   * ID], not free-text keyword search — a Specimen Dictionary entry id
+   * (SpecimenEntry.id, same id space as Specimen.
+   * specimenDictionaryEntryId) is unambiguous where `keywords` below
+   * is a substring heuristic that can both over- and under-match.
+   * Checked first, in ruleMatchesSpecimen() below; `keywords` remains
+   * as an explicit, secondary fallback for specimens with no
+   * dictionary link (manually entered, or seeded before that field
+   * existed) — dropping text matching entirely would regress those,
+   * which are still real in this app today.
+   */
+  mappedSpecimenTypeIds?: string[];
+  /**
+   * Real, per direct guidance: different performing labs get their own
+   * pools — this scopes a rule to one lab, same Global/scoped
+   * convention as ContainerType/DelegationType's own
+   * performingLabFacilityId (undefined = Global, checked for every
+   * lab's cases; set = only ever considered for that lab's own cases).
+   * Built-in rules are always Global. Duplicating a rule and setting
+   * this is how an admin gives one performing lab its own routing for
+   * a given department — see matchSpecimenToSubspecialty's own
+   * most-specific-wins resolution below.
+   */
+  performingLabFacilityId?: string;
 }
 
 export const BUILT_IN_ROUTING_RULES: RoutingRule[] = [
@@ -142,31 +180,78 @@ function normalise(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
 }
 
-// Keyword → subspecialty ID mapping for description-based fallback matching.
-// Covers the most common specimen descriptions seen in surgical pathology.
-// Admins can extend this via the Specimen Dictionary → subspecialty assignment.
+// ruleMatchesSpecimen — the real, composite-key check FEAT-ROUT-01
+// AC-1/AC-2 calls for: a Specimen Dictionary entry id
+// (specimenDictionaryEntryId) is a deterministic match against
+// mappedSpecimenTypeIds, checked first. `keywords` substring matching
+// against the free-text description is a real, secondary fallback —
+// not part of the spec, but kept for specimens with no dictionary
+// link (manual entry, or seeded before that field existed), where
+// there is no structured id to match on at all.
+function ruleMatchesSpecimen(rule: RoutingRule, specimenDictionaryEntryId: string | undefined, description: string): boolean {
+  if (specimenDictionaryEntryId && rule.mappedSpecimenTypeIds?.includes(specimenDictionaryEntryId)) {
+    return true;
+  }
+  if (rule.keywords.length > 0) {
+    const norm = normalise(description);
+    return rule.keywords.some(kw => norm.includes(normalise(kw)));
+  }
+  return false;
+}
+
+// Lab-scoped rules are checked before Global ones for the same case —
+// most-specific-wins, same precedence TAT Configuration's 7-level
+// resolution and TemplateRoutingService's Pass 0 client override both
+// already use. Within each tier (lab-specific, then Global), the
+// existing `priority` field still decides order.
+function rulesForLab(performingLabFacilityId?: string): RoutingRule[] {
+  return loadRoutingRules()
+    .filter(r => r.active)
+    .filter(r => !r.performingLabFacilityId || r.performingLabFacilityId === performingLabFacilityId)
+    .sort((a, b) => {
+      const aSpecific = a.performingLabFacilityId ? 0 : 1;
+      const bSpecific = b.performingLabFacilityId ? 0 : 1;
+      return aSpecific !== bSpecific ? aSpecific - bSpecific : a.priority - b.priority;
+    });
+}
+
 // matchSpecimenToSubspecialty — uses dynamic rules loaded from storage
-function matchSpecimenToSubspecialty(specimenDescription: string): string | null {
-  const norm  = normalise(specimenDescription);
-  const rules = loadRoutingRules().filter(r => r.active).sort((a, b) => a.priority - b.priority);
-  for (const rule of rules) {
-    if (rule.keywords.some(kw => norm.includes(normalise(kw)))) {
+function matchSpecimenToSubspecialty(specimenDictionaryEntryId: string | undefined, description: string, performingLabFacilityId?: string): string | null {
+  for (const rule of rulesForLab(performingLabFacilityId)) {
+    if (ruleMatchesSpecimen(rule, specimenDictionaryEntryId, description)) {
       return rule.subspecialtyId;
     }
   }
   return null;
 }
 
-// testSpecimenRouting — used by the admin UI to preview routing without saving
-export function testSpecimenRouting(specimenDescription: string): { matched: boolean; rule?: RoutingRule; subspecialtyId?: string } {
-  const norm  = normalise(specimenDescription);
-  const rules = loadRoutingRules().filter(r => r.active).sort((a, b) => a.priority - b.priority);
-  for (const rule of rules) {
-    if (rule.keywords.some(kw => norm.includes(normalise(kw)))) {
+// testSpecimenRouting — used by the admin UI to preview routing without
+// saving. performingLabFacilityId lets the preview reflect what a real
+// case from that lab would actually match, including any lab-specific
+// rule overriding the Global one. specimenDictionaryEntryId lets the
+// preview exercise the real, deterministic composite-key match rather
+// than only ever the text fallback.
+export function testSpecimenRouting(description: string, performingLabFacilityId?: string, specimenDictionaryEntryId?: string): { matched: boolean; rule?: RoutingRule; subspecialtyId?: string } {
+  for (const rule of rulesForLab(performingLabFacilityId)) {
+    if (ruleMatchesSpecimen(rule, specimenDictionaryEntryId, description)) {
       return { matched: true, rule, subspecialtyId: rule.subspecialtyId };
     }
   }
   return { matched: false };
+}
+
+// resolveCasePerformingLab — the case's ordering facility (facilityId)
+// resolved to the actual performing lab, via the same
+// resolvePerformingLabFacilityId() every other lab-scoped dictionary
+// (Container Types, Delegation Types) already resolves against.
+// Returns undefined for a case with no facilityId, an unknown facility,
+// or a facility with no performing_lab role and no override — in all
+// three cases, only Global rules/fallback can ever apply.
+export async function resolveCasePerformingLab(caseData: Case): Promise<string | undefined> {
+  if (!caseData.order?.facilityId) return undefined;
+  const res = await mockFacilityService.getById(caseData.order.facilityId);
+  if (!res.ok) return undefined;
+  return resolvePerformingLabFacilityId(res.data);
 }
 
 // ─── Main routing function ────────────────────────────────────────────────────
@@ -189,6 +274,10 @@ export async function routeCase(caseData: Case): Promise<RoutingResult> {
     return { outcome: 'unrouted', reason: 'No specimens on case — cannot determine subspecialty' };
   }
 
+  // Which performing lab this case actually belongs to — resolved once,
+  // used both for rule matching and for the fallback pool below.
+  const performingLabFacilityId = await resolveCasePerformingLab(caseData);
+
   // Load all active subspecialties
   const subsResult = await subspecialtyService.getAll();
   if (!subsResult.ok) {
@@ -204,13 +293,23 @@ export async function routeCase(caseData: Case): Promise<RoutingResult> {
   for (const specimen of caseData.specimens) {
     const description = specimen.description ?? specimen.label ?? '';
 
-    // Try keyword matching against description
-    const subspecialtyId = matchSpecimenToSubspecialty(description);
+    // Try the real composite-key match first (specimenDictionaryEntryId
+    // + this case's own performing lab), falling back to keyword text
+    // matching only when the rule or specimen has no structured id —
+    // see ruleMatchesSpecimen's own doc comment.
+    const subspecialtyId = matchSpecimenToSubspecialty(specimen.specimenDictionaryEntryId, description, performingLabFacilityId);
     if (subspecialtyId) {
       const sub = subspecialties.find((s: Subspecialty) => s.id === subspecialtyId);
-      if (sub) {
+      // Real safety check, not just a blind lookup: a pool can itself
+      // be scoped to one performing lab (Subspecialty.
+      // performingLabFacilityId, same convention as the rule above).
+      // If a rule points at a pool that belongs to a *different* lab
+      // than this case resolved to, that's a real misconfiguration —
+      // treat it as no match rather than silently routing this case
+      // into another lab's pool.
+      if (sub && (!sub.performingLabFacilityId || sub.performingLabFacilityId === performingLabFacilityId)) {
         matchedSubspecialty = sub;
-        matchedVia = `keyword match on "${description}"`;
+        matchedVia = specimen.specimenDictionaryEntryId ? `specimen type match on "${description}"` : `keyword match on "${description}"`;
         break;
       }
     }
@@ -228,14 +327,32 @@ export async function routeCase(caseData: Case): Promise<RoutingResult> {
     };
   }
 
-  // No match — route to fallback pool
-  if (config.fallbackPoolId) {
-    await applyPoolRouting(caseData, config.fallbackPoolId, config.fallbackPoolName);
+  // No match — route to fallback pool. Per FEAT-ROUT-01's own data
+  // model, the real, primary source of truth is a pool's own
+  // isCatchAll flag (Subspecialty.isCatchAll) — a lab-specific
+  // catch-all pool wins over a Global one, same most-specific-wins
+  // precedence as the routing rules above. config.labFallbacks/
+  // fallbackPoolId remain a real, secondary source for orgs that
+  // haven't tagged a pool as catch-all yet — never removed, just
+  // checked after isCatchAll now finds nothing.
+  const catchAllPool = performingLabFacilityId
+    ? subspecialties.find(s => s.isCatchAll && s.performingLabFacilityId === performingLabFacilityId)
+      ?? subspecialties.find(s => s.isCatchAll && !s.performingLabFacilityId)
+    : subspecialties.find(s => s.isCatchAll && !s.performingLabFacilityId);
+
+  const labFallback = performingLabFacilityId
+    ? config.labFallbacks?.find(f => f.performingLabFacilityId === performingLabFacilityId)
+    : undefined;
+  const fallbackPoolId   = catchAllPool?.id   ?? labFallback?.poolId   ?? config.fallbackPoolId;
+  const fallbackPoolName = catchAllPool?.name ?? labFallback?.poolName ?? config.fallbackPoolName;
+
+  if (fallbackPoolId) {
+    await applyPoolRouting(caseData, fallbackPoolId, fallbackPoolName);
     return {
       outcome:   'routed_to_fallback',
-      poolId:    config.fallbackPoolId,
-      poolName:  config.fallbackPoolName,
-      reason:    `No subspecialty match found — routed to fallback pool "${config.fallbackPoolName}"`,
+      poolId:    fallbackPoolId,
+      poolName:  fallbackPoolName,
+      reason:    `No subspecialty match found — routed to fallback pool "${fallbackPoolName}"`,
     };
   }
 

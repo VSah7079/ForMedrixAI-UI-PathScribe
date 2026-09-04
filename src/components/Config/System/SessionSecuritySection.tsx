@@ -48,7 +48,7 @@ const SessionSecuritySection: React.FC = () => {
         <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
           Automatic logoff after a period of inactivity — a HIPAA Security Rule
           technical safeguard. Individual performing labs can require a
-          stricter or more relaxed value via their own entry in the Client
+          stricter or more relaxed value via their own entry in the Facility
           Dictionary; this is the org-wide default used everywhere else.
         </p>
       </div>

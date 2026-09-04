@@ -8,7 +8,17 @@ export { mockPhysicianService     as physicianService     } from './physicians/m
 export { mockFlagService          as flagService          } from './flags/mockFlagService';
 export { mockContainerTypeService as containerTypeService } from './containerTypes/mockContainerTypeService';
 export { mockIntraoperativeService as intraoperativeService } from './intraop/mockIntraoperativeService';
-export { mockReconciliationService as reconciliationService } from './quality/mockReconciliationService';
+// PS-113, Stage 5. reconciliationService/mockReconciliationService.ts
+// retired and deleted - the real, generic qaActivityRecordService
+// below is now the sole system for this data (first release, no real
+// production history to preserve).
+export { mockQaActivityRecordService as qaActivityRecordService } from './quality/mockQaActivityRecordService';
+export { mockQaActivityTypeService as qaActivityTypeService } from './quality/mockQaActivityTypeService';
+export { mockQaSupervisionAssignmentTypeService as qaSupervisionAssignmentTypeService } from './quality/mockQaSupervisionAssignmentTypeService';
+// PS-114. Second archetype's generic service, added to the barrel the
+// same way - real consumers (FppeAssignmentsSection.tsx, and later
+// useSignOutWorkflow.ts) need it during this migration too.
+export { mockQaSupervisionAssignmentService as qaSupervisionAssignmentService } from './quality/mockQaSupervisionAssignmentService';
 export { mockAmendmentService as amendmentService } from './reports/mockAmendmentService';
 export { mockCriticalResultNotificationService as criticalResultNotificationService } from './clinical/mockCriticalResultNotificationService';
 export { mockReportVersionService as reportVersionService } from './reports/mockReportVersionService';
@@ -20,7 +30,7 @@ export { mockFacilityService       as facilityService     } from './facilities/m
 export { mockLocationService       as locationService     } from './locations/mockLocationService';
 export { mockInterfaceExceptionService as interfaceExceptionService } from './interfaceExceptions/mockInterfaceExceptionService';
 export { mockReportReleaseService as reportReleaseService } from './reportRelease/mockReportReleaseService';
-export { mockSpecimenCategoryService as specimenCategoryService } from './specimenCategories/mockSpecimenCategoryService';
+export { mockDepartmentService as departmentService } from './departments/mockDepartmentService';
 export { mockGrossingRoutingOverrideService as grossingRoutingOverrideService } from './grossingRoutingOverrides/mockGrossingRoutingOverrideService';
 export { mockTemplateSuggestionSignalService as templateSuggestionSignalService } from './templateSuggestions/mockTemplateSuggestionSignalService';
 export { mockLisSyncService as lisSyncService } from './lisSync/mockLisSyncService';
@@ -38,12 +48,15 @@ export { mockDiagnosisCodesService as diagnosisCodesService } from './diagnosisC
 export { mockOrderIntakeService as orderIntakeService } from './orderIntake/mockOrderIntakeService';
 export { mockDeficiencyTypeService as deficiencyTypeService } from './deficiencies/mockDeficiencyTypeService';
 export { mockResolutionTypeService as resolutionTypeService } from './deficiencies/mockResolutionTypeService';
+export { mockAbnormalTriggerRuleService as abnormalTriggerRuleService } from './abnormalDetection/mockAbnormalTriggerRuleService';
+export { mockAbnormalDetectionSignalService as abnormalDetectionSignalService } from './abnormalDetection/mockAbnormalDetectionSignalService';
 export { mockSpecimenDeficiencyService as specimenDeficiencyService } from './deficiencies/mockSpecimenDeficiencyService';
 export { mockSystemConfigService  as systemConfigService  } from './systemConfig/mockSystemConfigService';
 export { mockMacroService         as macroService         } from './macros/mockMacroService';
 export { mockFontService          as fontService          } from './fonts/mockFontService';
 export { mockAIBehaviorService    as aiBehaviorService    } from './aiBehavior/mockAIBehaviorService';
 export { mockPrintSettingsService as printSettingsService } from './printSettings/mockPrintSettingsService';
+export { mockFacilityPrintSettingsService as facilityPrintSettingsService } from './printSettings/mockFacilityPrintSettingsService';
 export { mockModelService         as modelService         } from './models/mockModelService';
 export { mockSavedSearchService   as savedSearchService   } from './savedSearches/mockSavedSearchService';
 export { mockAuditService         as auditService         } from './auditlog/mockAuditService';
@@ -74,7 +87,7 @@ export type { Physician }         from './physicians/IPhysicianService';
 export type { Flag }              from './flags/IFlagService';
 export type { Subspecialty }      from './subspecialties/ISubspecialtyService';
 export type { Facility }          from './facilities/IFacilityService';
-export type { SpecimenCategory }  from './specimenCategories/ISpecimenCategoryService';
+export type { Department }  from './departments/IDepartmentService';
 export type { PriorityLevel }     from './priority/IPriorityService';
 export type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from './stains/IStainService';
 export type { IncomingOrder, IncomingOrderSpecimen, SpecimenCodeCrosswalkEntry, OrderResolutionResult } from './orderIntake/IOrderIntakeService';

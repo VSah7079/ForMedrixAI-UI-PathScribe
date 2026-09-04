@@ -111,6 +111,44 @@ describe('mockPatientIndexService — real matching behavior', () => {
   });
 });
 
+describe('mockPatientIndexService.resolvePatientWithoutMatching — real, per direct guidance (Outside Client Support: "completely bypassing the identity reconciliation queue")', () => {
+  it('always creates a genuinely fresh identity, even when an exact MRN+name+DOB match already exists — the whole real point of this method', async () => {
+    const first = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-BYPASS-1' }));
+    expect(first.outcome).toBe('created');
+    if (first.outcome !== 'created') return;
+
+    // A real, exact duplicate of the same demographics — resolveOrCreatePatient
+    // would confidently MATCH this to the same real person.
+    const result = await mockPatientIndexService.resolvePatientWithoutMatching(candidate({ mrn: 'MRN-BYPASS-1' }));
+    expect(result.outcome).toBe('created');
+    if (result.outcome !== 'created') return;
+    expect(result.patientId).not.toBe(first.patientId);
+  });
+
+  it('the created record is honestly marked establishedVia "created_unmatched" — distinct from a genuinely-checked new patient', async () => {
+    const result = await mockPatientIndexService.resolvePatientWithoutMatching(candidate({ mrn: 'MRN-BYPASS-2' }));
+    if (result.outcome !== 'created') throw new Error('setup failed');
+    const record = await mockPatientIndexService.getById(result.patientId);
+    expect(record?.establishedVia).toBe('created_unmatched');
+  });
+
+  it('never returns "matched" or "ambiguous" — always "created", regardless of what real data already exists', async () => {
+    // Real, deliberately ambiguous-shaped input against existing data
+    // (would trigger a real 'ambiguous' flag via resolveOrCreatePatient) —
+    // this method must still just create, honestly, every time.
+    await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-BYPASS-3' }));
+    const result = await mockPatientIndexService.resolvePatientWithoutMatching(candidate({ mrn: 'MRN-BYPASS-3', dateOfBirth: '1990-01-01' }));
+    expect(result.outcome).toBe('created');
+  });
+
+  it('still adds a real identifier crosswalk entry when assigningAuthority is provided, same as resolveOrCreatePatient', async () => {
+    const result = await mockPatientIndexService.resolvePatientWithoutMatching(candidate({ mrn: 'MRN-BYPASS-4', assigningAuthority: 'OUTSIDE_REFERRING_EMR' }));
+    if (result.outcome !== 'created') throw new Error('setup failed');
+    const knownId = await mockPatientIndexService.resolveByIdentifier('OUTSIDE_REFERRING_EMR', 'MRN-BYPASS-4');
+    expect(knownId).toBe(result.patientId);
+  });
+});
+
 describe('mockPatientIndexService — real audit trail', () => {
   beforeEach(() => { store.clear(); });
 
@@ -244,6 +282,32 @@ describe('mockPatientIndexService — real resolution actions (confirm / merge)'
     expect(pending).toHaveLength(0);
   });
 
+  it('real, found-and-fixed gap: mergeIntoExistingPatient also repoints every real Encounter under the provisional id, not just its cases', async () => {
+    const { mockEncounterService } = await import('../encounters/mockEncounterService');
+
+    const first = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-ENC-1' }));
+    expect(first.outcome).toBe('created');
+    if (first.outcome !== 'created') return;
+    const confirmedId = first.patientId;
+
+    const ambiguous = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-ENC-1', dateOfBirth: '1990-01-01' }));
+    expect(ambiguous.outcome).toBe('ambiguous');
+    if (ambiguous.outcome !== 'ambiguous') return;
+    const provisionalId = ambiguous.patientId;
+
+    const encRes = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: ORG_A, patientId: provisionalId, encounterNumber: 'ENC-MERGE-TEST-1', encounterClass: 'Inpatient',
+    });
+    expect(encRes.ok).toBe(true);
+    if (!encRes.ok) return;
+
+    const result = await mockPatientIndexService.mergeIntoExistingPatient(provisionalId, confirmedId);
+    expect(result.encountersRepointed).toBe(1);
+
+    const reloaded = await mockEncounterService.getById(encRes.data.id);
+    expect(reloaded.ok && reloaded.data?.patientId).toBe(confirmedId);
+  });
+
   it('merging into a target that does not exist throws rather than silently corrupting state', async () => {
     await mockPatientIndexService.resolveOrCreatePatient(candidate());
     const ambiguous = await mockPatientIndexService.resolveOrCreatePatient(candidate({ dateOfBirth: '1990-01-01' }));
@@ -293,7 +357,7 @@ describe('mockPatientIndexService — real fix: linkPatients, the third resoluti
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created') throw new Error('setup failed');
 
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1', 'Same real patient, two different referring EMRs');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1', 'Same real patient, two different referring EMRs');
 
     const recordA = await mockPatientIndexService.getById(aRes.patientId);
     const recordB = await mockPatientIndexService.getById(bRes.patientId);
@@ -305,7 +369,7 @@ describe('mockPatientIndexService — real fix: linkPatients, the third resoluti
     const aRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A' }));
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1');
 
     const laterA = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A' }));
     const laterB = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
@@ -317,7 +381,7 @@ describe('mockPatientIndexService — real fix: linkPatients, the third resoluti
     await mockPatientIndexService.resolveOrCreatePatient(candidate());
     const ambiguous = await mockPatientIndexService.resolveOrCreatePatient(candidate({ dateOfBirth: '1990-01-01' }));
     if (ambiguous.outcome !== 'ambiguous') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(ambiguous.patientId, ambiguous.candidatePatientIds[0], 'admin-1');
+    await mockPatientIndexService.linkPatients(ambiguous.patientId, ambiguous.candidatePatientIds[0], 'same_person', 'admin-1');
     const pending = await mockPatientIndexService.listPendingReview(ORG_A);
     expect(pending.find(r => r.id === ambiguous.patientId)).toBeUndefined();
   });
@@ -329,7 +393,7 @@ describe('mockPatientIndexService — real fix: getLinkedPatientIds follows the 
   it('returns just the given id when it has no real links at all', async () => {
     const res = await mockPatientIndexService.resolveOrCreatePatient(candidate());
     if (res.outcome !== 'created') throw new Error('setup failed');
-    const linked = await mockPatientIndexService.getLinkedPatientIds(res.patientId);
+    const linked = await mockPatientIndexService.getLinkedPatientIds(res.patientId, 'same_person');
     expect(linked).toEqual([res.patientId]);
   });
 
@@ -337,8 +401,8 @@ describe('mockPatientIndexService — real fix: getLinkedPatientIds follows the 
     const aRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A' }));
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1');
-    const linked = await mockPatientIndexService.getLinkedPatientIds(aRes.patientId);
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1');
+    const linked = await mockPatientIndexService.getLinkedPatientIds(aRes.patientId, 'same_person');
     expect(linked.sort()).toEqual([aRes.patientId, bRes.patientId].sort());
   });
 
@@ -347,11 +411,137 @@ describe('mockPatientIndexService — real fix: getLinkedPatientIds follows the 
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
     const cRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-C', dateOfBirth: '1990-05-05' }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created' || cRes.outcome !== 'created') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1');
-    await mockPatientIndexService.linkPatients(bRes.patientId, cRes.patientId, 'admin-1');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1');
+    await mockPatientIndexService.linkPatients(bRes.patientId, cRes.patientId, 'same_person', 'admin-1');
 
-    const linkedFromA = await mockPatientIndexService.getLinkedPatientIds(aRes.patientId);
+    const linkedFromA = await mockPatientIndexService.getLinkedPatientIds(aRes.patientId, 'same_person');
     expect(linkedFromA.sort()).toEqual([aRes.patientId, bRes.patientId, cRes.patientId].sort());
+  });
+
+  it('real, per direct guidance: a family_relation link never leaks into a same_person query, even through a shared intermediate patient', async () => {
+    // Real, concrete scenario this whole fix exists for: A and B are
+    // the same real person (maiden/married name) - a real
+    // same_person link. B and C are genuinely different real people
+    // (B's own newborn) - a real family_relation link. A query for
+    // A's own same_person-linked identities must include B (the real
+    // reason the link exists) but never C - C is not the same real
+    // person as A just because both happen to connect through B.
+    const aRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A2' }));
+    const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B2', dateOfBirth: '1980-01-01' }));
+    const cRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-C2', dateOfBirth: '2026-01-01' }));
+    if (aRes.outcome !== 'created' || bRes.outcome !== 'created' || cRes.outcome !== 'created') throw new Error('setup failed');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1');
+    await mockPatientIndexService.linkPatients(bRes.patientId, cRes.patientId, 'family_relation', 'admin-1');
+
+    const samePersonFromA = await mockPatientIndexService.getLinkedPatientIds(aRes.patientId, 'same_person');
+    expect(samePersonFromA.sort()).toEqual([aRes.patientId, bRes.patientId].sort());
+    expect(samePersonFromA).not.toContain(cRes.patientId);
+
+    // The real family_relation query for B, on the other hand, genuinely
+    // includes C (the actual relationship it represents) but never A.
+    const familyFromB = await mockPatientIndexService.getLinkedPatientIds(bRes.patientId, 'family_relation');
+    expect(familyFromB.sort()).toEqual([bRes.patientId, cRes.patientId].sort());
+    expect(familyFromB).not.toContain(aRes.patientId);
+  });
+});
+
+describe('mockPatientIndexService.moveCaseToPatient — real fix, HL7 A43: repoints one specific, misattributed case, and (newly fixed) its own linked Encounter', () => {
+  beforeEach(() => { store.clear(); });
+
+  it('moves the case and reassigns its own exclusively-owned Encounter', async () => {
+    const { mockCaseService } = await import('../cases/mockCaseService');
+    const { mockEncounterService } = await import('../encounters/mockEncounterService');
+
+    const sourceRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-SRC' }));
+    const targetRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-TGT', dateOfBirth: '1990-01-01' }));
+    if (sourceRes.outcome === 'ambiguous' || targetRes.outcome === 'ambiguous') throw new Error('setup failed');
+    const sourceId = sourceRes.patientId;
+    const targetId = targetRes.patientId;
+
+    const encRes = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: ORG_A, patientId: sourceId, encounterNumber: 'ENC-A43-EXCLUSIVE', encounterClass: 'Inpatient',
+    });
+    if (!encRes.ok) throw new Error('setup failed');
+
+    const caseId = 'S26-A43-TEST-001';
+    await mockCaseService.createCase({
+      id: caseId, status: 'draft', encounterId: encRes.data.id,
+      patient: { id: sourceId, mrn: 'MRN-A43-SRC', firstName: 'Newborn', lastName: 'TestBaby' },
+    } as any);
+
+    const result = await mockPatientIndexService.moveCaseToPatient(caseId, sourceId, targetId, new Date().toISOString());
+    expect(result.moved).toBe(true);
+    expect(result.encounterOutcome).toBe('reassigned');
+
+    const casesRes = await mockCaseService.getAll();
+    const moved = casesRes.ok ? (casesRes.data as any[]).find(c => c.id === caseId) : null;
+    expect(moved?.patient?.id).toBe(targetId);
+    expect(moved?.encounterId).toBe(encRes.data.id);
+
+    const encAfter = await mockEncounterService.getById(encRes.data.id);
+    expect(encAfter.ok && encAfter.data?.patientId).toBe(targetId);
+  });
+
+  it('real, careful edge case: a real, genuinely SHARED Encounter (another case under the source patient still needs it) stays with the source patient, and the moved case\'s own encounterId is cleared rather than left stale and cross-patient', async () => {
+    const { mockCaseService } = await import('../cases/mockCaseService');
+    const { mockEncounterService } = await import('../encounters/mockEncounterService');
+
+    const sourceRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-SHARED-SRC' }));
+    const targetRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-SHARED-TGT', dateOfBirth: '1990-01-01' }));
+    if (sourceRes.outcome === 'ambiguous' || targetRes.outcome === 'ambiguous') throw new Error('setup failed');
+    const sourceId = sourceRes.patientId;
+    const targetId = targetRes.patientId;
+
+    const encRes = await mockEncounterService.resolveOrCreateEncounter({
+      organisationId: ORG_A, patientId: sourceId, encounterNumber: 'ENC-A43-SHARED', encounterClass: 'Inpatient',
+    });
+    if (!encRes.ok) throw new Error('setup failed');
+
+    // Two real cases, from the same real clinical visit, sharing one
+    // real Encounter — only ONE of them (the misattributed one) moves.
+    const movedCaseId = 'S26-A43-SHARED-001';
+    const staysCaseId = 'S26-A43-SHARED-002';
+    await mockCaseService.createCase({
+      id: movedCaseId, status: 'draft', encounterId: encRes.data.id,
+      patient: { id: sourceId, mrn: 'MRN-A43-SHARED-SRC', firstName: 'Newborn', lastName: 'TestBaby' },
+    } as any);
+    await mockCaseService.createCase({
+      id: staysCaseId, status: 'draft', encounterId: encRes.data.id,
+      patient: { id: sourceId, mrn: 'MRN-A43-SHARED-SRC', firstName: 'Mother', lastName: 'TestParent' },
+    } as any);
+
+    const result = await mockPatientIndexService.moveCaseToPatient(movedCaseId, sourceId, targetId, new Date().toISOString());
+    expect(result.moved).toBe(true);
+    expect(result.encounterOutcome).toBe('unlinked_shared');
+
+    const casesRes = await mockCaseService.getAll();
+    const moved = casesRes.ok ? (casesRes.data as any[]).find(c => c.id === movedCaseId) : null;
+    const stayed = casesRes.ok ? (casesRes.data as any[]).find(c => c.id === staysCaseId) : null;
+    expect(moved?.patient?.id).toBe(targetId);
+    expect(moved?.encounterId).toBeUndefined();
+    // The real, still-shared case is completely untouched — same
+    // patient, same encounter, exactly as it should stay.
+    expect(stayed?.patient?.id).toBe(sourceId);
+    expect(stayed?.encounterId).toBe(encRes.data.id);
+
+    const encAfter = await mockEncounterService.getById(encRes.data.id);
+    expect(encAfter.ok && encAfter.data?.patientId).toBe(sourceId);
+  });
+
+  it('a case with no linked Encounter at all reports encounterOutcome: none', async () => {
+    const { mockCaseService } = await import('../cases/mockCaseService');
+    const sourceRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-NOENC-SRC' }));
+    const targetRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A43-NOENC-TGT', dateOfBirth: '1990-01-01' }));
+    if (sourceRes.outcome === 'ambiguous' || targetRes.outcome === 'ambiguous') throw new Error('setup failed');
+    const caseId = 'S26-A43-NOENC-001';
+    await mockCaseService.createCase({
+      id: caseId, status: 'draft',
+      patient: { id: sourceRes.patientId, mrn: 'MRN-A43-NOENC-SRC', firstName: 'Test', lastName: 'Patient' },
+    } as any);
+
+    const result = await mockPatientIndexService.moveCaseToPatient(caseId, sourceRes.patientId, targetRes.patientId, new Date().toISOString());
+    expect(result.moved).toBe(true);
+    expect(result.encounterOutcome).toBe('none');
   });
 });
 
@@ -362,7 +552,7 @@ describe('mockPatientIndexService — real fix: listLinks, the real audit trail 
     const aRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A' }));
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01' }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1', 'Confirmed same patient');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1', 'Confirmed same patient');
 
     const links = await mockPatientIndexService.listLinks(ORG_A);
     expect(links).toHaveLength(1);
@@ -373,7 +563,7 @@ describe('mockPatientIndexService — real fix: listLinks, the real audit trail 
     const aRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-A', organisationId: ORG_B }));
     const bRes = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-B', dateOfBirth: '1980-01-01', organisationId: ORG_B }));
     if (aRes.outcome !== 'created' || bRes.outcome !== 'created') throw new Error('setup failed');
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1');
 
     const linksForOrgA = await mockPatientIndexService.listLinks(ORG_A);
     expect(linksForOrgA).toHaveLength(0);
@@ -527,6 +717,25 @@ describe('mockPatientIndexService — real fix, Phase 3: updateDemographics, the
     expect(result.applied).toBe(true);
     expect(result.record.firstName).toBe('UpdatedFirst');
     expect(result.record.lastEventAt).toBe('2026-01-15T15:00:00.000Z');
+  });
+
+  it('real, found-and-fixed gap: a genuinely applied demographic update now leaves a real, PHI-safe audit trail — previously only the rejected/stale path logged anything at all', async () => {
+    const { mockAuditService } = await import('../auditlog/mockAuditService');
+    const res = await mockPatientIndexService.resolveOrCreatePatient(candidate({ mrn: 'MRN-DEMO-AUDIT' }));
+    if (res.outcome !== 'created') throw new Error('setup failed');
+
+    await mockPatientIndexService.updateDemographics(res.patientId, { firstName: 'AuditedFirst', lastName: 'AuditedLast' }, '2026-01-15T15:00:00.000Z');
+
+    const logsRes = await mockAuditService.getAuditLogs({ search: 'mpi.demographics.updated' } as any);
+    expect(logsRes.ok).toBe(true);
+    if (!logsRes.ok) return;
+    const entry = logsRes.data.find(l => l.detail.includes(res.patientId));
+    expect(entry).toBeTruthy();
+    // Real, PHI-safe: names WHICH fields changed, never the actual new values.
+    expect(entry?.detail).toContain('firstName');
+    expect(entry?.detail).toContain('lastName');
+    expect(entry?.detail).not.toContain('AuditedFirst');
+    expect(entry?.detail).not.toContain('AuditedLast');
   });
 
   it('real, critical fix: a genuinely STALE (older) event is honestly rejected, never silently applied over newer state', async () => {

@@ -89,6 +89,8 @@ const NOTIFICATION_METHOD_LABEL: Record<NotificationMethod, string> = {
   verbal_phone: 'Verbal / Phone Call',
   secure_page: 'Secure Page',
   direct_lis_flag: 'Direct LIS Flag',
+  secure_email: 'Secure Email',
+  fax: 'Fax',
 };
 
 const formatValue = (value: unknown): string => {

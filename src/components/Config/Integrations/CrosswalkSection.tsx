@@ -13,8 +13,9 @@
 // time (so a known client code never has to self-learn at all), and
 // tell system-learned entries apart from admin-confirmed ones.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import '../../../pathscribe.css';
 import { orderIntakeService, facilityService, specimenDictionaryService, interfaceExceptionService } from '@/services';
 import type { SpecimenCodeCrosswalkEntry } from '@/services/orderIntake/IOrderIntakeService';
@@ -44,6 +45,13 @@ const CrosswalkSection: React.FC = () => {
   // stub means the crosswalk had NO entry at all, even after
   // self-learning — a real, different, upstream signal.
   const [pendingUnmappedStubCount, setPendingUnmappedStubCount] = useState(0);
+
+  // ── Spreadsheet import/export — same two-step preview-then-apply
+  // shape as Stain Dictionary/Specimen Dictionary, matched rather than
+  // reinvented.
+  const xwalkImportFileInputRef = useRef<HTMLInputElement>(null);
+  type XwalkImportRow = { clientId: string; clientName: string; externalCode: string; dictionaryEntryId: string; entryName: string; existingId?: string; error?: string };
+  const [xwalkImportPreview, setXwalkImportPreview] = useState<XwalkImportRow[] | null>(null);
 
   const refresh = () => {
     Promise.all([
@@ -102,10 +110,77 @@ const CrosswalkSection: React.FC = () => {
     }
   };
 
+  const handleDownloadCrosswalk = () => {
+    const rows = entries.map(e => ({
+      Facility: clientName(e.clientId), ExternalCode: e.externalCode, ResolvesTo: entryName(e.dictionaryEntryId),
+      Source: e.createdBy === 'system' ? 'Auto-learned' : 'Admin-confirmed',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Specimen Code Map');
+    XLSX.writeFile(wb, 'SpecimenCodeCrosswalk.xlsx');
+  };
+
+  const handleXwalkFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const data = evt.target?.result;
+      if (!data) return;
+      const workbook = XLSX.read(data, { type: 'binary' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+      const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
+      const preview: XwalkImportRow[] = rows.map(row => {
+        const facilityName = get(row, 'Facility', 'Client', 'facility', 'client');
+        const externalCode = get(row, 'ExternalCode', 'External Code', 'externalCode');
+        const specimenName = get(row, 'ResolvesTo', 'Resolves To', 'SpecimenType', 'Specimen Type', 'resolvesTo');
+
+        const matchedClient = clients.find(c => c.name.toLowerCase() === facilityName.toLowerCase());
+        const matchedEntry  = dictionary.find(d => d.name.toLowerCase() === specimenName.toLowerCase());
+        const existing = matchedClient
+          ? entries.find(e => e.clientId === matchedClient.id && e.externalCode.toLowerCase() === externalCode.toLowerCase())
+          : undefined;
+
+        let rowError: string | undefined;
+        if (!facilityName || !matchedClient) rowError = `Facility "${facilityName}" doesn't match any real facility.`;
+        else if (!externalCode) rowError = 'External code is required.';
+        else if (!specimenName || !matchedEntry) rowError = `Specimen type "${specimenName}" doesn't match any real Specimen Dictionary entry.`;
+
+        return {
+          clientId: matchedClient?.id ?? '', clientName: facilityName,
+          externalCode, dictionaryEntryId: matchedEntry?.id ?? '', entryName: specimenName,
+          existingId: existing?.id, error: rowError,
+        };
+      }).filter(r => r.externalCode || r.clientName);
+
+      setXwalkImportPreview(preview);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleApplyXwalkImport = async () => {
+    if (!xwalkImportPreview) return;
+    const valid = xwalkImportPreview.filter(r => !r.error);
+    await Promise.all(valid.map(r =>
+      r.existingId
+        ? orderIntakeService.updateCrosswalkEntry(r.existingId, { dictionaryEntryId: r.dictionaryEntryId })
+        : orderIntakeService.addCrosswalkEntry({ clientId: r.clientId, externalCode: r.externalCode, dictionaryEntryId: r.dictionaryEntryId, createdBy: 'admin' })
+    ));
+    setXwalkImportPreview(null);
+    refresh();
+  };
+
   if (loading) return <div className="ps-conf-section-subtitle">Loading…</div>;
 
   const pendingCount = entries.filter(e => e.createdBy === 'system').length;
 
+  // ── Spreadsheet import/export — same two-step preview-then-apply
+  // shape as Stain Dictionary/Specimen Dictionary, matched rather than
+  // reinvented. Facility and specimen type are matched by NAME (not
+  // id, which a real customer's spreadsheet has no way to know) —
+  // unresolvable names are surfaced as a real, visible error on that
+  // row rather than silently skipped or guessed at.
   return (
     <div>
       <div className="ps-conf-section-header">
@@ -119,8 +194,27 @@ const CrosswalkSection: React.FC = () => {
             review those below, or add a known mapping ahead of time so it never has to self-learn at all.
           </p>
         </div>
+        <button className="ps-conf-btn-secondary" onClick={handleDownloadCrosswalk}>Export</button>
+        <button className="ps-conf-btn-secondary" onClick={() => xwalkImportFileInputRef.current?.click()}>Import Spreadsheet</button>
+        <input ref={xwalkImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleXwalkFileUpload(e.target.files[0]); e.target.value = ''; }} />
         <button className="ps-conf-btn-primary" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
       </div>
+
+      {xwalkImportPreview && (
+        <div className="ps-conf-import-preview">
+          <p>
+            {xwalkImportPreview.filter(r => !r.error).length} row{xwalkImportPreview.filter(r => !r.error).length === 1 ? '' : 's'} ready
+            ({xwalkImportPreview.filter(r => !r.error && r.existingId).length} to update,
+            {' '}{xwalkImportPreview.filter(r => !r.error && !r.existingId).length} new)
+            {xwalkImportPreview.some(r => r.error) && `, ${xwalkImportPreview.filter(r => r.error).length} skipped with errors below.`}
+          </p>
+          {xwalkImportPreview.filter(r => r.error).map((r, i) => (
+            <div key={i} className="ps-conf-error-text">{r.clientName || '(blank)'} / {r.externalCode || '(blank)'}: {r.error}</div>
+          ))}
+          <button className="ps-conf-btn-primary" onClick={handleApplyXwalkImport} disabled={xwalkImportPreview.every(r => r.error)}>Apply Import</button>
+          <button className="ps-conf-btn-row" onClick={() => setXwalkImportPreview(null)}>Cancel</button>
+        </div>
+      )}
 
       {/* Real, new — per direct guidance: a real, prominent, actionable
           callout for pending unmapped_order_code InterfaceExceptions

@@ -62,14 +62,14 @@ export interface ReconciliationRecord {
   /** Free-text label for display — e.g. the specimen's own label, not a
    *  formal dictionary category (checked directly: the values QualityTab
    *  already shows, like "Breast Core Bx," don't match any real
-   *  Specimen Categories dictionary in this app — they're just display text). */
+   *  Departments dictionary in this app — they're just display text). */
   caseType: string;
   /** Real Subspecialty.id (GI/Breast/Derm/Neuro/etc — see
    *  services/subspecialties/mockSubspecialtyService.ts), derived from
    *  the case's own Case.subspecialtyId at the point of reconciliation.
-   *  This is deliberately Subspecialty, not SpecimenCategory — those are
+   *  This is deliberately Subspecialty, not Department — those are
    *  two different, already-real, unrelated axes in this app
-   *  (SpecimenCategory governs accession numbering/grossing templates;
+   *  (Department governs accession numbering/grossing templates;
    *  Subspecialty is the actual clinical-domain classification this
    *  kind of trainee competency tracking needs). Undefined when the
    *  case itself has no subspecialtyId set. */

@@ -414,6 +414,12 @@ export interface StainOrderForCptSuggestion {
    *  Molecular category stain actually needs billed. Undefined for
    *  every non-Molecular stain, which never reads this field. */
   selectedTargets?: import('@/types/billing/MolecularBillingRule').MolecularTarget[];
+  /** Real, per direct billing-expert guidance (PS-93) —
+   *  computeMatrixStainBillingUnits's own real input; see
+   *  StainOrder.evaluatedSpecimenIds's own doc comment (types/case/
+   *  Specimen.ts) for the full reasoning. Undefined for every
+   *  ordinary, non-MatrixBlock stain, which never reads this field. */
+  evaluatedSpecimenIds?: string[];
 }
 
 /** Real fix: replaces guesswork with a real, rule-based suggestion
@@ -770,12 +776,46 @@ export interface SpecimenCodingSummaryBlock {
   stainCodingStatus: StainCodingStatus[];
 }
 
+export interface SpecimenMatrixBlockContribution {
+  matrixBlockId: string;
+  matrixBlockLabel: string;
+  /** Real applied/rejected codes this specimen already has recorded
+   *  for this specific shared block — Specimen.matrixBlockCoding,
+   *  filtered to this one matrixBlockId. Same AppliedBlockCode shape
+   *  as an ordinary block's own coding, for consistency. */
+  appliedAncillaryCodes: AppliedBlockCode[];
+  rejectedAncillaryCodes: AppliedBlockCode[];
+  /** Real, newly-computed suggestions (computeMatrixStainBillingUnits)
+   *  from every stain on this block where this specimen is in
+   *  evaluatedSpecimenIds, not yet applied or rejected. Same
+   *  computeNewSuggestions filtering as an ordinary block's own
+   *  unappliedSuggestions, so a re-applied/re-rejected code doesn't
+   *  keep reappearing. */
+  unappliedSuggestions: string[];
+  unappliedSuggestionSources: { code: string; stainOrderId?: string }[];
+  /** This block's own current stain names, same reasoning as
+   *  SpecimenCodingSummaryBlock.stainNames. */
+  stainNames: string[];
+}
+
 export interface SpecimenCodingSummary {
   specimenId: string;
   specimenLabel: string;
   baseCptCodes: string[];
   hasBaseCode: boolean;
   blocks: SpecimenCodingSummaryBlock[];
+  /** Real, per direct billing-expert guidance (PS-93) — this
+   *  specimen's own real contributions from any shared MatrixBlock it
+   *  participates in (Case.matrixBlocks[]), kept deliberately separate
+   *  from blocks above rather than merged in: a MatrixBlock stain's
+   *  billing sequencing is genuinely a different, self-contained rule
+   *  (computeMatrixStainBillingUnits) from an ordinary block's own
+   *  running-count sequencing, and the applied/rejected codes
+   *  themselves are stored in a genuinely different place
+   *  (Specimen.matrixBlockCoding, not HistologyBlock.coding). Empty
+   *  for a specimen with no matrix block participation, exactly as
+   *  it always implicitly was before this field existed. */
+  matrixBlockContributions: SpecimenMatrixBlockContribution[];
   /** Real, soft-warning condition: at least one block on this specimen
    *  has real ancillary codes (applied or newly suggested) but the
    *  specimen itself has no real base code - a genuine gap worth
@@ -788,10 +828,16 @@ export interface SpecimenCodingSummary {
  *  and newly suggested), with the specific soft-warning condition
  *  Pete's own spec called for (ancillary present, base code missing).
  *  Pure and testable - the modal itself only renders this, doesn't
- *  compute it inline. */
+ *  compute it inline.
+ *
+ *  Real, per direct billing-expert guidance (PS-93): matrixBlocks
+ *  defaults to [] so every existing caller/test fixture stays valid
+ *  unchanged — a case's real Biopsy Array coverage only activates once
+ *  a caller actually passes Case.matrixBlocks[] through. */
 export function computeCaseCodingSummary(
-  specimens: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { id?: string; stainName: string }[]; coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] } }[] }[],
-  allStainTypes: StainType[]
+  specimens: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { id?: string; stainName: string }[]; coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] } }[]; matrixBlockCoding?: { matrixBlockId: string; cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] }[] }[],
+  allStainTypes: StainType[],
+  matrixBlocks: { id: string; label: string; participants: { specimenId: string }[]; slides: StainOrderForCptSuggestion[] }[] = []
 ): SpecimenCodingSummary[] {
   return specimens.map(sp => {
     const baseCptCodes = sp.coding?.cpt ?? [];
@@ -837,15 +883,120 @@ export function computeCaseCodingSummary(
 
     const hasAnyAncillary = blocks.some(b => b.appliedAncillaryCodes.length > 0 || b.unappliedSuggestions.length > 0);
 
+    // Real, per direct billing-expert guidance (PS-93) — this
+    // specimen's own contribution from each shared MatrixBlock it's a
+    // real participant in, computed via computeMatrixStainBillingUnits
+    // above (the deliberately separate, self-contained-per-stain
+    // sequencing rule), never suggestSpecimenAncillaryCptCodes's own
+    // running-count one.
+    const matrixBlockContributions: SpecimenMatrixBlockContribution[] = matrixBlocks
+      .filter(mb => mb.participants.some(p => p.specimenId === sp.id))
+      .map(mb => {
+        const applied = (sp.matrixBlockCoding ?? []).find(c => c.matrixBlockId === mb.id)?.cpt ?? [];
+        const rejected = (sp.matrixBlockCoding ?? []).find(c => c.matrixBlockId === mb.id)?.rejectedCpt ?? [];
+        const allSuggested = mb.slides.flatMap(stain =>
+          computeMatrixStainBillingUnits(stain, allStainTypes).filter(u => u.specimenId === sp.id)
+        );
+        const suggestedCodes = allSuggested.map(u => u.code);
+        const suggestedSources = allSuggested.map(u => ({ code: u.code, stainOrderId: u.stainOrderId }));
+        return {
+          matrixBlockId: mb.id,
+          matrixBlockLabel: mb.label,
+          appliedAncillaryCodes: applied,
+          rejectedAncillaryCodes: rejected,
+          unappliedSuggestions: computeNewSuggestions(applied.map(a => a.code), suggestedCodes, rejected.map(r => r.code)),
+          unappliedSuggestionSources: computeNewSuggestionsWithSources(applied, suggestedSources, rejected),
+          stainNames: mb.slides.map(s => s.stainName),
+        };
+      });
+
     return {
       specimenId: sp.id,
       specimenLabel: sp.label,
       baseCptCodes,
       hasBaseCode: baseCptCodes.length > 0,
       blocks,
+      matrixBlockContributions,
       hasAncillaryButNoBaseCode: hasAnyAncillary && baseCptCodes.length === 0,
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PS-93: real Biopsy Array / MatrixBlock billing coverage — the actual
+// gap this ticket was about. computeCaseCodingSummary above has no
+// awareness of Case.matrixBlocks[] at all; this is the dedicated
+// computation for what it's missing, kept deliberately SEPARATE from
+// suggestSpecimenAncillaryCptCodes's own per-specimen running-IHC-count
+// sequencing above rather than folded into it — per direct billing-
+// expert guidance (PS-93), a MatrixBlock stain's own first/additional
+// sequencing is scoped to that one stain's own confirmed evaluatedSpecimenIds
+// set, independent of whatever separate IHC history any of those
+// specimens has on their own, ordinary blocks. Folding this into the
+// existing per-specimen sequencer would have silently mixed two
+// genuinely different real rules.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MatrixStainBillingUnit {
+  specimenId: string;
+  code: string;
+  stainOrderId: string;
+}
+
+/**
+ * The real billing calculation for one shared MatrixBlock stain, per
+ * direct billing-expert guidance (PS-93):
+ *   - evaluatedSpecimenIds empty/undefined → zero units. "Ensuring
+ *     zero risk of unbundled or improper claims" — never a guess, and
+ *     deliberately never falls back to targetSpecimenIds (see
+ *     StainOrder.evaluatedSpecimenIds's own doc comment, types/case/
+ *     Specimen.ts, for why order-time targeting and sign-out-time
+ *     evaluation are two different real facts).
+ *   - Exactly 1 evaluated specimen → that specimen gets IHC-FIRST
+ *     (real billingCode label — see CODE_MAP_TABLE's own 88342 entry).
+ *   - N > 1 evaluated specimens → the first gets IHC-FIRST, every
+ *     other gets IHC-ADDL (88341) — a self-contained sequence scoped
+ *     to this one stain's own evaluated set only.
+ * Only ever produces IHC-shaped output — that's the one real,
+ * explicit rule given. A resolvable Special Stain gets the same
+ * "one real unit per genuinely evaluated specimen" treatment as a
+ * single-specimen Special Stain already gets elsewhere in this file
+ * (no first/additional distinction exists for that category at all).
+ * Molecular is a deliberate, disclosed gap — real target-count-based
+ * calculation (calculateMolecularUnits) has no billing-expert guidance
+ * yet for how it should behave across multiple evaluated specimens on
+ * one shared probe set, so this returns no units for it rather than
+ * guessing; see services/billing/README.md's own PS-93 entry.
+ * A stain whose category can't be resolved at all produces nothing,
+ * same "never guessed at" posture as suggestAncillaryCodesForStains.
+ */
+export function computeMatrixStainBillingUnits(
+  stain: StainOrderForCptSuggestion,
+  allStainTypes: StainType[]
+): MatrixStainBillingUnit[] {
+  const evaluatedSpecimenIds = stain.evaluatedSpecimenIds ?? [];
+  if (evaluatedSpecimenIds.length === 0 || !stain.id) return [];
+
+  const matchedType = resolveStainType(stain.stainName, allStainTypes);
+  const category = matchedType?.category ?? null;
+
+  if (category === 'IHC') {
+    return evaluatedSpecimenIds.map((specimenId, i) => ({
+      specimenId,
+      code: i === 0 ? 'IHC-FIRST' : 'IHC-ADDL',
+      stainOrderId: stain.id!,
+    }));
+  }
+  if (category === 'Special Stain') {
+    return evaluatedSpecimenIds.map(specimenId => ({
+      specimenId,
+      code: 'SPECIAL-STAIN',
+      stainOrderId: stain.id!,
+    }));
+  }
+  // Molecular and unresolved categories: deliberate, disclosed gap —
+  // see this function's own doc comment above.
+  return [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

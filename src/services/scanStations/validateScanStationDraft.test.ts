@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateScanStationDraft } from './validateScanStationDraft';
 
-const validDraft = { name: 'Grossing Station 4', barcodeCode: 'GROSSING-04', supportsPrinting: false };
+const validDraft = { name: 'Grossing Station 4', barcodeCode: 'GROSSING-04', facilityId: 'lab-main', supportsPrinting: false };
 
 describe('validateScanStationDraft — real fix, extracted out of ScanStationsSection.tsx (no business logic in the UI code)', () => {
   it('a real, complete, valid draft has no errors', () => {
@@ -19,10 +19,16 @@ describe('validateScanStationDraft — real fix, extracted out of ScanStationsSe
     expect(errors.barcodeCode).toBeDefined();
   });
 
+  it('real fix, per direct guidance: requires a real facilityId — genuinely unvalidated before the free-text field was replaced with a real dropdown', () => {
+    const errors = validateScanStationDraft({ ...validDraft, facilityId: '' });
+    expect(errors.facilityId).toBeDefined();
+  });
+
   it('every real error is reported together, not just the first', () => {
-    const errors = validateScanStationDraft({ name: '', barcodeCode: '', supportsPrinting: false });
+    const errors = validateScanStationDraft({ name: '', barcodeCode: '', facilityId: '', supportsPrinting: false });
     expect(errors.name).toBeDefined();
     expect(errors.barcodeCode).toBeDefined();
+    expect(errors.facilityId).toBeDefined();
   });
 
   it('real, deliberate domain rule: supportsPrinting on with no real printer profile is rejected', () => {

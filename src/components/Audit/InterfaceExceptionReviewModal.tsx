@@ -26,7 +26,7 @@ interface CaseSummary {
   id: string;
   specimenLabel: string;
   status: string;
-  clientName?: string;
+  facilityName?: string;
   createdAt?: string;
 }
 
@@ -78,7 +78,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
             id: c.id,
             specimenLabel: (c.specimens ?? []).map((s: any) => s.specimenLabel).filter(Boolean).join(', ') || '(no specimens)',
             status: c.status,
-            clientName: c.order?.clientName,
+            facilityName: c.order?.facilityName,
             createdAt: c.createdAt,
           }));
         setSourceCases(matching);
@@ -129,13 +129,13 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
   // the real, new crosswalk entry (via addCrosswalkEntry, the same
   // real method Config → Integrations' own "Add Mapping" form uses)
   // directly from this triage view, then resolves the exception. Never
-  // silently skips the real, required clientId — an exception raised
+  // silently skips the real, required facilityId — an exception raised
   // before this field existed (or from before this feature's own
-  // clientId capture was added) genuinely can't be mapped from here;
+  // facilityId capture was added) genuinely can't be mapped from here;
   // the UI guards this rather than creating a mis-scoped crosswalk
   // entry.
   const handleMapAndLink = async () => {
-    if (!exception.clientId || !exception.rawOrderCode || !mapDictionaryEntryId) return;
+    if (!exception.facilityId || !exception.rawOrderCode || !mapDictionaryEntryId) return;
     setMapBusy(true);
     setMapError(null);
     // Real, deliberate: narrows the plain string InterfaceException.codingSystem
@@ -146,7 +146,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
     // "never fabricate, never silently coerce" posture.
     const validCodingSystem = (['HL7_LOCAL', 'LOINC', 'SNOMED'] as const).find(s => s === exception.codingSystem);
     const created = await orderIntakeService.addCrosswalkEntry({
-      clientId: exception.clientId,
+      clientId: exception.facilityId,
       externalCode: exception.rawOrderCode,
       codingSystem: validCodingSystem,
       dictionaryEntryId: mapDictionaryEntryId,
@@ -249,7 +249,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                           />
                           <div className="ps-iexc-case-info">
                             <div className="ps-iexc-case-id">{c.id}</div>
-                            <div className="ps-iexc-case-detail">{c.specimenLabel}{c.clientName ? ` · ${c.clientName}` : ''} · {c.status}</div>
+                            <div className="ps-iexc-case-detail">{c.specimenLabel}{c.facilityName ? ` · ${c.facilityName}` : ''} · {c.status}</div>
                           </div>
                         </label>
                       ))}
@@ -281,7 +281,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                     </div>
                   </div>
                   {mapError && <p className="ps-conf-error-text">{mapError}</p>}
-                  {exception.clientId ? (
+                  {exception.facilityId ? (
                     <>
                       <div className="ps-conf-form-field">
                         <label className="ps-conf-label">Map to Specimen Dictionary entry</label>
@@ -309,7 +309,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                     </>
                   ) : (
                     <p>
-                      This exception was raised before real client tracking existed for this event type — add the
+                      This exception was raised before real facility tracking existed for this event type — add the
                       real crosswalk entry from the Order Type Dictionary screen (Config → Integrations) instead,
                       then dismiss this exception.
                     </p>

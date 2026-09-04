@@ -130,7 +130,7 @@ export const OrderLookupModal: React.FC<Props> = ({
             type="text"
             autoFocus
             className="ps-order-lookup-search-input"
-            placeholder={`Search by Order #, MRN, Patient Name, DOB (${dobFormatHint}), or Client Code…`}
+            placeholder={`Search by Order #, MRN, Patient Name, DOB (${dobFormatHint}), or Facility Code…`}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -149,7 +149,7 @@ export const OrderLookupModal: React.FC<Props> = ({
               ) : (
                 <div className="ps-order-lookup-grid">
                   <div className="ps-order-lookup-grid-header">
-                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Client</div>
+                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Facility</div>
                   </div>
                   {orderMatches.map(o => (
                     <div key={o.id} className="ps-order-lookup-grid-row" onClick={() => onSelectOrder(o.id)}>
@@ -173,7 +173,7 @@ export const OrderLookupModal: React.FC<Props> = ({
               ) : (
                 <div className="ps-order-lookup-grid">
                   <div className="ps-order-lookup-grid-header">
-                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Client</div>
+                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Facility</div>
                   </div>
                   {patientResults.map(p => (
                     <div key={p.id} className="ps-order-lookup-grid-row" onClick={() => onSelectPatient(p)}>

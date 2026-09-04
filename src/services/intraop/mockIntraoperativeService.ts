@@ -452,7 +452,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     performedBy: { userId: string; userName: string };
     orNumber: string;
     surgeon: string;
-    clientId?: string;
+    facilityId?: string;
     locationId?: string;
   }): Promise<ServiceResult<IntraoperativeEntry>> {
     if (!input.patientMatch.patientName.trim() || !input.patientMatch.mrn.trim()) {
@@ -462,13 +462,13 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     // Real feature, per direct confirmation: "Let's wire in Facility
     // and Location (Room) for Intraop." Resolves the real display
     // strings once, at session creation, same "cached, avoid an async
-    // lookup on every render" reasoning as Case.order.clientName/
+    // lookup on every render" reasoning as Case.order.facilityName/
     // locationDisplay.
-    let clientName: string | undefined;
+    let facilityName: string | undefined;
     let locationDisplay: string | undefined;
-    if (input.clientId) {
-      const clientRes = await mockFacilityService.getById(input.clientId);
-      clientName = clientRes.ok ? clientRes.data.name : undefined;
+    if (input.facilityId) {
+      const facilityRes = await mockFacilityService.getById(input.facilityId);
+      facilityName = facilityRes.ok ? facilityRes.data.name : undefined;
     }
     if (input.locationId) {
       const locationRes = await mockLocationService.getById(input.locationId);
@@ -482,8 +482,8 @@ export const mockIntraoperativeService: IIntraoperativeService = {
       performedBy: input.performedBy,
       orNumber: input.orNumber.trim(),
       surgeon: input.surgeon.trim(),
-      clientId: input.clientId,
-      clientName,
+      facilityId: input.facilityId,
+      facilityName,
       locationId: input.locationId,
       locationDisplay,
       specimens: [],

@@ -42,7 +42,7 @@ export interface ProtocolPathway {
    * pathway" — a single protocol can genuinely need both kinds of
    * track. Required, not optional/defaulted — the pathway must always
    * make this real, explicit choice (see the other half of the Hybrid
-   * Model — SpecimenCategory only pre-selects a sensible default in
+   * Model — Department only pre-selects a sensible default in
    * the admin UI at configuration time; it never substitutes for this
    * field at runtime).
    */

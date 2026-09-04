@@ -157,3 +157,170 @@ describe('mockReportVersionService — real fix, Phase 5: the actual point - a r
     vi.restoreAllMocks();
   });
 });
+
+describe('mockReportVersionService.create — real, per direct guidance: the ORU^R01 outbound queue hook, and the confirmed FINAL/CORRECTED/ADDENDUM inference', () => {
+  it('trigger "initial_signout" with a real instanceId enqueues a real FINAL entry', async () => {
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-1', firstName: 'Test', lastName: 'PatientOru1', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-FINAL', mode: 'orchestration', trigger: 'initial_signout', instanceId: 'inst-final-1',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    // Real, non-blocking enqueue — genuinely async, same fire-and-forget
+    // posture as every other real enqueue in this app.
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-FINAL');
+    expect(queueRes.ok).toBe(true);
+    if (!queueRes.ok) return;
+    expect(queueRes.data).toHaveLength(1);
+    expect(queueRes.data[0].resultState).toBe('FINAL');
+    expect(queueRes.data[0].instanceId).toBe('inst-final-1');
+
+    vi.restoreAllMocks();
+  });
+
+  it('trigger "amendment" with a prior version already existing for the SAME instanceId enqueues CORRECTED, per the confirmed real HL7 intent', async () => {
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-2', firstName: 'Test', lastName: 'PatientOru2', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    // Real, first version for this instance.
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-CORRECTED', mode: 'orchestration', trigger: 'initial_signout', instanceId: 'inst-a',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    // Real, second version for the SAME instance — a genuine correction.
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-CORRECTED', mode: 'orchestration', trigger: 'amendment', instanceId: 'inst-a',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-CORRECTED');
+    expect(queueRes.ok).toBe(true);
+    if (!queueRes.ok) return;
+    expect(queueRes.data.map(e => e.resultState)).toEqual(['FINAL', 'CORRECTED']);
+
+    vi.restoreAllMocks();
+  });
+
+  it('trigger "amendment" for a genuinely NEW instanceId, on a case with other real prior versions, enqueues ADDENDUM, per the confirmed real HL7 intent', async () => {
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-3', firstName: 'Test', lastName: 'PatientOru3', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    // Real, first instance already finalized on this case.
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-ADDENDUM', mode: 'orchestration', trigger: 'initial_signout', instanceId: 'inst-b',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    // Real, genuinely NEW second instance, finalized afterward — a real addendum.
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-ADDENDUM', mode: 'orchestration', trigger: 'amendment', instanceId: 'inst-c',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-ADDENDUM');
+    expect(queueRes.ok).toBe(true);
+    if (!queueRes.ok) return;
+    const byInstance = Object.fromEntries(queueRes.data.map(e => [e.instanceId, e.resultState]));
+    expect(byInstance['inst-b']).toBe('FINAL');
+    expect(byInstance['inst-c']).toBe('ADDENDUM');
+
+    vi.restoreAllMocks();
+  });
+
+  it('real, confirmed scope: mode "assist" is never enqueued — an external LIS owns that report, not PathScribe', async () => {
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-4', firstName: 'Test', lastName: 'PatientOru4', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-ASSIST', mode: 'assist', trigger: 'initial_signout', instanceId: 'inst-assist-1',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-ASSIST');
+    expect(queueRes.ok).toBe(true);
+    if (queueRes.ok) expect(queueRes.data).toHaveLength(0);
+
+    vi.restoreAllMocks();
+  });
+
+  it('real, confirmed scope: a case-level record with no instanceId (the whole-case PDF snapshot) is never enqueued — a composite summary isn\'t a discrete OBR/OBX observation', async () => {
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-5', firstName: 'Test', lastName: 'PatientOru5', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-NOINSTANCE', mode: 'orchestration', trigger: 'initial_signout',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-NOINSTANCE');
+    expect(queueRes.ok).toBe(true);
+    if (queueRes.ok) expect(queueRes.data).toHaveLength(0);
+
+    vi.restoreAllMocks();
+  });
+
+  it('real, per direct follow-up ("We are logging interface errors with human readable error messaging?"): markFailed itself now leaves a real, permanent audit record the moment a real failure happens, not just when it\'s later retried', async () => {
+    const { mockOutboundResultQueueService } = await import('./mockOutboundResultQueueService');
+    const { mockAuditService } = await import('../auditlog/mockAuditService');
+    const patientRes = await mockPatientIndexService.resolveOrCreatePatient({
+      organisationId: 'ORG-A', mrn: 'MRN-ORU-AUDIT', firstName: 'Test', lastName: 'PatientOruAudit', dateOfBirth: '1980-01-01T00:00:00.000Z',
+    });
+    if (patientRes.outcome !== 'created') throw new Error('setup failed');
+    vi.spyOn(caseRouter, 'getCase').mockResolvedValue({ patient: { id: patientRes.patientId } } as any);
+
+    await mockReportVersionService.create({
+      caseId: 'CASE-ORU-AUDIT-FAIL', mode: 'orchestration', trigger: 'initial_signout', instanceId: 'inst-audit-fail',
+      createdBy: { userId: 'user-1', userName: 'Dr. Smith' },
+    });
+    await new Promise(r => setTimeout(r, 150)); // real, needed: mockOutboundResultQueueService's own internal delay() is 80ms
+
+    const queueRes = await mockOutboundResultQueueService.getByCaseId('CASE-ORU-AUDIT-FAIL');
+    if (!queueRes.ok || queueRes.data.length === 0) throw new Error('setup failed');
+    const entryId = queueRes.data[0].id;
+
+    // Real, deliberate: never retried — proving the FIRST failure alone
+    // leaves a real, permanent audit record, not just the live queue
+    // entry's own errorCode/errorMessage.
+    await mockOutboundResultQueueService.markFailed(entryId, {
+      errorCode: 'DISPATCH_REJECTED',
+      errorMessage: 'The interface engine rejected this message: Unknown transactionType',
+      maxRetriesExceeded: false,
+    });
+
+    const logsRes = await mockAuditService.getAuditLogs({ search: 'dispatch failed' } as any);
+    expect(logsRes.ok).toBe(true);
+    if (!logsRes.ok) return;
+    const entry = logsRes.data.find(l => l.detail.includes(entryId));
+    expect(entry).toBeTruthy();
+    expect(entry?.detail).toContain('DISPATCH_REJECTED');
+    expect(entry?.detail).toContain('Unknown transactionType');
+
+    vi.restoreAllMocks();
+  });
+});

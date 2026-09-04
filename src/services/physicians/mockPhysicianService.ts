@@ -22,7 +22,13 @@ function withMirroredNames<T extends { givenNames: string; familyNames: string }
 // constraint from creation and staff can replace it with a real code
 // once the physician is verified, same as they already do for every
 // other 'Unverified' auto-created field.
-function generateAutoPhysicianCode(): string {
+//
+// Exported, per direct need: applyPhysicianMasterFileUpdate.ts (a
+// fourth real caller, alongside the three findOrCreateBy* methods
+// below) needs this too, for the same reason — a genuinely new
+// physician record needs a real placeholder code regardless of which
+// pipeline created it.
+export function generateAutoPhysicianCode(): string {
   return 'AUTO-' + Date.now();
 }
 

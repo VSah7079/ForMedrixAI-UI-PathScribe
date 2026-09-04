@@ -10,20 +10,57 @@
 // discordance too, not just a dropdown classification.
 //
 // draftedBy (optional): when the case has a resident/fellow on its
-// participant team, this modal doubles as the teaching-feedback capture
-// point — same reasoning as the rest of this feature's design: don't
-// make the attending write a separate email critique later when the
-// moment to capture it is right here at sign-out.
+// participant team, this modal doubles as the Teaching & Onboarding
+// feedback capture point — same reasoning as the rest of this feature's
+// design: don't make the reviewer write a separate email critique later
+// when the moment to capture it is right here at sign-out.
+//
+// PS-113, Stage 5. Writes only to qaActivityRecordService now — the old
+// reconciliationService/ReconciliationRecord this modal used to
+// dual-write to has been retired and deleted (first release, no real
+// production history to preserve). buildQaActivityRecordPayload below
+// is no longer a dual-write helper; it's simply the one, real payload
+// builder.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from 'react';
 import '../../../pathscribe.css';
-import { reconciliationService } from '@/services';
+import { qaActivityRecordService } from '@/services';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import type { FrozenCategory } from '@/types/intraop/IntraoperativeEntry';
-import type { DiscordanceDelta, DiscordanceSeverity, DiscordanceRootCause } from '@/types/quality/ReconciliationRecord';
+import type { QaActivityRecord, QaDiscordanceDelta, QaDiscordanceSeverity, QaDiscordanceRootCause } from '@/types/quality/QaActivityRecord';
 
 const CATEGORY_LABEL: Record<FrozenCategory, string> = {
   benign: 'Benign', malignant: 'Malignant', atypical_suspicious: 'Atypical / Suspicious', deferred: 'Deferred',
 };
+
+function buildQaActivityRecordPayload(args: {
+  caseId: string; specimenId: string; caseType: string; subspecialtyId?: string;
+  frozenCategory: FrozenCategory; finalCategory: FrozenCategory;
+  frozenDx: string; finalDx: string;
+  outcome: 'concordant' | 'discordant';
+  delta?: QaDiscordanceDelta; severity?: QaDiscordanceSeverity; rootCause?: QaDiscordanceRootCause;
+  rootCauseNote?: string; escalationRequired?: boolean; comments?: string;
+  recordedBy: { userId: string; userName: string };
+  draftedBy?: { userId: string; userName: string };
+  isTeachingOnboardingCase: boolean;
+  reviewerFeedback?: string;
+}): Omit<QaActivityRecord, 'id' | 'recordedAt'> {
+  return {
+    activityTypeId: FROZEN_FINAL_ACTIVITY_TYPE_ID,
+    caseId: args.caseId, specimenId: args.specimenId, caseType: args.caseType, subspecialtyId: args.subspecialtyId,
+    fieldValues: {
+      frozenCategory: args.frozenCategory, finalCategory: args.finalCategory,
+      frozenDx: args.frozenDx, finalDx: args.finalDx,
+    },
+    outcome: args.outcome,
+    delta: args.delta, severity: args.severity, rootCause: args.rootCause,
+    rootCauseNote: args.rootCauseNote, escalationRequired: args.escalationRequired, comments: args.comments,
+    recordedBy: args.recordedBy,
+    draftedBy: args.draftedBy,
+    isTeachingOnboardingCase: args.isTeachingOnboardingCase,
+    reviewerFeedback: args.reviewerFeedback,
+  };
+}
 
 interface Props {
   caseId: string;
@@ -34,12 +71,12 @@ interface Props {
   performedBy: { userId: string; userName: string };
   /** Who authored the original draft, if this case has a resident/
    *  fellow participant whose work is being reconciled — undefined for
-   *  the common non-teaching path. See ReconciliationRecord.draftedBy's
+   *  the common non-teaching path. See QaActivityRecord.draftedBy's
    *  own doc comment. */
   draftedBy?: { userId: string; userName: string };
   /** The case's own Case.subspecialtyId, passed through unchanged —
-   *  see ReconciliationRecord.subspecialtyId's own doc comment for why
-   *  this is Subspecialty, not SpecimenCategory. */
+   *  see QaActivityRecord.subspecialtyId's own doc comment for why
+   *  this is Subspecialty, not Department. */
   subspecialtyId?: string;
   onDone: () => void;
 }
@@ -48,9 +85,9 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
   const [finalCategory, setFinalCategory] = useState<FrozenCategory | ''>('');
   const [finalDx, setFinalDx] = useState('');
   const [showDiscordantForm, setShowDiscordantForm] = useState(false);
-  const [delta, setDelta] = useState<DiscordanceDelta | ''>('');
-  const [severity, setSeverity] = useState<DiscordanceSeverity | ''>('');
-  const [rootCause, setRootCause] = useState<DiscordanceRootCause | ''>('');
+  const [delta, setDelta] = useState<QaDiscordanceDelta | ''>('');
+  const [severity, setSeverity] = useState<QaDiscordanceSeverity | ''>('');
+  const [rootCause, setRootCause] = useState<QaDiscordanceRootCause | ''>('');
   const [rootCauseNote, setRootCauseNote] = useState('');
   const [comments, setComments] = useState('');
   const [attendingFeedback, setAttendingFeedback] = useState('');
@@ -68,17 +105,14 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
   const confirmConcordant = async () => {
     if (!finalCategory) return;
     setBusy(true);
-    await reconciliationService.create({
-      caseId, specimenId, caseType,
-      subspecialtyId,
-      frozenCategory, finalCategory,
-      frozenDx, finalDx: finalDx.trim(),
+    await qaActivityRecordService.create(buildQaActivityRecordPayload({
+      caseId, specimenId, caseType, subspecialtyId,
+      frozenCategory, finalCategory, frozenDx, finalDx: finalDx.trim(),
       outcome: 'concordant',
-      recordedBy: performedBy,
-      draftedBy,
-      isTeachingCase,
-      attendingFeedback: attendingFeedback.trim() || undefined,
-    });
+      recordedBy: performedBy, draftedBy,
+      isTeachingOnboardingCase: isTeachingCase,
+      reviewerFeedback: attendingFeedback.trim() || undefined,
+    }));
     setBusy(false);
     onDone();
   };
@@ -86,21 +120,18 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
   const submitDiscordant = async () => {
     if (!finalCategory || !delta || !severity || !rootCause || !comments.trim()) return;
     setBusy(true);
-    await reconciliationService.create({
-      caseId, specimenId, caseType,
-      subspecialtyId,
-      frozenCategory, finalCategory,
-      frozenDx, finalDx: finalDx.trim(),
+    await qaActivityRecordService.create(buildQaActivityRecordPayload({
+      caseId, specimenId, caseType, subspecialtyId,
+      frozenCategory, finalCategory, frozenDx, finalDx: finalDx.trim(),
       outcome: 'discordant',
       delta, severity, rootCause,
       escalationRequired: severity === 'high',
       rootCauseNote: rootCauseNote.trim() || undefined,
       comments: comments.trim(),
-      recordedBy: performedBy,
-      draftedBy,
-      isTeachingCase,
-      attendingFeedback: attendingFeedback.trim() || undefined,
-    });
+      recordedBy: performedBy, draftedBy,
+      isTeachingOnboardingCase: isTeachingCase,
+      reviewerFeedback: attendingFeedback.trim() || undefined,
+    }));
     setBusy(false);
     onDone();
   };
@@ -144,7 +175,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
             <div className="ps-intraop-action-block">
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label" htmlFor="discordance-delta">Delta</label>
-                <select id="discordance-delta" className="ps-conf-select" value={delta} onChange={e => setDelta(e.target.value as DiscordanceDelta | '')}>
+                <select id="discordance-delta" className="ps-conf-select" value={delta} onChange={e => setDelta(e.target.value as QaDiscordanceDelta | '')}>
                   <option value="">Select…</option>
                   <option value="upgrade">Upgrade — frozen understated severity</option>
                   <option value="downgrade">Downgrade — frozen overstated severity</option>
@@ -153,7 +184,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
               </div>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label" htmlFor="discordance-severity">Clinical impact</label>
-                <select id="discordance-severity" className="ps-conf-select" value={severity} onChange={e => setSeverity(e.target.value as DiscordanceSeverity | '')}>
+                <select id="discordance-severity" className="ps-conf-select" value={severity} onChange={e => setSeverity(e.target.value as QaDiscordanceSeverity | '')}>
                   <option value="">Select…</option>
                   <option value="low">Tier 1 — No harm / administrative</option>
                   <option value="medium">Tier 2 — Near miss / minor effect</option>
@@ -179,7 +210,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
               </div>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label" htmlFor="discordance-root-cause">Root cause</label>
-                <select id="discordance-root-cause" className="ps-conf-select" value={rootCause} onChange={e => setRootCause(e.target.value as DiscordanceRootCause | '')}>
+                <select id="discordance-root-cause" className="ps-conf-select" value={rootCause} onChange={e => setRootCause(e.target.value as QaDiscordanceRootCause | '')}>
                   <option value="">Select…</option>
                   <option value="sampling_error">Sampling error — diagnostic tissue not in the frozen piece</option>
                   <option value="interpretation_error">Interpretation error</option>

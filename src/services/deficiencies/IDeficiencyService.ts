@@ -12,8 +12,8 @@
 // plus the actual records (SpecimenDeficiency) raised against a specimen
 // and resolved by whoever has the context to resolve it — deliberately
 // NOT the "unblock now, admin approves later" governance pattern used
-// for Physician/Client/SpecimenCategory. That pattern fits an unrecognized
-// *code* with an unambiguous key to dedupe against (NPI, Client.assigningAuthority).
+// for Physician/Facility/Department. That pattern fits an unrecognized
+// *code* with an unambiguous key to dedupe against (NPI, Facility.assigningAuthority).
 // A deficiency doesn't have that — it's a workflow event, not an entity
 // needing deduplication — and per the design discussion, the person
 // best positioned to resolve it (the accessioner, looking at the actual
@@ -42,6 +42,16 @@ export interface DeficiencyType {
    *  admin hasn't classified yet) — the safe, permissive default rather
    *  than silently hiding a type nobody's explicitly scoped. */
   level?: 'case' | 'specimen' | 'both';
+  /**
+   * Real, per direct guidance: different performing labs get their own
+   * deficiency vocabulary — same Global/scoped convention as
+   * ContainerType/DelegationType's own performingLabFacilityId
+   * (undefined = Global, offered for every lab's cases; set = only
+   * ever offered when raising a deficiency for that lab's own case).
+   * Resolved via resolvePerformingLabFacilityId() from the case's own
+   * order.facilityId — never a direct field read on the case.
+   */
+  performingLabFacilityId?: string;
 }
 
 export interface IDeficiencyTypeService {
@@ -59,6 +69,9 @@ export interface ResolutionType {
   name: string;
   description?: string;
   status: 'Active' | 'Inactive';
+  /** Same Global/scoped convention as DeficiencyType's own
+   *  performingLabFacilityId — see that field's doc comment. */
+  performingLabFacilityId?: string;
 }
 
 export interface IResolutionTypeService {

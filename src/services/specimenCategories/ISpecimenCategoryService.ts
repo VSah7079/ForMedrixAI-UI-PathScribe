@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { ServiceResult, ID } from '../types';
+import type { RetentionOverrideDays } from '../retentionPolicy/RetentionPolicy';
 
 export interface SpecimenCategory {
   id: ID;
@@ -59,6 +60,20 @@ export interface SpecimenCategory {
    *  raw order code/description that didn't match anything, so the admin
    *  reviewing it has context without digging through the source order. */
   autoCreatedNote?: string;
+
+  /**
+   * Real, optional per-category retention-days override — any
+   * material type omitted here falls back to the live GoverningBody
+   * default for the current jurisdiction (resolveRetentionEligibility.ts's
+   * own resolveCategoryOverride() walks Specimen ->
+   * SpecimenEntry.specimenCategoryId -> this field, feeding real
+   * disposal-queue and scan-based disposal eligibility calculations).
+   * See services/retentionPolicy/RetentionPolicy.ts's own doc comment
+   * on RetentionOverrideDays for the full, canonical account — this
+   * field was always the real, intended attachment point that comment
+   * names, just missing here until now.
+   */
+  retentionOverrideDays?: RetentionOverrideDays;
 }
 
 export interface ISpecimenCategoryService {

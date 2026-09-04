@@ -3,11 +3,11 @@
 // Real feature, per direct follow-up: "Retention should be configured...
 // I would select something to minimize the amount of work for the
 // admins." Confirmed directly, by checking real, seeded record counts
-// before deciding, not by guessing: SpecimenCategory
-// (services/specimenCategories/) has 6 real entries; the full Specimen
+// before deciding, not by guessing: Department
+// (services/departments/) has 6 real entries; the full Specimen
 // Dictionary (SpecimenEntry) and Protocol dictionaries are each real,
 // growing sets meant to reach the hundreds. Configuring retention at
-// the specimen-category level, not per specimen-dictionary-entry or
+// the department level, not per specimen-dictionary-entry or
 // per-protocol, is the real, load-bearing choice that keeps ongoing
 // admin work small — 6 possible overrides, not hundreds.
 //
@@ -38,9 +38,9 @@ export const MATERIAL_TYPE_LABEL: Record<RetainableMaterialType, string> = {
   block: 'Tissue Blocks', slide: 'Slides', wet_tissue: 'Wet Tissue',
 };
 
-/** Real, optional per-SpecimenCategory override — see
- *  services/specimenCategories/ISpecimenCategoryService.ts's own
- *  SpecimenCategory.retentionOverrideDays for where this actually
+/** Real, optional per-Department override — see
+ *  services/departments/IDepartmentService.ts's own
+ *  Department.retentionOverrideDays for where this actually
  *  attaches. Any material type omitted here falls back to the real,
  *  live GoverningBody default for the current jurisdiction — an
  *  admin only needs to fill in the real exception, not re-specify
@@ -80,7 +80,7 @@ export function getCurrentJurisdiction(): import('@/types/systemConfig').Jurisdi
 
 /** Real, single point of calculation — the earliest real, retention-
  *  policy-eligible disposal date for one item, given an already-
- *  resolved real number of retention days (categoryOverride wins when
+ *  resolved real number of retention days (departmentOverride wins when
  *  set for this materialType; otherwise the live GoverningBody
  *  default for the current jurisdiction — see
  *  resolveRetentionEligibility.ts's own resolveRetentionDays for that

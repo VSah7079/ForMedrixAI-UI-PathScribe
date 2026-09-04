@@ -46,4 +46,14 @@ export interface Patient {
   phone?: string;
   email?: string;
   address?: string;
+
+  /** Real, per direct UI-review follow-up ("The User may need to see
+   *  the LMP and other clinical history dictionaries entries"): the
+   *  one, real, simple datum captured now — a single date, not a
+   *  dictionary entry. Real, honest scoping: the full clinical-history
+   *  dictionary (surgical/GYN procedures, disease history, oncology
+   *  history, treatment history, clinical indications — six real
+   *  categories) stays separate, deferred work; this field alone
+   *  doesn't attempt to replace it. */
+  lastMenstrualPeriod?: string; // ISO date
 }

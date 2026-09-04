@@ -70,7 +70,7 @@ const SETTINGS_KEYS = [
   // state).
   'pathscribe_roles',
   'pathscribe_users',
-  'pathscribe_clients',
+  'pathscribe_facilities',
   'pathscribe_physicians',
   'pathscribe_protocols',
   'pathscribe_macros',
@@ -78,7 +78,7 @@ const SETTINGS_KEYS = [
   'pathscribe_models',
   'pathscribe_deficiency_types',
   'pathscribe_resolution_types',
-  'pathscribe_specimen_categories',
+  'pathscribe_departments',
   'pathscribe_specimen_crosswalk',
   'pathscribe_specimen_deficiencies',
   'pathscribe_grossing_routing_overrides',

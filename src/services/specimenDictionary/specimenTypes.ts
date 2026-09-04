@@ -14,20 +14,20 @@ export interface SpecimenEntry {
   updatedBy: string;
   updatedAt: string;
   /**
-   * References SpecimenCategory.id (Specimen Category Dictionary —
-   * src/services/specimenCategories/ISpecimenCategoryService.ts). Optional
+   * References Department.id (Department Dictionary —
+   * src/services/departments/IDepartmentService.ts). Optional
    * and additive: existing entries without it fall back to whatever
-   * category resolution infers from `type` at read time, so this doesn't
+   * department resolution infers from `type` at read time, so this doesn't
    * break any entry seeded before this field existed.
    */
-  specimenCategoryId?: string;
+  departmentId?: string;
   /**
    * Real fix, per direct guidance: the lab's own AMA license covers real
    * coders populating this - this app never fabricates the mapping
    * itself. The base surgical pathology CPT code (88302-88309) this
    * specific specimen type should default to at sign-out, e.g. "Breast
    * core needle biopsy" -> 88305. Optional and additive, same reasoning
-   * as specimenCategoryId: existing entries without it simply fall back
+   * as departmentId: existing entries without it simply fall back
    * to the generic, honest rule-based default
    * (ruleBasedDefaultCptCodes in services/billing/codeMapTable.ts)
    * rather than breaking. Deliberately NOT validated against
@@ -124,7 +124,7 @@ export interface SpecimenEntry {
    */
   protocolId?: string;
 
-  /** Governance trio matching Client/Physician/SpecimenCategory's
+  /** Governance trio matching Facility/Physician/Department's
    *  "unblock now, admin reviews after" pattern — added alongside
    *  findOrCreateByName below. Deliberately additive to the existing
    *  active:boolean rather than a new tri-state status field: active
@@ -138,4 +138,33 @@ export interface SpecimenEntry {
   autoCreated?: boolean;
   autoCreatedAt?: string;
   autoCreatedNote?: string;
+  /**
+   * Real, per PS-158's own flagged follow-up ("wiring isGynCytology
+   * detection into the real specimen dictionary"). Meaningful only for
+   * `type: 'Cytology'` entries — undefined (never true) for every
+   * other type, including `'FNA'`, which is always non-GYN by
+   * definition. Drives resolveCytologyWorklistRouting
+   * (services/cytology/): GYN cytology always routes to the real,
+   * dedicated Cytology worklist; every other Cytology/FNA entry
+   * follows the configurable non-GYN routing setting instead. Set
+   * data-driven, on the dictionary entry itself, rather than inferred
+   * from a specimen's own free-text name/procedure at read time.
+   */
+  isGynCytology?: boolean;
+  /**
+   * Real, per direct guidance's own Australia/NZ roadmap information:
+   * "LIS test catalogs separate clinician-collected Cervical Screening
+   * Tests (CST) from self-collected samples (e.g., HPV-SELF vs.
+   * CST-CLIN)." Real, dictionary-level flag — matching isGynCytology's
+   * own established posture — since this distinction lives at the real
+   * order-code/test-catalog level, not as a per-instance property that
+   * varies across specimens sharing the same real order code.
+   * Meaningful only for real GYN cytology entries; true because a
+   * self-collected sample contains vaginal, not cervical, cells and
+   * can never be used for Liquid-Based Cytology — see
+   * resolveCytologyTriageState.ts (services/cytology/) for the real,
+   * downstream consequence: a positive result on one of these can
+   * never reflex to cytology from the same specimen.
+   */
+  isSelfCollected?: boolean;
 }

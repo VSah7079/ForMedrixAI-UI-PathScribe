@@ -58,8 +58,7 @@ export const ClientTable: React.FC<ClientTableProps> = ({
         c.name.toLowerCase().includes(q) ||
         c.assigningAuthority.toLowerCase().includes(q) ||
         (c.contactName ?? '').toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        (c.hl7.receivingFacility ?? "").toLowerCase().includes(q)
+        c.email.toLowerCase().includes(q)
       );
     });
   }, [clients, search, statusFilter, roleFilter]);

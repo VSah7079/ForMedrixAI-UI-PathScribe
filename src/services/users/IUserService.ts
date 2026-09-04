@@ -20,14 +20,14 @@ export interface StaffUser {
   /** Professional credentials suffix (e.g. MD, FCAP, MBChB, FRCPath) */
   credentials?: string;
   /** Option C — user-level pediatric qualification flag.
-   * Must also be on the client's authorizedPediatricPathologistIds list. */
+   * Must also be on the facility's authorizedPediatricPathologistIds list. */
   canViewPediatric?: boolean;
   /**
    * User-level flag granting visibility into Orchestration/Outreach cases
    * (O26- prefix, routed by CaseRouter to the PathScribe Firestore service)
    * across Search and Worklist. Unlike canViewPediatric, this is a single
    * flag with no second authorization layer — Orchestration cases aren't
-   * tied to a per-client list, so there's no equivalent of "Option C" here.
+   * tied to a per-facility list, so there's no equivalent of "Option C" here.
    * Defaults to false/undefined — must be explicitly granted.
    */
   canViewOrchestration?: boolean;

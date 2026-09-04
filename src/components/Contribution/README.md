@@ -27,9 +27,11 @@ charts (recharts) and date-range filtering.
   `mockAmended`) — detailed, realistic-looking fake clinical data shown
   to every pathologist identically, zero disclosure it was demo data.
   Both now come from real, already-built systems this app has elsewhere:
-  discordant cases from `services/quality/mockReconciliationService.ts`'s
-  real `ReconciliationRecord` data (the Frozen-to-Permanent Reconciliation
-  Gate), amended cases from `services/reports/mockAmendmentService.ts`'s
+  discordant cases from `services/quality/mockQaActivityRecordService.ts`'s
+  real `QaActivityRecord` data (the Frozen-to-Permanent Reconciliation
+  Gate — migrated from the old `mockReconciliationService.ts`/
+  `ReconciliationRecord` in PS-113, Stage 4), amended cases from
+  `services/reports/mockAmendmentService.ts`'s
   real `AmendmentRecord` data (the Amendment/Correction/Addendum system)
   — the latter needed a genuinely new `getAll()` method added to
   `IAmendmentService`, which didn't exist before (only
@@ -160,6 +162,16 @@ charts (recharts) and date-range filtering.
   `qualityCalculations.ts`) rather than four near-identical copies of the
   same elapsed-time/target-resolution/outlier-gating logic.
   All eight types are now real, closing out this thread entirely.
+  **Real addition ("a TAT time could have two components... the
+  Performing lab and the other is the Ordering Client"), per direct
+  guidance:** this is where each case's own real performing lab now
+  gets pre-resolved, once, before any TAT calculation function runs —
+  reusing `clientRes.data` (already loaded here for `clientNameById`,
+  no second fetch) plus `resolvePerformingLabFacilityId()`. See
+  `qualityCalculations.ts`'s own entry below for the full account of
+  why this had to happen here rather than inside the calculation
+  functions themselves (they're synchronous and pure; resolving a
+  performing lab needs a real, async facility lookup).
 - **`qualityCalculations.ts`** — New. Pure, extracted, tested transform
   logic for the fixes above (`reconciliationRecordsToDiscordantCases`,
   `amendmentRecordsToAmendedCases`, `resolveTatTargetHours`,
@@ -167,14 +179,58 @@ charts (recharts) and date-range filtering.
   `computeGrossingOutliers`, `computeSignOutOutliers`,
   `computeFrozenSectionOutliers`, `computeColdIschemiaOutliers`,
   `computeConsultResponseOutliers`, `computeConsultAwaitingOutliers`).
-- **`qualityCalculations.test.ts`** — New. 11 real tests: discordant-only
+  **Real, current status (PS-113, Stage 4):**
+  `reconciliationRecordsToDiscordantCases` migrated to accept
+  `QaActivityRecord[]` instead of `ReconciliationRecord[]` — reads
+  `frozenDx`/`finalDx` from the real `fieldValues` schema now, not
+  fixed top-level properties. Its one real caller (`QualityTab.tsx`,
+  below) migrated alongside it in the same stage — both read from the
+  new, generic `qaActivityRecordService`, filtered to the real Frozen
+  vs Final activity type.
+  **Real addition ("a TAT time could have two components... the
+  Performing lab and the other is the Ordering Client"), per direct
+  guidance:** `TatEntryForResolution`/`TatResolutionContext`/
+  `CaseForTatCalc` all gained `performingLabFacilityId` as a genuine
+  second dimension alongside `clientId` — not a replacement, a real
+  bug I nearly built by conflating them until directly corrected. A
+  performing lab's own general TAT policy and a specific ordering
+  client's own contractual agreement can both apply independently, so
+  `resolveTatTargetHours()`'s matching and `specificityScore()`'s
+  weighting both treat the two as peer dimensions (equal weight, 4
+  each — an entry specifying both naturally outranks one specifying
+  either alone). `specificityScore()` is now exported here as the
+  single, shared implementation — `TATConfigSection.tsx` used to carry
+  its own duplicate copy of the identical weighting logic, confirmed
+  directly, which is exactly the kind of thing that would have
+  silently drifted the moment only one of the two got the new
+  dimension. New `resolveTatEntry()` extracts the actual winning-entry
+  resolution (not just its `targetHours`) — `TATConfigSection.tsx`'s
+  own Resolution Simulator used to run a **third**, independent,
+  hand-maintained 7-case priority list that was already stale relative
+  to the real resolver before this pass (it never covered every
+  combination the real specificity scoring handles); it now calls
+  `resolveTatEntry()` directly, guaranteeing the simulator shows
+  exactly what the real, live resolver computes. Every real per-case
+  call site (`computeTotalCaseTatOutliers`, `computeGenericTatOutliers`,
+  the merged/frozen-section outlier function, `computeColdIschemiaOutliers`,
+  `resolveConsultTarget`) now resolves and passes the case's real
+  performing lab alongside its existing `order.clientId` read — pre-
+  resolved once by the real caller (`QualityTab.tsx`, below), since
+  these are synchronous, pure functions and resolving a performing lab
+  needs a real, async facility lookup. Real, deliberate, documented
+  scope boundary: `computeTatByClient`'s own per-ordering-client
+  dashboard breakdown stays client-only — a user's cases for one
+  client can span more than one real performing lab, so there's no
+  single, well-defined lab to resolve for that aggregate row the way
+  there is for one specific case.
+- **`qualityCalculations.test.ts`** — 17 real tests: discordant-only
   filtering (a concordant record is real evidence a check happened, not
   itself a discordant case), all three real delta values mapped
   correctly, real day-count math, draft-vs-released filtering, severity
   derived from the real amendment-type semantics, the real case-type
   lookup and its honest fallback, and explanationOfChange/addendumTitle
   precedence.
-- **`tatCalculations.test.ts`** — New. 33 real tests: most-specific-wins
+- **`tatCalculations.test.ts`** — 41 real tests: most-specific-wins
   resolution, real system-default fallback, role-scoped entries
   correctly excluded from case-level resolution, inactive/urgency-
   mismatched entries excluded, genuine outliers flagged correctly,
@@ -190,6 +246,20 @@ charts (recharts) and date-range filtering.
   scoping (a formal SECOND_OPINION delegation correctly excluded),
   correct user-direction filtering (response vs. awaiting), and the
   genuine ongoing-wait-vs-completed-interval distinction between the two.
+  **Real addition ("a TAT time could have two components... the
+  Performing lab and the other is the Ordering Client"), per direct
+  guidance:** 8 new tests covering the two dimensions resolving
+  independently (a lab's own policy and a different client's own
+  agreement both real and both correctly selected depending on which
+  one the context actually matches), compounding specificity (an entry
+  with both set beats one with either alone), a lab-scoped entry never
+  firing for a different real lab, and the Enterprise-wide fallback
+  still applying when both a real lab and a real client are present in
+  context but neither has its own override. Also covers the newly
+  extracted `resolveTatEntry()` directly — including a real test
+  proving `resolveTatTargetHours` is a genuine thin wrapper over it
+  (same context in, same entry's `targetHours` out), so the two can
+  never disagree by construction.
 - **`FlagRow.tsx`** — **MOVED HERE this pass** (was
   `components/Dashboards/FlagRow.tsx` — a folder that existed only for
   this file and `CaseMixTile.tsx`, both exclusively serving
@@ -222,7 +292,7 @@ charts (recharts) and date-range filtering.
   timestamps, genuinely more investigation than this pass covered.
 - `AIContributionTab.tsx` is a genuinely mixed state, not fully real or
   fully fake as the earlier "no issues" note implied: per-user AI
-  feedback and specimen-category breakdowns are real and live, but the
+  feedback and department breakdowns are real and live, but the
   AI-override examples, comparison numbers, and monthly trend shape are
   still hardcoded (`synopticDataset`/`narrativeDataset`). Not touched
   this pass either.

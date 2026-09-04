@@ -60,7 +60,25 @@ interface UseSpecimenBlockManagementParams {
   markDirty: (section: string) => void;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
-  sendMaterialOrderToLis: (order: { kind: 'block_recut' | 'stain' | 'cancel' | 'restain'; specimenId: string; label: string }) => Promise<{ ok: boolean }>;
+  sendMaterialOrderToLis: (order: {
+    kind: 'block_recut' | 'stain' | 'cancel' | 'restain';
+    specimenId: string;
+    label: string;
+    /** Real, per direct billing-expert guidance (PS-93): only ever set
+     *  on a kind: 'stain' order targeting a shared MatrixBlock's own
+     *  slides[] (types/case/MatrixBlock.ts) — the real matrixBlockId
+     *  this targeted ancillary stain is being cut from. Undefined for
+     *  every ordinary, specimen-owned block's own stain order. */
+    matrixBlockId?: string;
+    /** The real, explicit set of participating specimens (from that
+     *  matrix block's own participants[]) this order actually
+     *  targets — one for Case A (a single core selected), more than
+     *  one for Case B (the stain genuinely evaluates multiple cores
+     *  at once). specimenId above still carries the first of these,
+     *  for any caller with no matrix-aware handling. Undefined for
+     *  every ordinary block's own stain order, same as matrixBlockId. */
+    targetSpecimenIds?: string[];
+  }) => Promise<{ ok: boolean }>;
   showToast: (message: string) => void;
   /** Real fix, per direct follow-up: "I would like to support both
    *  slide engraving and printed labels." Passed in explicitly by the
@@ -1577,6 +1595,53 @@ export function useSpecimenBlockManagement({
     }
   }, [caseData, markDirty, knownVersionRef, setCaseData, setConcurrencyConflict, signingUser]);
 
+  // Real, per direct billing-expert guidance (PS-93): the Array Mapper's
+  // own targeted ancillary stain order — sends one real LIS order
+  // (carrying the full, explicit targetSpecimenIds set, per direct
+  // spec) and appends one new StainOrder to the matrix block's own
+  // slides[], with targetSpecimenIds set from that exact same
+  // explicit selection. This captures which cores the order was
+  // targeted at — deliberately NOT the billing trigger itself; see
+  // StainOrder.evaluatedSpecimenIds's own doc comment (types/case/
+  // Specimen.ts) for why billing only fires once a pathologist
+  // explicitly confirms evaluation at sign-out, and
+  // computeMatrixStainBillingUnits (services/billing/codeMapTable.ts)
+  // for that real calculation. Reuses handleUpdateMatrixBlock above
+  // for the actual write rather than a second, separate mutation path.
+  const handleOrderTargetedMatrixStain = useCallback(async (
+    matrixBlockId: string,
+    targetSpecimenIds: string[],
+    stainName: string
+  ): Promise<{ ok: boolean }> => {
+    if (!caseData?.id || targetSpecimenIds.length === 0) return { ok: false };
+    const currentMatrixBlocks = caseDataRef.current?.matrixBlocks ?? caseData.matrixBlocks ?? [];
+    const matrixBlock = currentMatrixBlocks.find(m => m.id === matrixBlockId);
+    if (!matrixBlock) return { ok: false };
+
+    showToast(`Sending ${stainName} order to LIS…`);
+    const result = await sendMaterialOrderToLis({
+      kind: 'stain',
+      specimenId: targetSpecimenIds[0],
+      label: stainName,
+      matrixBlockId,
+      targetSpecimenIds,
+    });
+    if (!result.ok) {
+      showToast(`LIS did not acknowledge the ${stainName} order — nothing was recorded. Try again.`);
+      return result;
+    }
+
+    const newStain: StainOrder = {
+      id: `stain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      stainName,
+      status: 'Pending Cut',
+      targetSpecimenIds,
+    };
+    await handleUpdateMatrixBlock(matrixBlockId, { slides: [...matrixBlock.slides, newStain] });
+    showToast(`${stainName} ordered on ${matrixBlock.label} — targeting ${targetSpecimenIds.length} specimen${targetSpecimenIds.length !== 1 ? 's' : ''}, sent to LIS`);
+    return result;
+  }, [caseData, sendMaterialOrderToLis, showToast, handleUpdateMatrixBlock]);
+
   // Real fix: handleUpdateBiopsyArray needs to call
   // handleDissolveBiopsyArray when the edited selection drops below 2
   // specimens, but both are useCallback-memoized in the same hook —
@@ -1618,5 +1683,6 @@ export function useSpecimenBlockManagement({
     handleUpdateBiopsyArray,
     handleDissolveBiopsyArray,
     handleUpdateMatrixBlock,
+    handleOrderTargetedMatrixStain,
   };
 }

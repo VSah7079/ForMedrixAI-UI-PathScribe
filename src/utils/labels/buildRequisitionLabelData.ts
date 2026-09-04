@@ -22,10 +22,10 @@ export function buildRequisitionLabelData(
     dateOfBirth: caseData.patient.dateOfBirth,
     mrn: caseData.patient.mrn,
     requestingProvider: caseData.order.requestingProvider,
-    // Real, honest fallback — a case can genuinely have no real client
+    // Real, honest fallback — a case can genuinely have no real facility
     // record resolved (e.g. a downtime/placeholder accession); never
     // fabricates a facility name that wasn't actually captured.
-    submittingFacility: caseData.order.clientName ?? 'Unknown Submitting Facility',
+    submittingFacility: caseData.order.facilityName ?? 'Unknown Submitting Facility',
     printedAt: now(),
   };
 }

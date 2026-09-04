@@ -5,7 +5,7 @@
 // handful of entries; once the dictionary has hundreds (the real target
 // size), a flat scrolling list with no search is unusable. Same
 // search+list pattern already established elsewhere (order picker,
-// client affiliation picker) rather than a new one-off design.
+// facility affiliation picker) rather than a new one-off design.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useMemo } from 'react';

@@ -31,20 +31,31 @@ orders to lab hardware) — not into case creation at all.
   parsing utilities (`isoDateForSearch.ts`, `parseScannedPayload.ts`).
   16 tests.
 - **`mockInterfaceEngineService.ts`** — the real, currently-active
-  implementation. **Honest limitation, matching the formal spec's own
-  Appendix B item 6**: "PathScribe has no real backend today —
-  everything is frontend, mock-service-backed." There is no real
-  `/api/v1/...` endpoint this can actually `POST` to yet — that's
-  real, separate backend infrastructure work. This records every real
-  dispatch to `localStorage` instead, inspectable via
-  `listDispatchedEvents()` — the same real, testable-without-a-server
-  posture every other mock service in this app already uses, not a
-  silent no-op stub. When a real backend exists, only this file's own
-  real implementation needs to swap for a real HTTP transport — every
-  real call site stays the same, same interface/mock/firestore pattern
-  this whole `services/` folder already follows. Real idempotency, per
-  the formal spec's own §2.3: a redelivered event with the same
-  `messageId` is recognized, not double-recorded. 6 tests.
+  implementation. **Real, per direct follow-up ("Address the fifth
+  transaction type: interfaceEngine's OrderCreated" — real outbound
+  HTTP dispatch transport): the "no real backend" limitation this
+  entry once described here is now genuinely, partially closed.**
+  `postOrderCreated` still records every real dispatch to
+  `localStorage` first, inspectable via `listDispatchedEvents()` —
+  that real, local record-keeping and its own real idempotency (a
+  redelivered event with the same `messageId` is recognized, not
+  double-recorded, and not re-dispatched either) are both completely
+  unchanged. What's new: it then also genuinely dispatches, via the
+  same real, generic receiving endpoint every other real outbound
+  transaction type in this app now uses
+  (`services/interfaceDispatch/dispatchInterfaceMessage.ts` →
+  `receive_interface_message`, `functions/main.py` in the separate
+  Firebase Functions repository). `delivered` now means what its own
+  original doc comment always said it eventually should — a real
+  dispatch genuinely succeeded, not just that the mock recorded it
+  locally; a new `error` field names the real reason when it didn't.
+  The real interface itself is unchanged in shape — every real call
+  site (`AccessionPage.tsx`) stays exactly the same, per this file's
+  own original design intent, confirmed directly before touching
+  anything. 8 tests (2 new — the real dispatch success and failure
+  paths, `fetch` mocked to keep every other test in this file focused
+  on its own original concern without also depending on network
+  reachability).
 
 ## Real call site
 

@@ -76,11 +76,19 @@ builder.
 - **`ReviewQueueSection.tsx`** — Pre-publish lifecycle list
   (draft/in_review/needs_changes/approved). Routes to `TemplateRenderer.tsx`
   ("Open Reviewer") or `SynopticEditor.tsx` ("Open Editor"). No issues.
-- **`AllProtocolsSection.tsx`** — Full library, filterable by status. No
-  issues.
+- **`AllProtocolsSection.tsx`** — Full library, filterable by status.
+  **Real, found-and-fixed accessibility bug, per direct report
+  ("occasional text that is dark and pretty much impossible to
+  read")**: the lifecycle stepper's own separator dash (`—`) used
+  `#1e293b` — darker than even its own sibling "future/inactive step"
+  label color (`#334155`) right next to it. Fixed to `#64748b`,
+  clearly visible without competing with the stepper's own real
+  visual hierarchy (past/current/future).
 - **`ActiveProtocolsSection.tsx`** — Published protocols in the reporting
   workflow. "View Protocol" → `TemplateRenderer.tsx` (read-only), "New
-  Version" → `SynopticEditor.tsx` (draft fork). No issues.
+  Version" → `SynopticEditor.tsx` (draft fork). Same real lifecycle-
+  stepper separator-dash fix as `AllProtocolsSection.tsx` above — the
+  exact same copied pattern, independently confirmed and fixed here too.
 - **`TerminologyAlertBanner.tsx`** — SNOMED/ICD deprecation alerts inline
   in `SynopticEditor.tsx`, plus a compact `TerminologyAlertBadge` used in
   protocol cards elsewhere in this folder. No issues.

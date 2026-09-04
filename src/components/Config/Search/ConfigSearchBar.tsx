@@ -3,15 +3,25 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Search bar for ConfigurationPage. Searches CONFIG_SEARCH_INDEX by label,
  * synonyms, and description, and navigates to the matched setting's tab on
- * selection. Does NOT deep-link to the specific field within a tab — v1 scope
- * is "find the right tab," not "scroll to the exact control."
+ * selection.
+ *
+ * Real, per direct report ("the top level search in config found the
+ * entry, but when clicked on, it did not go to the setting"): now also
+ * deep-links to the specific section within a tab when the matched
+ * entry has one (`ConfigSearchEntry.section`) — reuses the same real
+ * `PATHSCRIBE_SYSTEM_NAVIGATE` custom event AppShell.tsx's own
+ * config-link chat messages already dispatch, not a new mechanism.
+ * Entries without a confirmed section (see configSearchIndex.ts's own
+ * notes on `sys-jurisdiction`/`sys-info`) still fall back to the
+ * original tab-only navigation — a real result, just not as precise
+ * as it could be, rather than navigating nowhere.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { CONFIG_SEARCH_INDEX, ConfigSearchEntry, ConfigTabId } from '../../../constants/configSearchIndex';
 
 interface ConfigSearchBarProps {
-  onNavigate: (tabId: ConfigTabId) => void;
+  onNavigate: (tabId: ConfigTabId, section?: string) => void;
 }
 
 function scoreEntry(entry: ConfigSearchEntry, query: string): number {
@@ -53,7 +63,7 @@ const ConfigSearchBar: React.FC<ConfigSearchBarProps> = ({ onNavigate }) => {
   }, []);
 
   const selectEntry = (entry: ConfigSearchEntry) => {
-    onNavigate(entry.tabId);
+    onNavigate(entry.tabId, entry.section);
     setQuery('');
     setOpen(false);
   };

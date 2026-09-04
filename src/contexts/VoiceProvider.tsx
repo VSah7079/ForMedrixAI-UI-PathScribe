@@ -5,6 +5,9 @@ import { mockActionRegistryService } from '../services/actionRegistry/mockAction
 import { useSystemConfig } from './SystemConfigContext';
 import { callAi } from '../services/aiIntegration/aiProviderService';
 import { resolveVoiceAiConfig } from '../components/Config/AI/resolveVoiceAiModel';
+import { getSessionUser } from '../services/auth/caseAccessControl';
+import { MockVoiceMacroService } from '../services/voicemacro/mockVoiceMacroService';
+import { isVoiceMacroVisibleTo, applyVoiceMacroSubstitutions, type VoiceMacro } from '../types/voiceMacros';
 
 export type VoicePhase = 'standby' | 'ai' | 'local' | 'dictate';
 
@@ -17,6 +20,18 @@ export interface DictationTarget {
   onCorrection?: (original: string, corrected: string) => void;
   /** Context hint for the AI refinement prompt (e.g. 'gross', 'micro', 'diagnosis') */
   context?: string;
+  /**
+   * Real, per direct guidance (voice-trigger recognition wiring —
+   * "Personal Quick Text"): the real performing lab of whatever this
+   * dictation target actually belongs to, if any — e.g.
+   * OrchestratorSectionEditor.tsx passes the current case's own
+   * already-resolved performing lab. Used to filter which real voice
+   * macros (Enterprise/Facility/Personal — see
+   * types/voiceMacros.ts's own isVoiceMacroVisibleTo()) apply to this
+   * dictation session. Undefined means only Enterprise-wide macros
+   * apply — never guessed or defaulted to "any facility."
+   */
+  performingLabFacilityId?: string;
 }
 
 export interface VoiceContextType {
@@ -296,6 +311,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const recognitionRef     = useRef<any>(null);
   const streamRef          = useRef<MediaStream | null>(null);
   const dictationTargetRef = useRef<DictationTarget | null>(null);
+  // Real, per direct guidance (voice-trigger recognition wiring —
+  // "Personal Quick Text"): a real, cached list of active voice
+  // macros, refreshed once per dictation session (see startDictation
+  // below) — never re-fetched per spoken segment, since the LOCAL PATH
+  // substitution needs to be near-instant.
+  const voiceMacroServiceRef = useRef(new MockVoiceMacroService());
+  const voiceMacrosRef = useRef<VoiceMacro[]>([]);
   const phaseRef           = useRef<VoicePhase>('standby');
   const commandPhaseRef    = useRef<'ai' | 'local'>('ai');
   const pendingMissRef     = useRef<{ id: string; expiresAt: number } | null>(null);
@@ -430,7 +452,24 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Apply local punctuation + capitalization + learned corrections
     const localExpanded     = applyPunctuation(text);
-    const localWithLearning = applyDictationLearning(text, localExpanded);
+    const localWithLearning0 = applyDictationLearning(text, localExpanded);
+
+    // Real, per direct guidance (voice-trigger recognition wiring —
+    // "Personal Quick Text"): applies real, active voice-macro
+    // substitution (spoken → written) as the final real local step,
+    // after punctuation/learned-corrections and before the AI-
+    // refinement/direct-insertion branch below — a spoken trigger
+    // expands the same way whether or not AI refinement also runs
+    // afterward. Filtered to exactly the real macros this session user
+    // can actually see right now (Enterprise + this dictation target's
+    // own real facility + their own personal ones) — never applies a
+    // macro scoped to a different facility or a different person's
+    // own personal one.
+    const sessionUserId = getSessionUser()?.id ?? '';
+    const visibleVoiceMacros = voiceMacrosRef.current.filter(m =>
+      isVoiceMacroVisibleTo(m, sessionUserId, dictationTargetRef.current?.performingLabFacilityId)
+    );
+    const localWithLearning = applyVoiceMacroSubstitutions(localWithLearning0, visibleVoiceMacros);
 
     lastRawRef.current       = text;
     lastLocalTextRef.current = localWithLearning;
@@ -568,6 +607,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDictationTarget(target);
     setTranscript('');
     setPhase('dictate');
+    // Real, per direct guidance (voice-trigger recognition wiring):
+    // refreshes the real, cached voice-macro list once per real
+    // dictation session, not on every single spoken segment — a
+    // dictation segment needs this substitution to be near-instant
+    // (see handleDictationSegment's own LOCAL PATH), and macro edits
+    // mid-dictation are a genuinely rare real case this session-level
+    // refresh already covers well enough.
+    voiceMacroServiceRef.current.getMacros().then(macros => { voiceMacrosRef.current = macros; });
   }, []);
 
   const stopDictation = useCallback(() => {

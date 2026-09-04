@@ -14,6 +14,8 @@ import { TemplatePalette }   from './TemplatePalette';
 import { TemplateCanvas, updateNode } from './TemplateCanvas';
 import { TemplateInspector } from './TemplateInspector';
 import { mockReportPartService } from '../../services/reportParts/mockReportPartService';
+import { getActivePerformingLabs } from '../../utils/performingLabs';
+import type { Facility } from '../../services/facilities/IFacilityService';
 
 const svc = mockReportPartService;
 
@@ -41,6 +43,8 @@ const PartBuilderPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
+  const [labs, setLabs] = useState<Facility[]>([]);
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load ───────────────────────────────────────────────────
@@ -212,6 +216,14 @@ const PartBuilderPage: React.FC = () => {
                 <option value="CAP">CAP</option>
                 <option value="RCPath">RCPath</option>
                 <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <div className="ps-partb-meta-label">Performing Lab</div>
+              <select value={part.performingLabFacilityId ?? ''} onChange={e => markUnsaved({ ...part, performingLabFacilityId: e.target.value || undefined })}
+                className="ps-partb-meta-select">
+                <option value="">— Global (every performing lab) —</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           </div>

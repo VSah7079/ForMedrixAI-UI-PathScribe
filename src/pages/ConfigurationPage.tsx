@@ -16,7 +16,6 @@ import ModelsTab     from '../components/Config/Models/index';
 import ProtocolsTab  from '../components/Config/Protocols/index';
 import StaffTab      from '../components/Config/Staff/StaffTab';
 import SystemTab     from '../components/Config/System/index';
-import IntegrationsTab from '../components/Config/Integrations/index';
 import TATConfigSection from '../components/Config/System/TATConfigSection';
 import MacrosTab     from '../components/Config/Macros/index';
 import VoiceSettings from '../components/Voice/VoiceSettings';
@@ -48,7 +47,7 @@ function useIsSuperAdmin(): boolean {
   return user?.role === 'superadmin';
 }
 
-const VALID_TABS = ['ai', 'protocols', 'staff', 'voice', 'system', 'integrations', 'tat', 'actions', 'macros', 'templates', 'validation', 'demo'] as const;
+const VALID_TABS = ['ai', 'protocols', 'staff', 'voice', 'system', 'tat', 'actions', 'macros', 'templates', 'validation', 'demo'] as const;
 type TabId = typeof VALID_TABS[number];
 
 const TAB_LABELS: { id: TabId; label: string }[] = [
@@ -59,7 +58,6 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
   { id: 'staff',      label: 'Staff'              },
   { id: 'protocols',  label: 'Synoptic Library'   },
   { id: 'system',     label: 'System'             },
-  { id: 'integrations', label: 'Integrations'     },
   { id: 'tat',        label: 'TAT Configuration'   },
   { id: 'validation', label: 'Validation Studies' },
   { id: 'voice',      label: 'Voice'              },
@@ -155,7 +153,6 @@ const ConfigurationPage: React.FC = () => {
       case 'protocols': return <ProtocolsTab />;
       case 'staff':     return <StaffTab />;
       case 'system':    return <SystemTab />;
-      case 'integrations': return <IntegrationsTab />;
       case 'tat':       return <TATConfigSection />;
       case 'actions':   return <ActionsTab />;
       case 'macros':    return <MacrosTab />;
@@ -183,7 +180,22 @@ const ConfigurationPage: React.FC = () => {
         <div className="ps-cfgpage-title-block">
           <h1 className="ps-cfgpage-title">Configuration</h1>
           <p className="ps-cfgpage-subtitle">Control AI behavior, templates, users, and system settings</p>
-          <ConfigSearchBar onNavigate={tabId => handleTabChange(tabId)} />
+          <ConfigSearchBar onNavigate={(tabId, section) => {
+            handleTabChange(tabId);
+            // Real, per direct report ("the top level search in config
+            // found the entry, but when clicked on, it did not go to
+            // the setting"): same real PATHSCRIBE_SYSTEM_NAVIGATE event
+            // AppShell.tsx's own config-link chat messages already
+            // dispatch, same setTimeout delay reasoning — the System
+            // tab's own component needs to actually mount (and its
+            // event listener attach) after handleTabChange's state
+            // update, before this event can be caught.
+            if (section) {
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('PATHSCRIBE_SYSTEM_NAVIGATE', { detail: { section } }));
+              }, 150);
+            }
+          }} />
         </div>
 
         <div className="ps-cfgpage-tabbar">

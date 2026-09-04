@@ -1,6 +1,6 @@
 // src/services/billing/codeMapTable.test.ts
 import { describe, it, expect } from 'vitest';
-import { computeWorkRvuForCodes, ruleBasedDefaultCptCodes, parseRvuUploadRows, suggestBlockAncillaryCptCodes, suggestSpecimenAncillaryCptCodes, computeNewSuggestions, computeCaseCodingSummary, resolveSpecimenDictionaryBaseCptCode, CODE_MAP_TABLE } from './codeMapTable';
+import { computeWorkRvuForCodes, ruleBasedDefaultCptCodes, parseRvuUploadRows, suggestBlockAncillaryCptCodes, suggestSpecimenAncillaryCptCodes, computeNewSuggestions, computeCaseCodingSummary, resolveSpecimenDictionaryBaseCptCode, computeMatrixStainBillingUnits, CODE_MAP_TABLE } from './codeMapTable';
 import type { StainType } from '../stains/IStainService';
 
 describe('CODE_MAP_TABLE — real, verified CMS 2026 work RVU values, not fabricated', () => {
@@ -441,5 +441,180 @@ describe('ruleBasedDefaultCptCodes — real fix: honest, rule-based fallback, no
     const codes = ruleBasedDefaultCptCodes(5);
     const result = computeWorkRvuForCodes(codes);
     expect(result.unrecognizedCodes).toHaveLength(0);
+  });
+});
+
+// PS-93 — real Biopsy Array / MatrixBlock billing coverage, per direct
+// billing-expert guidance. computeMatrixStainBillingUnits implements
+// the exact rule given: evaluatedSpecimenIds (not targetSpecimenIds)
+// is the real billing trigger, first evaluated specimen gets
+// IHC-FIRST, every additional gets IHC-ADDL, empty/undefined yields
+// zero units.
+describe('computeMatrixStainBillingUnits — PS-93 real billing-expert rule', () => {
+  const stainTypes: StainType[] = [
+    { id: '1', name: 'H&E', category: 'Routine', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '2', name: 'Ki-67', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '3', name: 'PIN4', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '4', name: 'Trichrome', category: 'Special Stain', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '5', name: 'BRAF FISH', category: 'Molecular', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  it('the real, explicit requirement: empty/undefined evaluatedSpecimenIds yields zero units — "ensuring zero risk of unbundled or improper claims"', () => {
+    expect(computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: [] }, stainTypes)).toEqual([]);
+    expect(computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67' }, stainTypes)).toEqual([]);
+  });
+
+  it('never falls back to targetSpecimenIds when evaluatedSpecimenIds is empty — order-time targeting alone never bills', () => {
+    const stain = { id: 'stain-1', stainName: 'Ki-67', targetSpecimenIds: ['sp-A', 'sp-B'], evaluatedSpecimenIds: [] } as any;
+    expect(computeMatrixStainBillingUnits(stain, stainTypes)).toEqual([]);
+  });
+
+  it('exactly 1 evaluated specimen → that specimen gets IHC-FIRST, one unit', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([{ specimenId: 'sp-A', code: 'IHC-FIRST', stainOrderId: 'stain-1' }]);
+  });
+
+  it('N > 1 evaluated specimens → first gets IHC-FIRST, every other gets IHC-ADDL — the real, explicit sequencing rule', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B', 'sp-C'] }, stainTypes);
+    expect(result).toEqual([
+      { specimenId: 'sp-A', code: 'IHC-FIRST', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-B', code: 'IHC-ADDL', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-C', code: 'IHC-ADDL', stainOrderId: 'stain-1' },
+    ]);
+  });
+
+  it('a Special Stain gets one SPECIAL-STAIN unit per evaluated specimen, no first/additional distinction — matches the single-specimen rule this category already has elsewhere', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Trichrome', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }, stainTypes);
+    expect(result).toEqual([
+      { specimenId: 'sp-A', code: 'SPECIAL-STAIN', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-B', code: 'SPECIAL-STAIN', stainOrderId: 'stain-1' },
+    ]);
+  });
+
+  it('Molecular is a deliberate, disclosed gap — no units, never a guessed rule', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'BRAF FISH', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('an unresolvable stain category produces nothing — same "never guessed at" posture as suggestAncillaryCodesForStains', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Totally Unknown Stain', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('a stain with no real id produces nothing — a suggestion must trace back to a real stain record', () => {
+    const result = computeMatrixStainBillingUnits({ stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+});
+
+describe('computeCaseCodingSummary — PS-93 real MatrixBlock integration', () => {
+  const stainTypes: StainType[] = [
+    { id: '1', name: 'H&E', category: 'Routine', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '2', name: 'Ki-67', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  it('a case with no matrixBlocks argument behaves exactly as before this feature existed — the real backward-compatibility guarantee', () => {
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-A', label: 'A1', stains: [{ stainName: 'H&E' }] }] }],
+      stainTypes,
+    );
+    expect(result[0].matrixBlockContributions).toEqual([]);
+  });
+
+  it('a specimen not participating in any matrix block gets an empty matrixBlockContributions, unaffected by other specimens\' shared blocks', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }, { specimenId: 'sp-B', positionInBlock: 2 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-C', label: 'C', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    expect(result[0].matrixBlockContributions).toEqual([]);
+  });
+
+  it('real, end-to-end: a two-specimen Biopsy Array with both cores evaluated produces the correct, real per-specimen suggestions', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }, { specimenId: 'sp-B', positionInBlock: 2 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [] }, { id: 'sp-B', label: 'B', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const spA = result.find(sp => sp.specimenId === 'sp-A')!;
+    const spB = result.find(sp => sp.specimenId === 'sp-B')!;
+    expect(spA.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-FIRST']);
+    expect(spB.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-ADDL']);
+  });
+
+  it('a specimen targeted at order time but NOT yet evaluated has no pending suggestion — the real Point C gate', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', targetSpecimenIds: ['sp-A'] }], // no evaluatedSpecimenIds yet
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    expect(result[0].matrixBlockContributions[0].unappliedSuggestions).toEqual([]);
+  });
+
+  it('an applied matrixBlockCoding entry correctly removes that suggestion from unappliedSuggestions, mirroring an ordinary block\'s own computeNewSuggestions filtering', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [], matrixBlockCoding: [{ matrixBlockId: 'mtx-1', cpt: [{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const contribution = result[0].matrixBlockContributions[0];
+    expect(contribution.appliedAncillaryCodes).toEqual([{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }]);
+    expect(contribution.unappliedSuggestions).toEqual([]);
+  });
+
+  it('a rejected matrixBlockCoding entry also removes that suggestion, without treating it as applied', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [], matrixBlockCoding: [{ matrixBlockId: 'mtx-1', rejectedCpt: [{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const contribution = result[0].matrixBlockContributions[0];
+    expect(contribution.appliedAncillaryCodes).toEqual([]);
+    expect(contribution.unappliedSuggestions).toEqual([]);
+  });
+
+  it('a specimen\'s own ordinary blocks[] IHC history does NOT influence a shared MatrixBlock stain\'s own sequencing — the two are deliberately independent rules', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    // sp-A already has two of its OWN prior IHC stains on its own,
+    // ordinary block — if the matrix rule were wrongly threaded
+    // through the same running count, this specimen's matrix
+    // contribution would incorrectly suggest IHC-ADDL instead of
+    // IHC-FIRST.
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [{ id: 'blk-A', label: 'A1', stains: [{ stainName: 'Ki-67' }, { stainName: 'Ki-67' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const spA = result[0];
+    expect(spA.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-FIRST']);
   });
 });

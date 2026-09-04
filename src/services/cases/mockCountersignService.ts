@@ -70,7 +70,12 @@ export const mockCountersignService: ICountersignService = {
   },
 
   async getForCase(caseId: string) {
-    const record = load().find(r => r.caseId === caseId && r.status === 'pending');
+    // Real, per direct guidance ("Continue" — closing the gap where a
+    // rejection's own real attendingFeedback was captured but never
+    // actually shown to the resident anywhere): now also matches
+    // 'returned', not just 'pending' — see this method's own real,
+    // updated contract in ICountersignService.ts.
+    const record = load().find(r => r.caseId === caseId && (r.status === 'pending' || r.status === 'returned'));
     return ok(record ?? null);
   },
 
@@ -127,6 +132,43 @@ export const mockCountersignService: ICountersignService = {
       event: 'Case Countersigned',
       detail: `Case ${input.caseId} countersigned by ${input.attendingName} — ${changedFieldCount} field(s) changed from the resident's release` +
         (input.attendingFeedback ? ' — feedback provided' : ''),
+      user: input.attendingName,
+      caseId: input.caseId,
+      confidence: null,
+    }).catch(() => {});
+
+    return ok(updated);
+  },
+
+  async reject(input) {
+    // Real, per direct guidance: attendingFeedback is required here —
+    // a rejection with no explanation gives the resident nothing to
+    // act on. Same real "don't silently accept malformed input"
+    // posture this session's other new service methods already use.
+    const trimmedFeedback = input.attendingFeedback?.trim();
+    if (!trimmedFeedback) {
+      return err('reject() requires real attendingFeedback — the resident needs to know why this was returned.');
+    }
+
+    const records = load();
+    const idx = records.findIndex(r => r.caseId === input.caseId && r.status === 'pending');
+    if (idx === -1) return err(`No pending countersign record found for case ${input.caseId}`);
+
+    const updated: CountersignRecord = {
+      ...records[idx],
+      attendingId: input.attendingId,
+      attendingName: input.attendingName,
+      returnedAt: new Date().toISOString(),
+      attendingFeedback: trimmedFeedback,
+      status: 'returned',
+    };
+    records[idx] = updated;
+    persist(records);
+
+    await mockAuditService.logEvent({
+      type: 'user',
+      event: 'Case Returned for Revision',
+      detail: `Case ${input.caseId} returned to resident ${records[idx].residentName} by ${input.attendingName} — feedback: ${trimmedFeedback}`,
       user: input.attendingName,
       caseId: input.caseId,
       confidence: null,

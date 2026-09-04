@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { caseRouter } from '../services/cases/CaseRouter';
 import { useLogout } from '@hooks/useLogout';
 import WorklistTable from '../components/Worklist/WorklistTable';
+import { ReassignCasePatientPanel } from '../components/Search/ReassignCasePatientPanel';
 import { codeService, flagService, userService, physicianService, facilityService, subspecialtyService } from '../services';
 import { getStaffSubspecialtyDisplay } from '../utils/staffSubspecialties';
 import type { PathologyCase, CaseFilterParams, ClinicalCode, Flag } from '../services';
@@ -16,12 +17,13 @@ const LookupModalX = LookupModal as React.ComponentType<React.ComponentProps<typ
 import { useSpecimenDictionary } from '../components/Config/System/useSpecimenDictionary';
 import type { SpecimenEntry } from '../services/specimenDictionary/specimenTypes';
 import { useSystemConfig } from '../contexts/SystemConfigContext';
+import { useEnabledIdentifierFormats } from '../hooks/useEnabledIdentifierFormats';
 import { getFacilityDateParts } from '@/utils/facilityTime';
 import { useBreadcrumb }   from '../contexts/BreadcrumbContext';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { detectIdentifierType, resolveIdentifierApplication } from '../utils/detectIdentifierType';
 import type { IdentifierType } from '../utils/detectIdentifierType';
-import { IDENTIFIER_FORMAT_LIBRARY } from '../types/systemConfig';
+import { deriveLegacyFormats } from '../types/systemConfig';
 import { VOICE_CONTEXT } from '../constants/systemActions';
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -128,7 +130,7 @@ const ALL_SYNOPTICS: SynopticTemplate[] = [
 
 // â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-interface UserStub { id: string; name: string; client: string; }
+interface UserStub { id: string; name: string; secondary: string; }
 // Real fix: ALL_PATHOLOGISTS/ALL_ATTENDINGS used to be hardcoded, static
 // snapshots here - pathologists with fake ids never matching a real
 // services/users/ StaffUser record, and an attending list honestly
@@ -150,7 +152,7 @@ interface UserStub { id: string; name: string; client: string; }
 // these flag entries target case-level flag badges on the case card.
 // Real fix: same bug class as ALL_PATHOLOGISTS/ALL_ATTENDINGS above - a
 // completely separate, fake id scheme (c1-c8) unrelated to the real
-// services/clients/ roster. Now real, live state (see clients state +
+// services/clients/ roster. Now real, live state (see facilities state +
 // effect below) from facilityService.getAll().
 
 // Real CaseStatus values only (see src/types/case/CaseStatus.ts) — this array
@@ -171,7 +173,7 @@ interface UserStub { id: string; name: string; client: string; }
 const CASE_STATUS_OPTIONS = [
   'draft','accessioned','gross-complete','in-progress','intraoperative-complete',
   'pending-review','pathologist-review','finalizing','finalized','pool','pending-countersign',
-  'pending-release',
+  'pending-release','returned',
 ] as const;
 
 // Label + accent color per status — kept in one place instead of inline so the
@@ -199,6 +201,11 @@ const STATUS_PILL_META: Record<typeof CASE_STATUS_OPTIONS[number], { label: stri
   // exact status, for the same cross-page visual-consistency reasoning
   // as the comment above.
   'pending-release':           { label: 'Pending Release',   color: '#1C8DE3' },
+  // Real, per direct guidance ("Yes we should scope 'Return to
+  // Trainee'/'Reject with Notes'"): color matches WorklistPage.tsx's
+  // own dedicated amber/gold for the "Needs Revision" tile, for the
+  // same cross-page visual-consistency reasoning as the comment above.
+  'returned':                  { label: 'Needs Revision',    color: '#78350F' },
 };
 const PRIORITY_OPTIONS    = ['Routine','Rush','STAT'] as const;
 
@@ -332,12 +339,12 @@ const SynopticLookupContent: React.FC<{ selected: string[]; onToggle: (id: strin
 
 const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onToggle: (id: string) => void; accent?: string }> = ({ users, selected, onToggle, accent='#0891B2' }) => {
   const [nameQ,   setNameQ]   = useState('');
-  const [clientQ, setClientQ] = useState('');
+  const [secondaryQ, setSecondaryQ] = useState('');
 
   const filtered = users.filter(u => {
     const matchName   = nameQ.length   < 1 || u.name.toLowerCase().includes(nameQ.toLowerCase());
-    const matchClient = clientQ.length < 1 || u.client.toLowerCase().includes(clientQ.toLowerCase());
-    return matchName && matchClient;
+    const matchSecondary = secondaryQ.length < 1 || u.secondary.toLowerCase().includes(secondaryQ.toLowerCase());
+    return matchName && matchSecondary;
   });
 
   const initials = (name: string) => { const p = name.replace(/^(Dr|Mr|Ms|Mrs|Prof|Mx)\.\s*/i,'').split(' ').filter(Boolean); return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():p[0]?.[0]?.toUpperCase()??'?'; };
@@ -351,19 +358,19 @@ const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onTog
           className="ps-searchpage-user-search-input"
         />
         <input
-          value={clientQ} onChange={e => setClientQ(e.target.value)}
+          value={secondaryQ} onChange={e => setSecondaryQ(e.target.value)}
           placeholder="Search by hospital…"
           className="ps-searchpage-user-search-input"
         />
       </div>
       {filtered.length === 0
-        ? <LookupEmpty query={nameQ || clientQ} />
+        ? <LookupEmpty query={nameQ || secondaryQ} />
         : filtered.map(u => {
             const sel = selected.includes(u.id);
             return (
               <LookupItem key={u.id} selected={sel} onToggle={() => onToggle(u.id)}
                 primary={u.name}
-                secondary={u.client}
+                secondary={u.secondary}
                 badge={initials(u.name)}
                 badgeColor={accent}
               />
@@ -447,9 +454,9 @@ const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; on
   );
 };
 
-const ClientLookupContent: React.FC<{ clients: UserStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ clients, selected, onToggle }) => {
+const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ facilities, selected, onToggle }) => {
   const [nameQ, setNameQ] = useState('');
-  const filtered = clients.filter(c =>
+  const filtered = facilities.filter(c =>
     nameQ.length < 1 || c.name.toLowerCase().includes(nameQ.toLowerCase())
   );
   const abbr = (name: string) => name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -818,19 +825,19 @@ const SearchPage: React.FC = () => {
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
   const { config } = useSystemConfig();
 
-  // Real fix: pathologists/attendings/clients used to be hardcoded,
+  // Real fix: pathologists/attendings/facilities used to be hardcoded,
   // static module-scope constants (ALL_PATHOLOGISTS/ALL_ATTENDINGS/
   // ALL_CLIENTS) - see this file's own "Users" section comment for the
   // full story. Now real, live state, fetched once from the same real
   // services RoleDictionary.tsx/AccessionPage.tsx already use.
   const [pathologists, setPathologists] = useState<UserStub[]>([]);
   const [attendings, setAttendings] = useState<UserStub[]>([]);
-  const [clients, setClients] = useState<UserStub[]>([]);
+  const [facilities, setFacilities] = useState<UserStub[]>([]);
   useEffect(() => {
     Promise.all([userService.getAll(), physicianService.getAll(), facilityService.getAll(), subspecialtyService.getAll()]).then(
       ([userRes, physicianRes, clientRes, subsRes]) => {
-        const realClients = clientRes.ok ? clientRes.data : [];
-        setClients(realClients.map(c => ({ id: c.id, name: c.name, client: '' })));
+        const realFacilities = clientRes.ok ? clientRes.data : [];
+        setFacilities(realFacilities.map(c => ({ id: c.id, name: c.name, secondary: '' })));
 
         if (userRes.ok) {
           // Real fix, per direct confirmation: replaces the old
@@ -841,7 +848,7 @@ const SearchPage: React.FC = () => {
           setPathologists(
             userRes.data
               .filter(u => u.roles.includes('Pathologist'))
-              .map(u => ({ id: u.id, name: `Dr. ${u.firstName} ${u.lastName}`, client: getStaffSubspecialtyDisplay(u.id, allSubspecialties) }))
+              .map(u => ({ id: u.id, name: `Dr. ${u.firstName} ${u.lastName}`, secondary: getStaffSubspecialtyDisplay(u.id, allSubspecialties) }))
           );
         }
 
@@ -853,7 +860,7 @@ const SearchPage: React.FC = () => {
               // A real physician can have more than one real client
               // (clientIds is plural) - joins every real, resolved
               // name rather than arbitrarily picking just the first.
-              client: p.clientIds.map(cid => realClients.find(c => c.id === cid)?.name).filter(Boolean).join(', '),
+              secondary: p.clientIds.map(cid => realFacilities.find(c => c.id === cid)?.name).filter(Boolean).join(', '),
             }))
           );
         }
@@ -921,12 +928,20 @@ const SearchPage: React.FC = () => {
   const [identifierQuery, setIdentifierQuery] = useState('');
   const [detectedType, setDetectedType] = useState<IdentifierType>(null);
 
-  // Enabled formats from config, falling back to library defaults
-  const enabledFormats = config.identifierFormats?.formats
-    ?? IDENTIFIER_FORMAT_LIBRARY.filter(f => f.enabled);
+  // Real, per direct guidance: replaces config.identifierFormats -
+  // enabledFormats now resolves from the real union of every
+  // Enterprise's own enabled formats, falling back to
+  // IDENTIFIER_FORMAT_LIBRARY's own defaults unchanged when none has
+  // configured this yet (see useEnabledIdentifierFormats.ts). The
+  // legacy accessionPattern this screen also needs is derived the
+  // same real way SystemConfig.identifierFormats itself always
+  // derived it - deriveLegacyFormats() from the enabled formats list,
+  // not a separately-stored value.
+  const enabledFormats = useEnabledIdentifierFormats();
+  const legacyFormats = deriveLegacyFormats(enabledFormats);
 
   const applyIdentifier = (val: string, type: IdentifierType) => {
-    const result = resolveIdentifierApplication(val, type, enabledFormats, config.identifierFormats.accessionPattern);
+    const result = resolveIdentifierApplication(val, type, enabledFormats, legacyFormats.accessionPattern);
     if (result.action === 'navigate') { navigate(result.path); return; }
     setPatientName(result.patientName);
     setHospitalId(result.hospitalId);
@@ -985,9 +1000,9 @@ const SearchPage: React.FC = () => {
   const [pathologistIds, setPathologistIds] = useState<string[]>([]);
   const [attendingIds,   setAttendingIds]   = useState<string[]>([]);
   const [compFlagsList,  setCompFlagsList]  = useState<string[]>([]);
-  const [clientIds,      setClientIds]      = useState<string[]>([]);
+  const [facilityIds,    setFacilityIds]    = useState<string[]>([]);
   const [compFlagsModal, setCompFlagsModal] = useState(false);
-  const [clientModal,    setClientModal]    = useState(false);
+  const [facilityModal,  setFacilityModal]  = useState(false);
   const [submittingNames,setSubmittingNames]= useState<string[]>([]);
   const [statusList,     setStatusList]     = useState<string[]>([]);
   const [priorityList,   setPriorityList]   = useState<string[]>([]);
@@ -1054,6 +1069,17 @@ const SearchPage: React.FC = () => {
   );
   const realCompFlagNames = React.useMemo(
     () => flagDefinitions.filter(f => f.status === 'Active' && f.tagClass === 'COMPUTATIONAL').map(f => f.name),
+    [flagDefinitions]
+  );
+  // Real, confirmed fix (Jira PS-57): caseFlags/specimenFlags now
+  // correctly type as FlagInstance[] — an application record
+  // referencing a real flag definition by flagDefinitionId, not an
+  // inline copy of its display fields. Every place below that used
+  // to read .label/.lisCode/.name directly off a case's own flag
+  // entries now resolves through this same, real catalog instead —
+  // the identical lookup FlagManagerModal.tsx itself already uses.
+  const flagDefById = React.useMemo(
+    () => new Map(flagDefinitions.map(f => [f.id, f])),
     [flagDefinitions]
   );
   // Auto-collapses the filter sidebar after a search runs, freeing real
@@ -1240,7 +1266,7 @@ const SearchPage: React.FC = () => {
         dobTo:               dobTo   || undefined,
         ageMin:              ageMin  ? parseInt(ageMin, 10)  : undefined,
         ageMax:              ageMax  ? parseInt(ageMax, 10)  : undefined,
-        clientIds:           clientIds.length      ? clientIds      : undefined,
+        facilityIds:         facilityIds.length    ? facilityIds    : undefined,
         // Previously omitted — these are the filters that were being tracked in state but never sent
         flagIds:             flagsList.length      ? flagsList      : undefined,
         pathologistIds:      pathologistIds.length ? pathologistIds : undefined,
@@ -1265,16 +1291,29 @@ const SearchPage: React.FC = () => {
         const filteredData = compFlagsList.length > 0
           ? result.data.filter((c: PathologyCase) =>
               compFlagsList.some(code =>
-                (c.specimenFlags ?? []).some(sf =>
-                  // Real fix: SpecimenFlag's real field is `.label`, not
-                  // `.name` — that comparison was checking a property that
-                  // doesn't exist on the type (only caught once the `any`
-                  // cast masking it was removed). `compFlagsList` holds
-                  // catalog Flag.name values, so `.label` is the actual
-                  // field that was supposed to match them; `.lisCode`/`.id`
-                  // kept as-is in case either coincidentally matches too.
-                  sf.lisCode === code || sf.id === code || sf.label === code
-                )
+                (c.specimens ?? []).flatMap(sp => sp.specimenFlags ?? []).some(sf => {
+                  // Real fix (Jira PS-57 + its follow-up "should be
+                  // able to assign Flags at either a Case or Specimen
+                  // level"): sf is a real FlagInstance now —
+                  // id/flagDefinitionId/appliedAt/source/deletedAt,
+                  // no .label/.lisCode of its own. Resolve against the
+                  // real catalog (flagDefById, built from the same
+                  // flagService.getAll() this file already fetches)
+                  // instead, the same lookup FlagManagerModal.tsx
+                  // itself uses. Aggregated across every specimen on
+                  // the case — there's deliberately no case-level
+                  // specimenFlags field; each specimen's own
+                  // specimenFlags is the only real place a flag
+                  // applied to a specific specimen can live, since
+                  // FlagInstance itself carries no specimenId. Deleted
+                  // instances (a flag removed from the case)
+                  // correctly excluded — the old, wrong type had no
+                  // real field for this at all, so this file could
+                  // never previously respect it.
+                  if (sf.deletedAt) return false;
+                  const def = flagDefById.get(sf.flagDefinitionId);
+                  return !!def && (def.lisCode === code || def.id === code || def.name === code);
+                })
               )
             )
           : result.data;
@@ -1341,10 +1380,15 @@ const SearchPage: React.FC = () => {
       c.order?.requestingProvider ?? '',
       c.order?.priority ?? '',
       c.status ?? '',
-      // Real fix: same .name/.label bug as the computational-flags filter
-      // above (CaseFlag's real field is .label, not .name) - this export
-      // column was silently empty for every case that actually had flags.
-      (c.caseFlags ?? []).map(f => f.label ?? '').join('; '),
+      // Real fix (Jira PS-57): same real-catalog resolution as the
+      // computational-flags filter above — f is a FlagInstance, its
+      // real display name lives on the flag definition it references,
+      // not on the instance itself. Deleted (removed) flags excluded
+      // from the export, same as the filter above.
+      (c.caseFlags ?? [])
+        .filter(f => !f.deletedAt)
+        .map(f => flagDefById.get(f.flagDefinitionId)?.name ?? '')
+        .join('; '),
     ]);
     const escape = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
     const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
@@ -1377,6 +1421,19 @@ const SearchPage: React.FC = () => {
 
   // ── Voice: selected result index ────────────────────────────
   const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
+
+  // Real, per direct guidance (gap #6 — the proactive
+  // moveCaseToPatient() trigger, complementing PatientManagementSection.tsx's
+  // own patient-first "Move a Case…" action with this case-first
+  // entry point): shows ReassignCasePatientPanel for whichever real
+  // result row is currently selected via WorklistTable's own real
+  // onRowSelect click handler — never a new per-row action embedded
+  // in that shared table component itself.
+  const [reassignPanelOpen, setReassignPanelOpen] = useState(false);
+  // Real, defensive: closes the panel if the underlying selection
+  // changes (a new search, arrow-key navigation to a different row)
+  // rather than leaving it silently open against a stale case.
+  useEffect(() => { setReassignPanelOpen(false); }, [selectedResultIndex, results]);
 
   // ── Voice: set SEARCH context on mount ─────────────────────────
   useEffect(() => {
@@ -1474,8 +1531,13 @@ const SearchPage: React.FC = () => {
   return (
     <div className={`ps-search-page-root${isLoaded ? ' ps-search-page-root--loaded' : ''}`}>
 
-      <div className="ps-search-bg-image" />
-      <div className="ps-search-bg-gradient" />
+      {/* Real, per direct UI-review follow-up ("Fix the root"): this
+          page's own competing background image/gradient removed —
+          this page now falls through to AppShell's own real
+          .ps-app-root background, matching Configuration/Quality
+          Assurance/Intraop Queue/Contribution. See
+          pathscribe.css's own .ps-search-bg-image/.ps-search-bg-gradient
+          rules (now deleted) for the fuller account. */}
 
       <div className="ps-search-shell">
 
@@ -1733,14 +1795,14 @@ const SearchPage: React.FC = () => {
                   </div>}
                 </div>
 
-                {/* Client */}
+                {/* Facility */}
                 <div className="ps-searchpage-section-mb4">
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Client" active={false} />
-                    <BrowseBtn onClick={()=>setClientModal(true)} count={clientIds.length||undefined} />
+                    <SectionLabel title="Facility" active={false} />
+                    <BrowseBtn onClick={()=>setFacilityModal(true)} count={facilityIds.length||undefined} />
                   </div>
-                  {clientIds.length>0&&<div className="ps-searchpage-pill-row">
-                    {clientIds.map(id=><Chip key={id} label={clients.find(c=>c.id===id)?.name??id} onRemove={()=>setClientIds(p=>p.filter(x=>x!==id))} accent="#8b5cf6" />)}
+                  {facilityIds.length>0&&<div className="ps-searchpage-pill-row">
+                    {facilityIds.map(id=><Chip key={id} label={facilities.find(c=>c.id===id)?.name??id} onRemove={()=>setFacilityIds(p=>p.filter(x=>x!==id))} accent="#8b5cf6" />)}
                   </div>}
                 </div>
 
@@ -1877,8 +1939,31 @@ const SearchPage: React.FC = () => {
                     className="ps-searchpage-export-btn"
                   >Export CSV</button>
                 )}
+                {/* Real, per direct guidance (gap #6): only enabled when
+                    a real result row is actually selected — reuses
+                    selectedResultIndex, the same real signal
+                    WorklistTable's own onRowSelect already drives via
+                    real user click, not keyboard alone. */}
+                {selectedResultIndex>=0 && results?.[selectedResultIndex] && (
+                  <button
+                    type="button"
+                    onClick={() => setReassignPanelOpen(true)}
+                    className="ps-searchpage-export-btn"
+                  >🪪 Reassign Patient</button>
+                )}
               </div>
             </div>
+
+            {reassignPanelOpen && selectedResultIndex>=0 && results?.[selectedResultIndex] && (
+              <ReassignCasePatientPanel
+                caseData={results[selectedResultIndex]}
+                onClose={() => setReassignPanelOpen(false)}
+                onReassigned={() => {
+                  setReassignPanelOpen(false);
+                  runSearch();
+                }}
+              />
+            )}
 
             {/* Result table — WorklistTable owns its own internal scroll
                 (.wl-table-scroll). minWidth:0 here (and on .ps-search-results-body
@@ -1981,20 +2066,20 @@ const SearchPage: React.FC = () => {
         </LookupModal>
       )}
 
-      {/* Client browse modal */}
-      {clientModal && (
+      {/* Facility browse modal */}
+      {facilityModal && (
         <LookupModalX
-          title="Submitting Client"
+          title="Submitting Facility"
           subtitle="Filter cases by submitting facility"
-          selectedCount={clientIds.length}
-          onClose={() => setClientModal(false)}
-          onClear={() => setClientIds([])}
-          onDone={() => setClientModal(false)}
+          selectedCount={facilityIds.length}
+          onClose={() => setFacilityModal(false)}
+          onClear={() => setFacilityIds([])}
+          onDone={() => setFacilityModal(false)}
         >
-          <ClientLookupContent
-            clients={clients}
-            selected={clientIds}
-            onToggle={id => toggle(id, clientIds, setClientIds)}
+          <FacilityLookupContent
+            facilities={facilities}
+            selected={facilityIds}
+            onToggle={id => toggle(id, facilityIds, setFacilityIds)}
           />
         </LookupModalX>
       )}

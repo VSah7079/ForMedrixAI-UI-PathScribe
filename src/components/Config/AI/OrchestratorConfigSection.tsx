@@ -212,8 +212,8 @@ const OrchestratorConfigSection: React.FC<OrchestratorConfigSectionProps> = ({ i
           </p>
           <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
             The ON/OFF badge above is the <strong style={{ color: '#94a3b8' }}>org-wide default</strong>.
-            Individual internal clients (performing labs) can override it in the Client
-            Dictionary — see that client's General tab — for trusts where not every site
+            Individual internal facilities (performing labs) can override it in the Facility
+            Dictionary — see that facility's General tab — for trusts where not every site
             wants AI narrative auto-draft enabled.
           </p>
 

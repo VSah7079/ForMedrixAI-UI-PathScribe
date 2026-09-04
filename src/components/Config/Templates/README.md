@@ -25,6 +25,13 @@ non-trivial open bug (now fixed — see Notes).
   correctly fixed every place in the file that renders `<ModalOverlay>`,
   with no risk of missing a duplicate instance.
 
+  **Real, found-and-fixed accessibility bug, per direct report
+  ("occasional text that is dark and pretty much impossible to
+  read")**: the same lifecycle-stepper separator (here an arrow, `→`,
+  rather than a dash) used `#1e293b` — the exact same copied pattern
+  fixed in `AllProtocolsSection.tsx`/`ActiveProtocolsSection.tsx` (see
+  `../Protocols/README.md`). Fixed to `#64748b`.
+
 ## Notes
 
 - **BUG FIXED (July 2026).** `TemplateRenderer.tsx` was fully rewritten to

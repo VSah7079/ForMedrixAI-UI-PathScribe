@@ -18,9 +18,10 @@ import { getOrgOrchestratorDefault } from "@components/Config/AI/orchestratorMod
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../constants/systemActions';
 import { useNavigate } from 'react-router-dom';
-import { specimenDeficiencyService, deficiencyTypeService, reconciliationService, intraoperativeService, subspecialtyService, countersignService } from '../services';
+import { specimenDeficiencyService, deficiencyTypeService, qaActivityRecordService, intraoperativeService, subspecialtyService, countersignService } from '../services';
 import type { Subspecialty } from '../services';
 import { caseRouter } from '../services/cases/CaseRouter';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '../services/quality/mockQaActivityTypeService';
 import { computeOverviewKpis, computeCaseMixData, computeOrgWideTatPerformance, computeRvu30, computeWeeklyDaily, type RealOverviewKpis, type RealCaseMixData, type RealTatPerformance, type RealRvu30, type RealDailyRvu } from './contributionDashboardCalculations';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
 import { specimenDictionaryService } from '@/services';
@@ -221,7 +222,7 @@ const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) =>
       {/* Summary line */}
       <div className="ps-tat-tile__summary-line">
         <span className={`ps-contrib-tat-summary ps-contrib-tat-summary--${pct >= 85 ? 'good' : pct >= 65 ? 'ok' : 'bad'}`}>{pct}% on target</span>
-        <span className="ps-contrib-tat-clients">weighted across {data.clientCount} clients</span>
+        <span className="ps-contrib-tat-clients">weighted across {data.facilityCount} facilities</span>
       </div>
     </div>
   );
@@ -233,7 +234,7 @@ const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) =>
 // business logic found embedded in the UI elsewhere in this review.
 
 const TeachingCasesTile: React.FC<{
-  teachingRecords: import('@/types/quality/ReconciliationRecord').ReconciliationRecord[];
+  teachingRecords: import('@/types/quality/QaActivityRecord').QaActivityRecord[];
   countersignRecords: import('@/types/case/CountersignRecord').CountersignRecord[];
   subspecialties: Subspecialty[];
   onOpen: () => void;
@@ -241,7 +242,7 @@ const TeachingCasesTile: React.FC<{
 }> = ({ teachingRecords, countersignRecords, subspecialties, onOpen, onExport }) => {
   const concordantCount = teachingRecords.filter(r => r.outcome === 'concordant').length;
   const rate = teachingRecords.length > 0 ? (concordantCount / teachingRecords.length) * 100 : null;
-  const withFeedback = [...teachingRecords].filter(r => r.attendingFeedback).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  const withFeedback = [...teachingRecords].filter(r => r.reviewerFeedback).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
   const csWithFeedback = [...countersignRecords].filter(r => r.attendingFeedback).sort((a, b) => (b.countersignedAt ?? '').localeCompare(a.countersignedAt ?? ''));
   const avgChangedFields = countersignRecords.length > 0
     ? countersignRecords.reduce((s, r) => s + (r.changedFieldCount ?? 0), 0) / countersignRecords.length
@@ -297,9 +298,9 @@ const TeachingCasesTile: React.FC<{
           ))}
         </div>
       )}
-      {withFeedback[0]?.attendingFeedback && (
+      {withFeedback[0]?.reviewerFeedback && (
         <div className="ps-contrib-teaching-feedback">
-          Latest reconciliation feedback: "{withFeedback[0].attendingFeedback}"
+          Latest reconciliation feedback: "{withFeedback[0].reviewerFeedback}"
         </div>
       )}
       {/* General countersign summary — the broader signal, covers every
@@ -360,7 +361,7 @@ const ContributionDashboardPage: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return;
     Promise.all([
-      specimenDeficiencyService.getAll(), deficiencyTypeService.getAll(), reconciliationService.getAll(),
+      specimenDeficiencyService.getAll(), deficiencyTypeService.getAll(), qaActivityRecordService.getAll(),
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: true }),
     ]).then(([defRes, typeRes, discRes, casesRes]) => {
       if (!defRes.ok) return;
@@ -394,7 +395,7 @@ const ContributionDashboardPage: React.FC = () => {
       // isn't the kind of thing that belongs in a short, urgent flag list.
       const discordanceFlags: (ContributionFlag & { sortKey: string; score: number })[] = discRes.ok
         ? discRes.data
-            .filter(d => d.outcome === 'discordant' && d.severity !== 'low' && d.recordedBy?.userId === user.id)
+            .filter(d => d.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID && d.outcome === 'discordant' && d.severity !== 'low' && d.recordedBy?.userId === user.id)
             .map(d => ({
               id: d.id,
               label: d.caseId,
@@ -466,7 +467,7 @@ const ContributionDashboardPage: React.FC = () => {
   // user is the draftedBy (their own draft was reconciled by an
   // attending). Only meaningful for residents/fellows; empty for anyone
   // whose cases are never drafted-then-countersigned by someone else.
-  const [teachingRecords, setTeachingRecords] = useState<import('@/types/quality/ReconciliationRecord').ReconciliationRecord[]>([]);
+  const [teachingRecords, setTeachingRecords] = useState<import('@/types/quality/QaActivityRecord').QaActivityRecord[]>([]);
   // General countersign records — the broader, more comprehensive
   // teaching signal added this session: unlike teachingRecords above
   // (scoped to frozen-section reconciliation only), this covers every
@@ -476,8 +477,8 @@ const ContributionDashboardPage: React.FC = () => {
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   useEffect(() => {
     if (!user?.id) return;
-    reconciliationService.getAll().then(res => {
-      if (res.ok) setTeachingRecords(res.data.filter(r => r.draftedBy?.userId === user.id));
+    qaActivityRecordService.getAll().then(res => {
+      if (res.ok) setTeachingRecords(res.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID && r.draftedBy?.userId === user.id));
     });
     countersignService.getAll().then(res => {
       if (res.ok) setCountersignRecords(res.data.filter(r => r.residentId === user.id && r.status === 'countersigned'));
@@ -495,7 +496,7 @@ const ContributionDashboardPage: React.FC = () => {
   // meant to be uploaded anywhere.
   //
   // Sourced from real Case.participants[] involvement — NOT from
-  // ReconciliationRecord alone, which only exists for cases with a
+  // reconciliation data alone, which only exists for cases with a
   // merged frozen section. A resident's real case volume includes
   // plenty of cases with no frozen section at all; building this from
   // reconciliation data alone would have silently hidden most of a
@@ -505,12 +506,16 @@ const ContributionDashboardPage: React.FC = () => {
     if (!user?.id) return;
     const [casesRes, reconRes] = await Promise.all([
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: true }),
-      reconciliationService.getAll(),
+      qaActivityRecordService.getAll(),
     ]);
     const myCases = (casesRes.ok ? casesRes.data : []).filter((c) =>
       c?.participants?.some((p) => p.staffId === user.id && p.participationTypeIds?.includes('resident') && p.status === 'active')
     );
-    const reconByCase = new Map((reconRes.ok ? reconRes.data : []).map(r => [r.caseId, r]));
+    const reconByCase = new Map(
+      (reconRes.ok ? reconRes.data : [])
+        .filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID)
+        .map(r => [r.caseId, r])
+    );
     const subspecialtyName = (id?: string) => id ? (subspecialties.find(s => s.id === id)?.name ?? id) : '';
 
     const rows = myCases.map((c) => {
@@ -546,9 +551,20 @@ const ContributionDashboardPage: React.FC = () => {
   }, [user?.id]);
 
 
-  // ── Voice: set WORKLIST context on mount ──────────────────────────────────
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control is one of its central pillars. It has to be
+  // flawless"): this used to set VOICE_CONTEXT.WORKLIST — a real,
+  // confirmed bug caught by the action registry's own new regression
+  // test, same bug class as the REPORTING/SYNOPTIC mismatch that
+  // motivated this whole pass. 8 real TAT_SHOW_* actions
+  // (First Touch, Total Case, Frozen Section, Grossing, Sign Out,
+  // Cold Ischemia, Consult Response, Consult Awaiting) already used
+  // category: 'CONTRIBUTION' — a real, dedicated VOICE_CONTEXT value
+  // that already existed for exactly this page, just never actually
+  // set. Fixed to match, same one-line pattern every other page uses
+  // for its own real context.
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
+    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.CONTRIBUTION);
     return () => mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
   }, []);
 
@@ -624,7 +640,7 @@ const ContributionDashboardPage: React.FC = () => {
               );
             })}
             {/* TAT Performance — split tile replacing plain Avg TAT KPI */}
-            <TatPerformanceTile data={tatPerformance ?? { firstTouchAvgHrs: 0, totalCaseAvgHrs: 0, firstTouchTargetHrs: 0, totalTargetHrs: 0, onTargetPct: 0, clientCount: 0 }} />
+            <TatPerformanceTile data={tatPerformance ?? { firstTouchAvgHrs: 0, totalCaseAvgHrs: 0, firstTouchTargetHrs: 0, totalTargetHrs: 0, onTargetPct: 0, facilityCount: 0 }} />
             {/* RVU tile as 5th KPI */}
             <Rvu30Tile data={rvu30 ?? { total: 0, deltaPct: null, avgPerCase: 0 }} />
           </div>

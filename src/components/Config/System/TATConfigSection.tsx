@@ -2,11 +2,11 @@
 // Full implementation of TAT Configuration.
 //
 // Data model:
-//   TATEntry { id, type, targetHours, urgency, clientId, specimenId,
+//   TATEntry { id, type, targetHours, urgency, facilityId, specimenId,
 //               subspecialtyId, roleId, active, notes }
 //
 // Uniqueness guard: no two ACTIVE entries share
-//   (type + urgency + clientId + specimenId + subspecialtyId + roleId)
+//   (type + urgency + facilityId + specimenId + subspecialtyId + roleId)
 //   roleId added here — was previously absent from both this guard and the
 //   specificity scoring below despite being a real, used field (the "Role:
 //   Resident" / "Role: Pathologist" scoping visible in the real UI). Without
@@ -15,20 +15,23 @@
 //   could slip through unflagged.
 //
 // 8-level resolution hierarchy (most-specific-wins):
-//   1. client + specimen + urgency (+ role)
-//   2. client + specimen
-//   3. client + subspecialty + urgency (+ role)
-//   4. client + subspecialty
-//   5. client only (+ role/urgency modifiers)
+//   1. facility + specimen + urgency (+ role)
+//   2. facility + specimen
+//   3. facility + subspecialty + urgency (+ role)
+//   4. facility + subspecialty
+//   5. facility only (+ role/urgency modifiers)
 //   6. specimen only
 //   7. role only (no institutional/anatomic scope, e.g. training-program-
 //      wide "Resident" targets)
 //   8. system default (no dimensions)
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { subspecialtyService } from '../../../services';
+import { subspecialtyService, qaActivityTypeService } from '../../../services';
+import type { QaActivityType } from '@/types/quality/QaActivityType';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
 import { mockFacilityService } from '../../../services/facilities/mockFacilityService';
+import { getActivePerformingLabs } from '@/utils/performingLabs';
+import { specificityScore, resolveTatEntry } from '@/components/Contribution/qualityCalculations';
 import '../../../pathscribe.css';
 import { useAuditLog } from '../../Audit/useAuditLog';
 
@@ -49,10 +52,33 @@ export type TATUrgency = 'ROUTINE' | 'STAT';
 
 export interface TATEntry {
   id:             string;
-  type:           TATType;
+  /** Real, deliberate widening (PS-116): was strictly `TATType` — a
+   *  fixed, closed union of clinical-workflow measurements. A real QA
+   *  Activity Type (PS-113/114/115) is dynamic and open-ended by
+   *  design (an admin can Duplicate a new one at any time with no
+   *  code change), so it can never be a member of a closed union.
+   *  Still holds a real `TATType` value for every existing clinical-
+   *  workflow entry — resolveTatTargetHours (qualityCalculations.ts)
+   *  already treated this as a plain `string`, confirmed directly, so
+   *  this widening changes zero resolution behavior for those entries.
+   *  See getTatTypeLabel/getTatTypeDescription below for how a value
+   *  that isn't a real TATType resolves to a real QA Activity Type's
+   *  own name instead. */
+  type:           string;
   targetHours:    number;
   urgency:        TATUrgency | null;   // null = all urgency levels
-  clientId:       string | null;       // null = all clients
+  facilityId:       string | null;       // null = all ordering/referring facilities
+  /**
+   * Real, per direct guidance: a genuinely separate dimension from
+   * facilityId above, not a replacement for it — facilityId is the
+   * ORDERING/REFERRING facility (who sent the case); this is the real
+   * performing lab actually doing the work. A performing lab's own
+   * general TAT policy and a specific ordering facility's own
+   * contractual TAT agreement can both apply, independently — see
+   * qualityCalculations.ts's own TatEntryForResolution for the full
+   * account of how both are resolved together.
+   */
+  performingLabFacilityId: string | null;
   specimenId:     string | null;       // null = all specimens
   subspecialtyId: string | null;       // null = all subspecialties
   roleId:         string | null;       // null = all roles; e.g. 'Resident', 'Pathologist'
@@ -89,28 +115,56 @@ const TAT_TYPE_DESC: Record<TATType, string> = {
   CONSULTATION_AWAITING:    'Request sent → response received from colleague or external reviewer',
 };
 
+/** Real, per direct guidance (PS-116): whether a fixed clinical-
+ *  workflow TATType value is what's actually stored — a type guard,
+ *  not a cast, since a widened TATEntry.type is now free-form. */
+function isFixedTatType(type: string): type is TATType {
+  return (TAT_TYPES as string[]).includes(type);
+}
+
+/** Real, per direct guidance (PS-116): resolves a TATEntry.type value
+ *  to a real display label regardless of whether it's a fixed
+ *  clinical-workflow type or a real QA Activity Type id — the whole
+ *  point of pointing this screen at the real registry instead of a
+ *  hardcoded union is that a Custom activity (created via Duplicate,
+ *  PS-115, with no code change) needs to show its own real name here
+ *  too, not just the 8 original values. Falls back to the raw id only
+ *  if the QA activity itself was since deleted/deactivated and is no
+ *  longer in the passed-in list — a real, honest "can't resolve this"
+ *  case, not silently hidden. */
+function getTatTypeLabel(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>): string {
+  if (isFixedTatType(type)) return TAT_TYPE_LABELS[type];
+  return qaActivityTypesById.get(type)?.name ?? type;
+}
+
+function getTatTypeDescription(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>): string | undefined {
+  if (isFixedTatType(type)) return TAT_TYPE_DESC[type];
+  const qaType = qaActivityTypesById.get(type);
+  return qaType?.description ? `QA Activity: ${qaType.description}` : undefined;
+}
+
 // ── System defaults ───────────────────────────────────────────────────────────
 
 export const SYSTEM_DEFAULTS: TATEntry[] = [
-  { id: 'sys-ft-r',  type: 'FIRST_TOUCH',    targetHours: 4,    urgency: 'ROUTINE', clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ft-s',  type: 'FIRST_TOUCH',    targetHours: 1,    urgency: 'STAT',    clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-tc-r',  type: 'TOTAL_CASE',     targetHours: 24,   urgency: 'ROUTINE', clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-tc-s',  type: 'TOTAL_CASE',     targetHours: 4,    urgency: 'STAT',    clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-fs-r',  type: 'FROZEN_SECTION', targetHours: 0.5,  urgency: 'ROUTINE', clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-fs-s',  type: 'FROZEN_SECTION', targetHours: 0.33, urgency: 'STAT',    clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ci',    type: 'COLD_ISCHEMIA',  targetHours: 1,    urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-gr-r',  type: 'GROSSING',       targetHours: 4,    urgency: 'ROUTINE', clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-gr-s',  type: 'GROSSING',       targetHours: 2,    urgency: 'STAT',    clientId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-so-r',  type: 'SIGN_OUT',              targetHours: 4,    urgency: 'ROUTINE', clientId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-so-s',  type: 'SIGN_OUT',              targetHours: 2,    urgency: 'STAT',    clientId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ft-r',  type: 'FIRST_TOUCH',    targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ft-s',  type: 'FIRST_TOUCH',    targetHours: 1,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-tc-r',  type: 'TOTAL_CASE',     targetHours: 24,   urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-tc-s',  type: 'TOTAL_CASE',     targetHours: 4,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-fs-r',  type: 'FROZEN_SECTION', targetHours: 0.5,  urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-fs-s',  type: 'FROZEN_SECTION', targetHours: 0.33, urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ci',    type: 'COLD_ISCHEMIA',  targetHours: 1,    urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-gr-r',  type: 'GROSSING',       targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-gr-s',  type: 'GROSSING',       targetHours: 2,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-so-r',  type: 'SIGN_OUT',              targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-so-s',  type: 'SIGN_OUT',              targetHours: 2,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
   // Consultation — Response (how fast I reply to requests sent to me)
-  { id: 'sys-cr-res',type: 'CONSULTATION_RESPONSE', targetHours: 24,   urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — training programme standard', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-cr-pat',type: 'CONSULTATION_RESPONSE', targetHours: 48,   urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — informal peer review', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-cr-ext',type: 'CONSULTATION_RESPONSE', targetHours: 120,  urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-cr-res',type: 'CONSULTATION_RESPONSE', targetHours: 24,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — training programme standard', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-cr-pat',type: 'CONSULTATION_RESPONSE', targetHours: 48,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — informal peer review', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-cr-ext',type: 'CONSULTATION_RESPONSE', targetHours: 120,  urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
   // Consultation — Awaiting (how long before I chase up outstanding requests)
-  { id: 'sys-ca-res',type: 'CONSULTATION_AWAITING', targetHours: 24,   urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — escalate if no response', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ca-pat',type: 'CONSULTATION_AWAITING', targetHours: 48,   urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — chase after 48h', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ca-ext',type: 'CONSULTATION_AWAITING', targetHours: 120,  urgency: null,      clientId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ca-res',type: 'CONSULTATION_AWAITING', targetHours: 24,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — escalate if no response', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ca-pat',type: 'CONSULTATION_AWAITING', targetHours: 48,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — chase after 48h', createdAt: '2024-01-01T00:00:00Z' },
+  { id: 'sys-ca-ext',type: 'CONSULTATION_AWAITING', targetHours: 120,  urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
 ];
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -140,7 +194,8 @@ function findConflict(
     e.id !== excludeId &&
     e.type           === draft.type &&
     e.urgency        === (draft.urgency ?? null) &&
-    e.clientId       === (draft.clientId ?? null) &&
+    e.facilityId       === (draft.facilityId ?? null) &&
+    e.performingLabFacilityId === (draft.performingLabFacilityId ?? null) &&
     e.specimenId     === (draft.specimenId ?? null) &&
     e.subspecialtyId === (draft.subspecialtyId ?? null) &&
     e.roleId         === (draft.roleId ?? null)
@@ -162,7 +217,8 @@ function blankDraft(): Partial<TATEntry> {
     type: 'FIRST_TOUCH',
     targetHours: 4,
     urgency: 'ROUTINE',
-    clientId: null,
+    facilityId: null,
+    performingLabFacilityId: null,
     specimenId: null,
     subspecialtyId: null,
     active: true,
@@ -171,31 +227,31 @@ function blankDraft(): Partial<TATEntry> {
 }
 
 // ── Specificity score for resolution hierarchy display ────────────────────────
-
-function specificityScore(e: TATEntry): number {
-  let score = 0;
-  if (e.clientId)       score += 4;
-  if (e.specimenId)     score += 2;
-  if (e.subspecialtyId) score += 2;
-  if (e.urgency)        score += 1;
-  if (e.roleId)         score += 1;
-  return score;
-}
+// Real, per direct guidance: reuses qualityCalculations.ts's own,
+// single, exported specificityScore() — was a duplicate local copy of
+// the same weighting logic, confirmed directly, which is exactly the
+// kind of thing that would have silently drifted out of sync the
+// moment performingLabFacilityId (a new dimension) was added to only
+// one of the two copies. TATEntry's own shape already matches
+// TatEntryForResolution structurally, so no adapter is needed.
 
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
 
 interface ModalProps {
   entry?:       TATEntry;
   entries:      TATEntry[];
-  clients:      { id: string; name: string }[];
+  facilities:      { id: string; name: string }[];
+  labs:         { id: string; name: string }[];
   specimens:    { id: string; name: string }[];
   subspecialties: { id: string; name: string }[];
+  qaActivityTypes: QaActivityType[];
+  qaActivityTypesById: Map<string, { name: string; description?: string }>;
   onSave:       (e: TATEntry) => void;
   onClose:      () => void;
 }
 
 const TATModal: React.FC<ModalProps> = ({
-  entry, entries, clients, specimens, subspecialties, onSave, onClose
+  entry, entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById, onSave, onClose
 }) => {
   const isEdit = !!entry;
   const [draft, setDraft] = useState<Partial<TATEntry>>(
@@ -216,7 +272,7 @@ const TATModal: React.FC<ModalProps> = ({
     if (conflict) {
       setError(
         'An active rule already exists for this combination (' +
-        TAT_TYPE_LABELS[conflict.type] + ' · ' +
+        getTatTypeLabel(conflict.type, qaActivityTypesById) + ' · ' +
         (conflict.urgency ?? 'Any urgency') + '). ' +
         'Deactivate the existing rule first.'
       );
@@ -228,7 +284,8 @@ const TATModal: React.FC<ModalProps> = ({
       type:           draft.type!,
       targetHours:    draft.targetHours!,
       urgency:        draft.urgency ?? null,
-      clientId:       draft.clientId ?? null,
+      facilityId:       draft.facilityId ?? null,
+      performingLabFacilityId: draft.performingLabFacilityId ?? null,
       specimenId:     draft.specimenId ?? null,
       subspecialtyId: draft.subspecialtyId ?? null,
       // No form UI sets this yet — same null-default pattern as the
@@ -282,15 +339,24 @@ const TATModal: React.FC<ModalProps> = ({
               id="tat-rule-type"
               className="ps-conf-select"
               value={draft.type ?? ''}
-              onChange={e => set('type', e.target.value as TATType)}
+              onChange={e => set('type', e.target.value)}
             >
-              {TAT_TYPES.map(t => (
-                <option key={t} value={t}>{TAT_TYPE_LABELS[t]}</option>
-              ))}
+              <optgroup label="Clinical Workflow">
+                {TAT_TYPES.map(t => (
+                  <option key={t} value={t}>{TAT_TYPE_LABELS[t]}</option>
+                ))}
+              </optgroup>
+              {qaActivityTypes.length > 0 && (
+                <optgroup label="QA Activities">
+                  {qaActivityTypes.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             {draft.type && (
               <div className="ps-tat-hint-text ps-tat-hint-text--mt4">
-                {TAT_TYPE_DESC[draft.type]}
+                {getTatTypeDescription(draft.type, qaActivityTypesById)}
               </div>
             )}
           </div>
@@ -337,17 +403,30 @@ const TATModal: React.FC<ModalProps> = ({
               These filters determine <strong>which cases this rule matches</strong>.
               Leave a filter blank to match all values for that dimension.
               The more filters set, the higher the resolution priority — a rule
-              with Facility + Specimen overrides one with Facility alone.
+              with Performing Lab + Ordering Facility overrides one with either alone.
+              Performing Lab and Ordering Facility are genuinely separate — a lab's
+              own general TAT policy and a specific ordering facility's own contractual
+              TAT agreement can both apply independently.
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <select
                 className="ps-conf-select"
-                aria-label="Facility"
-                value={draft.clientId ?? ''}
-                onChange={e => set('clientId', e.target.value || null)}
+                aria-label="Performing Lab"
+                value={draft.performingLabFacilityId ?? ''}
+                onChange={e => set('performingLabFacilityId', e.target.value || null)}
               >
-                <option value="">All facilities</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="">All performing labs</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+
+              <select
+                className="ps-conf-select"
+                aria-label="Ordering Facility"
+                value={draft.facilityId ?? ''}
+                onChange={e => set('facilityId', e.target.value || null)}
+              >
+                <option value="">All ordering facilities</option>
+                {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
 
               <select
@@ -387,7 +466,8 @@ const TATModal: React.FC<ModalProps> = ({
             {/* Live resolution preview */}
             {(() => {
               const parts: string[] = [];
-              const clientName  = clients.find(cl => cl.id === draft.clientId)?.name;
+              const labName      = labs.find(l => l.id === draft.performingLabFacilityId)?.name;
+              const facilityName  = facilities.find(cl => cl.id === draft.facilityId)?.name;
               const specimenName = specimens.find(s => s.id === draft.specimenId)?.name;
               const subName     = subspecialties.find(s => s.id === draft.subspecialtyId)?.name;
               const roleName    = (draft as any).roleId;
@@ -397,7 +477,8 @@ const TATModal: React.FC<ModalProps> = ({
               if (roleName)     parts.push(roleName + 's');
               if (specimenName) parts.push(specimenName + ' specimens');
               if (subName)      parts.push(subName + ' subspecialty');
-              if (clientName)   parts.push('at ' + clientName);
+              if (labName)      parts.push('performed at ' + labName);
+              if (facilityName)   parts.push('ordered by ' + facilityName);
 
               const preview = parts.length === 0
                 ? 'This is a system default — applies to all cases'
@@ -461,49 +542,57 @@ const TATModal: React.FC<ModalProps> = ({
 
 interface SimulatorProps {
   entries:        TATEntry[];
-  clients:        { id: string; name: string }[];
+  facilities:        { id: string; name: string }[];
+  labs:           { id: string; name: string }[];
   specimens:      { id: string; name: string }[];
   subspecialties: { id: string; name: string }[];
+  qaActivityTypes: QaActivityType[];
+  qaActivityTypesById: Map<string, { name: string; description?: string }>;
 }
 
 const ResolutionSimulator: React.FC<SimulatorProps> = ({
-  entries, clients, specimens, subspecialties
+  entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById
 }) => {
-  const [simClient,       setSimClient]       = useState('');
+  const [simFacility,       setSimFacility]       = useState('');
+  const [simLab,          setSimLab]          = useState('');
   const [simSpecimen,     setSimSpecimen]      = useState('');
   const [simSubspecialty, setSimSubspecialty]  = useState('');
   const [simUrgency,      setSimUrgency]       = useState<TATUrgency>('ROUTINE');
 
-  const results = useMemo<Array<{ type: TATType; match: TATEntry | null }>>(() => {
+  // Real, per direct guidance (PS-116): simulates against every real
+  // type this screen's own rule-creation dropdown now offers — the
+  // fixed clinical-workflow 8 plus every real, active QA Activity Type
+  // — so a QA-activity TAT rule shows up here too, not just the
+  // original 8. Same reasoning as the filter buttons/entries table:
+  // a rule an admin can create but can't preview would be a real,
+  // inconsistent half-feature.
+  const allSimTypes = useMemo(() => [...TAT_TYPES, ...qaActivityTypes.map(t => t.id)], [qaActivityTypes]);
+
+  // Real, per direct guidance ("a TAT time could have two
+  // components... the Performing lab and the other is the Ordering
+  // Client"): calls the exact same resolveTatEntry() the real, live
+  // TAT-outlier pipeline uses (qualityCalculations.ts) — replaces a
+  // real, hand-maintained 7-case priority list that was already a
+  // second, independent reimplementation of the same resolution logic
+  // before this fix, and had already fallen out of sync (it never
+  // covered every real combination the actual resolver's generic
+  // specificity scoring handles, e.g. subspecialty + specimen
+  // together). A resolution simulator showing anything other than
+  // exactly what the real resolver would compute isn't a simulator,
+  // it's a second opinion.
+  const results = useMemo<Array<{ type: string; match: TATEntry | null }>>(() => {
     const active = entries.filter(e => e.active);
-    return TAT_TYPES.map(type => {
-      // Priority order candidates
-      const candidates = active.filter(e => e.type === type);
-
-      const priorities: Array<(e: TATEntry) => boolean> = [
-        // 1. client + specimen + urgency
-        e => e.clientId === simClient && e.specimenId === simSpecimen && e.urgency === simUrgency,
-        // 2. client + specimen (any urgency)
-        e => e.clientId === simClient && e.specimenId === simSpecimen && e.urgency === null,
-        // 3. client + subspecialty + urgency
-        e => e.clientId === simClient && e.subspecialtyId === simSubspecialty && e.urgency === simUrgency && !!simSubspecialty,
-        // 4. client + subspecialty
-        e => e.clientId === simClient && e.subspecialtyId === simSubspecialty && e.urgency === null && !!simSubspecialty,
-        // 5. client only
-        e => e.clientId === simClient && !e.specimenId && !e.subspecialtyId && (e.urgency === simUrgency || e.urgency === null),
-        // 6. specimen only
-        e => !e.clientId && e.specimenId === simSpecimen && (e.urgency === simUrgency || e.urgency === null) && !!simSpecimen,
-        // 7. system default
-        e => !e.clientId && !e.specimenId && !e.subspecialtyId && (e.urgency === simUrgency || e.urgency === null),
-      ];
-
-      for (const test of priorities) {
-        const match = candidates.find(test);
-        if (match) return { type, match };
-      }
-      return { type, match: null };
-    });
-  }, [entries, simClient, simSpecimen, simSubspecialty, simUrgency]);
+    return allSimTypes.map(type => ({
+      type,
+      match: resolveTatEntry(active, type, {
+        facilityId: simFacility || undefined,
+        performingLabFacilityId: simLab || undefined,
+        specimenId: simSpecimen || undefined,
+        subspecialtyId: simSubspecialty || undefined,
+        urgency: simUrgency,
+      }) as TATEntry | null,
+    }));
+  }, [entries, simFacility, simLab, simSpecimen, simSubspecialty, simUrgency, allSimTypes]);
 
   return (
     <div className="ps-tat-sim-shell">
@@ -517,9 +606,13 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
       </div>
 
       <div className="ps-tat-sim-controls">
-        <select className="ps-conf-select" aria-label="Facility" value={simClient} onChange={e => setSimClient(e.target.value)}>
-          <option value="">No specific facility</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <select className="ps-conf-select" aria-label="Performing Lab" value={simLab} onChange={e => setSimLab(e.target.value)}>
+          <option value="">No specific performing lab</option>
+          {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+        <select className="ps-conf-select" aria-label="Ordering Facility" value={simFacility} onChange={e => setSimFacility(e.target.value)}>
+          <option value="">No specific ordering facility</option>
+          {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <select className="ps-conf-select" aria-label="Specimen type" value={simSpecimen} onChange={e => setSimSpecimen(e.target.value)}>
           <option value="">No specific specimen</option>
@@ -538,7 +631,7 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
       <div className="ps-tat-sim-results">
         {results.map(({ type, match }) => (
           <div key={type} className="ps-tat-sim-row">
-            <span className="ps-tat-type-badge">{TAT_TYPE_LABELS[type]}</span>
+            <span className="ps-tat-type-badge">{getTatTypeLabel(type, qaActivityTypesById)}</span>
             {match ? (
               <>
                 <span className="ps-tat-sim-target">{formatHours(match.targetHours)}</span>
@@ -563,9 +656,37 @@ const TATConfigSection: React.FC = () => {
   const [entries,   setEntries]   = useState<TATEntry[]>(loadEntries);
   const { log } = useAuditLog();
   const [modal,     setModal]     = useState<{ mode: 'add' | 'edit'; entry?: TATEntry } | null>(null);
-  const [filter,    setFilter]    = useState<TATType | 'ALL'>('ALL');
+  const [filter,    setFilter]    = useState<string>('ALL');
   const [showInactive, setShowInactive] = useState(false);
+  // Real, per direct guidance ("we should be able to filter the main
+  // list by Performing and/or Ordering facility"): two genuinely
+  // independent filters — see facilityFiltered below for the real
+  // "an unscoped entry always stays visible" semantics.
+  const [performingLabFilter, setPerformingLabFilter] = useState('');
+  const [orderingFacilityFilter, setOrderingFacilityFilter] = useState('');
   const [showSim,   setShowSim]   = useState(false);
+
+  // Real, per direct guidance (PS-116): points this screen's own type
+  // selector at the real QA Activity registry (PS-113/114/115)
+  // instead of only the 8 hardcoded clinical-workflow TATType values,
+  // so a QA Lead defining a new activity (or duplicating one, with no
+  // code change) automatically gets a real TAT category available for
+  // it. Deliberately only the review-with-outcome archetype
+  // (QaActivityType), not QaSupervisionAssignmentType — a supervision
+  // period (e.g. FPPE) has no discrete "completed in N hours" event to
+  // measure a turnaround against, confirmed directly against that
+  // archetype's own real shape (an ongoing period with a running case
+  // count, not a single reviewed-by-when event).
+  const [qaActivityTypes, setQaActivityTypes] = useState<QaActivityType[]>([]);
+  useEffect(() => {
+    qaActivityTypeService.getAll().then(res => {
+      if (res.ok) setQaActivityTypes(res.data.filter(t => t.active));
+    });
+  }, []);
+  const qaActivityTypesById = useMemo(
+    () => new Map(qaActivityTypes.map(t => [t.id, { name: t.name, description: t.description }])),
+    [qaActivityTypes]
+  );
 
 
   // Live data from real services — subspecialties was previously read from
@@ -582,20 +703,27 @@ const TATConfigSection: React.FC = () => {
   }, []);
   const { dictionary: specimens } = useSpecimenDictionary();
 
-  const [allClients, setAllClients] = useState<{ id: string; name: string }[]>([]);
+  const [allFacilities, setAllFacilities] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     mockFacilityService.getAll().then(res => {
       if (res.ok) {
-        setAllClients(
+        setAllFacilities(
           res.data
-            .filter((c: any) => c.status !== 'Inactive') // was 'inactive' (lowercase) — Client.status is 'Active'|'Inactive' (capitalized), so this never matched and inactive clients incorrectly appeared in the dropdown
+            .filter((c: any) => c.status !== 'Inactive') // was 'inactive' (lowercase) — Facility.status is 'Active'|'Inactive' (capitalized), so this never matched and inactive facilities incorrectly appeared in the dropdown
             .map((c: any) => ({ id: c.id, name: c.name }))
         );
       }
     });
   }, []);
 
-  const clients = allClients;
+  const facilities = allFacilities;
+
+  // Real, per direct guidance ("a TAT time could have two components...
+  // the Performing lab and the other is the Ordering Client"): a
+  // genuinely separate list from facilities/allFacilities above — every
+  // active performing lab, not every active facility.
+  const [labs, setLabs] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => { getActivePerformingLabs().then(l => setLabs(l.map(f => ({ id: f.id, name: f.name })))); }, []);
 
   const specimenList = useMemo(
     () => specimens.map(s => ({ id: s.id, name: s.name })),
@@ -618,7 +746,7 @@ const TATConfigSection: React.FC = () => {
       log('tat_entry_updated', { id: saved.id, type: saved.type, changes: [`targetHours: ${saved.targetHours}h`] });
     } else {
       persist([...entries, saved]);
-      log('tat_entry_created', { type: saved.type, targetHours: saved.targetHours, clientId: saved.clientId ?? null, roleId: (saved as any).roleId ?? null });
+      log('tat_entry_created', { type: saved.type, targetHours: saved.targetHours, facilityId: saved.facilityId ?? null, roleId: (saved as any).roleId ?? null });
     }
     setModal(null);
   };
@@ -648,9 +776,135 @@ const TATConfigSection: React.FC = () => {
     .filter(e => showInactive ? true : e.active)
     .sort((a, b) => specificityScore(b) - specificityScore(a));
 
-  const clientName   = (id: string | null) => id ? (clients.find(c => c.id === id)?.name ?? id) : null;
+  const facilityName   = (id: string | null) => id ? (facilities.find(c => c.id === id)?.name ?? id) : null;
+  const labName       = (id: string | null) => id ? (labs.find(l => l.id === id)?.name ?? id) : null;
   const specimenName = (id: string | null) => id ? (specimenList.find(s => s.id === id)?.name ?? id) : null;
   const subName      = (id: string | null) => id ? (subspecialtyList.find(s => s.id === id)?.name ?? id) : null;
+
+  // Real, per direct guidance ("we should be able to filter the main
+  // list by Performing and/or Ordering facility"): two genuinely
+  // independent filters, both optional. An entry with no
+  // performingLabFacilityId set always stays visible under a
+  // Performing Lab filter — it's Enterprise-wide by definition, so it
+  // applies at that lab too; same logic for an entry with no facilityId
+  // under an Ordering Facility filter.
+  const facilityFiltered = displayed
+    .filter(e => !performingLabFilter || !e.performingLabFacilityId || e.performingLabFacilityId === performingLabFilter)
+    .filter(e => !orderingFacilityFilter || !e.facilityId || e.facilityId === orderingFacilityFilter);
+
+  // Real, per direct guidance ("there are enterprise level TAT when an
+  // entry has no associated Performing Facility or Ordering Facility
+  // defined... at the top of the list"): an entry with ONLY an
+  // ordering facility set (no performing lab) is folded in here too —
+  // without a specific lab it still applies universally across every
+  // performing lab, it just additionally narrows to one ordering
+  // facility, so it belongs conceptually with the other Enterprise-wide
+  // entries rather than under any one lab's own section.
+  const enterpriseEntries = facilityFiltered.filter(e => !e.performingLabFacilityId);
+
+  // Real, per direct guidance ("the next Group are the Individual
+  // Performing Facility sorted by the Ordering Facility"): one real
+  // section per performing lab with at least one matching entry,
+  // sorted by lab name; within each section, entries with no ordering
+  // facility (apply to every orderer at this lab) come first, then the
+  // rest sorted by their own real ordering facility's name — already-
+  // specificity-sorted entries (from `displayed` above) keep that
+  // relative order within each of those two sub-groups.
+  const performingLabGroups = labs
+    .map(lab => ({
+      lab,
+      entries: facilityFiltered
+        .filter(e => e.performingLabFacilityId === lab.id)
+        .slice()
+        .sort((a, b) => {
+          const an = a.facilityId ? (facilityName(a.facilityId) ?? '') : '';
+          const bn = b.facilityId ? (facilityName(b.facilityId) ?? '') : '';
+          if (!an && bn) return -1;
+          if (an && !bn) return 1;
+          if (!an && !bn) return 0;
+          return an.localeCompare(bn);
+        }),
+    }))
+    .filter(g => g.entries.length > 0)
+    .sort((a, b) => a.lab.name.localeCompare(b.lab.name));
+
+  // Real, per direct guidance: extracted so the same real row markup
+  // renders identically whether it's under the Enterprise tier or a
+  // specific Performing Facility's own section — one real
+  // implementation, not one copy per section that could drift.
+  const renderRow = (e: TATEntry) => {
+    const isSystem = e.id.startsWith('sys-');
+    const scopeParts = [
+      labName(e.performingLabFacilityId),
+      facilityName(e.facilityId),
+      specimenName(e.specimenId),
+      subName(e.subspecialtyId),
+      (e as any).roleId ? `Role: ${(e as any).roleId}` : null,
+    ].filter(Boolean);
+
+    return (
+      <tr key={e.id} style={{ opacity: e.active ? 1 : 0.5 }}>
+        <td className="ps-sub-td">
+          <span className="ps-tat-type-badge" style={{ marginRight: 8 }}>
+            {getTatTypeLabel(e.type, qaActivityTypesById)}
+            {(e as any).roleId && <span style={{ opacity: 0.75, fontWeight: 500 }}> · {(e as any).roleId}</span>}
+          </span>
+          {isSystem && <span className="ps-del-tag" style={{ marginLeft: 6 }}>🔒</span>}
+        </td>
+        <td className="ps-sub-td">
+          <strong style={{ color: '#e2e8f0' }}>{formatHours(e.targetHours)}</strong>
+        </td>
+        <td className="ps-sub-td">
+          <span style={{ fontSize: 12, color: e.urgency === 'STAT' ? '#f59e0b' : '#94a3b8' }}>
+            {e.urgency ?? 'Any'}
+          </span>
+        </td>
+        <td className="ps-sub-td">
+          {scopeParts.length === 0 ? (
+            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>System default</span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {scopeParts.map((s, i) => (
+                <span key={i} style={{ fontSize: 12, color: '#94a3b8' }}>{s}</span>
+              ))}
+            </div>
+          )}
+        </td>
+        <td className="ps-sub-td">
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{e.notes || '—'}</span>
+        </td>
+        <td className="ps-sub-td">
+          <div className="ps-sub-toggle-wrap">
+            <div
+              onClick={() => toggleActive(e.id)}
+              className={e.active ? 'ps-sub-toggle-track ps-sub-toggle-track--on' : 'ps-sub-toggle-track ps-sub-toggle-track--off'}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className={e.active ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
+            </div>
+          </div>
+        </td>
+        <td className="ps-sub-td" style={{ textAlign: 'right' }}>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              className="ps-sub-edit-btn"
+              onClick={() => setModal({ mode: 'edit', entry: e })}
+            >
+              Edit
+            </button>
+            {!isSystem && (
+              <button
+                className="ps-del-delete-btn"
+                onClick={() => deleteEntry(e.id)}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="ps-tat-shell">
@@ -660,7 +914,7 @@ const TATConfigSection: React.FC = () => {
         <div>
           <h2 className="ps-sub-title">TAT Configuration</h2>
           <p className="ps-sub-subtitle">
-            Turnaround time targets per type, urgency, client, specimen, and subspecialty.
+            Turnaround time targets per type, urgency, facility, specimen, and subspecialty.
             The most specific matching rule wins at runtime.
           </p>
         </div>
@@ -687,11 +941,11 @@ const TATConfigSection: React.FC = () => {
         </div>
         <div className="ps-tat-hierarchy-list">
           {[
-            'Client + Specimen + Urgency',
-            'Client + Specimen',
-            'Client + Subspecialty + Urgency',
-            'Client + Subspecialty',
-            'Client only',
+            'Facility + Specimen + Urgency',
+            'Facility + Specimen',
+            'Facility + Subspecialty + Urgency',
+            'Facility + Subspecialty',
+            'Facility only',
             'Specimen only',
             'System default (fallback)',
           ].map((level, i) => (
@@ -707,24 +961,39 @@ const TATConfigSection: React.FC = () => {
       {showSim && (
         <ResolutionSimulator
           entries={entries}
-          clients={clients}
+          facilities={facilities}
+          labs={labs}
           specimens={specimenList}
           subspecialties={subspecialtyList}
+          qaActivityTypes={qaActivityTypes}
+          qaActivityTypesById={qaActivityTypesById}
         />
       )}
 
       {/* Filters */}
       <div className="ps-tat-filters">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(['ALL', ...TAT_TYPES] as const).map(t => (
+          {(['ALL', ...TAT_TYPES, ...qaActivityTypes.map(t => t.id)]).map(t => (
             <button
               key={t}
               onClick={() => setFilter(t)}
               className={filter === t ? 'ps-tat-filter-btn ps-tat-filter-btn--active' : 'ps-tat-filter-btn'}
             >
-              {t === 'ALL' ? 'All Types' : TAT_TYPE_LABELS[t]}
+              {t === 'ALL' ? 'All Types' : getTatTypeLabel(t, qaActivityTypesById)}
             </button>
           ))}
+        </div>
+        {/* Real, per direct guidance: two genuinely independent
+            facility filters, usable together or separately. */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select className="ps-conf-select" aria-label="Filter by Performing Lab" value={performingLabFilter} onChange={e => setPerformingLabFilter(e.target.value)}>
+            <option value="">All Performing Labs</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+          <select className="ps-conf-select" aria-label="Filter by Ordering Facility" value={orderingFacilityFilter} onChange={e => setOrderingFacilityFilter(e.target.value)}>
+            <option value="">All Ordering Facilities</option>
+            {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </div>
         <label className="ps-sub-toggle-wrap" style={{ cursor: 'pointer' }}>
           <div
@@ -757,85 +1026,29 @@ const TATConfigSection: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {displayed.length === 0 && (
+            {enterpriseEntries.length === 0 && performingLabGroups.length === 0 && (
               <tr>
                 <td colSpan={7} className="ps-sub-td" style={{ textAlign: 'center', color: '#475569', padding: '20px 0' }}>
                   No rules match the current filter.
                 </td>
               </tr>
             )}
-            {displayed.map(e => {
-              const isSystem = e.id.startsWith('sys-');
-              const scopeParts = [
-                clientName(e.clientId),
-                specimenName(e.specimenId),
-                subName(e.subspecialtyId),
-                (e as any).roleId ? `Role: ${(e as any).roleId}` : null,
-              ].filter(Boolean);
-
-              return (
-                <tr key={e.id} style={{ opacity: e.active ? 1 : 0.5 }}>
-                  <td className="ps-sub-td">
-                    <span className="ps-tat-type-badge" style={{ marginRight: 8 }}>
-                      {TAT_TYPE_LABELS[e.type]}
-                      {(e as any).roleId && <span style={{ opacity: 0.75, fontWeight: 500 }}> · {(e as any).roleId}</span>}
-                    </span>
-                    {isSystem && <span className="ps-del-tag" style={{ marginLeft: 6 }}>🔒</span>}
-                  </td>
-                  <td className="ps-sub-td">
-                    <strong style={{ color: '#e2e8f0' }}>{formatHours(e.targetHours)}</strong>
-                  </td>
-                  <td className="ps-sub-td">
-                    <span style={{ fontSize: 12, color: e.urgency === 'STAT' ? '#f59e0b' : '#94a3b8' }}>
-                      {e.urgency ?? 'Any'}
-                    </span>
-                  </td>
-                  <td className="ps-sub-td">
-                    {scopeParts.length === 0 ? (
-                      <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>System default</span>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {scopeParts.map((s, i) => (
-                          <span key={i} style={{ fontSize: 12, color: '#94a3b8' }}>{s}</span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="ps-sub-td">
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{e.notes || '—'}</span>
-                  </td>
-                  <td className="ps-sub-td">
-                    <div className="ps-sub-toggle-wrap">
-                      <div
-                        onClick={() => toggleActive(e.id)}
-                        className={e.active ? 'ps-sub-toggle-track ps-sub-toggle-track--on' : 'ps-sub-toggle-track ps-sub-toggle-track--off'}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className={e.active ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="ps-sub-td" style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button
-                        className="ps-sub-edit-btn"
-                        onClick={() => setModal({ mode: 'edit', entry: e })}
-                      >
-                        Edit
-                      </button>
-                      {!isSystem && (
-                        <button
-                          className="ps-del-delete-btn"
-                          onClick={() => deleteEntry(e.id)}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  </td>
+            {enterpriseEntries.length > 0 && (
+              <>
+                <tr>
+                  <td colSpan={7} className="ps-tat-group-header">Enterprise ({enterpriseEntries.length})</td>
                 </tr>
-              );
-            })}
+                {enterpriseEntries.map(renderRow)}
+              </>
+            )}
+            {performingLabGroups.map(({ lab, entries: labEntries }) => (
+              <React.Fragment key={lab.id}>
+                <tr>
+                  <td colSpan={7} className="ps-tat-group-header">{lab.name} ({labEntries.length})</td>
+                </tr>
+                {labEntries.map(renderRow)}
+              </React.Fragment>
+            ))}
           </tbody>
         </table>
       </div>
@@ -845,9 +1058,12 @@ const TATConfigSection: React.FC = () => {
         <TATModal
           entry={modal.entry}
           entries={entries}
-          clients={clients}
+          facilities={facilities}
+          labs={labs}
           specimens={specimenList}
           subspecialties={subspecialtyList}
+          qaActivityTypes={qaActivityTypes}
+          qaActivityTypesById={qaActivityTypesById}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

@@ -15,7 +15,7 @@ function makeCase(overrides: Record<string, unknown> = {}): Case {
     },
     order: {
       requestingProvider: 'Dr. Sarah Chen',
-      clientName: 'Metro General Hospital',
+      facilityName: 'Metro General Hospital',
     },
     ...overrides,
   } as unknown as Case;
@@ -48,13 +48,13 @@ describe('buildRequisitionLabelData — real feature, per direct follow-up on th
   });
 
   it('never fabricates a facility name when the case genuinely has none', () => {
-    const noFacility = makeCase({ order: { requestingProvider: 'Dr. X', clientName: undefined } });
+    const noFacility = makeCase({ order: { requestingProvider: 'Dr. X', facilityName: undefined } });
     const data = buildRequisitionLabelData(noFacility, fixedNow);
     expect(data.submittingFacility).toBe('Unknown Submitting Facility');
   });
 
   it('requestingProvider is genuinely undefined when never captured, not an empty string', () => {
-    const noProvider = makeCase({ order: { requestingProvider: undefined, clientName: 'X' } });
+    const noProvider = makeCase({ order: { requestingProvider: undefined, facilityName: 'X' } });
     const data = buildRequisitionLabelData(noProvider, fixedNow);
     expect(data.requestingProvider).toBeUndefined();
   });

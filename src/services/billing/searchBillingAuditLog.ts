@@ -157,8 +157,8 @@ function buildEventsForCase(
     caseId: caseData.id, caseNumber, patientName, patientId,
     signOutDate,
     signingPathologist: caseData.finalizedBy,
-    clientId: caseData.order?.clientId,
-    clientName: caseData.order?.clientName,
+    clientId: caseData.order?.facilityId,
+    clientName: caseData.order?.facilityName,
   };
 
   // Real, per direct follow-up: resolves a charge's own real Date of

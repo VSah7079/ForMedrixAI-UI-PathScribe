@@ -5,7 +5,9 @@ import { useSpecimenDictionary } from "./useSpecimenDictionary";
 import { userService } from "../../../services";
 import { checkSubspecialtyReferences } from "../../../services/referenceCheck/referenceCheckService";
 import { StaffUser } from "../Staff/StaffTab";
-import { mockFacilityService, type Facility as Client } from "../../../services/facilities/mockFacilityService";
+import { mockFacilityService } from "../../../services/facilities/mockFacilityService";
+import { getActivePerformingLabs } from "../../../utils/performingLabs";
+import type { Facility } from "../../../services/facilities/IFacilityService";
 
 // ── Badge colours ─────────────────────────────────────────────────────────────
 
@@ -97,11 +99,18 @@ const ImpactRow = ({ name, sub }: { name: string; sub?: string }) => (
 type Draft = {
   name: string; active: boolean; userIds: string[];
   description: string; isWorkgroup: boolean; clientIds: string[];
+  // '' = Global (every performing lab), same convention as
+  // ContainerType/DelegationType's own performingLabFacilityId.
+  performingLabFacilityId: string;
+  // Per FEAT-ROUT-01: at most one catch-all pool per lab (and at
+  // most one Global) — enforced on save, not just left to the admin.
+  isCatchAll: boolean;
 };
 
 const emptyDraft: Draft = {
   name: "", active: true, userIds: [],
   description: "", isWorkgroup: false, clientIds: [],
+  performingLabFacilityId: "", isCatchAll: false,
 };
 
 type InactiveConfirm = {
@@ -124,7 +133,8 @@ const SubspecialtiesSection: React.FC = () => {
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const { dictionary: specimens, updateEntries } = useSpecimenDictionary();
   const [users,   setUsers]   = useState<StaffUser[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [allFacilities, setAllFacilities] = useState<Facility[]>([]);
+  const [labs,    setLabs]    = useState<Facility[]>([]);
 
   const loadSubspecialties = useCallback(() => {
     subspecialtyService.getAll().then(res => { if (res.ok) setSubspecialties(res.data); });
@@ -133,7 +143,8 @@ const SubspecialtiesSection: React.FC = () => {
   useEffect(() => {
     loadSubspecialties();
     userService.getAll().then(res => { if (res.ok) setUsers(res.data); });
-    mockFacilityService.getAll().then(res => { if (res.ok) setClients(res.data); });
+    mockFacilityService.getAll().then(res => { if (res.ok) setAllFacilities(res.data); });
+    getActivePerformingLabs().then(setLabs);
   }, [loadSubspecialties]);
 
   const [search,              setSearch]              = useState("");
@@ -142,11 +153,11 @@ const SubspecialtiesSection: React.FC = () => {
   const [modalMode,           setModalMode]           = useState<"add"|"edit">("add");
   const [editTarget,          setEditTarget]          = useState<Subspecialty | null>(null);
   const [draft,               setDraft]               = useState<Draft>(emptyDraft);
-  const [activeTab,           setActiveTab]           = useState<"specimens"|"physicians"|"clients">("specimens");
+  const [activeTab,           setActiveTab]           = useState<"specimens"|"physicians"|"facilities">("specimens");
   const [specimenAssignments, setSpecimenAssignments] = useState<string[]>([]);
   const [specimenSearch,      setSpecimenSearch]      = useState("");
   const [physicianSearch,     setPhysicianSearch]     = useState("");
-  const [clientSearch,        setClientSearch]        = useState("");
+  const [facilitySearch,      setFacilitySearch]      = useState("");
   const [inactiveConfirm,     setInactiveConfirm]     = useState<InactiveConfirm | null>(null);
   const [nameError,           setNameError]           = useState("");
   const [reactivateConfirm,   setReactivateConfirm]   = useState<ReactivateConfirm | null>(null);
@@ -161,7 +172,7 @@ const SubspecialtiesSection: React.FC = () => {
   const openAdd = () => {
     setModalMode("add"); setEditTarget(null); setDraft(emptyDraft);
     setSpecimenAssignments([]); setSpecimenSearch(""); setPhysicianSearch("");
-    setClientSearch(""); setActiveTab("specimens"); setNameError(""); setShowModal(true);
+    setFacilitySearch(""); setActiveTab("specimens"); setNameError(""); setShowModal(true);
   };
 
   const openEdit = (sub: Subspecialty) => {
@@ -172,11 +183,13 @@ const SubspecialtiesSection: React.FC = () => {
       description: sub.description || "",
       isWorkgroup: sub.isWorkgroup  || false,
       clientIds:   sub.clientIds    || [],
+      performingLabFacilityId: sub.performingLabFacilityId ?? "",
+      isCatchAll: sub.isCatchAll ?? false,
     });
     setSpecimenAssignments(
       specimens.filter(sp => sp.subspecialty === sub.name).map(sp => sp.id)
     );
-    setSpecimenSearch(""); setPhysicianSearch(""); setClientSearch("");
+    setSpecimenSearch(""); setPhysicianSearch(""); setFacilitySearch("");
     setActiveTab("specimens"); setNameError(""); setShowModal(true);
   };
 
@@ -215,6 +228,17 @@ const SubspecialtiesSection: React.FC = () => {
     d: Draft, spAssignments: string[],
     target: Subspecialty | null, unlinkAll: boolean,
   ) => {
+    // Real, per FEAT-ROUT-01: at most one catch-all pool per lab scope
+    // (and at most one Global) — clear the flag on whichever pool
+    // previously held it in this same scope before it moves here,
+    // rather than leaving two pools both silently claiming to be the
+    // fallback for the same lab.
+    if (d.isCatchAll) {
+      const previousHolder = subspecialties.find(s =>
+        s.isCatchAll && s.id !== target?.id && (s.performingLabFacilityId ?? "") === (d.performingLabFacilityId || "")
+      );
+      if (previousHolder) await subspecialtyService.update(previousHolder.id, { isCatchAll: false });
+    }
     if (modalMode === "add") {
       await subspecialtyService.add({
         name: d.name, active: d.active, userIds: d.userIds, specimenIds: [],
@@ -229,6 +253,11 @@ const SubspecialtiesSection: React.FC = () => {
         // since no control for it existed here separately.
         clientIds: d.clientIds, isWorkgroup: d.isWorkgroup, isWorkgroupEnabled: d.isWorkgroup,
         description: d.description, status: d.active ? 'Active' : 'Inactive',
+        // '' from the Global option in the dropdown means no real lab
+        // was chosen — stored as undefined, same "absent, not empty
+        // string" convention as ContainerType/DelegationType.
+        performingLabFacilityId: d.performingLabFacilityId || undefined,
+        isCatchAll: d.isWorkgroup ? d.isCatchAll : false,
       });
     } else {
       await subspecialtyService.update(target!.id, {
@@ -238,6 +267,8 @@ const SubspecialtiesSection: React.FC = () => {
         // never be changed by editing isWorkgroup after creation either.
         clientIds: d.clientIds, isWorkgroup: d.isWorkgroup, isWorkgroupEnabled: d.isWorkgroup,
         description: d.description, status: d.active ? 'Active' : 'Inactive',
+        performingLabFacilityId: d.performingLabFacilityId || undefined,
+        isCatchAll: d.isWorkgroup ? d.isCatchAll : false,
       });
     }
     loadSubspecialties();
@@ -264,9 +295,9 @@ const SubspecialtiesSection: React.FC = () => {
   const filteredPhysicians = users
     .filter(u => u.roles?.includes("Pathologist") || u.roles?.includes("Resident"))
     .filter(u => !physicianSearch || `${u.firstName} ${u.lastName}`.toLowerCase().includes(physicianSearch.toLowerCase()));
-  const filteredClients = clients
+  const filteredFacilities = allFacilities
     .filter(c => c.status === 'Active')
-    .filter(c => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()));
+    .filter(c => !facilitySearch || c.name.toLowerCase().includes(facilitySearch.toLowerCase()));
 
   return (
     <div className="ps-sub-shell">
@@ -339,6 +370,11 @@ const SubspecialtiesSection: React.FC = () => {
                           </div>
                           {(sub as any).description && (
                             <div className="ps-sub-desc" title={(sub as any).description}>{(sub as any).description}</div>
+                          )}
+                          {sub.isWorkgroup && sub.performingLabFacilityId && (
+                            <div className="ps-sub-desc">
+                              {labs.find(l => l.id === sub.performingLabFacilityId)?.name ?? sub.performingLabFacilityId}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -465,6 +501,39 @@ const SubspecialtiesSection: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Performing Lab — only meaningful for a real pool.
+                    Global (no lab set) is available to every
+                    performing lab's cases; scoping to one lab gives
+                    that lab its own separate pool of the same name
+                    (e.g. its own "General Pathology"), never shared
+                    with another lab's cases. */}
+                {draft.isWorkgroup && (
+                  <div className="ps-sub-field">
+                    <label className="fm-section-label">Performing Lab</label>
+                    <select
+                      className="ps-conf-select"
+                      value={draft.performingLabFacilityId}
+                      onChange={e => setDraft(prev => ({ ...prev, performingLabFacilityId: e.target.value }))}
+                    >
+                      <option value="">— Global (every performing lab) —</option>
+                      {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {draft.isWorkgroup && (
+                  <div className="ps-sub-field">
+                    <label className="ps-conf-label">
+                      <input type="checkbox" checked={draft.isCatchAll}
+                        onChange={e => setDraft(prev => ({ ...prev, isCatchAll: e.target.checked }))} />
+                      {' '}Default / Catch-All Pool for {draft.performingLabFacilityId ? labs.find(l => l.id === draft.performingLabFacilityId)?.name ?? 'this lab' : 'every lab with no override'}
+                    </label>
+                    <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+                      Unmapped specimens for this scope fall through here. Turning this on moves the flag off whichever pool currently holds it for the same scope.
+                    </p>
+                  </div>
+                )}
+
                 {/* Description */}
                 <div className="ps-sub-field">
                   <label className="fm-section-label">
@@ -485,7 +554,7 @@ const SubspecialtiesSection: React.FC = () => {
 
                 {/* Tab bar */}
                 <div className="ps-sub-tab-bar-underline fm-tab-bar--config">
-                  {([ ["specimens", "Specimens"], ["physicians", "Physicians"], ["clients", "Facilities"] ] as const).map(([tab, label]) => {
+                  {([ ["specimens", "Specimens"], ["physicians", "Physicians"], ["facilities", "Facilities"] ] as const).map(([tab, label]) => {
                     const count = tab === "specimens" ? specimenAssignments.length
                       : tab === "physicians" ? draft.userIds.length
                       : draft.clientIds.length;
@@ -508,8 +577,8 @@ const SubspecialtiesSection: React.FC = () => {
                 <div className="fm-tab-content--config">
                   <div className="fm-tab-search--config">
                     <SearchInput
-                      value={activeTab === "specimens" ? specimenSearch : activeTab === "physicians" ? physicianSearch : clientSearch}
-                      onChange={activeTab === "specimens" ? setSpecimenSearch : activeTab === "physicians" ? setPhysicianSearch : setClientSearch}
+                      value={activeTab === "specimens" ? specimenSearch : activeTab === "physicians" ? physicianSearch : facilitySearch}
+                      onChange={activeTab === "specimens" ? setSpecimenSearch : activeTab === "physicians" ? setPhysicianSearch : setFacilitySearch}
                       placeholder={activeTab === "specimens" ? "Search specimens..." : activeTab === "physicians" ? "Search physicians..." : "Search facilities..."}
                     />
                   </div>
@@ -552,10 +621,10 @@ const SubspecialtiesSection: React.FC = () => {
                           ))
                     )}
 
-                    {activeTab === "clients" && (
-                      filteredClients.length === 0
-                        ? <div className="ps-sub-tab-empty">{clientSearch ? "No facilities match." : "No facilities available."}</div>
-                        : filteredClients.map(c => (
+                    {activeTab === "facilities" && (
+                      filteredFacilities.length === 0
+                        ? <div className="ps-sub-tab-empty">{facilitySearch ? "No facilities match." : "No facilities available."}</div>
+                        : filteredFacilities.map(c => (
                             <CheckRow
                               key={c.id} label={c.name} sub={c.assigningAuthority}
                               checked={draft.clientIds.includes(c.id)}

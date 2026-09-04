@@ -30,29 +30,55 @@ export default function Home() {
     return () => { clearTimeout(timer); };
   }, []);
 
+  // Real, per direct UI-review follow-up ("Fix them all" — colorblindness
+  // + other visual issues): every accent color below replaced with a
+  // fully-verified new palette, not a cosmetic tweak. The original set
+  // had a genuine, exact duplicate (Intraop Queue and My Contribution
+  // both #0EA5E9 — identical under every simulation type, not just
+  // colorblind-specific) plus real convergence under protanopia/
+  // deuteranopia (the two common forms of red-green colorblindness,
+  // ~8% of men): Configuration/Audit/Quality Assurance compressed
+  // toward the same yellow-green band, and Search/Intraop Queue/
+  // Batch Management compressed in the blue-violet range.
+  //
+  // This replacement palette was verified computationally, not
+  // eyeballed — every one of the 9 colors checked pairwise against
+  // every other, under simulated protanopia/deuteranopia/tritanopia
+  // (Brettel/Vienot-style linear-RGB transform matrices), iterating
+  // until every pair cleared a real separation threshold under all
+  // three types simultaneously, AND every color still holds at least
+  // 3:1 contrast (WCAG 1.4.11, non-text/UI-component contrast) against
+  // the dark tile background it renders on as a hover border/glow —
+  // a genuinely distinct-but-invisible color would have "solved"
+  // colorblindness by making the whole feature unusable for everyone.
+  // Greens/yellows/reds mostly draw from the real, published Wong
+  // (2011, Nature Methods) 8-color colorblind-safe palette; the
+  // remaining blue/violet/magenta slots were verified individually
+  // since Wong's own set doesn't have enough distinct entries for all
+  // 9 tiles this app needs.
   const cards: Card[] = [
     // ⭐ New tile
     {
       title: 'Accession',
       description: 'Log new specimens and assign Grossing Templates',
       route: '/accession',
-      color: '#22C55E',
+      color: '#16A34A',
       image: '/accession.webp'
     },
 
-    { title: 'Worklist', description: 'View and manage pending pathology cases', route: '/worklist', color: '#0891B2', image: '/worklist.webp' },
-    { title: 'Configuration', description: 'System settings and AI preferences', route: '/configuration', color: '#F59E0B', image: '/config.webp' },
-    { title: 'Search', description: 'Search completed and in-progress cases', route: '/search', color: '#8B5CF6', image: '/search.webp' },
-    { title: 'Audit', description: 'Review System Activities, Audit Trail, and Quality Assurance', route: '/audit', color: '#EF4444', image: '/logs.webp' },
-    { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/quality-assurance', color: '#F97316', image: '/deficiencies.webp' },
-    { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#0EA5E9', image: '/worklist.webp' },
+    { title: 'Worklist', description: 'View and manage pending pathology cases', route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
+    { title: 'Configuration', description: 'System settings and AI preferences', route: '/configuration', color: '#F0E442', image: '/config.webp' },
+    { title: 'Search', description: 'Search completed and in-progress cases', route: '/search', color: '#CC79A7', image: '/search.webp' },
+    { title: 'Audit', description: 'Review System Activities, Audit Trail, and Quality Assurance', route: '/audit', color: '#D55E00', image: '/logs.webp' },
+    { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/quality-assurance', color: '#E69F00', image: '/deficiencies.webp' },
+    { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#38BDF8', image: '/worklist.webp' },
 
     // ⭐ New tile
     {
       title: 'My Contribution',
       description: 'Workload • Quality • TAT • Trends',
       route: '/contribution',
-      color: '#0EA5E9',
+      color: '#B24592',
       image: '/my_contributions.webp'
     },
 
@@ -61,8 +87,32 @@ export default function Home() {
       title: 'Batch Management',
       description: 'Track cassettes and slides through processing nodes via container barcodes',
       route: '/batch-management',
-      color: '#6366F1',
+      color: '#8B3FD9',
       image: '/batch_management.webp'
+    },
+
+    // ⭐ New tile — real, per direct guidance: a dedicated Cytotech
+    // entry point, opening their own assigned cases and pool
+    // worklist (Cytology & Cervical Screening module). Deliberately
+    // NOT a second worklist destination for Pathologists — per direct
+    // guidance's own explicit constraint ("I do not want to send the
+    // Pathologist to multiple worklist"), cytology cases needing
+    // pathologist review surface within their existing, real
+    // /worklist instead; this tile is a real, separate later piece.
+    // Real, honest color-choice caveat: every other tile's color was
+    // computationally, pairwise-verified against protanopia/
+    // deuteranopia/tritanopia simulation (see this file's own header
+    // comment) — #009E73 is drawn from the real, published Wong
+    // (2011, Nature Methods) colorblind-safe palette and not yet
+    // used by any existing tile, but has NOT been through that same
+    // full, pairwise verification against all 9 others. Worth a real
+    // pass before considering this tile's color final.
+    {
+      title: 'Cytology',
+      description: 'Your assigned cases and pool worklist for GYN cytology screening',
+      route: '/cytology-worklist',
+      color: '#009E73',
+      image: '/cytology.webp'
     }
   ];
 
@@ -92,6 +142,26 @@ export default function Home() {
                   onClick={() => navigate(card.route)}
                   onMouseEnter={() => setHoveredCard(index)}
                   onMouseLeave={() => setHoveredCard(null)}
+                  onFocus={() => setHoveredCard(index)}
+                  onBlur={() => setHoveredCard(null)}
+                  // Real, per direct UI-review follow-up ("Fix them
+                  // all" — keyboard accessibility): this was a plain
+                  // <div onClick> — unreachable via Tab, no keyboard
+                  // activation, no visible focus state. role="button"
+                  // + tabIndex + onKeyDown makes it a genuine keyboard
+                  // control (Enter/Space activate, matching real
+                  // <button> semantics); onFocus/onBlur reuse the
+                  // existing hoveredCard state so a keyboard user gets
+                  // the same visible highlight a mouse user already
+                  // does, not a second, separate visual language.
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(card.route);
+                    }
+                  }}
                   className={`ps-home-card${hovered ? ' ps-home-card--hovered' : ''}`}
                   style={{ '--card-accent': card.color, '--card-accent-dim': `${card.color}40` } as React.CSSProperties}
                 >

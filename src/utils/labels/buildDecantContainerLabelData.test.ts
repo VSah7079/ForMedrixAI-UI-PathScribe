@@ -16,7 +16,7 @@ function makeCase(overrides: Record<string, unknown> = {}): Case {
     },
     order: {
       requestingProvider: 'Dr. Sarah Chen',
-      clientName: 'Metro General Hospital',
+      facilityName: 'Metro General Hospital',
     },
     ...overrides,
   } as unknown as Case;

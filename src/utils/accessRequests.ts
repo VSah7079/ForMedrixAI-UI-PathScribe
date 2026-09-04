@@ -25,7 +25,7 @@
 // userService RequestReviewModal.tsx, StaffTab.tsx, and CaseTeamModal.tsx
 // all already use. Scoped to the requesting user's own organisation first —
 // the UI copy says "your System Admin", and an admin at an unrelated
-// hospital across the world has no real authority to grant a client-level
+// hospital across the world has no real authority to grant a facility-level
 // or staff-record permission for a different organisation's case. Falls
 // back to every real admin system-wide only if that organisation genuinely
 // has none configured yet, so the request is never silently dropped the way

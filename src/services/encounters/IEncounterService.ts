@@ -327,4 +327,30 @@ export interface IEncounterService {
     encounterId: string,
     eventTimestamp: string
   ): Promise<ServiceResult<{ encounter: Encounter; applied: boolean }>>;
+
+  /**
+   * Real, per direct guidance: the real fix for a genuine, found gap —
+   * mergeIntoExistingPatient() and moveCaseToPatient()
+   * (services/patients/) both used to repoint Case.patient.id only,
+   * silently leaving any real Encounter records still pointing at the
+   * old, deprecated/incorrect patient id. This is that real, dedicated
+   * reassignment, deliberately its own narrow method (same "one real
+   * concept per method" reasoning as every other update method here) —
+   * not folded into updateMetadata, since patient identity isn't
+   * encounter metadata. No sequence-control staleness rejection the
+   * way updateStatus/updateLocation/updateClass have — this isn't a
+   * sequence of real-time events for one encounter's own evolving
+   * clinical state, it's a discrete, administrative identity
+   * correction, same real shape as moveCaseToPatient() itself (which
+   * also takes eventTimestamp only for the audit trail, not a
+   * staleness gate). Real, load-bearing safety check: never blindly
+   * repoints an encounter that doesn't actually belong to the claimed
+   * source patient.
+   */
+  reassignPatient(
+    encounterId: string,
+    sourcePatientId: string,
+    targetPatientId: string,
+    eventTimestamp: string
+  ): Promise<ServiceResult<{ encounter: Encounter; reassigned: boolean; reason?: string }>>;
 }

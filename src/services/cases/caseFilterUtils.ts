@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Case } from '../../types/case/Case';
+import { getFlagsSync } from '../flags/mockFlagService';
 import type { CaseFilterParams } from './ICaseService';
 
 export function applyCaseFilters(cases: Case[], params?: CaseFilterParams): Case[] {
@@ -175,37 +176,58 @@ export function applyCaseFilters(cases: Case[], params?: CaseFilterParams): Case
       })
     );
   }
-  if (params?.flagIds?.length) {
-    // SearchPage sends flag display names (e.g. 'STAT — Rush Processing'), not ID keys.
-    const search = (params.flagIds as string[]).map((s: string) => s.toLowerCase());
-    results = results.filter(c =>
-      ((c as any).caseFlags ?? []).some((f: any) =>
-        search.some((s: string) =>
-          (f.name ?? '').toLowerCase().includes(s) || s.includes((f.name ?? '').toLowerCase())
+  if (params?.flagIds?.length || params?.compFlagCodes?.length) {
+    // Real, confirmed fix (Jira PS-57 + its follow-up "should be able
+    // to assign Flags at either a Case or Specimen level"): both
+    // filters below used to read display fields (.name/.label/
+    // .lisCode) directly off a case's own flag entries — those
+    // entries are real FlagInstance records now (id/flagDefinitionId/
+    // appliedAt/source/deletedAt), with no display fields of their
+    // own. Resolved against the real flag catalog instead, the same
+    // one FlagManagerModal.tsx itself uses — getFlagsSync() specifically
+    // because this whole function is genuinely synchronous, no caller
+    // currently awaits it.
+    const flagDefById = new Map(getFlagsSync().map(f => [f.id, f]));
+
+    if (params?.flagIds?.length) {
+      // SearchPage sends flag display names (e.g. 'STAT — Rush Processing'), not ID keys.
+      const search = (params.flagIds as string[]).map((s: string) => s.toLowerCase());
+      results = results.filter(c =>
+        ((c as any).caseFlags ?? []).some((f: any) => {
+          if (f.deletedAt) return false;
+          const name = (flagDefById.get(f.flagDefinitionId)?.name ?? '').toLowerCase();
+          return search.some((s: string) => name.includes(s) || s.includes(name));
+        })
+      );
+    }
+
+    if (params?.compFlagCodes?.length) {
+      // Real, per direct guidance's own follow-up: moved verbatim from
+      // SearchPage.tsx's own runSearch, where this exact check
+      // ran client-side, after the real page had already been fetched -
+      // now applied here, before pagination, same real pipeline
+      // position as every other filter in this function. Aggregated
+      // across every specimen on the case — there's deliberately no
+      // case-level specimenFlags field; each specimen's own
+      // specimenFlags is the only real place a flag applied to a
+      // specific specimen can live, since FlagInstance itself carries
+      // no specimenId.
+      const codes = params.compFlagCodes as string[];
+      results = results.filter(c =>
+        codes.some(code =>
+          (c.specimens ?? []).flatMap((sp: any) => sp.specimenFlags ?? []).some((sf: any) => {
+            if (sf.deletedAt) return false;
+            const def = flagDefById.get(sf.flagDefinitionId);
+            return !!def && (def.lisCode === code || def.id === code || def.name === code);
+          })
         )
-      )
-    );
-  }
-  if (params?.compFlagCodes?.length) {
-    // Real, per direct guidance's own follow-up: moved verbatim from
-    // SearchPage.tsx's own runSearch, where this exact check
-    // (sf.lisCode === code || sf.id === code || sf.label === code)
-    // ran client-side, after the real page had already been fetched -
-    // now applied here, before pagination, same real pipeline
-    // position as every other filter in this function.
-    const codes = params.compFlagCodes as string[];
-    results = results.filter(c =>
-      codes.some(code =>
-        ((c as any).specimenFlags ?? []).some((sf: any) =>
-          sf.lisCode === code || sf.id === code || sf.label === code
-        )
-      )
-    );
+      );
+    }
   }
 
-  if (params?.clientIds?.length) {
-    const ids = params.clientIds as string[];
-    results = results.filter(c => ids.includes((c as any).order?.clientId ?? ''));
+  if (params?.facilityIds?.length) {
+    const ids = params.facilityIds as string[];
+    results = results.filter(c => ids.includes((c as any).order?.facilityId ?? ''));
   }
 
   // SNOMED CT — SearchPage passes s.code (e.g. '413448000'); match c.coding.snomed[]

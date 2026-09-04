@@ -8,7 +8,7 @@ const SEED_RESOLUTION_TYPES: ResolutionType[] = [
   { id: 'res-matched-existing', name: 'Matched to Existing Dictionary Entry', description: 'Accessioner identified the correct existing Specimen Dictionary entry.', status: 'Active' },
   { id: 'res-confirmed-custom', name: 'Confirmed as Custom Specimen (No Dictionary Match)', description: 'Accessioner confirmed no dictionary entry applies — proceeding as a manually entered specimen.', status: 'Active' },
   { id: 'res-new-dict-entry', name: 'New Dictionary Entry Created', description: 'A new Specimen Dictionary entry was created to cover this specimen type.', status: 'Active' },
-  { id: 'res-returned-to-clinician', name: 'Returned to Clinician for Clarification', description: 'Sent back to the submitting client/physician for correction.', status: 'Active' },
+  { id: 'res-returned-to-clinician', name: 'Returned to Clinician for Clarification', description: 'Sent back to the submitting facility/physician for correction.', status: 'Active' },
   { id: 'res-resolved-accessioner', name: 'Resolved by Accessioner — No Further Action', description: 'Accessioner resolved the issue directly; no escalation needed.', status: 'Active' },
   { id: 'res-relabeled', name: 'Relabeled per Lab Confirmation', description: 'Label corrected after confirming details with the originating lab/facility.', status: 'Active' },
   { id: 'res-value-corrected', name: 'Value Corrected', description: 'The underlying field was updated directly — see the deficiency comment for what changed, from what, to what.', status: 'Active' },

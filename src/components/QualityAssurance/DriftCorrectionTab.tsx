@@ -70,7 +70,7 @@ export const DriftCorrectionTab: React.FC = () => {
       if (casesRes.ok) {
         const map: Record<string, { clientId?: string; originHospitalId?: string }> = {};
         (casesRes.data as any[]).forEach((c: any) => {
-          map[c.id] = { clientId: c?.order?.clientId, originHospitalId: c?.originHospitalId };
+          map[c.id] = { clientId: c?.order?.facilityId, originHospitalId: c?.originHospitalId };
         });
         setCaseScopeFieldsById(map);
       }

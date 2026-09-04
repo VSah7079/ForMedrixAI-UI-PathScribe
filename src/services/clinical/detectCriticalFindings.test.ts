@@ -23,7 +23,7 @@ describe('detectCriticalFindings — real, direct verification', () => {
     vi.mocked(callAi).mockResolvedValueOnce({
       text: JSON.stringify({
         flags: [
-          { term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'critical' },
+          { term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 },
         ],
       }),
       provider: 'structured_messages' as any,
@@ -34,7 +34,8 @@ describe('detectCriticalFindings — real, direct verification', () => {
     if (res.ok) {
       expect(res.data.flags).toHaveLength(1);
       expect(res.data.flags[0].term).toBe('invasive carcinoma');
-      expect(res.data.flags[0].severity).toBe('critical');
+      expect(res.data.flags[0].severity).toBe('Malignant');
+      expect(res.data.flags[0].confidence).toBe(92);
     }
   });
 
@@ -86,6 +87,46 @@ describe('detectCriticalFindings — real, direct verification', () => {
     const res = await detectCriticalFindings({ gross: 'x', microscopic: '', ancillary: '' });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data.flags).toEqual([]);
+  });
+
+  it('defensively drops a flag whose severity is not one of the three real, valid values, rather than passing through a model-invented one', async () => {
+    vi.mocked(callAi).mockResolvedValueOnce({
+      text: JSON.stringify({
+        flags: [
+          { term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive carcinoma', severity: 'Malignant', confidence: 90 },
+          { term: 'something odd', sourceField: 'gross', sourceQuote: 'something odd', severity: 'urgent', confidence: 70 },
+        ],
+      }),
+      provider: 'structured_messages' as any,
+      model: 'test-model',
+    });
+    const res = await detectCriticalFindings({ gross: 'x', microscopic: 'invasive carcinoma', ancillary: '' });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.flags).toHaveLength(1);
+      expect(res.data.flags[0].term).toBe('invasive carcinoma');
+    }
+  });
+
+  it('clamps an out-of-range confidence to 0-100, and defaults a missing one to 0, rather than trusting the model', async () => {
+    vi.mocked(callAi).mockResolvedValueOnce({
+      text: JSON.stringify({
+        flags: [
+          { term: 'a', sourceField: 'gross', sourceQuote: 'a', severity: 'Abnormal', confidence: 150 },
+          { term: 'b', sourceField: 'gross', sourceQuote: 'b', severity: 'Abnormal', confidence: -10 },
+          { term: 'c', sourceField: 'gross', sourceQuote: 'c', severity: 'Abnormal' },
+        ],
+      }),
+      provider: 'structured_messages' as any,
+      model: 'test-model',
+    });
+    const res = await detectCriticalFindings({ gross: 'a b c', microscopic: '', ancillary: '' });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.flags[0].confidence).toBe(100);
+      expect(res.data.flags[1].confidence).toBe(0);
+      expect(res.data.flags[2].confidence).toBe(0);
+    }
   });
 
   it('never passes patient identifiers - the real function signature only accepts narrative text fields', () => {

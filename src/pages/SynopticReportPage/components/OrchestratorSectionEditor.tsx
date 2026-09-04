@@ -30,6 +30,9 @@ import { mockMacroService } from '@/services/macros/mockMacroService';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { PathScribeAIService, type SpellingFlag } from '@/services/aiIntegration/PathScribeAIService';
 import { facilityService } from '@/services';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
+import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { MockVoiceMacroService } from '@/services/voicemacro/mockVoiceMacroService';
 import type { Jurisdiction } from '@/types/systemConfig';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -334,42 +337,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // ── Voice dictation ───────────────────────────────────────────────────────────
   const { startDictation, phase, dictationTarget } = useVoice();
 
-  const registerDictationTarget = useCallback((section: OrchestratorSection) => {
-    const editorHandle = editorRefs.current[section.id];
-    const editor = editorHandle?.getEditor?.();
-    if (!editor) return;
-    startDictation({
-      fieldId: section.id,
-      label:   section.label,
-      context: section.label.toLowerCase().replace(/[^a-z]/g, ' ').trim(),
-      onText: (text: string, isInterim?: boolean) => {
-        editor.chain().focus().insertContent(text + (isInterim ? '' : ' ')).run();
-        onSectionChange(section.id, editor.getHTML());
-      },
-      onDone: () => { /* VoiceProvider handles phase reset */ },
-    });
-  }, [startDictation, onSectionChange]);
-
-  // ── Bind NavBar mic to the focused section ────────────────────────────────────
-  // The mic button lives outside this component (NavBar/VoiceToggleButton) and
-  // we deliberately don't import or modify it — everything here reacts to
-  // VoiceProvider's shared state instead, via useVoice().
-  //
-  // When the pathologist presses the mic with no specific target already set
-  // (dictationTarget === null) and a section in THIS editor currently has
-  // focus, we register that section as the dictation target — wiring the
-  // editor's onText handler into the stream that's already running.
-  //
-  // CRITICAL: this only runs when phase has ALREADY transitioned to 'dictate'
-  // — i.e. in response to the mic being pressed — never as a side effect of
-  // focusing a field. Focusing a field on its own does nothing here.
-  useEffect(() => {
-    if (phase !== 'dictate' || dictationTarget) return;
-    const section = sections.find(s => s.id === focusedSectionId);
-    if (!section || section.committed) return;
-    registerDictationTarget(section);
-  }, [phase, dictationTarget, focusedSectionId, sections, registerDictationTarget]);
-
   // ── Insert Specimen (IS) ───────────────────────────────────────────────────────
   // Inserts one line per specimen on the case, in the exact format:
   //   Specimen A: [Right hemicolectomy]
@@ -395,9 +362,9 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   }, [caseData, onSectionChange]);
 
   // ── Case's real jurisdiction, for spell-check ─────────────────────────────────
-  // Resolved from the case's own Submitting Client, not the system-wide
+  // Resolved from the case's own Submitting Facility, not the system-wide
   // SystemConfig.jurisdiction default — that field is a single global
-  // value nothing meaningfully sets (see Client.jurisdiction, the real
+  // value nothing meaningfully sets (see Facility.jurisdiction, the real
   // per-case mechanism, added earlier this session). A Fenwick case
   // should get British spelling regardless of what the system default
   // happens to be; a Metro General case should get US spelling. Falls
@@ -405,7 +372,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // (e.g. clientId missing, or the lookup fails) — same fail-safe
   // posture as everywhere else this session, not a fail-open guess.
   //
-  // clientName/clientLocaleLabel are kept alongside caseJurisdiction
+  // jurisdictionFacilityName is kept alongside caseJurisdiction
   // purely for the visible badge below — deliberate design decision
   // (see conversation): the report conforms to the receiving
   // institution's convention regardless of who wrote it, same as a
@@ -415,21 +382,136 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // report — this badge is the fix for that, not a reversal of the
   // decision.
   const [caseJurisdiction, setCaseJurisdiction] = useState<Jurisdiction | undefined>(undefined);
-  const [jurisdictionClientName, setJurisdictionClientName] = useState<string | undefined>(undefined);
+  const [jurisdictionFacilityName, setJurisdictionFacilityName] = useState<string | undefined>(undefined);
+  // Real, per direct guidance ("Personal Quick Text" — Enterprise then
+  // Facility then Staff): this case's own real performing lab —
+  // resolvePerformingLabFacilityId's real single-hop resolution
+  // (services/facilities/IFacilityService.ts), since the ordering
+  // facility itself may not be the one that actually performs the
+  // work. Auto-attributed, never asked of the pathologist — the whole
+  // point of "their name and facility would be known." Set from the
+  // SAME facility fetch as jurisdiction below, not a second one.
+  const [casePerformingLabFacilityId, setCasePerformingLabFacilityId] = useState<string | undefined>(undefined);
+  const [casePerformingLabName, setCasePerformingLabName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const clientId = caseData?.order?.clientId;
-    if (!clientId) { setCaseJurisdiction(undefined); setJurisdictionClientName(undefined); return; }
+    const clientId = caseData?.order?.facilityId;
+    if (!clientId) { setCaseJurisdiction(undefined); setJurisdictionFacilityName(undefined); setCasePerformingLabFacilityId(undefined); setCasePerformingLabName(undefined); return; }
     let cancelled = false;
     facilityService.getById(clientId).then(res => {
       if (cancelled) return;
       setCaseJurisdiction(res.ok ? res.data.jurisdiction : undefined);
-      setJurisdictionClientName(res.ok ? res.data.name : undefined);
+      setJurisdictionFacilityName(res.ok ? res.data.name : undefined);
+      const labId = res.ok ? resolvePerformingLabFacilityId(res.data) : undefined;
+      setCasePerformingLabFacilityId(labId);
+      if (!labId) { setCasePerformingLabName(undefined); return; }
+      // Real, per direct guidance: the resolved performing lab can be a
+      // genuinely different facility than the ordering one
+      // (Facility.performingLabFacilityId's own real override) — only
+      // reuse this same fetch's name when it resolved to itself;
+      // otherwise fetch the actual performing lab's own real name
+      // rather than showing the wrong facility in the confirmation UI.
+      if (res.ok && labId === res.data.id) { setCasePerformingLabName(res.data.name); return; }
+      facilityService.getById(labId).then(labRes => {
+        if (!cancelled) setCasePerformingLabName(labRes.ok ? labRes.data.name : undefined);
+      });
     });
     return () => { cancelled = true; };
-  }, [caseData?.order?.clientId]);
+  }, [caseData?.order?.facilityId]);
 
   const effectiveJurisdiction = caseJurisdiction ?? systemConfig?.jurisdiction;
+
+  const registerDictationTarget = useCallback((section: OrchestratorSection) => {
+    const editorHandle = editorRefs.current[section.id];
+    const editor = editorHandle?.getEditor?.();
+    if (!editor) return;
+    startDictation({
+      fieldId: section.id,
+      label:   section.label,
+      context: section.label.toLowerCase().replace(/[^a-z]/g, ' ').trim(),
+      // Real, per direct guidance (voice-trigger recognition wiring):
+      // this case's own real, already-resolved performing lab —
+      // VoiceProvider.tsx uses this to filter which real voice macros
+      // (Enterprise/Facility/Personal) apply to this dictation session.
+      performingLabFacilityId: casePerformingLabFacilityId,
+      onText: (text: string, isInterim?: boolean) => {
+        editor.chain().focus().insertContent(text + (isInterim ? '' : ' ')).run();
+        onSectionChange(section.id, editor.getHTML());
+      },
+      onDone: () => { /* VoiceProvider handles phase reset */ },
+    });
+  }, [startDictation, onSectionChange, casePerformingLabFacilityId]);
+
+  // ── Bind NavBar mic to the focused section ────────────────────────────────────
+  // The mic button lives outside this component (NavBar/VoiceToggleButton) and
+  // we deliberately don't import or modify it — everything here reacts to
+  // VoiceProvider's shared state instead, via useVoice().
+  //
+  // When the pathologist presses the mic with no specific target already set
+  // (dictationTarget === null) and a section in THIS editor currently has
+  // focus, we register that section as the dictation target — wiring the
+  // editor's onText handler into the stream that's already running.
+  //
+  // CRITICAL: this only runs when phase has ALREADY transitioned to 'dictate'
+  // — i.e. in response to the mic being pressed — never as a side effect of
+  // focusing a field. Focusing a field on its own does nothing here.
+  useEffect(() => {
+    if (phase !== 'dictate' || dictationTarget) return;
+    const section = sections.find(s => s.id === focusedSectionId);
+    if (!section || section.committed) return;
+    registerDictationTarget(section);
+  }, [phase, dictationTarget, focusedSectionId, sections, registerDictationTarget]);
+
+  // ── Personal Quick Text — real, per direct guidance ─────────────────────────
+  // "It would be easiest for them to select text they may have entered
+  // in a case, select a button, their name and facility would be
+  // known, all they would need is to create a voice trigger." Real
+  // ownership (getSessionUser) and real facility
+  // (casePerformingLabFacilityId, resolved above) are auto-attributed —
+  // the only thing this modal actually asks for is the spoken trigger.
+  // Saved as a real VoiceMacro (types/voiceMacros.ts) with
+  // ownerUserId set — the Personal tier of the same three-tier
+  // Enterprise/Facility/Personal model "My Macros" itself now uses
+  // (services/macros/IMacroService.ts's own isMacroVisibleTo()).
+  const voiceMacroService = useMemo(() => new MockVoiceMacroService(), []);
+  const [quickTextDraft, setQuickTextDraft] = useState<{ sectionId: string; selectedText: string } | null>(null);
+  const [quickTextTrigger, setQuickTextTrigger] = useState('');
+  const [savingQuickText, setSavingQuickText] = useState(false);
+
+  const handleOpenSaveAsQuickText = useCallback((section: OrchestratorSection) => {
+    const editorHandle = editorRefs.current[section.id];
+    const editor = editorHandle?.getEditor?.();
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) { alert('Select some text first to save it as a personal quick text.'); return; }
+    const selectedText = editor.state.doc.textBetween(from, to, ' ').trim();
+    if (!selectedText) return;
+    setQuickTextTrigger('');
+    setQuickTextDraft({ sectionId: section.id, selectedText });
+  }, []);
+
+  const handleConfirmSaveAsQuickText = useCallback(async () => {
+    if (!quickTextDraft || !quickTextTrigger.trim()) return;
+    setSavingQuickText(true);
+    const sessionUser = getSessionUser();
+    try {
+      await voiceMacroService.addMacro({
+        spoken: quickTextTrigger.trim(),
+        written: quickTextDraft.selectedText,
+        isActive: true,
+        name: quickTextDraft.selectedText.length > 40 ? quickTextDraft.selectedText.slice(0, 40) + '…' : quickTextDraft.selectedText,
+        ownerUserId: sessionUser?.id,
+        performingLabFacilityId: casePerformingLabFacilityId,
+        sourceCaseId: caseData?.id,
+        createdBy: sessionUser?.id,
+        createdAt: new Date().toISOString(),
+      });
+      setQuickTextDraft(null);
+      setQuickTextTrigger('');
+    } finally {
+      setSavingQuickText(false);
+    }
+  }, [quickTextDraft, quickTextTrigger, voiceMacroService, casePerformingLabFacilityId, caseData?.id]);
   const spellLocaleLabel = effectiveJurisdiction === 'US' ? 'American English'
     : effectiveJurisdiction ? 'British English' // GB_EW/GB_SCT/IE all resolve to en-GB spelling; CA/AU/NZ not yet distinguished here
     : undefined;
@@ -443,7 +525,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   const handleAcceptWithSpellCheck = useCallback(async (section: OrchestratorSection) => {
     setSpellCheckLoading(section.id);
     try {
-      const result = await aiService.checkSpelling(section.text, effectiveJurisdiction, caseData?.order?.clientId);
+      const result = await aiService.checkSpelling(section.text, effectiveJurisdiction, caseData?.order?.facilityId);
       const commit = (finalText: string) => {
         if (onAcceptSection) onAcceptSection(section.id, finalText);
         else onSectionChange(section.id, finalText); // fallback for parents not yet wired
@@ -626,6 +708,19 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
                 IS
               </button>
             )}
+            {/* Real, per direct guidance ("Personal Quick Text"): save
+                the currently-selected text as a real, personal quick
+                text entry — name/facility auto-attributed, only a
+                voice trigger needs to be entered. */}
+            {!isLocked && (
+              <button
+                className="ps-ose-section-insert-specimen-btn"
+                title="Save the selected text as a personal quick text (voice trigger)"
+                onClick={() => handleOpenSaveAsQuickText(section)}
+              >
+                QT
+              </button>
+            )}
             {/* Per-section accept — only shown for AI-generated, unaccepted sections */}
             {!isLocked && status === 'ai-generated' && !isGenerating && (
               <button
@@ -722,11 +817,11 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
             {spellLocaleLabel && (
               <span
                 className="ps-ose-jurisdiction-badge"
-                title={jurisdictionClientName
-                  ? `Spelling and terminology on this report follow ${jurisdictionClientName}'s convention, not the reviewing pathologist's own — the report has to conform to the receiving institution's record system.`
-                  : 'No Submitting Client resolved for this case — using the system default convention.'}
+                title={jurisdictionFacilityName
+                  ? `Spelling and terminology on this report follow ${jurisdictionFacilityName}'s convention, not the reviewing pathologist's own — the report has to conform to the receiving institution's record system.`
+                  : 'No Submitting Facility resolved for this case — using the system default convention.'}
               >
-                ✎ {spellLocaleLabel}{jurisdictionClientName ? ` — ${jurisdictionClientName}` : ''}
+                ✎ {spellLocaleLabel}{jurisdictionFacilityName ? ` — ${jurisdictionFacilityName}` : ''}
               </span>
             )}
             <div className="ps-ose-view-toggle">
@@ -860,6 +955,37 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
           sections.map(s => renderSectionCard(s, true))
         )}
       </div>
+
+      {/* Real, per direct guidance ("Personal Quick Text"): only asks
+          for the one thing that isn't already known — the voice
+          trigger. Name and facility are shown, not asked for, since
+          they're already resolved from the real session/case context. */}
+      {quickTextDraft && (
+        <div className="ps-conf-backdrop" onClick={() => setQuickTextDraft(null)}>
+          <div className="ps-ose-quicktext-modal" onClick={e => e.stopPropagation()}>
+            <div className="ps-ose-quicktext-title">Save as Personal Quick Text</div>
+            <div className="ps-ose-quicktext-preview">{quickTextDraft.selectedText}</div>
+            <div className="ps-ose-quicktext-meta">
+              {getSessionUser()?.firstName ?? 'You'} {getSessionUser()?.lastName ?? ''} · {casePerformingLabName ?? (casePerformingLabFacilityId ? casePerformingLabFacilityId : 'no facility resolved for this case')}
+            </div>
+            <label className="ps-conf-label">Voice Trigger</label>
+            <input
+              autoFocus
+              className="ps-conf-input"
+              value={quickTextTrigger}
+              onChange={e => setQuickTextTrigger(e.target.value)}
+              placeholder='e.g. "normal colon comment"'
+              onKeyDown={e => { if (e.key === 'Enter') handleConfirmSaveAsQuickText(); }}
+            />
+            <div className="ps-ose-quicktext-actions">
+              <button className="ps-btn-ghost-dark" onClick={() => setQuickTextDraft(null)}>Cancel</button>
+              <button className="ps-conf-btn-primary" disabled={!quickTextTrigger.trim() || savingQuickText} onClick={handleConfirmSaveAsQuickText}>
+                {savingQuickText ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

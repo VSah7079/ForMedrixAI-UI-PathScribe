@@ -121,6 +121,30 @@ etc.), consumed from many places across `pages/`/`components/`.
     failing, the proxy returning a bad status, a speech-recognition
     error), not debug noise.
 
+  **Real addition ("Personal Quick Text" — Enterprise then Facility
+  then Staff), per direct guidance:** the real spoken-trigger
+  substitution algorithm already existed (`MockVoiceMacroService.
+  refineTranscript()`, `services/voicemacro/`) but had zero real call
+  sites anywhere in the app, confirmed directly before wiring this —
+  it was correct and complete, just never invoked from the live
+  dictation pipeline. Now genuinely wired in: the algorithm was
+  extracted into a pure, synchronous `applyVoiceMacroSubstitutions()`
+  (`types/voiceMacros.ts`, shared by `refineTranscript()` itself so the
+  two can't drift apart) and applied inside `handleDictationSegment`'s
+  own real LOCAL PATH — right after punctuation/learned-corrections,
+  before the AI-refinement/direct-insertion branch, so a spoken trigger
+  expands the same way regardless of whether AI refinement also runs
+  afterward. Filtered per-segment to exactly the real macros the
+  current session user can see (`isVoiceMacroVisibleTo()`) for
+  whichever real facility the current `DictationTarget` belongs to.
+  `DictationTarget` gained `performingLabFacilityId?` for this —
+  `OrchestratorSectionEditor.tsx`'s own `registerDictationTarget`
+  passes through the case's own already-resolved performing lab, same
+  value its "QT" (Personal Quick Text) button already uses. The active
+  macro list is refreshed once per real dictation session
+  (`startDictation`), not per spoken segment — this needed to stay
+  near-instant, not add a fetch to every utterance.
+
 - **`BreadcrumbContext.tsx`** — simple push/pop breadcrumb stack for
   the nav bar. Clean, no issues.
 

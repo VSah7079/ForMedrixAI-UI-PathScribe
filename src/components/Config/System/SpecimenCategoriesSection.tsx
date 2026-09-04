@@ -383,7 +383,12 @@ const SpecimenCategoriesSection: React.FC = () => {
                       {c.description && <div className="ps-conf-identity-sub">{c.description}</div>}
                     </td>
                     <td className="ps-conf-td">{templateName(c.defaultGrossingTemplateId)}</td>
-                    <td className="ps-conf-td">{c.accessionPrefix ?? '—'}{c.numberSeries ? ` · ${c.numberSeries}` : ''}</td>
+                    <td className="ps-conf-td">
+                      {c.accessionPrefix ?? '—'}
+                      {c.numberSeries
+                        ? <span className="ps-sub-system-badge" title="Draws from its own independent accession sequence">OWN SEQUENCE · {c.numberSeries}</span>
+                        : c.accessionPrefix && <span className="ps-sub-system-badge">SHARES INSTITUTION SEQUENCE</span>}
+                    </td>
                     <td className="ps-conf-td">
                       {c.retentionOverrideDays ? (
                         <div style={{ fontSize: 11 }}>

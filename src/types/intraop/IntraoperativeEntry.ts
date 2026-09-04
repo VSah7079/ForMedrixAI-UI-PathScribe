@@ -187,17 +187,17 @@ export interface IntraoperativeEntry {
   surgeon: string;
   /** Real feature, per direct confirmation: "Let's wire in Facility
    *  and Location (Room) for Intraop." Same real pattern as
-   *  Case.order.clientId/locationId — captured once per session
+   *  Case.order.facilityId/locationId — captured once per session
    *  (alongside OR/surgeon), not per specimen, since the specimens
    *  under one session all come from the same OR/facility. Optional:
    *  a session can genuinely be started before the facility/location
    *  is known (e.g. barcode-only identification with no ADT match —
    *  see PatientMatchInfo), same honest-absence posture as the rest
    *  of this type. */
-  clientId?: string;
+  facilityId?: string;
   /** Cached display name — avoids an async lookup on every render,
-   *  same reasoning as Case.order.clientName. */
-  clientName?: string;
+   *  same reasoning as Case.order.facilityName. */
+  facilityName?: string;
   locationId?: string;
   /** Cached display string ("OR-3" / "Ward 3 / 101 / A") — same
    *  reasoning as Case.order.locationDisplay. */

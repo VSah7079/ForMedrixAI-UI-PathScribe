@@ -4,7 +4,7 @@ Every modal reachable from the case report page — 23 files, roughly grouped be
 
 ## Case-level workflow
 
-- **`CaseSignOutModal.tsx`** — the real sign-out modal (stain types, real-time coding summary via `computeCaseCodingSummary`).
+- **`CaseSignOutModal.tsx`** — the real sign-out modal (stain types, real-time coding summary via `computeCaseCodingSummary`). **Real, per direct guidance ("Yes we should scope 'Return to Trainee'/'Reject with Notes'"): a new `onReject` prop, rendered as "↩️ Return to Trainee"** alongside the existing "✍️ Sign Out Case" button, only when `isCountersign` is true — disabled until real feedback text is entered, since a rejection with no explanation gives the resident nothing to act on. Wired to `useSignOutWorkflow.ts`'s new `handleReturnToTrainee()` — see `hooks/README.md`'s own entry, and `services/cases/README.md`'s fuller account, for the real logic this button triggers.
 - **`PreFinalisationModal.tsx`** — the pre-finalize review screen: drag-to-reorder specimens/synoptics, per-field completeness warnings, biometric/password signing panel. (The old drag-to-*exclude* mechanism — which fed the now-removed "Deferred" synoptic status — was removed; every synoptic report's required fields must be complete before finalize, no bypass.)
 - **`FinalizeSynopticModal.tsx`** — lighter-weight finalize confirmation for a single synoptic.
 - **`AiReviewModal.tsx`** — AI triage/spell-checker flow (Space/→ confirm, O override, S skip, Esc cancel).
@@ -22,7 +22,7 @@ Every modal reachable from the case report page — 23 files, roughly grouped be
 - **`SpecimenEditModal.tsx`** — add/edit a specimen.
 - **`AddOrdersModal.tsx`** — replaces the old, single-purpose "+ Add Specimen" button with a richer flow.
 - **`BlockStainEditorModal.tsx`** — the "Blocks & Stains" modal: block/decant status, stain ordering, foreign ID fields, cassette color control, secondary-label printing.
-- **`MatrixBlockEditorModal.tsx`** — editor for shared/matrix blocks (`types/case/MatrixBlock.ts`).
+- **`MatrixBlockEditorModal.tsx`** — tab-gated editor for shared/matrix blocks (`types/case/MatrixBlock.ts`): "Details" (status, piece tracking) and, per direct billing-expert guidance (PS-93), "Biopsy Array / Matrix Mapping" — the real Array Mapper for targeting a new ancillary stain order at specific cores.
 - **`CreateBiopsyArrayModal.tsx`** — real feature for assigning multiple specimens into one shared cassette (biopsy array).
 - **`ForeignIdFields.tsx`** — small, local-state component for foreign-ID inputs; fixes a real rapid-keystroke data-corruption bug in the old inline foreign-ID JSX.
 - **`CassetteColorControl.tsx`** — the cassette color picker/display used inside `BlockStainEditorModal`.
@@ -33,7 +33,7 @@ Every modal reachable from the case report page — 23 files, roughly grouped be
 - **`AmendmentModal.tsx`** — real amendment/addendum/correction modal (replaced an earlier, fully decorative version whose submit handler never persisted anything).
 - **`VersionHistoryModal.tsx`** — real report version history (`ReportVersionRecord`), including the patient/encounter snapshot at each version.
 - **`DeficiencyHistoryModal.tsx`** — read-only view of a case's specimen deficiency history.
-- **`DiscordanceReconciliationModal.tsx`** — Frozen-to-Permanent reconciliation entry, feeding `types/quality/ReconciliationRecord.ts`.
+- **`DiscordanceReconciliationModal.tsx`** — Frozen-to-Permanent reconciliation entry. **Real, current status (PS-113, Stage 5):** writes exclusively to `qaActivityRecordService`/`QaActivityRecord.ts` (`services/quality/`) now — the old `reconciliationService`/`ReconciliationRecord.ts` this modal originally wrote to, and briefly dual-wrote to during the Stage 3/4 migration, is retired and deleted (first release, no real production history to preserve). Real, disclosed gap: this modal has no test of its own — no established pattern for testing a modal exists anywhere in this codebase yet, so one wasn't invented unprompted as a side effect of this migration. Its correctness is verified indirectly, through the already-tested service it calls.
 
 ## Team, printing & CoPilot
 

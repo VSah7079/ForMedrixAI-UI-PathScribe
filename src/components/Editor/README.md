@@ -42,6 +42,23 @@ is pure logic (no React) bridging the editor to the AI orchestrator.
   completely unaffected**, since it doesn't pass `allowThemeToggle` and
   therefore never enters the new stateful/persisted code path at all.
 
+  **Real, found-and-fixed follow-up gap in this exact same fix, per direct
+  report ("occasional text that is dark and pretty much impossible to
+  read")**: the earlier `DARK_THEME.contentText` fix above corrected the
+  theme *token* itself, but the injected `<style>{...}</style>` block
+  that actually applies `.ps-editor-content`'s real text color still
+  hardcoded the light theme's own `#1e293b` directly, never referencing
+  `theme.contentText` at all — meaning a real user clicking the real
+  sun/moon toggle button *while actively writing a report* would see
+  the toolbar chrome correctly switch to dark, while the actual report
+  text they were typing became nearly invisible, silently forced back
+  to the light theme's own dark text color regardless of which theme
+  was genuinely active. Fixed by interpolating `${theme.contentText}`
+  into the same template string, alongside the `${minHeight}`/
+  `${approvedFonts[0]}` interpolations already there — the real fix is
+  one line, using infrastructure that already existed and was already
+  correct everywhere else in this same component.
+
 - **`NarrativeEditor.tsx`** — Thin wrapper forwarding props/ref to
   `PathScribeEditor.tsx`. No issues.
 - **`PathScribeEditorRef.ts`** — Defines `PathScribeEditorHandle`, the

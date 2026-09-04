@@ -23,19 +23,47 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { callAi } from '@/services/aiIntegration/aiProviderService';
+import type { SyntheticCodingTerm } from '../abnormalDetection/IAbnormalTriggerRuleService';
 import type { ServiceResult } from '../types';
-
-export type CriticalFindingSeverity = 'critical' | 'abnormal';
+import type { AbnormalSeverity } from '../abnormalDetection/IAbnormalTriggerRuleService';
 
 export interface CriticalFindingFlag {
   /** The real term/phrase the model flagged, e.g. "invasive carcinoma". */
   term: string;
-  sourceField: 'gross' | 'microscopic' | 'ancillary';
+  /** Real, per direct guidance: 'synoptic' added alongside the original
+   *  three narrative fields — PS-129's discrete trigger-rule matches
+   *  (services/abnormalDetection/) are genuinely sourced from a
+   *  structured synoptic field/value, not narrative text, and forcing
+   *  them into 'gross'/'microscopic'/'ancillary' would mislabel where
+   *  the finding actually came from. */
+  sourceField: 'gross' | 'microscopic' | 'ancillary' | 'synoptic';
   /** Short, real quote from the source text showing the term in
    *  context - lets a reviewer see WHY this was flagged, not just
    *  that it was. */
   sourceQuote: string;
-  severity: CriticalFindingSeverity;
+  /** Real, per direct guidance: "the case is considered abnormal or
+   *  not, however the human makes the final call. We just offer the
+   *  suggestion and why with a confidence factor." Shares
+   *  AbnormalSeverity with PS-129's discrete trigger rules — one real,
+   *  unified severity vocabulary across both detection paths, rather
+   *  than two independently-drifting ones. */
+  severity: AbnormalSeverity;
+  /** 0-100, real per direct guidance's own confidence-factor
+   *  requirement — the model's own stated confidence in this specific
+   *  finding, never fabricated or defaulted when the model provides
+   *  one. */
+  confidence: number;
+  /** Real, per direct guidance: "we can use synthetic codes because we
+   *  will not have a license until our first customer or a
+   *  partnership." Only ever real for a `sourceField: 'synoptic'`
+   *  finding (PS-129's own discrete trigger rules, which can carry a
+   *  real, per-rule synthetic code — services/abnormalDetection/).
+   *  An AI-narrative finding (gross/microscopic/ancillary) has no
+   *  fixed rule to attach one to; the point of application
+   *  (`handleRecordCriticalNotification`, useSignOutWorkflow.ts) falls
+   *  back to the real, severity-keyed default (`resolveSyntheticCoding`)
+   *  for those. */
+  syntheticCoding?: SyntheticCodingTerm[];
 }
 
 export interface CriticalFindingDetectionResult {
@@ -78,17 +106,31 @@ Flag real findings such as: unexpected or newly-diagnosed malignancy (e.g. carci
 
 Be negation-aware: do NOT flag a term that is explicitly negated or ruled out (e.g. "no evidence of malignancy", "negative for acid-fast bacilli") — only flag findings actually present.
 
-Return JSON: { "flags": [ { "term": "short flagged term", "sourceField": "gross" | "microscopic" | "ancillary", "sourceQuote": "≤15 word quote from the text", "severity": "critical" | "abnormal" } ] }
+Return JSON: { "flags": [ { "term": "short flagged term", "sourceField": "gross" | "microscopic" | "ancillary", "sourceQuote": "≤15 word quote from the text", "severity": "Abnormal" | "Critical" | "Malignant", "confidence": 0-100 } ] }
 Rules:
-- "critical" severity: findings requiring immediate/urgent notification (e.g. unexpected malignancy, organ rejection, active untreated infection)
-- "abnormal" severity: clinically significant but not immediately urgent
+- "Malignant" severity: a genuine, newly-identified malignancy (e.g. unexpected carcinoma)
+- "Critical" severity: findings requiring immediate/urgent notification that are not themselves a malignancy (e.g. organ rejection, active untreated infection)
+- "Abnormal" severity: clinically significant but not immediately urgent
+- confidence: your genuine confidence (0-100) that this specific finding is real and correctly characterized — never a placeholder value
 - Return an empty flags array if nothing in the real text warrants flagging — never fabricate a finding`,
       maxTokens: 800,
     });
 
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    const flags: CriticalFindingFlag[] = Array.isArray(parsed?.flags) ? parsed.flags : [];
+    const rawFlags = Array.isArray(parsed?.flags) ? parsed.flags : [];
+    // Defensive validation on the way out — same "don't trust, verify"
+    // posture as evaluateSynopticAssignment's own candidate-ID filter:
+    // never pass through a severity the model invented outside the
+    // three real, offered values, and always clamp confidence to a
+    // genuine 0-100 range rather than trusting the model's own number.
+    const validSeverities: AbnormalSeverity[] = ['Abnormal', 'Critical', 'Malignant'];
+    const flags: CriticalFindingFlag[] = rawFlags
+      .filter((f: any) => validSeverities.includes(f?.severity))
+      .map((f: any) => ({
+        ...f,
+        confidence: Math.max(0, Math.min(100, Number(f.confidence) || 0)),
+      }));
     return { ok: true, data: { flags } };
   } catch (error: any) {
     return { ok: false, error: error?.message ?? 'Critical finding detection failed' };

@@ -79,6 +79,7 @@ other consumers of the root-level file, deleted it. Full detail in
 
 | Folder | What it is |
 |---|---|
+| [abnormalDetection/](./abnormalDetection/README.md) | **NEW (Sep 2026)** — PS-105/PS-129: real, admin-configurable discrete trigger-rule dictionary (synoptic field/value → Abnormal/Critical/Malignant severity) |
 | [access/](./access/README.md) | **NEW (August 2026)** — real, tracked AccessRequest tickets (Pediatric, Pool, Orchestration) — replaces message-only requests with a real status lifecycle and quality-metric turnaround time |
 | [actionRegistry/](./actionRegistry/README.md) | Voice/shortcut action catalog |
 | [ai/](./ai/README.md) | Core AI provider abstraction (Claude/GPT/Bedrock swap layer) |
@@ -95,9 +96,11 @@ other consumers of the root-level file, deleted it. Full detail in
 | [cassetteRouting/](./cassetteRouting/README.md) | **NEW (August 2026)** — admin-manageable rules resolving which cassette color an order routes to (protocol/priority/station/facility/case type) |
 | [clientSLA/](./clientSLA/README.md) | Per-client SLA/TAT targets |
 | [clients/](./clients/README.md) | Client (institution) dictionary |
+| [clinical/](./clinical/README.md) | **NEW (Sep 2026)** — PS-105: negation-aware AI detection of critical/abnormal narrative findings at sign-out, plus the real, append-only record of how a pathologist actually communicated one |
 | [codes/](./codes/README.md) | Terminology system CONFIG (which SNOMED/ICD variants are enabled) |
 | [communications/](./communications/README.md) | Email/notification transport |
 | [containerTypes/](./containerTypes/README.md) | Specimen container-type dictionary |
+| [cytology/](./cytology/README.md) | **NEW (Sep 2026)** — Phase 1 of the Cytology & Cervical Screening module: real, standard 2014 Bethesda System category dictionary (adequacy, general categorization, interpretation/result) |
 | [deficiencies/](./deficiencies/README.md) | Specimen/requisition deficiency tracking |
 | [delegationTypes/](./delegationTypes/README.md) | Case delegation type dictionary |
 | [diagnosisCodes/](./diagnosisCodes/README.md) | Referring physician's order-time diagnosis code |
@@ -124,7 +127,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [messages/](./messages/README.md) | Internal staff messaging |
 | [models/](./models/README.md) | AI model registry |
 | [narrativeSignals/](./narrativeSignals/README.md) | AI-vs-pathologist edit-diff capture + PHI de-identification |
-| [orderIntake/](./orderIntake/README.md) | Pending-orders queue + Client/SpecimenCategory resolution |
+| [orderIntake/](./orderIntake/README.md) | Pending-orders queue + Client/Department resolution |
 | [organisation/](./organisation/README.md) | Organization/Site/Lab hierarchy (Enterprise + participating hospitals) |
 | [patients/](./patients/README.md) | **NEW (July 2026)** — real Master Patient Index (MPI), org-scoped identity resolution with a genuine ambiguous-match review workflow |
 | [participationTypes/](./participationTypes/README.md) | Case Team role dictionary |
@@ -135,7 +138,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [printSettings/](./printSettings/README.md) | **NEW (August 2026)** — real, admin-configurable, lab-wide default label-printing behavior (on-demand vs. batch, guardrails, scan verification, container label size) — Tier 1 only, per direct follow-up on the hierarchical print-settings architecture |
 | [protocols/](./protocols/README.md) | Standalone processing-protocol dictionary |
 | [quality/](./quality/README.md) | Discordance tracking (Frozen-to-Permanent gate) |
-| [referenceCheck/](./referenceCheck/README.md) | **NEW (August 2026)** — checks whether a foundational config entity (Client, Subspecialty, Specimen Category) is still referenced before deactivation |
+| [referenceCheck/](./referenceCheck/README.md) | **NEW (August 2026)** — checks whether a foundational config entity (Client, Subspecialty, Department) is still referenced before deactivation |
 | [reportParts/](./reportParts/README.md) | Atomic report-building-block library |
 | [reportRelease/](./reportRelease/README.md) | **NEW (August 2026)** — Post-Sign-Out Release Buffer: a real, configurable hold window between sign-out and genuine external release, with recall |
 | [reportTemplates/](./reportTemplates/README.md) | Report template assembly + routing resolution chain |
@@ -147,7 +150,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [savedSearches/](./savedSearches/README.md) | Saved search/filter presets |
 | [scanStations/](./scanStations/README.md) | **NEW (August 2026)** — registry of physical scan/work stations (where a tech scans at the bench), facility-scoped |
 | [session/](./session/README.md) | **NEW (July 2026)** — idle-session-timeout resolution (org default + per-performing-lab override) + same-browser session-supersede detection |
-| [specimenCategories/](./specimenCategories/README.md) | Coarse-grained specimen classification |
+| [departments/](./departments/README.md) | Coarse-grained specimen classification |
 | [specimenDictionary/](./specimenDictionary/README.md) | Fine-grained Specimen Dictionary (SpecimenEntry) — the real backend |
 | [stains/](./stains/README.md) | Stain catalog (3 sub-concepts: type/sectioning/order macro) |
 | [subspecialties/](./subspecialties/README.md) | Subspecialty/pool/workgroup dictionary |
@@ -233,3 +236,20 @@ other consumers of the root-level file, deleted it. Full detail in
   non-persistent VDI**, where the profile is discarded at logoff — so the
   rate-limit protection it was built for silently does not apply in exactly
   the estates it was designed for.
+
+## New folders added September 2026
+
+- **`cytology/`** — Phase 1 of the real Cytology & Cervical Screening
+  module (a genuinely new, real requirements doc, distinct from the
+  existing surgical-pathology-oriented PS-105 abnormal-detection work).
+  Real, per direct guidance: any configuration for this module lives as
+  a new subtab under System — same interface/mock pattern as every
+  other admin dictionary, not a new, separate configuration surface.
+  This phase covers only the real, standard 2014 Bethesda System
+  category vocabulary (specimen adequacy, general categorization,
+  interpretation/result) — verified against IARC's own published
+  Bethesda reference before building the seed data, not improvised.
+  Later phases (the cytologist-specific worklist, workload/QC tracking,
+  HPV integration, multi-region compliance, patient follow-up,
+  Cyto-Histo correlation) are real, separate, sequenced work — not
+  built here.

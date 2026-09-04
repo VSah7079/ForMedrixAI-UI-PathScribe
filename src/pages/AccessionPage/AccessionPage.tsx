@@ -41,11 +41,12 @@ import { toast } from 'react-toastify';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { ORCH_ID_PREFIX, isOrchCaseId, formatOrchCaseId } from '@/services/cases/reportingModeRouting';
 import { evaluateGrossingTemplateAssignment } from '@/services/cases/mockCaseService';
-import { mockFacilityService, type Facility as Client } from '@/services/facilities/mockFacilityService';
+import { mockFacilityService, type Facility } from '@/services/facilities/mockFacilityService';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { locationService } from '@/services';
 import type { Location as LocationRecord } from '@/services/locations/ILocationService';
-import { mockSpecimenCategoryService } from '@/services/specimenCategories/mockSpecimenCategoryService';
-import type { SpecimenCategory } from '@/services/specimenCategories/ISpecimenCategoryService';
+import { mockDepartmentService } from '@/services/departments/mockDepartmentService';
+import type { Department } from '@/services/departments/IDepartmentService';
 import { mockUserService } from '@/services/users/mockUserService';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { Case, GrossingReportInstance } from '@/types/case/Case';
@@ -70,6 +71,7 @@ import type { DeficiencyType } from '@/services/deficiencies/IDeficiencyService'
 import { ReportDeficiencyModal } from './ReportDeficiencyModal';
 import { IntraopMergePromptModal } from './IntraopMergePromptModal';
 import { OrderLookupModal } from './OrderLookupModal';
+import { PatientLinkSearch } from './PatientLinkSearch';
 import ConfirmModal from '@/components/Common/ConfirmModal';
 import type { EntryMatch } from '@/types/intraop/IntraoperativeEntry';
 import { getSpecimenLabel } from '@/utils/specimenLabeling';
@@ -104,7 +106,10 @@ import { getHospitalIdForOrganisation, getOrganisationDisplayName, getOrganisati
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { mockEncounterService } from '@/services/encounters/mockEncounterService';
 import type { Encounter } from '@/services/encounters/IEncounterService';
-import { mockCaseRegistryService } from '@/services/caseRegistry/mockCaseRegistryService';
+import { mockCaseMaskService } from '@/services/caseRegistry/mockCaseMaskService';
+import { resolveCaseMaskScopeCandidates } from '@/services/caseRegistry/resolveCaseMaskScopeCandidates';
+import { resolveTenantFacility } from '@/services/auth/resolveTenantFacility';
+import type { CaseMask } from '@/types/config/CaseMask';
 import { PATIENT_ID_BY_JURISDICTION } from '@/types/systemConfig';
 import { SpecimenDictionaryPicker } from '@/components/SpecimenPicker/SpecimenDictionaryPicker';
 import { CaseCommentModal } from '@/pages/Synoptic/Comments/CaseCommentModal';
@@ -112,6 +117,11 @@ import { ReportCommentModal } from '@/pages/Synoptic/Comments/ReportCommentModal
 import { mockActionRegistryService } from '@/services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { BREAK_GLASS_REASON_CODES } from '@/types/patients/BreakGlassReasonCode';
+import type { OutsidePatientFinancialData } from '@/types/billing/OutsidePatientFinancialData';
+import { mockMasterPaymentTypeService } from '@/services/billing/mockMasterPaymentTypeService';
+import { mockJurisdictionPaymentMappingService } from '@/services/billing/mockJurisdictionPaymentMappingService';
+import type { MasterPaymentType } from '@/types/billing/MasterPaymentType';
+import type { JurisdictionPaymentMapping } from '@/types/billing/JurisdictionPaymentMapping';
 
 // ── Local form types ────────────────────────────────────────────────────────
 
@@ -142,16 +152,16 @@ interface SpecimenDraft {
    *  that a second report would silently overwrite. Now a real array. */
   manualDeficiencies: { deficiencyTypeId: string; comment: string }[];
   /** Set only when this specimen came from "Import from Order" — the
-   *  Specimen Category that resolveOrder() matched it to (crosswalk or
+   *  Department that resolveOrder() matched it to (crosswalk or
    *  auto-created), shown as an informational note. Not sent anywhere on
    *  submit; evaluateGrossingTemplateAssignment still does its own
    *  independent AI reasoning per specimen. */
-  resolvedCategoryName?: string;
-  categoryWasAutoCreated?: boolean;
+  resolvedDepartmentName?: string;
+  departmentWasAutoCreated?: boolean;
   /** True if the imported order's dictionaryEntryId came from
    *  findOrCreateByName's fallback (a brand-new pending Specimen
    *  Dictionary entry) rather than an existing crosswalk match — same
-   *  role categoryWasAutoCreated plays for the category. */
+   *  role departmentWasAutoCreated plays for the department. */
   dictionaryEntryWasAutoCreated?: boolean;
 
   /**
@@ -159,7 +169,7 @@ interface SpecimenDraft {
    * didn't exactly match any Specimen Dictionary entry. Deliberately no
    * AI/fuzzy-matching here, and no auto-created pending entry — the
    * Specimen Dictionary has no unique key to dedupe against (unlike NPI
-   * for Physician or code for Client/Category), so auto-creating on a
+   * for Physician or code for Facility/Department), so auto-creating on a
    * near-miss just produces near-duplicate entries for someone to clean
    * up later. This is the specimen-requisition-deficiency case instead:
    * the accessioner — who has the actual specimen and order in front of
@@ -356,7 +366,7 @@ function emptySpecimen(label: string): SpecimenDraft {
 
 // ── Component ────────────────────────────────────────────────────────────
 
-type TabKey = 'case' | 'specimens';
+type TabKey = 'case' | 'specimens' | 'outside_patient';
 
 const AccessionPage: React.FC = () => {
   const navigate = useNavigate();
@@ -374,7 +384,7 @@ const AccessionPage: React.FC = () => {
   // this uses config.jurisdiction, the same system-level fallback
   // Facility.jurisdiction's own doc comment names for exactly this
   // "no facility resolved yet" situation, rather than reading
-  // selectedClient (which is both frequently empty at search time and
+  // selectedFacility (which is both frequently empty at search time and
   // defined later in this file, so referencing it here would hit a
   // real TS2448 block-scope ordering error).
   //
@@ -408,22 +418,22 @@ const AccessionPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   // ── Reference data ──────────────────────────────────────────────────────
-  const [clients, setClients] = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [pathologists, setPathologists] = useState<StaffUser[]>([]);
   const [pendingOrders, setPendingOrders] = useState<IncomingOrder[]>([]);
-  const [specimenCategories, setSpecimenCategories] = useState<SpecimenCategory[]>([]);
-  const specimenCategoriesById = useMemo(() => new Map(specimenCategories.map(c => [c.id, c])), [specimenCategories]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const departmentsById = useMemo(() => new Map(departments.map(c => [c.id, c])), [departments]);
 
   const loadPendingOrders = () => {
     orderIntakeService.listPendingOrders().then(res => { if (res.ok) setPendingOrders(res.data); });
   };
 
   useEffect(() => {
-    mockFacilityService.getAll().then(res => { if (res.ok) setClients(res.data.filter(c => c.status === 'Active')); });
+    mockFacilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
     mockUserService.getAll().then(res => {
       if (res.ok) setPathologists(res.data.filter(u => u.status === 'Active' && u.roles.includes('Pathologist')));
     });
-    mockSpecimenCategoryService.getAll().then(res => { if (res.ok) setSpecimenCategories(res.data); });
+    mockDepartmentService.getAll().then(res => { if (res.ok) setDepartments(res.data); });
     loadPendingOrders();
   }, []);
 
@@ -461,11 +471,60 @@ const AccessionPage: React.FC = () => {
   // "Interface Exception & Case-Binding Module": a real, explicit way
   // to mark a new accession as a temporary/downtime placeholder
   // identity — never inferred from a name pattern (a real patient
-  // could legitimately be named "John Doe"). Deliberately a rare,
-  // secondary toggle, not a prominent default field, matching the
-  // genuinely rare, exceptional real-world circumstances this covers.
-  const [isDowntimeAccession, setIsDowntimeAccession] = useState(false);
+  // could legitimately be named "John Doe").
+  //
+  // Real, per direct guidance ("replace the checkbox with an explicit
+  // Patient Origin / Intake Type selector"): what used to be a single,
+  // secondary downtime checkbox is now this real, explicit three-way
+  // selector — the checkbox's own real submit behavior for Downtime
+  // mode (isDowntimeRecord/downtimeReasonCode passed to
+  // resolveOrCreatePatient) is completely unchanged, just now driven
+  // by intakeType === 'downtime' instead of a checked boolean.
+  // 'outside' is the new Outside/Contract Case mode (Outside Client
+  // Support & International Financial Class Architecture
+  // Specification). Real, deliberate scope boundary, confirmed
+  // directly before building: "completely bypassing the identity
+  // reconciliation queue" for Outside Patient cases is NOT implemented
+  // here — mockPatientIndexService.resolveOrCreatePatient()'s result
+  // feeds directly into Encounter resolution immediately after it
+  // returns, and into the Case record itself further down, so a real
+  // bypass means deciding what an Outside Patient case's own
+  // patientId/encounter linkage actually IS instead of that real MPI
+  // resolution, not just skipping a function call. That's real,
+  // separate, larger work; for now, an Outside/Contract Case still
+  // goes through the same real MPI resolution every other accession
+  // does, and additionally activates the real Outside Patient Data tab
+  // below to capture jurisdiction/financial-class data.
+  const [intakeType, setIntakeType] = useState<'standard' | 'downtime' | 'outside'>('standard');
+  const isDowntimeAccession = intakeType === 'downtime';
+
+  // Real, defensive fix: if the admin switches intakeType away from
+  // 'outside' while actively viewing the Outside Patient Data tab
+  // (whose own button just disappeared above), fall back to the Case
+  // & Patient tab rather than leaving `tab` pointing at a real tab key
+  // with no matching button or content rendered anymore.
+  useEffect(() => {
+    if (intakeType !== 'outside' && tab === 'outside_patient') setTab('case');
+  }, [intakeType, tab]);
   const [downtimeReasonCode, setDowntimeReasonCode] = useState('');
+
+  // Real, per direct guidance: the real Outside Patient Data tab's own
+  // captured fields — see types/billing/OutsidePatientFinancialData.ts
+  // for the full, field-by-field account of what each one means and
+  // why it isn't just a duplicate of a Case & Patient tab field.
+  const [outsidePatientData, setOutsidePatientData] = useState<OutsidePatientFinancialData>({});
+
+  // Real, per direct guidance: the two Financial Class dictionaries
+  // (Step 1 of the Outside Client Support & International Financial
+  // Class Architecture Specification) — loaded once, filtered/derived
+  // in the Outside Patient Data tab's own render below.
+  const [masterPaymentTypes, setMasterPaymentTypes] = useState<MasterPaymentType[]>([]);
+  const [jurisdictionMappings, setJurisdictionMappings] = useState<JurisdictionPaymentMapping[]>([]);
+  useEffect(() => {
+    if (intakeType !== 'outside') return;
+    mockMasterPaymentTypeService.getAll().then(res => { if (res.ok) setMasterPaymentTypes(res.data.filter(t => t.active)); });
+    mockJurisdictionPaymentMappingService.getAll().then(res => { if (res.ok) setJurisdictionMappings(res.data.filter(m => m.active)); });
+  }, [intakeType]);
 
   // Origin Hospital is derived from the accessioning user's own
   // organisation, not a free-pick dropdown — see organisationService.ts's
@@ -491,11 +550,53 @@ const AccessionPage: React.FC = () => {
   // available upfront here instead of only deep inside the submit
   // path, since search needs to work before submission, not after.
   const mpiScopeOrgId = useMemo(() => resolveMpiScopeEnterpriseId(originOrganisation), [originOrganisation]);
-  // Real fix: was `originOrganisation?.sites ?? []` - a fresh array
-  // reference every render whenever sites is undefined, which ESLint
-  // flagged as making the effect below unstable. Wrapped in useMemo,
-  // dependent on the already-memoized originOrganisation above.
-  const originSites = useMemo(() => originOrganisation?.sites ?? [], [originOrganisation]);
+
+  // Real, per direct guidance ("should the accession do this as they
+  // go rather than the current process"; and per direct follow-up,
+  // generalized to every intake type — a maiden/married name change
+  // can happen on any ordinary accession, not just an Outside/Contract
+  // Case): the real, confirmed-candidate state for the same_person
+  // link. The actual search/debounce logic itself lives in the shared
+  // PatientLinkSearch.tsx component. Deliberately doesn't change how
+  // patient resolution itself works for anyone — resolveOrCreatePatient()
+  // still runs exactly as it does for every accession; this only adds
+  // the opportunity to explicitly confirm a real link immediately
+  // after, in the same accessioning transaction, rather than depending
+  // on a separate, easy-to-forget later step.
+  //
+  // Real, per direct follow-up ("not sure if there is a point to this
+  // at accession unless it's the maiden/married name scenario"): a
+  // family_relation field was briefly added here and removed again in
+  // the same pass. Its one motivating real scenario — a newborn
+  // accessioned under their mother's identity before getting their own
+  // real MRN — turns out to already have a real, dedicated fix
+  // elsewhere: moveCaseToPatient() (HL7 A43), triggered by the real
+  // inbound ADT event once the newborn's own identity actually exists,
+  // not something an accessioner is in a position to act on at THIS
+  // moment, before that identity exists at all. Real, separate,
+  // next-step work: proactively exposing moveCaseToPatient() from
+  // SearchPage.tsx for cases where no ADT feed will ever send that A43
+  // in the first place (an Outside/Contract Case's own referring EMR
+  // has no awareness of this lab's records to reassign against).
+  const [samePersonLinkConfirmed, setSamePersonLinkConfirmed] = useState<MasterPatientRecord | null>(null);
+
+  // Real, per direct guidance — Phase 3 of the Organisation/Site ->
+  // Facility migration (originSiteId step). Was `originOrganisation?.sites
+  // ?? []` (Organisation.sites[], the old Site system) — now resolves
+  // the real origin Enterprise Facility via the same
+  // resolveTenantFacility() bridge Phase 1 built for tenant isolation,
+  // then finds its real, child performing-lab Facilities (parentId).
+  // originHospitalId itself stays untouched until Phase 3's own,
+  // separate, later step — this only changes the site picker's real
+  // data source underneath it.
+  const originEnterpriseFacility = useMemo(
+    () => resolveTenantFacility(originHospitalId, facilities.filter(f => f.isEnterprise)),
+    [facilities, originHospitalId]
+  );
+  const originSites = useMemo(
+    () => facilities.filter(f => f.parentId === originEnterpriseFacility?.id),
+    [facilities, originEnterpriseFacility]
+  );
   const [originSiteId, setOriginSiteId] = useState('');
   // Defaults to the first site the moment the org's sites resolve, same
   // fallback resolveModeAOrgContext already applies server-side — this
@@ -529,9 +630,6 @@ const AccessionPage: React.FC = () => {
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
   }, []);
-  useEffect(() => {
-    deficiencyTypeService.getAll().then(res => { if (res.ok) setDeficiencyTypes(res.data); });
-  }, []);
   const [requestingProvider, setRequestingProvider] = useState('');
   // Real, per PS-81 (Jira) — reuses the exact, already-proven "search
   // staff, pick a real match, fall back to free text" picker pattern
@@ -560,6 +658,34 @@ const AccessionPage: React.FC = () => {
   }, [providerQuery, showProviderDropdown]);
 
   const [clientId, setClientId] = useState('');
+
+  useEffect(() => {
+    // Real, per direct guidance (per-facility Specimen Deficiencies):
+    // a deficiency type can be scoped to one performing lab
+    // (DeficiencyType.performingLabFacilityId, same Global/scoped
+    // convention as Container Types/Delegation Types) — resolved from
+    // this case's own ordering facility (clientId), never a direct
+    // field read, same as Case Routing's own resolveCasePerformingLab.
+    // Re-resolves whenever clientId changes, since the accessioner may
+    // pick the facility after this page has already loaded. Cancelled
+    // on a fast clientId change so a slow, stale resolution can never
+    // overwrite a newer one.
+    let cancelled = false;
+    (async () => {
+      const typesRes = await deficiencyTypeService.getAll();
+      if (!typesRes.ok || cancelled) return;
+      let performingLabFacilityId: string | undefined;
+      if (clientId) {
+        const facilityRes = await mockFacilityService.getById(clientId);
+        if (facilityRes.ok) performingLabFacilityId = resolvePerformingLabFacilityId(facilityRes.data);
+      }
+      if (!cancelled) {
+        setDeficiencyTypes(typesRes.data.filter(t => !t.performingLabFacilityId || t.performingLabFacilityId === performingLabFacilityId));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
   // Real feature, per direct confirmation: "add the Client and
   // Location as fields to be seen in the accession page." Facility-
   // scoped — repopulated below whenever clientId changes, and reset
@@ -601,11 +727,11 @@ const AccessionPage: React.FC = () => {
   const [specimens, setSpecimens] = useState<SpecimenDraft[]>([emptySpecimen('A')]);
 
   const addSpecimen = () => {
-    setSpecimens(prev => [...prev, emptySpecimen(getSpecimenLabel(prev.length, selectedClient?.specimenLabelStyle))]);
+    setSpecimens(prev => [...prev, emptySpecimen(getSpecimenLabel(prev.length, selectedFacility?.specimenLabelStyle))]);
   };
   const removeSpecimen = (idx: number) => {
     setSpecimens(prev =>
-      prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, label: getSpecimenLabel(i, selectedClient?.specimenLabelStyle) }))
+      prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, label: getSpecimenLabel(i, selectedFacility?.specimenLabelStyle) }))
     );
   };
   const updateSpecimen = (idx: number, description: string) => {
@@ -773,7 +899,7 @@ const AccessionPage: React.FC = () => {
       }
     });
     return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Real, honest justification: addSpecimen reads selectedClient, which is defined later in this file (const selectedClient = useMemo(...) below) - wrapping addSpecimen in useCallback here hits a real TypeScript TS2448 compile error (block-scoped variable used before its declaration), confirmed directly. Moving declarations around is a real reordering operation in a large file, deserving its own careful, isolated pass, not a rushed change bundled into this lint sweep. Known, real limitation left honestly flagged: a stale addSpecimen closure could use an outdated selectedClient if the user switches clients, then uses the ADD_SPECIMEN voice command, before this effect happens to re-run for another reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Real, honest justification: addSpecimen reads selectedFacility, which is defined later in this file (const selectedFacility = useMemo(...) below) - wrapping addSpecimen in useCallback here hits a real TypeScript TS2448 compile error (block-scoped variable used before its declaration), confirmed directly. Moving declarations around is a real reordering operation in a large file, deserving its own careful, isolated pass, not a rushed change bundled into this lint sweep. Known, real limitation left honestly flagged: a stale addSpecimen closure could use an outdated selectedFacility if the user switches facilities, then uses the ADD_SPECIMEN voice command, before this effect happens to re-run for another reason.
   }, []);
 
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
@@ -995,7 +1121,7 @@ const AccessionPage: React.FC = () => {
       }
       setClinicalIndication(order.clinicalIndication ?? '');
       setIcd10Codes(order.icd10Codes ?? []);
-      if (order.clientId) setClientId(order.clientId);
+      if (order.facilityId) setClientId(order.facilityId);
 
       // Real feature, per direct confirmation: "I assume that the
       // location will download from the select patient encounter,
@@ -1023,8 +1149,8 @@ const AccessionPage: React.FC = () => {
         }
       }
 
-      const categoriesModule = await import('@/services/specimenCategories/mockSpecimenCategoryService');
-      const catsRes = await categoriesModule.mockSpecimenCategoryService.getAll();
+      const departmentsModule = await import('@/services/departments/mockDepartmentService');
+      const catsRes = await departmentsModule.mockDepartmentService.getAll();
       const catNameById = new Map((catsRes.ok ? catsRes.data : []).map(c => [c.id, c.name]));
 
       // Exact match only against the Specimen Dictionary — no AI/fuzzy
@@ -1034,7 +1160,7 @@ const AccessionPage: React.FC = () => {
       // same reasoning as this field's own doc comment above.
       const activeDictionary = dictionary.filter(e => e.active);
       let unresolvedCount = 0;
-      const importedClientStyle = clients.find(c => c.id === order.clientId)?.specimenLabelStyle;
+      const importedFacilityStyle = facilities.find(c => c.id === order.facilityId)?.specimenLabelStyle;
 
       setSpecimens(order.specimens.map((sp, i) => {
         // Prefer the dictionaryEntryId resolveOrder() already resolved
@@ -1063,13 +1189,13 @@ const AccessionPage: React.FC = () => {
         // badge, per direct follow-up.
         const inferredLaterality = inferLateralityFromText(sp.description);
         return {
-          ...emptySpecimen(getSpecimenLabel(i, importedClientStyle)),
+          ...emptySpecimen(getSpecimenLabel(i, importedFacilityStyle)),
           dictionaryEntryId: exactMatch?.id ?? '',
           description: exactMatch ? (exactMatch.normalizedLabel || exactMatch.name) : sp.description,
           laterality: inferredLaterality,
           lateralityInferred: inferredLaterality !== '',
-          resolvedCategoryName: sp.specimenCategoryId ? catNameById.get(sp.specimenCategoryId) : undefined,
-          categoryWasAutoCreated: sp.categoryWasAutoCreated,
+          resolvedDepartmentName: sp.departmentId ? catNameById.get(sp.departmentId) : undefined,
+          departmentWasAutoCreated: sp.departmentWasAutoCreated,
           dictionaryEntryWasAutoCreated: sp.dictionaryEntryWasAutoCreated,
           needsDictionaryResolution: !exactMatch,
           unmatchedOrderText: exactMatch ? undefined : sp.description,
@@ -1085,7 +1211,7 @@ const AccessionPage: React.FC = () => {
       if (warnings.length > 0) {
         toast.warning(`Imported order ${order.externalOrderNumber} — ${warnings.length} item(s) need admin follow-up (see banner).`);
       } else if (unresolvedCount === 0) {
-        toast.success(`Imported order ${order.externalOrderNumber} — client and specimens resolved cleanly.`);
+        toast.success(`Imported order ${order.externalOrderNumber} — facility and specimens resolved cleanly.`);
       }
     } catch (e) {
       toast.error(`Import failed: ${(e as Error)?.message ?? 'unknown error'}`);
@@ -1137,19 +1263,19 @@ const AccessionPage: React.FC = () => {
   // known-patient selection) already populate demographics before
   // this function ever runs.
   //
-  // clientId resolution: Encounter.facility is a real, raw string
+  // facilityId resolution: Encounter.facility is a real, raw string
   // (the sending facility/PV1 data as the inbound message actually
   // said it — see that field's own doc comment), not a resolved
-  // Client/Facility id the way order.clientId already is. Matched
+  // Facility id the way order.facilityId already is. Matched
   // here against the same real assigningAuthority/name fields
   // doImportOrder's own client resolution already trusts, rather than
   // assuming Encounter.facility happens to already be a valid id.
   function applyEncounterToForm(encounter: Encounter) {
     setLinkedEncounter(encounter);
-    const matchedClient = clients.find(
+    const matchedFacility = facilities.find(
       c => c.assigningAuthority === encounter.facility || c.name === encounter.facility
     );
-    if (matchedClient) setClientId(matchedClient.id);
+    if (matchedFacility) setClientId(matchedFacility.id);
     if (encounter.locationId) setLocationId(encounter.locationId);
     if (encounter.attendingProvider) setRequestingProvider(encounter.attendingProvider);
 
@@ -1416,9 +1542,9 @@ const AccessionPage: React.FC = () => {
   // as if a real specimen were already recorded.
   const filledSpecimenCount = specimens.filter(s => s.description.trim().length > 0).length;
 
-  // Real specimen categories (Surgical/Non-GYN Cytology/Consultation) each
-  // draw from their own accession series — see mockCaseRegistryService's
-  // categoryOverride support. Per the CAP-adjacent labeling guideline and
+  // Real departments (Surgical/Non-GYN Cytology/Consultation) each
+  // draw from their own accession series — see resolveCaseMaskScopeCandidates
+  // and mockCaseMaskService. Per the CAP-adjacent labeling guideline and
   // real specimen-handling policy this whole feature was researched
   // against, specimens spanning genuinely different case types are
   // standard practice to accession as SEPARATE cases, not combine under
@@ -1427,31 +1553,48 @@ const AccessionPage: React.FC = () => {
   // blocks/grossing per case, a multi-case success screen), this blocks
   // submission with a clear, actionable message instead of silently
   // mislabeling specimens under the wrong prefix. Specimens with no
-  // dictionary match (no resolved category) don't count toward a
-  // conflict — only genuinely different resolved categories do.
-  const resolvedSpecimenCategoryIds = useMemo(() => {
+  // dictionary match (no resolved department) don't count toward a
+  // conflict — only genuinely different resolved departments do.
+  const resolvedDepartmentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const s of specimens) {
       const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
-      if (entry?.specimenCategoryId) ids.add(entry.specimenCategoryId);
+      if (entry?.departmentId) ids.add(entry.departmentId);
     }
     return ids;
   }, [specimens, dictionary]);
-  const categoryConflictNames = useMemo(() => {
-    if (resolvedSpecimenCategoryIds.size <= 1) return null;
-    const names = [...resolvedSpecimenCategoryIds].map(id => specimenCategoriesById.get(id)?.name ?? id);
+  const departmentConflictNames = useMemo(() => {
+    if (resolvedDepartmentIds.size <= 1) return null;
+    const names = [...resolvedDepartmentIds].map(id => departmentsById.get(id)?.name ?? id);
     return names;
-  }, [resolvedSpecimenCategoryIds, specimenCategoriesById]);
+  }, [resolvedDepartmentIds, departmentsById]);
 
-  const canSubmit = !!caseInfoValid && specimensValid && !submitting && !categoryConflictNames;
+  const canSubmit = !!caseInfoValid && specimensValid && !submitting && !departmentConflictNames;
 
-  const selectedClient = useMemo(() => clients.find(c => c.id === clientId), [clients, clientId]);
+  const selectedFacility = useMemo(() => facilities.find(c => c.id === clientId), [facilities, clientId]);
+
+  // Real, per direct guidance (dynamic-behavior rule 1: "Selecting an
+  // Outside Client automatically sets default billing preferences...
+  // based on the client's master contract profile"): re-derives the
+  // real default whenever the selected Client Account itself changes,
+  // while intakeType is 'outside' — always overwritable afterward,
+  // never locked; this only fires on an actual client change, not on
+  // every render.
+  useEffect(() => {
+    if (intakeType !== 'outside') return;
+    setOutsidePatientData(d => ({ ...d, accountBillingType: selectedFacility?.defaultAccountBillingType ?? d.accountBillingType }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Real,
+    // deliberate: only re-derive on an actual client identity change
+    // (clientId) or mode change (intakeType), not on every
+    // selectedFacility object identity change from unrelated re-renders.
+  }, [clientId, intakeType]);
+
   // Patient ID field label/format follows the selected client's
   // jurisdiction — NHS Number for a Fenwick case, CHI Number for
   // Ardgowan, MRN for a US client — rather than a fixed generic label.
   // Defaults to US/MRN when no client is selected yet (safe default,
   // matches the rest of the form before a client is picked).
-  const patientIdStandard = PATIENT_ID_BY_JURISDICTION[selectedClient?.jurisdiction ?? 'US'];
+  const patientIdStandard = PATIENT_ID_BY_JURISDICTION[selectedFacility?.jurisdiction ?? 'US'];
 
   // Real feature, per direct confirmation: "add the Client and
   // Location as fields to be seen in the accession page." Facility-
@@ -1477,7 +1620,7 @@ const AccessionPage: React.FC = () => {
   // ── ID generation ────────────────────────────────────────────────────────
   // TEMPORARY scheme — Stage 0 Requirements §4.2 (S0-CF-07/08/09/10) calls
   // for a configurable per-institution mask plus a Case Registry. The
-  // Case Registry itself now exists (types/config/CaseMaskConfig.ts,
+  // Case Mask registry itself now exists (types/config/CaseMask.ts,
   // services/caseRegistry/) but is NOT yet wired to Case.id here — doing
   // so would break case routing. CaseRouter.isOrchCase(),
   // mockCaseService's isOrchCaseId(), and SynopticReportPage's
@@ -1564,28 +1707,50 @@ const AccessionPage: React.FC = () => {
       // handled rather than surfacing as an unhandled rejection.
       intraopMatchPromise.catch(console.error);
 
-      // The human-facing accession number — org-scoped, mask-driven,
-      // completely separate from caseId (which stays the stable internal
-      // 'O26-' routing key; see AccessionMetadata.fullAccession's doc
-      // comment for why these can't be the same string). Falls back
-      // gracefully inside allocateNextCaseNumber itself if this
-      // organisation has no CaseMaskConfig provisioned yet — never blocks
+      // The human-facing accession number — CaseMask-driven, completely
+      // separate from caseId (which stays the stable internal 'O26-'
+      // routing key; see AccessionMetadata.fullAccession's doc comment
+      // for why these can't be the same string). Falls back gracefully
+      // inside allocateNextCaseNumber itself if none of this case's real
+      // scope candidates has a CaseMask defined yet — never blocks
       // submission.
-      const registryOrgId = user?.organisationId ?? originHospitalId;
-      // Resolve the one category governing this case (mixed categories
+      //
+      // Resolve the one department governing this case (mixed departments
       // are blocked from ever reaching handleSubmit — see canSubmit —
-      // so resolvedSpecimenCategoryIds.size is always 0 or 1 here).
-      // 0 means no dictionary matches at all — falls back to the org's
-      // own default series, same as before this feature existed.
-      const soleCategoryId = resolvedSpecimenCategoryIds.size === 1 ? [...resolvedSpecimenCategoryIds][0] : undefined;
-      const soleCategory = soleCategoryId ? specimenCategoriesById.get(soleCategoryId) : undefined;
-      const categoryOverride = soleCategory
-        ? { prefix: soleCategory.accessionPrefix, numberSeries: soleCategory.numberSeries }
-        : undefined;
-      const accessionRes = await mockCaseRegistryService.allocateNextCaseNumber(registryOrgId, config.facilityTimezone, originSiteId || undefined, categoryOverride);
-      const fullAccession = accessionRes.ok ? accessionRes.data : caseId; // last-resort fallback if the registry call itself errors (not just unconfigured — that's handled inside the service), so submission still can't hard-fail on this
-      const configRes = await mockCaseRegistryService.getConfig(registryOrgId);
-      const registryConfig = configRes.ok ? configRes.data : null;
+      // so resolvedDepartmentIds.size is always 0 or 1 here). 0 means no
+      // dictionary matches at all — falls through to the next real
+      // candidate, same as before this feature existed.
+      const soleDepartmentId = resolvedDepartmentIds.size === 1 ? [...resolvedDepartmentIds][0] : undefined;
+
+      // Real, same resolution this page already uses for Specimen
+      // Deficiencies scoping above — the case's own performing lab,
+      // resolved from the selected client/ordering facility, never a
+      // direct field read.
+      let performingLabFacility: Facility | undefined;
+      let allFacilities: Facility[] = [];
+      if (clientId) {
+        const [facilityRes, allFacilitiesRes] = await Promise.all([mockFacilityService.getById(clientId), mockFacilityService.getAll()]);
+        if (allFacilitiesRes.ok) allFacilities = allFacilitiesRes.data;
+        if (facilityRes.ok) {
+          const performingLabId = resolvePerformingLabFacilityId(facilityRes.data);
+          performingLabFacility = performingLabId ? allFacilities.find(f => f.id === performingLabId) : undefined;
+        }
+      }
+
+      const caseMaskCandidates = resolveCaseMaskScopeCandidates(soleDepartmentId, performingLabFacility, allFacilities);
+      const accessionRes = await mockCaseMaskService.allocateNextCaseNumber(caseMaskCandidates, config.facilityTimezone);
+      const fullAccession = accessionRes.ok ? accessionRes.data : caseId; // last-resort fallback if the service call itself errors (not just unconfigured — that's handled inside the service), so submission still can't hard-fail on this
+
+      // Same real scope candidates, most-specific first — the first one
+      // with a real, defined CaseMask is exactly the one
+      // allocateNextCaseNumber itself just used, so this mirrors that
+      // resolution to capture the prefix/pattern actually applied, for
+      // the case record's own audit metadata below.
+      let effectiveMask: CaseMask | null = null;
+      for (const candidate of caseMaskCandidates) {
+        const maskRes = await mockCaseMaskService.getMask(candidate.scopeType, candidate.scopeId);
+        if (maskRes.ok && maskRes.data) { effectiveMask = maskRes.data; break; }
+      }
 
       const specimenRecords = await Promise.all(specimens.map(async s => {
         const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
@@ -1633,7 +1798,7 @@ const AccessionPage: React.FC = () => {
           externalId: s.externalId.trim() || undefined,
           externalIdSource: s.externalIdSource.trim() || undefined,
           specimenFlags: [],
-          ...(await generateDefaultMaterial(entry, `${caseId}-SP-${s.label}`, selectedClient?.specimenLabelStyle, stainTypes, protocols, fullAccession, s.label, priority)),
+          ...(await generateDefaultMaterial(entry, `${caseId}-SP-${s.label}`, selectedFacility?.specimenLabelStyle, stainTypes, protocols, fullAccession, s.label, priority)),
           // kept alongside the record (not part of Specimen's own shape)
           // purely to feed evaluateGrossingTemplateAssignment below —
           // stripped before the record is cast into the Case
@@ -1697,7 +1862,21 @@ const AccessionPage: React.FC = () => {
       // Lookup & Patient Verification" modal also needs, computed
       // once, upfront, near originOrganisation's own definition.
       const mpiOrgId = mpiScopeOrgId;
-      const mpiResult = await mockPatientIndexService.resolveOrCreatePatient({
+      // Real, per direct guidance (Outside Client Support &
+      // International Financial Class Architecture Specification:
+      // "completely bypassing the identity reconciliation queue"):
+      // an Outside/Contract Case's demographics come from a source
+      // system this lab has no real relationship with (an NIR, an NHS
+      // Number, a foreign MRN scheme) — forcing them through this
+      // lab's own domestic matching logic risks a false 'ambiguous'
+      // flag with real administrative overhead and no real clinical
+      // benefit. resolvePatientWithoutMatching() always creates a
+      // genuinely fresh identity — see its own doc comment
+      // (services/patients/IPatientIndexService.ts) for the full real
+      // reasoning, including why this is complementary to, not a
+      // replacement for, the "Check for Existing Patient" search
+      // right below this same submit path.
+      const patientCandidate = {
         organisationId: mpiOrgId,
         // Real fix, closing the loop on the earlier scoping fix: this
         // specific referring organisation's id is exactly the value
@@ -1712,11 +1891,43 @@ const AccessionPage: React.FC = () => {
         lastName: familyNames.trim(),
         dateOfBirth: new Date(dob).toISOString(),
         sourceAccession: fullAccession,
-        isDowntimeRecord: isDowntimeAccession || undefined,
-        downtimeReasonCode: isDowntimeAccession ? (downtimeReasonCode || undefined) : undefined,
-      });
+      };
+      const mpiResult = intakeType === 'outside'
+        ? await mockPatientIndexService.resolvePatientWithoutMatching(patientCandidate)
+        : await mockPatientIndexService.resolveOrCreatePatient({
+            ...patientCandidate,
+            isDowntimeRecord: isDowntimeAccession || undefined,
+            downtimeReasonCode: isDowntimeAccession ? (downtimeReasonCode || undefined) : undefined,
+          });
       if (mpiResult.outcome === 'ambiguous') {
         toast.warning(`Patient match needs review: ${mpiResult.reason}`);
+      }
+
+      // Real, per direct guidance ("should the accession do this as
+      // they go... the real linkPatients() call fires right after
+      // normal MPI resolution completes"), generalized to every
+      // intake type per direct follow-up ("not sure if there is a
+      // point to this at accession unless it's the maiden/married name
+      // scenario") — a name-change match can happen on any ordinary
+      // accession, not just an Outside/Contract Case, so this is no
+      // longer gated to intakeType === 'outside'. The new patient
+      // identity now genuinely exists (mpiResult.patientId), so a real
+      // link to whichever existing patient the accessioner explicitly
+      // confirmed can fire now — the exact same, already-tested
+      // linkPatients() mechanism PatientMatchReviewSection.tsx already
+      // uses for its own human-confirmed links. Fire-and-forget, same
+      // posture as the background AI refinement further below — a link
+      // failing must never block or fail the case creation it's
+      // attached to; a real, honest console warning is left for
+      // whoever's watching real errors, not a silent swallow.
+      if (samePersonLinkConfirmed) {
+        mockPatientIndexService.linkPatients(
+          mpiResult.patientId,
+          samePersonLinkConfirmed.id,
+          'same_person',
+          user?.id ?? 'unknown',
+          'Accessioner-confirmed same-person link at accessioning time'
+        ).catch(err => console.error('[Accession] Real, non-blocking failure linking patient:', err));
       }
 
       // Real fix, per direct follow-up on the rest of Phase 0: resolves
@@ -1744,10 +1955,10 @@ const AccessionPage: React.FC = () => {
         reportingMode: 'orchestrator',
         accession: {
           accessionNumber: fullAccession,
-          accessionPrefix: registryConfig?.prefix ?? 'O',
+          accessionPrefix: effectiveMask?.prefix ?? 'O',
           accessionYear: getFacilityDateParts(new Date(), config.facilityTimezone).year,
           fullAccession,
-          formatPatternUsed: registryConfig?.maskPattern,
+          formatPatternUsed: effectiveMask?.maskPattern,
           accessionedAt: nowIso,
           accessionedBy: user?.id ?? 'unknown',
         },
@@ -1787,8 +1998,8 @@ const AccessionPage: React.FC = () => {
         order: {
           priority,
           requestingProvider: requestingProvider.trim(),
-          clientId,
-          clientName: selectedClient?.name,
+          facilityId: clientId,
+          facilityName: selectedFacility?.name,
           locationId: locationId || undefined,
           locationDisplay: selectedLocation
             ? [selectedLocation.pointOfCare, selectedLocation.room, selectedLocation.bed].filter(Boolean).join(' / ')
@@ -1799,6 +2010,8 @@ const AccessionPage: React.FC = () => {
           receivedDate: nowIso,
           assignedTo: assignedTo || undefined,
           assignedParticipationTypeId: assignedTo ? 'primary' : undefined,
+          intakeType,
+          outsidePatientData: intakeType === 'outside' ? outsidePatientData : undefined,
         },
         diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
         grossingReports,
@@ -1847,7 +2060,7 @@ const AccessionPage: React.FC = () => {
           const overridesRes = await grossingRoutingOverrideService.getAll();
           const routingOverrides = (overridesRes.ok ? overridesRes.data : [])
             .filter(o => o.active)
-            .map(o => ({ clientId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
+            .map(o => ({ facilityId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
 
           const evalResult = await evaluateGrossingTemplateAssignment({
             specimens: specimenRecords.map(sp => ({
@@ -1859,7 +2072,7 @@ const AccessionPage: React.FC = () => {
               laterality: sp._entry?.laterality,
             })),
             clinicalIndication: clinicalIndication.trim() || undefined,
-            caseContext: { clientId },
+            caseContext: { facilityId: clientId },
             availableTemplates,
             routingOverrides,
           });
@@ -2101,6 +2314,16 @@ const AccessionPage: React.FC = () => {
     setLastResult(null);
     setJustAccessionedCase(null);
     setSourceOrderId(null); setOrderSearch(''); setImportWarnings([]);
+    // Real, per direct guidance ("Family relations could be an
+    // optional field"), and a real, pre-existing gap found and fixed
+    // in the same pass: intakeType/outsidePatientData were never reset
+    // here at all — "Accession Another Case" after an Outside/Contract
+    // Case would silently carry the Outside mode and its own stale
+    // financial-class data into the next, genuinely unrelated
+    // accession, unless the accessioner happened to manually switch
+    // back to Standard first.
+    setIntakeType('standard'); setDowntimeReasonCode(''); setOutsidePatientData({});
+    setSamePersonLinkConfirmed(null);
     loadPendingOrders();
     setTab('case');
   }
@@ -2143,6 +2366,13 @@ const AccessionPage: React.FC = () => {
           <button className={`ps-tab-btn ${tab === 'specimens' ? 'active' : ''}`} onClick={() => setTab('specimens')}>
             Specimens {filledSpecimenCount ? `(${filledSpecimenCount})` : ''}
           </button>
+          {/* Real, per direct guidance: only shown for Outside/Contract
+              Case intake — dynamically activated, not always present. */}
+          {intakeType === 'outside' && (
+            <button className={`ps-tab-btn ps-accession-outside-tab-btn ${tab === 'outside_patient' ? 'active' : ''}`} onClick={() => setTab('outside_patient')}>
+              ℹ Outside Patient Data
+            </button>
+          )}
         </div>
 
         {tab === 'case' && (
@@ -2174,7 +2404,7 @@ const AccessionPage: React.FC = () => {
                 </p>
                 <div className="ps-accession-order-picker">
                   <div className="ps-accession-order-picker-search-wrap">
-                    <input type="text" placeholder={`Search by Order #, MRN, Patient Name, DOB (${searchDobFormatHint}), or Client Code…`}
+                    <input type="text" placeholder={`Search by Order #, MRN, Patient Name, DOB (${searchDobFormatHint}), or Facility Code…`}
                       value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
                       onKeyDown={handleOrderSearchKeyDown}
                       className="ps-accession-order-picker-search" disabled={importing} />
@@ -2223,44 +2453,68 @@ const AccessionPage: React.FC = () => {
                 )}
               </div>
             )}
-            {/* Real fix, per direct UI/UX request: moved here from a
-                grid cell between Patient ID and Priority, further down
-                this same form. Establishes a real, top-to-bottom
-                logical flow an accessioner actually follows in a real
-                clinical workflow — "is this a normal patient or a
-                downtime/placeholder case" is a decision made BEFORE
-                entering a real name, not a system-level footnote
-                sitting among (and interrupting) pure demographic
-                fields (Given Name, Family Name, DOB, Sex) that belong
-                grouped cleanly together. Promoted from the previous,
-                deliberately de-emphasized inline-text treatment
-                (`ps-accession-checkbox-row`, still used for the
-                checkbox row itself, unchanged) to a real, bordered
-                banner container — reusing this same page's own
-                existing `ps-accession-warnings` visual pattern (the
-                Import from Order warnings block above) rather than
-                inventing a second, different "banner" look, since
-                that's exactly the established, amber warning-banner
-                treatment already used elsewhere on this identical
-                page. */}
-            <div className="ps-accession-downtime-banner">
-              <label className="ps-accession-checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={isDowntimeAccession}
-                  onChange={e => { setIsDowntimeAccession(e.target.checked); if (!e.target.checked) setDowntimeReasonCode(''); }}
-                />
-                This is a temporary/downtime placeholder identity (e.g. unidentified trauma patient, registration system outage)
-              </label>
-              {isDowntimeAccession && (
-                <div className="ps-accession-downtime-reason">
-                  <label className="ps-label" htmlFor="accession-downtime-reason">Downtime Reason</label>
-                  <select id="accession-downtime-reason" className="ps-input-dark" value={downtimeReasonCode} onChange={e => setDowntimeReasonCode(e.target.value)}>
-                    <option value="">Select a reason…</option>
-                    {BREAK_GLASS_REASON_CODES.map(r => (
-                      <option key={r.code} value={r.code}>{r.label}</option>
-                    ))}
-                  </select>
+            {/* Real, per direct guidance ("replace the checkbox with an
+                explicit Patient Origin / Intake Type selector"): the
+                real, top-level accessioning mode. Positioned exactly
+                where the old checkbox banner lived, for the same real
+                reason documented there before — "is this a normal
+                patient or a downtime/outside case" is a decision made
+                BEFORE entering a real name, not a system-level
+                footnote among pure demographic fields. */}
+            <div className="ps-accession-intake-selector">
+              <label className="ps-label">Patient Origin / Intake Type</label>
+              <div className="ps-accession-intake-tabs">
+                <button type="button"
+                  className={`ps-accession-intake-tab ${intakeType === 'standard' ? 'ps-accession-intake-tab--active' : ''}`}
+                  onClick={() => setIntakeType('standard')}>
+                  Standard / EMR Order
+                </button>
+                <button type="button"
+                  className={`ps-accession-intake-tab ps-accession-intake-tab--downtime ${intakeType === 'downtime' ? 'ps-accession-intake-tab--active' : ''}`}
+                  onClick={() => setIntakeType('downtime')}>
+                  ⚠ Temporary / Downtime
+                </button>
+                <button type="button"
+                  className={`ps-accession-intake-tab ps-accession-intake-tab--outside ${intakeType === 'outside' ? 'ps-accession-intake-tab--active' : ''}`}
+                  onClick={() => setIntakeType('outside')}>
+                  ℹ Outside / Contract Case
+                </button>
+              </div>
+
+              {/* Downtime mode — real, per direct guidance: same amber
+                  alert treatment, same mandatory reason dropdown, same
+                  submit-time isDowntimeRecord/downtimeReasonCode
+                  behavior as the checkbox this replaces — only the
+                  trigger changed. */}
+              {intakeType === 'downtime' && (
+                <div className="ps-accession-downtime-banner">
+                  <div className="ps-accession-intake-alert ps-accession-intake-alert--downtime">
+                    ⚠ Identity reconciliation required — this is a temporary/downtime placeholder identity
+                    (e.g. unidentified trauma patient, registration system outage). A future Break-Glass
+                    rebind will be required once the real patient identity is confirmed.
+                  </div>
+                  <div className="ps-accession-downtime-reason">
+                    <label className="ps-label" htmlFor="accession-downtime-reason">Downtime Reason <span className="ps-required">*</span></label>
+                    <select id="accession-downtime-reason" className="ps-input-dark" value={downtimeReasonCode} onChange={e => setDowntimeReasonCode(e.target.value)}>
+                      <option value="">Select a reason…</option>
+                      {BREAK_GLASS_REASON_CODES.map(r => (
+                        <option key={r.code} value={r.code}>{r.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Outside Patient mode — real, per direct guidance: a
+                  neutral/informational badge, not an alert — this is a
+                  real, expected external billing/report-distribution
+                  workflow, not a data-quality exception the way
+                  Downtime is. */}
+              {intakeType === 'outside' && (
+                <div className="ps-accession-intake-alert ps-accession-intake-alert--outside">
+                  ℹ Outside / Contract Case — external billing and report distribution workflow.
+                  Complete the real Outside Patient Data tab (after Specimens) for jurisdiction and
+                  financial-class routing.
                 </div>
               )}
             </div>
@@ -2327,12 +2581,12 @@ const AccessionPage: React.FC = () => {
                       Amber/"Unverified" rather than Green here — see
                       patientIdStatus.ts's own comment on that exact,
                       honest distinction. */}
-                  {selectedClient && (
-                    <PatientIdStatusDot jurisdiction={selectedClient.jurisdiction} rawId={mrn} />
+                  {selectedFacility && (
+                    <PatientIdStatusDot jurisdiction={selectedFacility.jurisdiction} rawId={mrn} />
                   )}
                 </label>
                 <input className="ps-input-dark" value={mrn} onChange={e => setMrn(e.target.value)}
-                  placeholder={selectedClient
+                  placeholder={selectedFacility
                     ? `${patientIdStandard.label} format, e.g. ${patientIdStandard.example} — auto-generated if blank`
                     : 'Select a Submitting Facility first, or leave blank to auto-generate'} />
               </div>
@@ -2408,7 +2662,7 @@ const AccessionPage: React.FC = () => {
                 <label className="ps-label" htmlFor="accession-client">Submitting Facility</label>
                 <select id="accession-client" className="ps-input-dark" value={clientId} onChange={e => setClientId(e.target.value)}>
                   <option value="">Select facility…</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               {/* Real feature, per direct confirmation: "add the
@@ -2525,6 +2779,32 @@ const AccessionPage: React.FC = () => {
                 <textarea className="ps-input-dark ps-accession-textarea"
                   value={clinicalIndication} onChange={e => setClinicalIndication(e.target.value)}
                   placeholder="Reason for the specimen — feeds the Grossing Template assignment AI" />
+              </div>
+              {/* Real, per direct guidance ("should the accession do
+                  this as they go rather than the current process"),
+                  generalized to every intake type per direct follow-up
+                  ("not sure if there is a point to this at accession
+                  unless it's the maiden/married name scenario") — a
+                  name-change match is genuinely relevant on any
+                  ordinary accession, not just an Outside/Contract Case,
+                  so this moved here from that tab. Real, deliberate
+                  removal from this same location: a "Family Relation"
+                  field briefly lived here too, for the newborn/mother
+                  scenario — removed once it became clear that
+                  scenario's real fix is moveCaseToPatient() (HL7 A43),
+                  triggered once the newborn's own identity actually
+                  exists, not something available to act on at THIS
+                  moment. */}
+              <div className="ps-accession-field--full">
+                <PatientLinkSearch
+                  organisationId={mpiScopeOrgId}
+                  confirmed={samePersonLinkConfirmed}
+                  onConfirm={setSamePersonLinkConfirmed}
+                  title="Check for Existing Patient (optional)"
+                  helpText="If this patient is already known to this lab under a different identity (e.g. a name change, or a prior referral), search and link them here — their case history stays associated with them going forward, without merging the two records."
+                  confirmButtonLabel="This is the same patient"
+                  confirmedLabel="Will link to"
+                />
               </div>
               <div className="ps-accession-field--full">
                 <label className="ps-label">ICD-10 Diagnosis Code(s)</label>
@@ -2750,9 +3030,9 @@ const AccessionPage: React.FC = () => {
                       </div>
                     )}
 
-                    {s.resolvedCategoryName && (
-                      <div className={`ps-accession-assignment-meta ${s.categoryWasAutoCreated ? 'ps-accession-assignment-meta--warn' : ''}`}>
-                        Category: {s.resolvedCategoryName}{s.categoryWasAutoCreated ? ' (new — pending admin review)' : ''}
+                    {s.resolvedDepartmentName && (
+                      <div className={`ps-accession-assignment-meta ${s.departmentWasAutoCreated ? 'ps-accession-assignment-meta--warn' : ''}`}>
+                        Department: {s.resolvedDepartmentName}{s.departmentWasAutoCreated ? ' (new — pending admin review)' : ''}
                       </div>
                     )}
                   </div>
@@ -2810,13 +3090,13 @@ const AccessionPage: React.FC = () => {
                 {formatFullDisplayName({ namePrefix, givenNames, familyNames, preferredName, nameSuffix })}
                 {preferredName.trim() && ` (${preferredName.trim()})`}
                 {' '}· {specimens.length} specimen(s) · {priority}
-                {selectedClient ? ` · ${selectedClient.name}` : ''}
+                {selectedFacility ? ` · ${selectedFacility.name}` : ''}
               </p>
             </div>
 
-            {categoryConflictNames && (
+            {departmentConflictNames && (
               <div className="ps-warning-banner">
-                These specimens span different case types — {categoryConflictNames.join(' and ')} — which standard
+                These specimens span different case types — {departmentConflictNames.join(' and ')} — which standard
                 practice accessions as separate cases, each with its own accession number. Submit them as
                 separate accessions rather than one combined case.
               </div>
@@ -2885,6 +3165,177 @@ const AccessionPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {tab === 'outside_patient' && (
+          <div className="ps-card-dark ps-accession-card">
+            <div className="ps-accession-outside-header">
+              <h3 className="ps-accession-outside-title">Outside Patient Data</h3>
+              <p className="ps-accession-outside-subtitle">
+                Jurisdiction identification and financial-class/coverage routing for this Outside/Contract Case.
+                Facility Account and Ordering Provider are the same real selections already made on the
+                Case &amp; Patient tab — not repeated here.
+              </p>
+            </div>
+
+            {/* SECTION 1: CLIENT & ORIGIN — real, per direct guidance:
+                Client Account and Ordering Provider reuse the existing
+                Case & Patient tab's own clientId/requestingProvider
+                selections directly rather than duplicating a second
+                picker — confirmed there's no separate outside-client
+                directory to build. Account Billing Type is the one
+                genuinely new field here. */}
+            <div className="ps-accession-outside-section">
+              <div className="ps-accession-outside-section-title">Facility &amp; Origin</div>
+              <div className="ps-accession-grid">
+                <div>
+                  <label className="ps-label">Facility Account</label>
+                  <input className="ps-input-dark" disabled value={selectedFacility?.name ?? '(select a Submitting Facility on Case & Patient)'} />
+                </div>
+                <div>
+                  <label className="ps-label">Ordering Provider</label>
+                  <input className="ps-input-dark" disabled value={requestingProvider || '(enter on Case & Patient)'} />
+                </div>
+                <div>
+                  <label className="ps-label">Account Billing Type</label>
+                  <input className="ps-input-dark" value={outsidePatientData.accountBillingType ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, accountBillingType: e.target.value }))}
+                    placeholder="Auto-populates from Facility Master when available — always editable" />
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 2: PATIENT & JURISDICTION IDENTIFICATION — real,
+                per direct guidance dynamic-behavior rule 2: changing
+                Primary Jurisdiction updates the real Local ID Number
+                label. Options are the real, distinct country codes
+                actually present in the Jurisdiction Payment Mapping
+                dictionary (services/billing/), not a separate,
+                hardcoded country list that could drift from it. */}
+            <div className="ps-accession-outside-section">
+              <div className="ps-accession-outside-section-title">Patient &amp; Jurisdiction Identification</div>
+              <div className="ps-accession-grid">
+                <div>
+                  <label className="ps-label">Primary Jurisdiction</label>
+                  <select className="ps-input-dark" value={outsidePatientData.primaryJurisdictionCountryCode ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, primaryJurisdictionCountryCode: e.target.value, primaryJurisdictionMappingId: undefined }))}>
+                    <option value="">— Select —</option>
+                    {Array.from(new Set(jurisdictionMappings.map(m => m.countryCode))).sort().map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="ps-label">
+                    {(() => {
+                      // Real, per direct guidance: the real, dynamic
+                      // local-ID label now comes from the SPECIFIC
+                      // scheme actually selected below, not just "the
+                      // first scheme found in this jurisdiction" — a
+                      // real, deliberate correction made alongside the
+                      // precise-mapping-id fix, since the earlier,
+                      // approximate label had the same real ambiguity
+                      // risk this whole fix addresses.
+                      const selected = jurisdictionMappings.find(m => m.id === outsidePatientData.primaryJurisdictionMappingId);
+                      return selected ? `Local ID Number (${selected.localSchemeCode})` : 'Local ID Number';
+                    })()}
+                  </label>
+                  <input className="ps-input-dark" value={outsidePatientData.localIdNumber ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, localIdNumber: e.target.value }))}
+                    placeholder={outsidePatientData.primaryJurisdictionMappingId ? '' : 'Select a payment scheme first'} />
+                </div>
+              </div>
+            </div>
+
+            {/* Real, per direct follow-up: the "Check for Existing
+                Patient" search that used to live here moved to the
+                Case & Patient tab, generalized to every intake type —
+                it's a same_person question, not something specific to
+                Outside/Contract Case. See that tab's own comment for
+                the full account. */}
+
+            {/* SECTION 3: FINANCIAL CLASS & COVERAGE ROUTING — real,
+                per direct guidance: the Payment Category picker now
+                selects the SPECIFIC JurisdictionPaymentMapping row, not
+                a deduplicated Master Payment Type — a real, confirmed
+                fix. A bare master category (e.g.
+                STATUTORY_SOCIAL_HEALTH) is genuinely ambiguous the
+                moment a country has more than one real local scheme
+                mapping to it; nothing in the dictionary schema
+                prevents that, even though today's 13 seed rows happen
+                not to have a case of it. A downstream financial engine
+                needs to know EXACTLY which real scheme applied to pick
+                the right outbound claims format — see
+                buildFinancialClassPayload.ts for the full account.
+                Primary Payer/Fund is deliberately free text —
+                confirmed directly no payer/fund registry exists in
+                this app; see OutsidePatientFinancialData.ts's own
+                header for why. */}
+            <div className="ps-accession-outside-section">
+              <div className="ps-accession-outside-section-title">Financial Class &amp; Coverage Routing</div>
+              <div className="ps-accession-grid">
+                <div>
+                  <label className="ps-label">Payment Category / Scheme</label>
+                  <select className="ps-input-dark" value={outsidePatientData.primaryJurisdictionMappingId ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, primaryJurisdictionMappingId: e.target.value }))}
+                    disabled={!outsidePatientData.primaryJurisdictionCountryCode}>
+                    <option value="">— Select —</option>
+                    {jurisdictionMappings.filter(m => m.countryCode === outsidePatientData.primaryJurisdictionCountryCode).map(m => {
+                      const departmentName = masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
+                      return <option key={m.id} value={m.id}>{departmentName} — {m.localDisplayTerminology}</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="ps-label">Primary Payer / Fund</label>
+                  <input className="ps-input-dark" value={outsidePatientData.primaryPayerName ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, primaryPayerName: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="ps-label">Coverage / Policy #</label>
+                  <input className="ps-input-dark" value={outsidePatientData.coveragePolicyNumber ?? ''}
+                    onChange={e => setOutsidePatientData(d => ({ ...d, coveragePolicyNumber: e.target.value }))} />
+                </div>
+              </div>
+
+              <label className="ps-accession-checkbox-row" style={{ marginTop: 12 }}>
+                <input type="checkbox" checked={!!outsidePatientData.hasSecondaryCoverage}
+                  onChange={e => setOutsidePatientData(d => ({ ...d, hasSecondaryCoverage: e.target.checked }))} />
+                Apply Secondary / Complementary Coverage (Split-Billing)
+              </label>
+
+              {outsidePatientData.hasSecondaryCoverage && (
+                <div className="ps-accession-outside-secondary-box">
+                  <div className="ps-accession-grid">
+                    <div>
+                      <label className="ps-label">Secondary Category / Scheme</label>
+                      <select className="ps-input-dark" value={outsidePatientData.secondaryJurisdictionMappingId ?? ''}
+                        onChange={e => setOutsidePatientData(d => ({ ...d, secondaryJurisdictionMappingId: e.target.value }))}>
+                        <option value="">— Select —</option>
+                        {jurisdictionMappings
+                          .filter(m => m.countryCode === outsidePatientData.primaryJurisdictionCountryCode)
+                          .filter(m => masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.supportsSplitBilling)
+                          .map(m => {
+                            const departmentName = masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
+                            return <option key={m.id} value={m.id}>{departmentName} — {m.localDisplayTerminology}</option>;
+                          })}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="ps-label">Secondary Payer</label>
+                      <input className="ps-input-dark" value={outsidePatientData.secondaryPayerName ?? ''}
+                        onChange={e => setOutsidePatientData(d => ({ ...d, secondaryPayerName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="ps-label">Member / Card ID</label>
+                      <input className="ps-input-dark" value={outsidePatientData.secondaryMemberId ?? ''}
+                        onChange={e => setOutsidePatientData(d => ({ ...d, secondaryMemberId: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

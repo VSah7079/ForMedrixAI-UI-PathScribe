@@ -43,7 +43,7 @@ const lsLoad = (): SavedQuery[] => { try { const r = localStorage.getItem(LS_KEY
 const lsSave = (s: SavedQuery[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch { /* best-effort */ } };
 
 interface StaffStub { id: string; name: string; roles: string; }
-interface ClientStub { id: string; name: string; }
+interface FacilityStub { id: string; name: string; }
 
 const STATUS_OPTIONS: { value: NonNullable<BillingAuditLogFilters['approvalStatus']> | ''; label: string }[] = [
   { value: '', label: 'All Statuses' },
@@ -93,7 +93,7 @@ function summarizeFilters(f: BillingAuditLogFilters): string {
   if (f.patientName) parts.push(`Patient "${f.patientName}"`);
   if (f.patientId) parts.push(`ID ${f.patientId}`);
   if (f.patientNameRangeFrom || f.patientNameRangeTo) parts.push(`Name ${f.patientNameRangeFrom || 'A'}\u2013${f.patientNameRangeTo || 'Z'}`);
-  if (f.serviceDateFrom || f.serviceDateTo) parts.push(`Event ${f.serviceDateFrom || '…'} – ${f.serviceDateTo || '…'}`);
+  if (f.serviceDateFrom || f.serviceDateTo) parts.push(`Billing Event ${f.serviceDateFrom || '…'} – ${f.serviceDateTo || '…'}`);
   if (f.dateOfServiceFrom || f.dateOfServiceTo) parts.push(`DOS ${f.dateOfServiceFrom || '…'} – ${f.dateOfServiceTo || '…'}`);
   if (f.signOutDateFrom || f.signOutDateTo) parts.push(`Sign-out ${f.signOutDateFrom || '…'} – ${f.signOutDateTo || '…'}`);
   if (f.type) parts.push(BILLING_AUDIT_LOG_KIND_LABEL[f.type]);
@@ -101,7 +101,7 @@ function summarizeFilters(f: BillingAuditLogFilters): string {
   if (f.approvalStatus) parts.push(f.approvalStatus);
   if (f.staff && f.staff.length > 0) parts.push(`Staff: ${f.staff.join(', ')}`);
   if (f.signingPathologist && f.signingPathologist.length > 0) parts.push(`Pathologist: ${f.signingPathologist.join(', ')}`);
-  if (f.clientIds && f.clientIds.length > 0) parts.push(`Client: ${f.clientIds.length}`);
+  if (f.clientIds && f.clientIds.length > 0) parts.push(`Facility: ${f.clientIds.length}`);
   if (f.detail) parts.push(`"${f.detail}"`);
   return parts.join(', ') || 'All billing events';
 }
@@ -159,10 +159,10 @@ const StaffLookupContent: React.FC<{ staff: StaffStub[]; selected: string[]; onT
 };
 
 /** Real, per direct follow-up - the same real Browse-modal content
- *  shape as SearchPage.tsx's own ClientLookupContent. */
-const ClientLookupContent: React.FC<{ clients: ClientStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ clients, selected, onToggle }) => {
+ *  shape as SearchPage.tsx's own FacilityLookupContent. */
+const FacilityLookupContent: React.FC<{ facilities: FacilityStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ facilities, selected, onToggle }) => {
   const [q, setQ] = useState('');
-  const filtered = clients.filter(c => q.length < 1 || c.name.toLowerCase().includes(q.toLowerCase()));
+  const filtered = facilities.filter(c => q.length < 1 || c.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="ps-searchpage-user-search-row">
@@ -202,8 +202,8 @@ const BillingLogsSection: React.FC = () => {
   const [staffModal, setStaffModal] = useState(false);
   const [pathologistNames, setPathologistNames] = useState<string[]>([]);
   const [pathologistModal, setPathologistModal] = useState(false);
-  const [clientIds, setClientIds] = useState<string[]>([]);
-  const [clientModal, setClientModal] = useState(false);
+  const [facilityIds, setFacilityIds] = useState<string[]>([]);
+  const [facilityModal, setFacilityModal] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -214,7 +214,7 @@ const BillingLogsSection: React.FC = () => {
 
   const [staffOptions, setStaffOptions] = useState<StaffStub[]>([]);
   const [pathologistOptions, setPathologistOptions] = useState<StaffStub[]>([]);
-  const [clientOptions, setClientOptions] = useState<ClientStub[]>([]);
+  const [facilityOptions, setFacilityOptions] = useState<FacilityStub[]>([]);
   useEffect(() => {
     userService.getAll().then(res => {
       if (!res.ok) return;
@@ -228,7 +228,7 @@ const BillingLogsSection: React.FC = () => {
       setPathologistOptions(active.filter(u => u.roles.includes('Pathologist')).map(u => ({ id: u.id, name: `${u.firstName} ${u.lastName}`, roles: u.roles.join(', ') })));
     }).catch(() => {});
     facilityService.getAll().then(res => {
-      if (res.ok) setClientOptions(res.data.map(c => ({ id: c.id, name: c.name })));
+      if (res.ok) setFacilityOptions(res.data.map(c => ({ id: c.id, name: c.name })));
     }).catch(() => {});
   }, []);
 
@@ -245,7 +245,7 @@ const BillingLogsSection: React.FC = () => {
     caseNumber, patientName, patientId, serviceDateFrom, serviceDateTo,
     type: type || undefined, detail, staff: staffNames,
     dateOfServiceFrom, dateOfServiceTo, signOutDateFrom, signOutDateTo,
-    signingPathologist: pathologistNames, clientIds,
+    signingPathologist: pathologistNames, clientIds: facilityIds,
     billingType: billingType || undefined, approvalStatus: approvalStatus || undefined,
     patientNameRangeFrom: nameRangeFrom, patientNameRangeTo: nameRangeTo,
   });
@@ -255,7 +255,7 @@ const BillingLogsSection: React.FC = () => {
     serviceDateFrom ? 'df' : '', serviceDateTo ? 'dt' : '',
     dateOfServiceFrom ? 'dosf' : '', dateOfServiceTo ? 'dost' : '',
     signOutDateFrom ? 'sof' : '', signOutDateTo ? 'sot' : '',
-    type, billingType, approvalStatus, ...staffNames, ...pathologistNames, ...clientIds,
+    type, billingType, approvalStatus, ...staffNames, ...pathologistNames, ...facilityIds,
   ].filter(Boolean).length;
 
   const applyFilters = (f: BillingAuditLogFilters) => {
@@ -276,7 +276,7 @@ const BillingLogsSection: React.FC = () => {
     setDetail(f.detail ?? '');
     setStaffNames(f.staff ?? []);
     setPathologistNames(f.signingPathologist ?? []);
-    setClientIds(f.clientIds ?? []);
+    setFacilityIds(f.clientIds ?? []);
   };
 
   const handleSearch = async (filters: BillingAuditLogFilters) => {
@@ -334,19 +334,19 @@ const BillingLogsSection: React.FC = () => {
       {
         'Case': caseNumber, 'Patient Name': patientName, 'Patient ID': patientId,
         'Name Range': nameRangeFrom || nameRangeTo ? `${nameRangeFrom || 'A'} to ${nameRangeTo || 'Z'}` : '',
-        'Event Date': serviceDateFrom || serviceDateTo ? `${serviceDateFrom || '…'} to ${serviceDateTo || '…'}` : '',
+        'Billing Event Date': serviceDateFrom || serviceDateTo ? `${serviceDateFrom || '…'} to ${serviceDateTo || '…'}` : '',
         'Date of Service': dateOfServiceFrom || dateOfServiceTo ? `${dateOfServiceFrom || '…'} to ${dateOfServiceTo || '…'}` : '',
         'Sign-out Date': signOutDateFrom || signOutDateTo ? `${signOutDateFrom || '…'} to ${signOutDateTo || '…'}` : '',
         'Type': type, 'Billing Type': billingType ?? '', 'Status': approvalStatus ?? '',
         'Staff': staffNames.join('; '), 'Pathologist': pathologistNames.join('; '),
-        'Client': clientIds.map(id => clientOptions.find(c => c.id === id)?.name ?? id).join('; '),
+        'Facility': facilityIds.map(id => facilityOptions.find(c => c.id === id)?.name ?? id).join('; '),
         'Detail': detail,
       },
       results.length,
       true,
     );
     const data = [
-      ['Case', 'Patient', 'Patient ID', 'Timestamp', 'Type', 'Billing Type', 'Status', 'Event', 'Detail', 'Staff', 'Pathologist', 'Client'].join(','),
+      ['Case', 'Patient', 'Patient ID', 'Timestamp', 'Type', 'Billing Type', 'Status', 'Event', 'Detail', 'Staff', 'Pathologist', 'Facility'].join(','),
       ...results.map(e => [
         e.caseNumber, e.patientName, e.patientId, e.timestamp, BILLING_AUDIT_LOG_KIND_LABEL[e.kind],
         e.billingType ?? '', e.approvalStatus ?? '', e.label, e.detail, e.staff, e.signingPathologist ?? '', e.clientName ?? '',
@@ -427,7 +427,7 @@ const BillingLogsSection: React.FC = () => {
                   <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient ID (MRN, MPI)" /></div>
                   <input className="ps-searchpage-filter-input" value={patientId} onChange={e => setPatientId(e.target.value)} placeholder="MRN or MPI" />
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Event Date" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Billing Event Date" /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
                       <div className="ps-searchpage-date-label">From</div>
@@ -463,15 +463,20 @@ const BillingLogsSection: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Type" /></div>
-                  <select className="ps-searchpage-filter-input" value={type} onChange={e => setType(e.target.value as BillingAuditLogEventKind | '')}>
-                    {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Billing Type" /></div>
-                  <select className="ps-searchpage-filter-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingAuditLogFilters['billingType'] | '')}>
-                    {BILLING_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <div className="ps-searchpage-inline-grid">
+                    <div>
+                      <div className="ps-searchpage-section-mb4"><SectionLabel title="Type" /></div>
+                      <select className="ps-searchpage-filter-input" value={type} onChange={e => setType(e.target.value as BillingAuditLogEventKind | '')}>
+                        {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="ps-searchpage-section-mb4"><SectionLabel title="Billing Type" /></div>
+                      <select className="ps-searchpage-filter-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingAuditLogFilters['billingType'] | '')}>
+                        {BILLING_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title="Status" /></div>
                   <select className="ps-searchpage-filter-input" value={approvalStatus} onChange={e => setApprovalStatus(e.target.value as BillingAuditLogFilters['approvalStatus'] | '')}>
@@ -499,12 +504,12 @@ const BillingLogsSection: React.FC = () => {
                   )}
 
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Client / Ordering Facility" />
-                    <BrowseBtn onClick={() => setClientModal(true)} count={clientOptions.length} />
+                    <SectionLabel title="Ordering Facility" />
+                    <BrowseBtn onClick={() => setFacilityModal(true)} count={facilityOptions.length} />
                   </div>
-                  {clientIds.length > 0 && (
+                  {facilityIds.length > 0 && (
                     <div className="ps-searchpage-pill-row">
-                      {clientIds.map(id => <Chip key={id} label={clientOptions.find(c => c.id === id)?.name ?? id} onRemove={() => toggle(id, clientIds, setClientIds)} />)}
+                      {facilityIds.map(id => <Chip key={id} label={facilityOptions.find(c => c.id === id)?.name ?? id} onRemove={() => toggle(id, facilityIds, setFacilityIds)} />)}
                     </div>
                   )}
 
@@ -546,7 +551,7 @@ const BillingLogsSection: React.FC = () => {
                   <div className="ps-conf-table-wrap">
                     <div className="ps-conf-table-scroll">
                       <table className="ps-conf-table">
-                        <thead><tr>{['Case', 'Patient', 'Patient ID', 'Timestamp', 'Type', 'Billing Type', 'Status', 'Event', 'Detail', 'Staff', 'Pathologist', 'Client'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                        <thead className="ps-conf-thead-sticky"><tr>{['Case', 'Patient', 'Patient ID', 'Timestamp', 'Type', 'Billing Type', 'Status', 'Event', 'Detail', 'Staff', 'Pathologist', 'Facility'].map(h => <th key={h} className={h === 'Detail' ? 'ps-conf-th ps-billinglog-detail-col' : 'ps-conf-th'}>{h}</th>)}</tr></thead>
                         <tbody>
                           {results.map(e => (
                             <tr key={e.id} className="ps-conf-tr">
@@ -558,7 +563,7 @@ const BillingLogsSection: React.FC = () => {
                               <td className="ps-conf-td">{e.billingType ?? '—'}</td>
                               <td className="ps-conf-td">{e.approvalStatus ?? '—'}</td>
                               <td className="ps-conf-td">{e.label}</td>
-                              <td className="ps-conf-td">{e.detail}</td>
+                              <td className="ps-conf-td ps-billinglog-detail-col">{e.detail}</td>
                               <td className="ps-conf-td">{e.staff}</td>
                               <td className="ps-conf-td">{e.signingPathologist ?? '—'}</td>
                               <td className="ps-conf-td">{e.clientName ?? '—'}</td>
@@ -591,9 +596,9 @@ const BillingLogsSection: React.FC = () => {
         </LookupModal>
       )}
 
-      {clientModal && (
-        <LookupModal title="Client / Ordering Facility" subtitle="Filter by the case's own real ordering facility" selectedCount={clientIds.length} onClose={() => setClientModal(false)}>
-          <ClientLookupContent clients={clientOptions} selected={clientIds} onToggle={id => toggle(id, clientIds, setClientIds)} />
+      {facilityModal && (
+        <LookupModal title="Ordering Facility" subtitle="Filter by the case's own real ordering facility" selectedCount={facilityIds.length} onClose={() => setFacilityModal(false)}>
+          <FacilityLookupContent facilities={facilityOptions} selected={facilityIds} onToggle={id => toggle(id, facilityIds, setFacilityIds)} />
         </LookupModal>
       )}
     </div>

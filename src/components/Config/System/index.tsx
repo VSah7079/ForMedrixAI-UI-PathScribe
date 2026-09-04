@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import '../../../pathscribe.css';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
+import type { Facility } from '../../../services';
 import FlagConfigPage            from './FlagConfigPage';
 import SpecimenDictionarySection from './SpecimenDictionarySection';
 import StainDictionarySection from './StainDictionarySection';
 import ProtocolDictionarySection from './ProtocolDictionarySection';
 import PrinterProfilesSection from './PrinterProfilesSection';
 import GrossingRouteOverridesSection from './GrossingRouteOverridesSection';
-import SpecimenCategoriesSection from './SpecimenCategoriesSection';
+import DepartmentsSection from './DepartmentsSection';
 import ContainerTypesSection from './ContainerTypesSection';
 import ScanStationsSection from './ScanStationsSection';
 import CassetteRoutingRulesSection from './CassetteRoutingRulesSection';
@@ -21,6 +23,9 @@ import GoverningBodiesSection    from './GoverningBodiesSection';
 import DelegationTypeSection     from './DelegationTypeSection';
 import RvuCodeMapSection         from './RvuCodeMapSection';
 import NcciEditRulesSection      from './NcciEditRulesSection';
+import MasterPaymentTypeDictionarySection from './MasterPaymentTypeDictionarySection';
+import OutboundMessagePreviewSection from './OutboundMessagePreviewSection';
+import JurisdictionPaymentMappingSection  from './JurisdictionPaymentMappingSection';
 import DftExportPreviewSection   from './DftExportPreviewSection';
 import BillingDictionarySection  from './BillingDictionarySection';
 import PendingApprovalSection from './PendingApprovalSection';
@@ -28,9 +33,32 @@ import ModifierDictionarySection from './ModifierDictionarySection';
 import BillingTypeTriggerSection from './BillingTypeTriggerSection';
 import ParticipationTypesSection from './ParticipationTypesSection';
 import SessionSecuritySection    from './SessionSecuritySection';
+import ReleaseBufferSection      from './ReleaseBufferSection';
 import ContributionSettingsSection from './ContributionSettingsSection';
 import ExternalResourcesSection  from './ExternalResourcesSection';
 import ResearchFeedSection      from './ResearchFeedSection';
+// Real, per direct request: the following 11 imports were previously
+// registered in Integrations/index.tsx, which was its own top-level
+// Configuration tab (a real, documented PS-85 reorg that moved them
+// OUT of System). Per direct follow-up, moved back - but as a real,
+// named group WITHIN System (matching this file's own existing
+// group-tag pattern) rather than restoring the old, ungrouped flat
+// list they lived in before PS-85. Integrations/index.tsx itself is
+// now fully superseded and deleted - these are the exact same real
+// components, imported from wherever each one actually lives, not
+// duplicated.
+import TerminologyServicesSection from '../Terminology/TerminologyServicesSection';
+import CrosswalkSection from './CrosswalkSection';
+import { FacilityDictionaryPage } from '../../../pages/system/FacilityDictionaryPage';
+import CaseMaskConfigSection from './CaseMaskConfigSection';
+import CasePoolAssignmentSection from './CasePoolAssignmentSection';
+import RoutingRulesSection from './RoutingRulesSection';
+import PhysiciansSection from './PhysiciansSection';
+import DeficienciesSection from './DeficienciesSection';
+import AbnormalTriggerRulesSection from './AbnormalTriggerRulesSection';
+import QAConfigurationCenterSection from './QAConfigurationCenterSection';
+import CytologyCategoriesSection from './CytologyCategoriesSection';
+import CytologyQcSettingsSection from './CytologyQcSettingsSection';
 import { resetConfigScroll } from '../../../utils/resetConfigScroll';
 
 // ── Section registry ──────────────────────────────────────────────────────────
@@ -40,7 +68,7 @@ type SystemSection =
   | 'subspecialties'
   | 'specimens'
   | 'stains'
-  | 'specimen_categories'
+  | 'departments'
   | 'container_types'
   | 'scan_stations'
   | 'cassette_routing_rules'
@@ -49,7 +77,10 @@ type SystemSection =
   | 'document_style'
   | 'retention'
   | 'session_security'
+  | 'release_buffer'
   | 'contribution_settings'
+  | 'qa_config_center'
+  | 'cytology_qc_settings'
   | 'external_resources'
   | 'research_feed'
   | 'protocols'
@@ -58,6 +89,9 @@ type SystemSection =
   | 'delegation_types'
   | 'rvu_code_map'
   | 'ncci_edit_rules'
+  | 'master_payment_types'
+  | 'jurisdiction_payment_mappings'
+  | 'outbound_message_preview'
   | 'dft_export_preview'
   | 'billing_dictionary'
   | 'billing_type_triggers'
@@ -65,60 +99,102 @@ type SystemSection =
   | 'modifier_dictionary'
   | 'participation_types'
   | 'print_settings'
-  | 'printer_profiles';
+  | 'printer_profiles'
+  | 'terminology'
+  | 'crosswalk'
+  | 'clients'
+  | 'case_mask_config'
+  | 'case_routing'
+  | 'routing_rules'
+  | 'physicians'
+  | 'deficiencies'
+  | 'abnormal_trigger_rules'
+  | 'cytology_categories';
 
-// Real, per PS-85 (Jira), superseding this file's own earlier partial
-// reorg (Independent/Reference-Data/Depends-on-reference-data) with a
-// real, complete, confirmed mapping — every item in this file now
-// belongs to exactly one of five real, named groups. clients,
-// physicians, case_routing, routing_rules, deficiencies,
-// case_mask_config, and facility_setup all moved OUT of System
-// entirely (now in Integrations, per that same confirmed mapping) —
-// System now holds only Lab Operations & Hardware and Reference Data
-// & Master Dictionaries and Platform & Security, matching the real,
-// confirmed top-level split (item 1 of that mapping is the
-// Integrations tab in full; items 2-4 are all System, split into
-// these five named sub-groups).
+// Real, per PS-85 (Jira) — every item in this file belonged to
+// exactly one of five real, named groups (Workstation & Hardware,
+// Lab Materials & Workflows, Clinical Lookups, Financial & Revenue
+// Lookups, Administration & Compliance); lis, identifiers,
+// terminology, crosswalk, clients, facility_setup, case_mask_config,
+// case_routing, routing_rules, physicians, and deficiencies moved OUT
+// to their own top-level Integrations tab.
+//
+// Real, per direct follow-up, superseding PS-85's own top-level split:
+// those 11 items are back here now, as a real sixth named group
+// ("Integrations") rather than restored to the old, ungrouped flat
+// list they lived in pre-PS-85. Integrations/index.tsx - which held
+// only this same navigation wiring, no real content of its own - is
+// deleted; nothing else referenced it.
 const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string }[] = [
   // ── Workstation & Hardware ──
-  { id: 'scan_stations',       emoji: '📍', label: 'Scan Stations'         , group: 'Workstation & Hardware' },
+  // Real, per direct follow-up ("Yes. It should be alpha within the
+  // group"): every group below re-sorted alphabetically by label —
+  // confirmed, via a real search through past sessions, that this was
+  // always the deliberate, actively-maintained convention (one past
+  // session explicitly repositioned an item to preserve alphabetical
+  // order when its label changed; another explicitly built this
+  // array as "15 sidebar items now alphabetical"). The live array had
+  // genuinely drifted from that as new items were added over time
+  // (mostly the newer Financial & Revenue Lookups and Integrations
+  // groups) and simply appended rather than re-sorted. Group order
+  // itself (Workstation & Hardware → ... → Integrations) is
+  // unchanged — only the order of items within each group.
   { id: 'print_settings',      emoji: '🖨️', label: 'Print Settings'        , group: 'Workstation & Hardware' },
   { id: 'printer_profiles',    emoji: '🖨️', label: 'Printer Profiles'      , group: 'Workstation & Hardware' },
+  { id: 'scan_stations',       emoji: '📍', label: 'Scan Stations'         , group: 'Workstation & Hardware' },
 
   // ── Lab Materials & Workflows ──
-  { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
-  { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
-  { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
   { id: 'cassette_colors',     emoji: '🎨', label: 'Cassette Colors'       , group: 'Lab Materials & Workflows' },
   { id: 'cassette_routing_rules', emoji: '🧊', label: 'Cassette Routing Rules', group: 'Lab Materials & Workflows' },
-  { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
+  { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
+  { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
   { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Lab Materials & Workflows' },
+  { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
+  { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
 
   // ── Clinical Lookups ──
-  { id: 'specimen_categories', emoji: '🗂️', label: 'Specimen Categories'   , group: 'Clinical Lookups' },
-  { id: 'subspecialties',      emoji: '🩺', label: 'Subspecialties'        , group: 'Clinical Lookups' },
-  { id: 'protocols',           emoji: '🧬', label: 'Protocol Dictionary'   , group: 'Clinical Lookups' },
   { id: 'governing_bodies',    emoji: '📋', label: 'Governing Bodies'      , group: 'Clinical Lookups' },
+  { id: 'abnormal_trigger_rules', emoji: '🚩', label: 'Abnormal Trigger Rules', group: 'Clinical Lookups' },
+  { id: 'cytology_categories', emoji: '🧫', label: 'Interpretation and Recommendations (Cytology)', group: 'Clinical Lookups' },
   { id: 'participation_types', emoji: '👥', label: 'Participation Types'   , group: 'Clinical Lookups' },
+  { id: 'protocols',           emoji: '🧬', label: 'Protocol Dictionary'   , group: 'Clinical Lookups' },
+  { id: 'departments', emoji: '🗂️', label: 'Departments'   , group: 'Clinical Lookups' },
+  { id: 'subspecialties',      emoji: '🩺', label: 'Subspecialties'        , group: 'Clinical Lookups' },
 
   // ── Financial & Revenue Lookups ──
   { id: 'billing_dictionary',  emoji: '💲', label: 'Billing Dictionary (Charge Capture)', group: 'Financial & Revenue Lookups' },
-  { id: 'modifier_dictionary', emoji: '🏷️', label: 'CPT Modifier Dictionary', group: 'Financial & Revenue Lookups' },
-  { id: 'pending_approvals', emoji: '✅', label: 'Pending Billing Rule Approvals', group: 'Financial & Revenue Lookups' },
-  { id: 'billing_type_triggers', emoji: '🚦', label: 'Charge Release Triggers (TC/26/Global)', group: 'Financial & Revenue Lookups' },
-  { id: 'rvu_code_map',        emoji: '📈', label: 'RVU Code Map (Productivity)', group: 'Financial & Revenue Lookups' },
-  { id: 'ncci_edit_rules',     emoji: '🚫', label: 'NCCI Edit Rules (Bundling)', group: 'Financial & Revenue Lookups' },
   { id: 'dft_export_preview',  emoji: '📄', label: 'Billing Export Preview', group: 'Financial & Revenue Lookups' },
+  { id: 'billing_type_triggers', emoji: '🚦', label: 'Charge Release Triggers (TC/26/Global)', group: 'Financial & Revenue Lookups' },
+  { id: 'modifier_dictionary', emoji: '🏷️', label: 'CPT Modifier Dictionary', group: 'Financial & Revenue Lookups' },
+  { id: 'jurisdiction_payment_mappings', emoji: '🌍', label: 'Jurisdiction Payment Mapping', group: 'Financial & Revenue Lookups' },
+  { id: 'master_payment_types', emoji: '💳', label: 'Master Payment Type Dictionary', group: 'Financial & Revenue Lookups' },
+  { id: 'ncci_edit_rules',     emoji: '🚫', label: 'NCCI Edit Rules (Bundling)', group: 'Financial & Revenue Lookups' },
+  { id: 'pending_approvals', emoji: '✅', label: 'Pending Billing Rule Approvals', group: 'Financial & Revenue Lookups' },
+  { id: 'rvu_code_map',        emoji: '📈', label: 'RVU Code Map (Productivity)', group: 'Financial & Revenue Lookups' },
 
   // ── Administration & Compliance ──
   { id: 'fonts',               emoji: '🔤', label: 'Approved Fonts'        , group: 'Administration & Compliance' },
-  { id: 'document_style',      emoji: '🖋', label: 'Document Style'        , group: 'Administration & Compliance' },
-  { id: 'session_security',    emoji: '🔒', label: 'Session Security'      , group: 'Administration & Compliance' },
+  { id: 'contribution_settings', emoji: '📊', label: 'Contribution Dashboard' , group: 'Administration & Compliance' },
   { id: 'retention',           emoji: '🗄️', label: 'Data Retention'        , group: 'Administration & Compliance' },
   { id: 'delegation_types',    emoji: '🔀', label: 'Delegation Types'      , group: 'Administration & Compliance' },
-  { id: 'contribution_settings', emoji: '📊', label: 'Contribution Dashboard' , group: 'Administration & Compliance' },
+  { id: 'document_style',      emoji: '🖋', label: 'Document Style'        , group: 'Administration & Compliance' },
   { id: 'external_resources',  emoji: '🌐', label: 'External Resources'    , group: 'Administration & Compliance' },
+  { id: 'release_buffer',      emoji: '⏳', label: 'Post-Sign-Out Release Buffer', group: 'Administration & Compliance' },
+  { id: 'qa_config_center',    emoji: '✅', label: 'QA Configuration Center' , group: 'Administration & Compliance' },
+  { id: 'cytology_qc_settings', emoji: '🎯', label: 'Cytology QC Random Selection Rate', group: 'Administration & Compliance' },
   { id: 'research_feed',       emoji: '📰', label: 'Research Feed'         , group: 'Administration & Compliance' },
+  { id: 'session_security',    emoji: '🔒', label: 'Session Security'      , group: 'Administration & Compliance' },
+
+  // ── Integrations ──
+  { id: 'case_mask_config', emoji: '🔢', label: 'Case Mask Configuration', group: 'Integrations' },
+  { id: 'case_routing',     emoji: '🔀', label: 'Case Routing'           , group: 'Integrations' },
+  { id: 'clients',          emoji: '🏥', label: 'Facility Configuration' , group: 'Integrations' },
+  { id: 'crosswalk',        emoji: '🧩', label: 'Order Types & Inbound Rules', group: 'Integrations' },
+  { id: 'outbound_message_preview', emoji: '📤', label: 'Outbound Interface Message Preview', group: 'Integrations' },
+  { id: 'physicians',       emoji: '🩻', label: 'Physicians'             , group: 'Integrations' },
+  { id: 'routing_rules',    emoji: '📋', label: 'Routing Rules'          , group: 'Integrations' },
+  { id: 'deficiencies',     emoji: '⚠️', label: 'Specimen Deficiencies'  , group: 'Integrations' },
+  { id: 'terminology',      emoji: '🔌', label: 'Terminology Services'   , group: 'Integrations' },
 ];
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -148,6 +224,21 @@ const SystemTab: React.FC = () => {
   // none of those four paths can drift out of sync with each other.
   const [activeGroup, setActiveGroup] = useState<string>(() => SECTIONS.find(s => s.id === active)?.group ?? GROUPS[0]);
 
+  // Real, per direct guidance (Workstation & Hardware redesign): one
+  // real facility choice, shared across Scan Stations/Printer
+  // Profiles/Print Settings — picked once here, at the group level,
+  // rather than three independent (or missing) per-screen filters an
+  // admin would otherwise have to re-select on every tab. Lives at
+  // this level (not inside any one section) specifically so it
+  // survives switching between the three sibling sections within the
+  // group — each section fully unmounts/remounts via renderSection()
+  // below, so state that needs to persist across that has to live
+  // above it. Deliberately NOT persisted to the URL/storage — a real,
+  // session-scoped convenience, not a saved admin preference.
+  const [workstationFacilityId, setWorkstationFacilityId] = useState('');
+  const [workstationLabs, setWorkstationLabs] = useState<Facility[]>([]);
+  useEffect(() => { getActivePerformingLabs().then(setWorkstationLabs); }, []);
+
   const selectSection = (id: SystemSection) => {
     setActiveRaw(id);
     const g = SECTIONS.find(s => s.id === id)?.group;
@@ -167,14 +258,14 @@ const SystemTab: React.FC = () => {
       case 'specimens':           return <SpecimenDictionarySection />;
       case 'stains':              return <StainDictionarySection />;
       case 'protocols':           return <ProtocolDictionarySection />;
-      case 'printer_profiles':    return <PrinterProfilesSection />;
+      case 'printer_profiles':    return <PrinterProfilesSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'grossing_route_overrides': return <GrossingRouteOverridesSection />;
-      case 'specimen_categories': return <SpecimenCategoriesSection />;
+      case 'departments': return <DepartmentsSection />;
       case 'container_types': return <ContainerTypesSection />;
-      case 'scan_stations': return <ScanStationsSection />;
+      case 'scan_stations': return <ScanStationsSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'cassette_routing_rules': return <CassetteRoutingRulesSection />;
       case 'cassette_colors': return <CassetteColorsSection />;
-      case 'print_settings': return <PrintSettingsSection />;
+      case 'print_settings': return <PrintSettingsSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'fonts':               return <FontsSection />;
       case 'document_style':      return <DocumentStyleSection />;
       case 'retention':           return <RetentionSection />;
@@ -186,12 +277,28 @@ const SystemTab: React.FC = () => {
       case 'billing_type_triggers': return <BillingTypeTriggerSection />;
       case 'rvu_code_map':        return <RvuCodeMapSection />;
       case 'ncci_edit_rules':     return <NcciEditRulesSection />;
+      case 'master_payment_types': return <MasterPaymentTypeDictionarySection />;
+      case 'jurisdiction_payment_mappings': return <JurisdictionPaymentMappingSection />;
+      case 'outbound_message_preview': return <OutboundMessagePreviewSection />;
       case 'dft_export_preview':  return <DftExportPreviewSection />;
       case 'participation_types': return <ParticipationTypesSection />;
       case 'session_security':    return <SessionSecuritySection />;
+      case 'release_buffer':      return <ReleaseBufferSection />;
       case 'contribution_settings': return <ContributionSettingsSection />;
       case 'external_resources':  return <ExternalResourcesSection />;
       case 'research_feed':       return <ResearchFeedSection />;
+      case 'terminology':      return <TerminologyServicesSection isSuperAdmin={true} />;
+      case 'clients':          return <FacilityDictionaryPage />;
+      case 'crosswalk':        return <CrosswalkSection />;
+      case 'case_mask_config': return <CaseMaskConfigSection />;
+      case 'case_routing':     return <CasePoolAssignmentSection />;
+      case 'routing_rules':    return <RoutingRulesSection />;
+      case 'physicians':       return <PhysiciansSection />;
+      case 'deficiencies':     return <DeficienciesSection />;
+      case 'abnormal_trigger_rules': return <AbnormalTriggerRulesSection />;
+      case 'cytology_categories': return <CytologyCategoriesSection />;
+      case 'qa_config_center': return <QAConfigurationCenterSection />;
+      case 'cytology_qc_settings': return <CytologyQcSettingsSection />;
       default:                    return null;
     }
   };
@@ -227,6 +334,27 @@ const SystemTab: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {/* Real, per direct guidance: one facility selector shared
+          across all three Workstation & Hardware sections — placed
+          above the sidebar+content shell (not inside it) so it spans
+          the full width rather than becoming a third flex column.
+          Never rendered for any other group, since no other group's
+          sections have this same real, cross-cutting facility
+          relationship. */}
+      {activeGroup === 'Workstation & Hardware' && (
+        <div className="ps-conf-callout-banner ps-confsys-facility-selector">
+          <span className="ps-conf-callout-banner-text">Facility:</span>
+          <select
+            className="ps-conf-select"
+            value={workstationFacilityId}
+            onChange={e => setWorkstationFacilityId(e.target.value)}
+          >
+            <option value="">All Facilities</option>
+            {workstationLabs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="ps-confsys-shell">
 

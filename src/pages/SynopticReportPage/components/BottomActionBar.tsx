@@ -426,29 +426,41 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             )}
             <ActionButton onClick={onSaveDraft} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title="Save draft">💾 Save Draft</ActionButton>
             <ActionButton onClick={onSaveAndNext} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title="Save and go to next case">💾 Save &amp; Next</ActionButton>
-            <Divider />
-            <ActionButton
-              onClick={onFinalize}
-              variant="outline"
-              color="#34d399"
-              disabled={synopticFitPending}
-              title={synopticFitPending
-                ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
-                : 'Finalize this report'}
-            >
-              🔒 Finalize
-            </ActionButton>
-            <ActionButton
-              onClick={onFinalizeAndNext}
-              variant="outline"
-              color="#34d399"
-              disabled={synopticFitPending}
-              title={synopticFitPending
-                ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
-                : 'Finalize and go to next case'}
-            >
-              🔒 Finalize &amp; Next
-            </ActionButton>
+            {/* Real, per direct guidance ("Path B Execution Plan" — Step
+                3, "What to do with Finalize"): retired for Orchestration
+                Mode, since Sign Out Case now safely handles the trainee
+                early-return, the attending's real sign-out + buffer
+                start, and the cron-equivalent's own real dispatch —
+                Finalize has no remaining real purpose there. Stays real
+                and active for Assist Mode's own distinct handoff to the
+                external LIS, unaffected by any of this. */}
+            {caseData?.reportingMode === 'assist' && (
+              <>
+                <Divider />
+                <ActionButton
+                  onClick={onFinalize}
+                  variant="outline"
+                  color="#34d399"
+                  disabled={synopticFitPending}
+                  title={synopticFitPending
+                    ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
+                    : 'Finalize this report'}
+                >
+                  🔒 Finalize
+                </ActionButton>
+                <ActionButton
+                  onClick={onFinalizeAndNext}
+                  variant="outline"
+                  color="#34d399"
+                  disabled={synopticFitPending}
+                  title={synopticFitPending
+                    ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
+                    : 'Finalize and go to next case'}
+                >
+                  🔒 Finalize &amp; Next
+                </ActionButton>
+              </>
+            )}
           </>
         )}
         {!isPool && caseData?.reportingMode !== 'assist' && (allFinalized || isFinalized) && status !== 'finalized' &&

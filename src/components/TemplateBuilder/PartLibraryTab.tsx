@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ReportPart, ReportPartType } from '../../types/reportPart';
 import { mockReportPartService, onReportPartsChanged } from '../../services/reportParts/mockReportPartService';
+import { getActivePerformingLabs } from '../../utils/performingLabs';
+import type { Facility } from '../../services/facilities/IFacilityService';
 
 const svc = mockReportPartService;
 
@@ -29,12 +31,13 @@ const PROTECTED = new Set([
 
 const PartCard: React.FC<{
   part:          ReportPart;
+  labName:       string;
   onEdit:        () => void;
   onDuplicate:   () => void;
   onArchive:     () => void;
   isProtected:   boolean;
   isDuplicating: boolean;
-}> = ({ part, onEdit, onDuplicate, onArchive, isProtected, isDuplicating }) => {
+}> = ({ part, labName, onEdit, onDuplicate, onArchive, isProtected, isDuplicating }) => {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const tc = TYPE_CONFIG[part.partType];
 
@@ -58,6 +61,7 @@ const PartCard: React.FC<{
           {isProtected && (
             <span className="ps-plib-card__badge ps-plib-card__badge--builtin">BUILT-IN</span>
           )}
+          <span className="ps-plib-card__badge ps-plib-card__badge--lab">{labName}</span>
         </div>
         <div className="ps-plib-card__desc">
           {tc.label} · {part.specialty}{part.subspecialty ? ` — ${part.subspecialty}` : ''}
@@ -107,6 +111,11 @@ const PartLibraryTab: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<ReportPartType | 'all'>('all');
   const [search,     setSearch]     = useState('');
   const [duplicating, setDuplicating] = useState<string | null>(null);
+  const [labs, setLabs] = useState<Facility[]>([]);
+  const [labFilter, setLabFilter] = useState<'all' | 'global' | string>('all');
+
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,7 +142,8 @@ const PartLibraryTab: React.FC = () => {
 
   const filtered = parts
     .filter(p => typeFilter === 'all' || p.partType === typeFilter)
-    .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()));
+    .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => labFilter === 'all' || (labFilter === 'global' ? !p.performingLabFacilityId : p.performingLabFacilityId === labFilter));
 
   const grouped: Record<ReportPartType, ReportPart[]> = {
     header: filtered.filter(p => p.partType === 'header'),
@@ -187,6 +197,13 @@ const PartLibraryTab: React.FC = () => {
           onChange={e => setSearch(e.target.value)}
           placeholder="Search parts…"
         />
+        {labs.length > 0 && (
+          <select className="ps-conf-select" value={labFilter} onChange={e => setLabFilter(e.target.value as any)}>
+            <option value="all">All Labs</option>
+            <option value="global">Global only</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Content */}
@@ -219,6 +236,7 @@ const PartLibraryTab: React.FC = () => {
                   <PartCard
                     key={p.id}
                     part={p}
+                    labName={labName(p.performingLabFacilityId)}
                     isProtected={PROTECTED.has(p.id)}
                     isDuplicating={duplicating === p.id}
                     onEdit={() => navigate(`/admin/parts/${p.id}/edit`)}

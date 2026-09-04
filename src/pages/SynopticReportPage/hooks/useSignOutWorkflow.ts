@@ -46,11 +46,14 @@
 
 import { useState, useCallback, type MutableRefObject } from 'react';
 import { getSessionUser, canFinalizeCase } from '@/services/auth/caseAccessControl';
-import { countersignService, userService, fppeAssignmentService } from '@/services';
+import { countersignService, userService, fppeAssignmentService, qaSupervisionAssignmentService } from '@/services';
+import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { intraoperativeService } from '@/services';
 import { amendmentService, reportVersionService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { syncPrimaryAssignee } from '@/services/cases/caseAssignmentSync';
 import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
+import { dispatchCaseInstances } from '@/services/reports/dispatchCaseInstances';
 import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
 import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
@@ -59,6 +62,15 @@ import { checkSignOutBillingDeficiencies } from '@/services/billing/checkSignOut
 import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
 import type { CriticalFindingFlag } from '@/services/clinical/detectCriticalFindings';
 import { mockCriticalResultNotificationService } from '@/services/clinical/mockCriticalResultNotificationService';
+import { abnormalTriggerRuleService } from '@/services';
+import { evaluateAbnormalTriggerRules, toCriticalFindingFlag } from '@/services/abnormalDetection/evaluateAbnormalTriggerRules';
+import { resolveSyntheticCoding } from '@/services/abnormalDetection/resolveSyntheticCoding';
+import { abnormalDetectionSignalService, qaActivityRecordService } from '@/services';
+import { ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
+import { deidentifyText } from '@/services/narrativeSignals/deidentification';
+import { resolveAnswers } from '@/orchestrator/contextBuilder';
+import { resolveAbnormalDetectionEnabled } from '@/services/abnormalDetection/resolveAbnormalDetectionEnabled';
+import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
 import { shouldRandomlySampleForCodeReview } from '@/services/billing/shouldRandomlySampleForCodeReview';
 import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
@@ -117,6 +129,12 @@ interface UseSignOutWorkflowParams {
   setFixativeGateSpecimens: (specs: FixativeGateSpecimen[] | null) => void;
   setPreAnalyticDateGateSpecimens: (specs: PreAnalyticDateGateSpecimen[] | null) => void;
   setPendingFinalizeArgs: (args: string[]) => void;
+  /** Real, per direct guidance (retiring Finalize for Orchestration
+   *  Mode): tells the gate-resolution callbacks in
+   *  SynopticReportPage.tsx to resume handleSignOutConfirm() rather
+   *  than finalizeCase(args) once a pre-analytic/fixative gate this
+   *  function itself raised is resolved. */
+  setPendingActionIsSignOut: (v: boolean) => void;
   synopticPanelRef: MutableRefObject<RightSynopticPanelHandle | null>;
   /** Real fix, per direct product decision: navigates the pathologist
    *  directly to a specific field (via RightSynopticPanel's existing
@@ -166,18 +184,63 @@ const BILLING_DEFICIENCY_SEVERITY: Record<BillingDeficiencyType, BillingDeficien
   ZERO_FEE_MAPPING_ERROR: 'REVENUE_LEAKAGE',
 };
 
+// Real, per direct guidance (retiring Finalize for Orchestration Mode,
+// per "Path B Execution Plan": "Lift the pre-analytic date gate and
+// the fixative-time gate directly out of finalizeCase() and insert
+// them into handleSignOutConfirm()"). Extracted as a pure, shared
+// helper rather than duplicated inline in both real callers —
+// finalizeCase() (still real and active for Assist Mode's own
+// Finalize) and handleSignOutConfirm() (Orchestration Mode's Sign Out
+// Case, which now also needs these same real, hard-block gates since
+// Finalize is being retired there). Same real gate logic either way,
+// never two independently-maintained copies that could quietly drift.
+function checkPreAnalyticAndFixativeGates(
+  caseData: Case,
+  specimenDictionary: SpecimenEntry[],
+): { preAnalyticBlocking: PreAnalyticDateGateSpecimen[]; fixativeBlocking: FixativeGateSpecimen[] } {
+  const preAnalyticBlocking: PreAnalyticDateGateSpecimen[] = (caseData.specimens ?? [])
+    .filter((sp: Specimen) => (!sp.collectedAt && !sp.collectedAtAdministrativeOverride)
+      || (!sp.receivedAt && !sp.receivedAtAdministrativeOverride))
+    .map((sp: Specimen) => ({
+      specimenId: sp.id,
+      label: sp.label,
+      description: sp.description,
+      missingCollectedAt: !sp.collectedAt && !sp.collectedAtAdministrativeOverride,
+      missingReceivedAt: !sp.receivedAt && !sp.receivedAtAdministrativeOverride,
+    }));
+
+  const fixativeBlocking: FixativeGateSpecimen[] = (caseData.specimens ?? [])
+    .filter((sp: Specimen) => {
+      const entry = sp.specimenDictionaryEntryId
+        ? specimenDictionary.find(e => e.id === sp.specimenDictionaryEntryId)
+        : undefined;
+      return entry?.requireFixativeTimeBeforeSignout && !sp.processing?.processedAt;
+    })
+    .map((sp: Specimen) => ({ specimenId: sp.id, label: sp.label, description: sp.description }));
+
+  return { preAnalyticBlocking, fixativeBlocking };
+}
+
 export function useSignOutWorkflow({
   caseData, setCaseData, signingUser, showToast, activeReportInstanceId,
   knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
   generateReportPdfSnapshot, isOrchestrationMode, orchSections,
   setCaseSigned, setShowSignOutModal, setPendingReconciliation,
   countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
-  setPreAnalyticDateGateSpecimens,
+  setPreAnalyticDateGateSpecimens, setPendingActionIsSignOut,
   setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
   setActiveSpecimenId, setActiveReportType,
   setShowAmendmentModal, setShowFinalizeModal, openAmendmentDraft,
   releasePendingAmendmentOrAddendum, log,
 }: UseSignOutWorkflowParams) {
+  // Real, per direct guidance (PS-105): "If the enterprise level is
+  // disabled then the performing facility level is disabled and
+  // cannot be overridden." Resolved once per hook instance — the real
+  // facility-level value is looked up per-case inside
+  // fetchCriticalFindings below (the case's own real ordering
+  // facility isn't known until then).
+  const { enterpriseConfig } = useSystemConfig();
+
   const finalizeSignOut = useCallback(async () => {
     // Stage 2 of the CoPilot amendment pipeline — this is the real
     // re-sign-out. Real, serious ordering bug caught and fixed here:
@@ -288,6 +351,76 @@ export function useSignOutWorkflow({
     showToast('Case signed out successfully');
   }, [caseData, sendSynopticReportToLis, generateReportPdfSnapshot, isOrchestrationMode, signingUser, setCaseSigned, setShowSignOutModal, showToast, setCaseData, knownVersionRef, setConcurrencyConflict, setPendingReconciliation]);
 
+  // Real, per direct guidance ("Yes we should scope 'Return to
+  // Trainee'/'Reject with Notes'. I think the delegation workflow
+  // might be a good method"): the attending's real alternative to
+  // countersign() — declines the resident's submission and sends the
+  // case back, rather than accepting and finalizing it. Deliberately
+  // a separate, standalone action from handleSignOutConfirm() (never
+  // called from within it) — an attending choosing to reject a case
+  // never touches finalizeSignOut()/reportVersionService.create() at
+  // all, since nothing about this case is being finalized.
+  const handleReturnToTrainee = useCallback(async () => {
+    if (!caseData?.id || caseData.status !== 'pending-countersign') return;
+
+    const trimmedFeedback = countersignFeedback.trim();
+    if (!trimmedFeedback) {
+      showToast('Feedback is required when returning a case to the trainee — they need to know what to revise.');
+      return;
+    }
+
+    const result = await countersignService.reject({
+      caseId: caseData.id,
+      attendingId: signingUser?.id ?? 'unknown',
+      attendingName: signingUser?.name ?? 'Unknown User',
+      attendingFeedback: trimmedFeedback,
+    });
+    if (!result.ok) {
+      showToast((result as { ok: false; error: string }).error ?? 'Could not return this case — please try again.');
+      return;
+    }
+    const record = result.data;
+
+    // Real, per direct guidance: the same real ownership-transfer
+    // primitive delegateCase()'s own transfersOwnership branch uses
+    // (services/cases/caseAssignmentSync.ts) — deliberately reused
+    // directly rather than going through delegateCase()/creating a
+    // second, parallel DelegationRecord for the same event; the
+    // real CountersignRecord above is already this specific
+    // relationship's own audit trail.
+    const syncUpdates = syncPrimaryAssignee(caseData, record.residentId, signingUser?.id ?? 'unknown', record.residentName);
+
+    // Real, per direct guidance, same reasoning as Phase 4's own
+    // per-instance sync fix (release() above): the per-instance
+    // 'pending-countersign' status set at release time must be
+    // reverted too, or the resident can't actually re-edit their own
+    // synoptic reports — RightSynopticPanel.tsx's own tab-dot
+    // indicator, and any other real UI gated on instance status,
+    // would stay stuck showing pending-countersign forever.
+    const revertedReports = (caseData.synopticReports ?? []).map((r: SynopticReportInstance) =>
+      r.status === 'pending-countersign' ? { ...r, status: 'draft' as const } : r
+    );
+
+    const patch: Partial<Case> = {
+      ...syncUpdates,
+      status: 'returned' as CaseStatus,
+      returnedBy: signingUser?.id ?? 'unknown',
+      synopticReports: revertedReports,
+    };
+
+    try {
+      await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData({ ...caseData, ...patch } as typeof caseData);
+      setShowSignOutModal(false);
+      showToast(`Case returned to ${record.residentName} for revision.`);
+    } catch (e) {
+      if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
+      console.error('[useSignOutWorkflow] Failed to apply the real return-to-trainee state transition:', e);
+      showToast('Feedback recorded, but could not update the case — please contact support.');
+    }
+  }, [caseData, countersignFeedback, signingUser, showToast, setShowSignOutModal, knownVersionRef, setCaseData, setConcurrencyConflict]);
+
   const handleSignOutConfirm = useCallback(async () => {
     // Real, critical defense-in-depth guard, per direct specification:
     // Post-Sign-Out Release Buffer. A real, serious bug found during a
@@ -333,13 +466,75 @@ export function useSignOutWorkflow({
       const provisionalParticipant = caseData?.participants?.find(
         (p: CaseParticipant) => p.status === 'active' && p.staffId === signingUser?.id && p.participationTypeIds?.includes('provisional_hire')
       );
+      // PS-114, Stage 4 (gate-check cutover) — reads from the new,
+      // generic qaSupervisionAssignmentService now, not the old
+      // fppeAssignmentService. Same real check as before (does this
+      // provisional hire currently have an active assignment for this
+      // subspecialty), just against the new system, which Stage 3's
+      // id-synchronized shadow-write already proved stays a faithful
+      // mirror. Real, deliberate scope: only THIS gate-check moved —
+      // FppeAssignmentsSection.tsx's own list view still reads the old
+      // system as its source of truth (confirmed directly before this
+      // change), so old-system writes below are NOT retired here; that
+      // screen's own migration is a separate, later piece of work.
       const activeFppeAssignment = provisionalParticipant && !isAttendingToo
-        ? await fppeAssignmentService.getActiveAssignmentForUser(signingUser?.id ?? '', caseData?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
+        ? await qaSupervisionAssignmentService.getActiveAssignmentForUser(FPPE_ACTIVITY_TYPE_ID, signingUser?.id ?? '', caseData?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
         : null;
+      // Real, cheap safety net for this specific cutover — compares the
+      // old system's own answer against the new one on every real
+      // evaluation, logging (never blocking or changing behavior on) a
+      // mismatch. Ids are synchronized since creation time (Stage 3),
+      // so these should never actually disagree; this exists purely to
+      // surface it immediately, on real usage, if they ever do — not
+      // left running indefinitely once the old system is fully retired.
+      if (provisionalParticipant && !isAttendingToo) {
+        fppeAssignmentService.getActiveAssignmentForUser(signingUser?.id ?? '', caseData?.subspecialtyId)
+          .then(r => {
+            const legacyActive = r.ok ? !!r.data : null;
+            const newActive = !!activeFppeAssignment;
+            if (legacyActive !== null && legacyActive !== newActive) {
+              console.warn('[PS-114 drift] FPPE gate disagreement between old and new systems', {
+                userId: signingUser?.id, caseId: caseData?.id, legacyActive, newActive,
+              });
+            }
+          })
+          .catch(() => {});
+      }
 
       if ((residentParticipant && !isAttendingToo) || activeFppeAssignment) {
         const releasedAnswersSnapshot: Record<string, Record<string, string | string[]>> = {};
         (caseData.synopticReports ?? []).forEach((r: SynopticReportInstance) => { releasedAnswersSnapshot[r.instanceId] = r.answers ?? {}; });
+
+        // Real, per direct follow-up ("Continue with the version-record
+        // creation to the trainee path... per your Path A step 3, the
+        // immutable snapshot should be created there too, just without
+        // triggering dispatch"): the real, immutable snapshot of what
+        // the resident is actually submitting for review — same real
+        // `generateReportPdfSnapshot()`/versionCount-based trigger
+        // inference finalizeSignOut() already uses below, captured
+        // BEFORE countersignService.release() so it genuinely reflects
+        // what was submitted, not some later, possibly-edited state.
+        // Deliberately no instanceId (the same real, whole-case
+        // snapshot shape every orchestration-mode create() call in
+        // this app already uses) — this alone is what correctly keeps
+        // it out of the real ORU^R01 dispatch hook inside create()
+        // itself (mode === 'orchestration' && instanceId), matching
+        // this real step's own explicit "no release buffer starts, no
+        // HL7 is queued" requirement without needing a second, separate
+        // guard.
+        {
+          const existingVersions = await reportVersionService.getByCaseId(caseData.id);
+          const versionCount = existingVersions.ok ? existingVersions.data.length : 0;
+          const { pdfBase64, generationError } = await generateReportPdfSnapshot();
+          if (generationError) showToast(`Submitted for countersign, but PDF snapshot failed to generate: ${generationError}`);
+          await reportVersionService.create({
+            caseId: caseData.id,
+            mode: 'orchestration',
+            trigger: versionCount === 0 ? 'initial_signout' : 'amendment',
+            createdBy: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+            pdfBase64, generationError,
+          });
+        }
 
         await countersignService.release({
           caseId: caseData.id,
@@ -385,7 +580,7 @@ export function useSignOutWorkflow({
         const attendingParticipant = caseData?.participants?.find(
           (p: CaseParticipant) => p.status === 'active' && p.participationTypeIds?.includes('attending')
         );
-        const reviewerId = activeFppeAssignment?.proctorUserId ?? attendingParticipant?.staffId;
+        const reviewerId = activeFppeAssignment?.supervisorUserId ?? attendingParticipant?.staffId;
         if (reviewerId) {
           const attendingUserRes = await userService.getById(reviewerId).catch(() => null);
           const attendingEmail = attendingUserRes?.ok ? attendingUserRes.data?.email : undefined;
@@ -424,6 +619,32 @@ export function useSignOutWorkflow({
       return;
     }
 
+    // Real, per direct guidance ("Path B Execution Plan" — retiring
+    // Finalize for Orchestration Mode): the same two real, hard-block
+    // regulatory gates finalizeCase() already enforces
+    // (checkPreAnalyticAndFixativeGates() — see its own header comment
+    // for the full cross-jurisdiction citations) now also apply here.
+    // Deliberately placed after the resident/countersign gate above,
+    // never before it — a resident's own submission ("I am done
+    // drafting, but this is not a final medical record") is real,
+    // legitimate, and doesn't need these; the attending's real
+    // sign-out, reached only past this point, does.
+    if (caseData) {
+      const { preAnalyticBlocking, fixativeBlocking } = checkPreAnalyticAndFixativeGates(caseData, specimenDictionary);
+      if (preAnalyticBlocking.length > 0) {
+        setPreAnalyticDateGateSpecimens(preAnalyticBlocking);
+        setPendingActionIsSignOut(true);
+        setShowSignOutModal(false);
+        return;
+      }
+      if (fixativeBlocking.length > 0) {
+        setFixativeGateSpecimens(fixativeBlocking);
+        setPendingActionIsSignOut(true);
+        setShowSignOutModal(false);
+        return;
+      }
+    }
+
     // Real attending-side countersign completion — fires when a case
     // that was released by a resident is now actually being finalized
     // (by definition not by that same resident, since the gate above
@@ -453,9 +674,28 @@ export function useSignOutWorkflow({
         (p: CaseParticipant) => p.status === 'active' && p.participationTypeIds?.includes('provisional_hire')
       );
       if (provisionalOnThisCase) {
-        const assignmentRes = await fppeAssignmentService.getActiveAssignmentForUser(provisionalOnThisCase.staffId, caseData?.subspecialtyId).catch(() => null);
+        // PS-114, Stage 4 — the lookup and the properly-awaited,
+        // failure-visible increment now target the new system first:
+        // once the gate-check above reads from qaSupervisionAssignmentService,
+        // an increment that silently failed to land there would leave a
+        // pathologist who's actually graduated still gated, or vice
+        // versa — a real, live-consequence bug a swallowed error could
+        // hide. The old system's own write is now the shadow, kept
+        // alive (not retired) because FppeAssignmentsSection.tsx's own
+        // list view still reads it as its source of truth — confirmed
+        // directly before this change, not assumed.
+        const assignmentRes = await qaSupervisionAssignmentService.getActiveAssignmentForUser(FPPE_ACTIVITY_TYPE_ID, provisionalOnThisCase.staffId, caseData?.subspecialtyId).catch(() => null);
         if (assignmentRes?.ok && assignmentRes.data) {
-          await fppeAssignmentService.recordCaseReviewed(assignmentRes.data.id).catch(() => {});
+          try {
+            await qaSupervisionAssignmentService.recordCaseReviewed(assignmentRes.data.id);
+          } catch (e) {
+            console.error('[PS-114] Failed to record case review on the new QaSupervisionAssignment system — the sign-out gate reads from this system, so a silent failure here could leave a graduated pathologist incorrectly gated.', e);
+          }
+          // Real, synchronized shadow-write to the old system, using the
+          // same real id (shared since creation time) — kept alive only
+          // for FppeAssignmentsSection.tsx's own still-unmigrated list
+          // view; never awaited in a way that could delay real sign-out.
+          fppeAssignmentService.recordCaseReviewed(assignmentRes.data.id).catch(() => {});
         }
       }
     }
@@ -481,8 +721,62 @@ export function useSignOutWorkflow({
         }
       }
     }
-    finalizeSignOut();
-  }, [caseData, finalizeSignOut, signingUser, showToast, countersignFeedback, setShowSignOutModal, knownVersionRef, setConcurrencyConflict, setCaseData, setPendingReconciliation]);
+    await finalizeSignOut();
+
+    // Real, per direct guidance ("Path B Execution Plan"): the real
+    // case-level state transition + buffer decision, performed here in
+    // the hooks/orchestration layer — deliberately never inside
+    // reportVersionService.create() itself (a real service-boundary
+    // violation; that service has no business writing Case.status).
+    // Runs only for Orchestration Mode, matching finalizeSignOut()'s
+    // own internal mode check immediately above — defense in depth,
+    // never assuming the UI's own mode-gated button visibility is the
+    // only real protection.
+    if (isOrchestrationMode && caseData?.id) {
+      const bufferResolution = await mockReportReleaseService.resolveBufferForCase(caseData);
+      const finalizedAt = new Date().toISOString();
+      const patch = {
+        status: (bufferResolution.applies ? 'pending-release' : 'finalized') as CaseStatus,
+        finalizedAt,
+        finalizedBy: signingUser?.id ?? null,
+        releasedAt: bufferResolution.applies ? undefined : finalizedAt,
+        releaseBufferExpiresAt: bufferResolution.applies
+          ? new Date(Date.now() + bufferResolution.durationMinutes * 60_000).toISOString()
+          : undefined,
+        releaseBufferDurationMinutes: bufferResolution.applies ? bufferResolution.durationMinutes : undefined,
+        preReleaseBufferStatus: bufferResolution.applies ? caseData.status : undefined,
+      };
+      try {
+        await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
+        knownVersionRef.current = knownVersionRef.current + 1;
+        setCaseData({ ...caseData, ...patch } as typeof caseData);
+
+        if (bufferResolution.applies) {
+          log('sign_out_buffered', {
+            caseId: caseData.id,
+            accession: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber,
+            durationMinutes: bufferResolution.durationMinutes,
+            facilityId: caseData.originHospitalId,
+          });
+          showToast(`Report signed — dispatch in ${bufferResolution.durationMinutes} min unless recalled`);
+        } else {
+          // Real, per direct guidance: no buffer applies (disabled
+          // config, or a real STAT-priority bypass) — no reason to
+          // make a real, already-signed case wait on a buffer that
+          // was never going to fire. Dispatches immediately,
+          // fire-and-forget — a real, external network dispatch
+          // attempt must never delay this function's own return.
+          dispatchCaseInstances(caseData.id).catch(e =>
+            console.error('[useSignOutWorkflow] Real, non-blocking failure dispatching case instances at sign-out (no buffer applied):', e)
+          );
+        }
+      } catch (e) {
+        if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
+        console.error('[useSignOutWorkflow] Failed to apply the real sign-out/buffer state transition:', e);
+        showToast('Signed out, but could not start the release buffer — please contact support.');
+      }
+    }
+  }, [caseData, finalizeSignOut, signingUser, showToast, countersignFeedback, setShowSignOutModal, knownVersionRef, setConcurrencyConflict, setCaseData, setPendingReconciliation, isOrchestrationMode, log]);
 
   // ── Build SynopticForReview[] for PreFinalisationModal ─────────────────
   const buildSynopticsForReview = useCallback(async (): Promise<SynopticForReview[]> => {
@@ -620,14 +914,61 @@ export function useSignOutWorkflow({
   // only (gross/microscopic/ancillary), same real PHI-minimization
   // boundary detectCriticalFindings' own signature already enforces.
   const fetchCriticalFindings = useCallback(async (): Promise<CriticalFindingFlag[]> => {
-    if (!caseData?.diagnostic) return [];
-    const res = await detectCriticalFindings({
-      gross:       caseData.diagnostic.grossDescription ?? '',
-      microscopic: caseData.diagnostic.microscopicDescription ?? '',
-      ancillary:   caseData.diagnostic.ancillaryStudies ?? '',
-    });
-    return res.ok ? res.data.flags : [];
-  }, [caseData]);
+    // Real, per direct guidance (PS-105): resolve the case's real
+    // performing facility once, then gate the entire detection engine
+    // on it — enterprise-disabled is an absolute floor; nothing below
+    // this point runs at all when it applies, not even the AI call
+    // (a real cost/performance win too, not just correctness).
+    const orderingFacilityId = caseData?.order?.facilityId;
+    let labId: string | undefined;
+    let facilityAbnormalDetectionEnabled: boolean | undefined;
+    if (orderingFacilityId) {
+      const facilityRes = await facilityService.getById(orderingFacilityId);
+      if (facilityRes.ok) {
+        labId = resolvePerformingLabFacilityId(facilityRes.data);
+        facilityAbnormalDetectionEnabled = facilityRes.data.abnormalDetectionEnabled;
+      }
+    }
+    const enabled = resolveAbnormalDetectionEnabled(enterpriseConfig.features.abnormalDetectionEnabled, facilityAbnormalDetectionEnabled);
+    if (!enabled) return [];
+
+    let narrativeFindings: CriticalFindingFlag[] = [];
+    if (caseData?.diagnostic) {
+      const res = await detectCriticalFindings({
+        gross:       caseData.diagnostic.grossDescription ?? '',
+        microscopic: caseData.diagnostic.microscopicDescription ?? '',
+        ancillary:   caseData.diagnostic.ancillaryStudies ?? '',
+      });
+      narrativeFindings = res.ok ? res.data.flags : [];
+    }
+
+    // Real, per direct guidance's own unified sign-out review: PS-129's
+    // discrete synoptic trigger rules, checked alongside the AI
+    // narrative findings above, merged into the same
+    // CriticalFindingFlag[] the modal already renders — one real
+    // review surface, not two independently-timed/-shaped ones.
+    let discreteFindings: CriticalFindingFlag[] = [];
+    if (caseData?.synopticReports?.length) {
+      const rulesRes = await abnormalTriggerRuleService.getAll();
+      if (rulesRes.ok) {
+        const activeRules = rulesRes.data.filter(r => r.status === 'Active' && (!r.performingLabFacilityId || r.performingLabFacilityId === labId));
+
+        const matchesPerInstance = await Promise.all(caseData.synopticReports.map(async report => {
+          try {
+            const detail = await getTemplate(report.templateId);
+            const resolved = resolveAnswers(report.answers ?? {}, detail?.template ?? null);
+            return evaluateAbnormalTriggerRules(report.specimenId, resolved, activeRules);
+          } catch (e) {
+            console.error(`[AbnormalDetection] Could not evaluate trigger rules for instance ${report.instanceId}:`, e);
+            return [];
+          }
+        }));
+        discreteFindings = matchesPerInstance.flat().map(toCriticalFindingFlag);
+      }
+    }
+
+    return [...narrativeFindings, ...discreteFindings];
+  }, [caseData, enterpriseConfig]);
 
   /** Real, per direct guidance - the pathologist has reviewed the real,
    *  detected finding(s) and chosen to record a real notification.
@@ -641,6 +982,15 @@ export function useSignOutWorkflow({
     clinicianName: string;
     method: 'verbal_phone' | 'secure_page' | 'direct_lis_flag';
     readBackConfirmed?: boolean;
+    /** Real, per direct guidance: defaults to the signed-in user in
+     *  the modal itself, but genuinely editable — a representative may
+     *  have made the real call, with staff simply transcribing the
+     *  event afterward. userId below always stays the real,
+     *  verifiable, currently-signed-in user (who actually entered this
+     *  record) — this is the separate, human-readable name of whoever
+     *  actually performed the real notification, which the same
+     *  person or a different one. */
+    notifiedByName: string;
   }) => {
     if (!caseData?.id) return;
     const findingSummary = criticalFindings.map(f => f.term).join(', ') || 'Critical finding detected at sign-out';
@@ -651,11 +1001,107 @@ export function useSignOutWorkflow({
       clinicianName: input.clinicianName,
       method: input.method,
       readBackConfirmed: input.readBackConfirmed,
-      notifiedBy: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+      notifiedBy: { userId: signingUser?.id ?? 'unknown', userName: input.notifiedByName },
     });
+
+    // Real, per direct guidance (PS-105): this is the actual, real
+    // pathologist confirmation — set the case's own real,
+    // WorklistTable.tsx-visible status here, to the single
+    // highest-severity finding among everything shown in this modal.
+    // Never set from an unconfirmed suggestion alone (handleAcknowledgeCriticalFindings
+    // below deliberately does NOT set this).
+    const severityRank: Record<'Abnormal' | 'Critical' | 'Malignant', number> = { Abnormal: 1, Critical: 2, Malignant: 3 };
+    const highest = criticalFindings.reduce<'Abnormal' | 'Critical' | 'Malignant' | null>((best, f) => {
+      if (!best) return f.severity;
+      return severityRank[f.severity] > severityRank[best] ? f.severity : best;
+    }, null);
+    if (highest) {
+      // Real, per direct guidance: "we can use synthetic codes
+      // because we will not have a license until our first customer
+      // or a partnership" — PS-130's real, current, intentional
+      // approach. Prefers a matched PS-129 discrete rule's own,
+      // admin-configured per-rule code (real, specific to the actual
+      // finding, e.g. "Margin Status: Positive" vs. a generic
+      // "Critical" placeholder) when one exists among the findings at
+      // this severity; falls back to the real, severity-keyed default
+      // only when none of them carry one (always true for an
+      // AI-narrative finding, which has no fixed rule to attach one
+      // to). See resolveSyntheticCoding.ts's own header for the full
+      // structural safety reasoning (PS-130's real, licensed
+      // implementation stays genuinely blocked; this never touches
+      // that — it's the real, interim approach until a real
+      // terminology source exists).
+      const perRuleMatch = criticalFindings.find(f => f.severity === highest && f.syntheticCoding && f.syntheticCoding.length > 0);
+      const patch = {
+        abnormalDetectionStatus: { severity: highest, confirmedAt: new Date().toISOString() },
+        syntheticAbnormalCoding: perRuleMatch?.syntheticCoding ?? resolveSyntheticCoding(highest),
+      };
+      try {
+        await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
+        setCaseData(prev => prev ? ({ ...prev, ...patch } as typeof prev) : prev);
+      } catch (e) {
+        console.error('[AbnormalDetection] Could not persist confirmed abnormal status:', e);
+      }
+
+      // Real, per direct correction (PS-134 follow-up: "when would a
+      // CAPA be needed?"): this records a real, genuine audit-trail
+      // entry for the pathologist's own confirmation — outcome:
+      // 'concordant', since a primary pathologist confirming their
+      // OWN finding is not a discrepancy of any kind, and severity is
+      // deliberately omitted (QaActivityRecord's own contract: only
+      // meaningful when outcome === 'discordant' — a concordant
+      // record has nothing to grade). This activity type deliberately
+      // carries NO capaTriggerRule — an earlier version of this code
+      // incorrectly fired a CAPA on every confirmed Critical/
+      // Malignant finding, which would flood a real CAPA queue with
+      // hundreds of records for correct, unremarkable diagnoses in
+      // any department that reads cancer routinely. The real CAPA
+      // triggers per direct guidance are three, specific, genuinely
+      // different signals — none of which are "a primary read was
+      // confirmed" — see mockQaActivityTypeService.ts's own, fuller
+      // comment on this activity type for the complete account of
+      // what's real vs. still-needed for each. Fire-and-forget, same
+      // real posture as the PS-137 signal capture immediately below —
+      // never blocks the actual sign-out action.
+      const highestFinding = criticalFindings.find(f => f.severity === highest);
+      qaActivityRecordService.create({
+        activityTypeId: ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID,
+        caseId: caseData.id,
+        caseType: caseData.specimens?.[0]?.description || caseData.id,
+        fieldValues: {
+          findingTerm: highestFinding?.term ?? highest,
+          findingSource: highestFinding?.sourceQuote ?? '',
+        },
+        outcome: 'concordant',
+        recordedBy: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+      }).catch(e => console.error('[AbnormalDetection] Could not record QA activity for this confirmed finding:', e));
+    }
+
+    // Real, per direct guidance (PS-105/PS-137): "How often was their
+    // agreement... an opportunity to feed that information back for
+    // learning, just like we do when we add or remove synoptic
+    // reports." Fire-and-forget, same real posture as the existing
+    // Level 1 narrative-edit-signal capture elsewhere in this file —
+    // never blocks the actual sign-out action on this background
+    // capture. One real signal per finding actually shown in this
+    // session, 'confirmed' outcome — the pathologist genuinely
+    // recorded a real notification for it.
+    criticalFindings.forEach(f => {
+      const source: 'discrete' | 'narrative' = f.sourceField === 'synoptic' ? 'discrete' : 'narrative';
+      const reasonClean = source === 'narrative' ? deidentifyText(f.sourceQuote).clean : f.sourceQuote;
+      abnormalDetectionSignalService.recordSignal({
+        caseId: caseData.id,
+        source,
+        reasonClean,
+        suggestedSeverity: f.severity,
+        suggestedConfidence: f.confidence,
+        outcome: 'confirmed',
+      }).catch(e => console.error('[AbnormalDetection] Could not record agreement signal:', e));
+    });
+
     setAcknowledgedCritical(true);
     setShowCriticalFindingsModal(false);
-  }, [caseData, criticalFindings, signingUser]);
+  }, [caseData, criticalFindings, signingUser, setCaseData, knownVersionRef]);
 
   /** Real, per direct guidance - a soft block, not a hard one: the
    *  detection here is an LLM-based heuristic that can be wrong, and
@@ -664,9 +1110,27 @@ export function useSignOutWorkflow({
    *  modal without recording anything - a real, honest choice, not a
    *  forced action. */
   const handleAcknowledgeCriticalFindings = useCallback(() => {
+    // Real, per direct guidance (PS-105/PS-137) — same real agreement-
+    // tracking capture as handleRecordCriticalNotification above,
+    // 'dismissed' outcome. Deliberately does NOT set
+    // Case.abnormalDetectionStatus (see that field's own doc comment,
+    // types/case/Case.ts) — this is a real signal for learning, not a
+    // confirmed clinical status.
+    criticalFindings.forEach(f => {
+      const source: 'discrete' | 'narrative' = f.sourceField === 'synoptic' ? 'discrete' : 'narrative';
+      const reasonClean = source === 'narrative' ? deidentifyText(f.sourceQuote).clean : f.sourceQuote;
+      abnormalDetectionSignalService.recordSignal({
+        caseId: caseData?.id ?? 'unknown',
+        source,
+        reasonClean,
+        suggestedSeverity: f.severity,
+        suggestedConfidence: f.confidence,
+        outcome: 'dismissed',
+      }).catch(e => console.error('[AbnormalDetection] Could not record agreement signal:', e));
+    });
     setAcknowledgedCritical(true);
     setShowCriticalFindingsModal(false);
-  }, []);
+  }, [caseData, criticalFindings]);
 
   // ── Real finalization logic — shared by both finalize entry points ────────
   // Previously: handlePreFinalConfirm only console.log'd and closed the
@@ -706,25 +1170,15 @@ export function useSignOutWorkflow({
     // resolvePreAnalyticDateGateConfig.ts for the full per-country
     // citation/label/disclaimer). Checked BEFORE the fixation-time gate
     // below — basic accession date/time is more foundational than
-    // biomarker-specific fixation timing, and there's no reason to walk
-    // someone through a narrower clinical gate before the more basic
-    // pre-analytic one. Both dates (collection AND laboratory receipt)
-    // are independently required per direct guidance's own UKAS Clause
-    // 7.2 research — a specimen missing either one blocks here.
-    const preAnalyticBlockingSpecimens: PreAnalyticDateGateSpecimen[] = (caseData.specimens ?? [])
-      .filter((sp: Specimen) => (!sp.collectedAt && !sp.collectedAtAdministrativeOverride)
-        || (!sp.receivedAt && !sp.receivedAtAdministrativeOverride))
-      .map((sp: Specimen) => ({
-        specimenId: sp.id,
-        label: sp.label,
-        description: sp.description,
-        missingCollectedAt: !sp.collectedAt && !sp.collectedAtAdministrativeOverride,
-        missingReceivedAt: !sp.receivedAt && !sp.receivedAtAdministrativeOverride,
-      }));
+    // biomarker-specific fixation timing. Both real gates now shared
+    // with handleSignOutConfirm() below, via checkPreAnalyticAndFixativeGates()
+    // — see that function's own header comment for why.
+    const { preAnalyticBlocking, fixativeBlocking } = checkPreAnalyticAndFixativeGates(caseData, specimenDictionary);
 
-    if (preAnalyticBlockingSpecimens.length > 0) {
-      setPreAnalyticDateGateSpecimens(preAnalyticBlockingSpecimens);
+    if (preAnalyticBlocking.length > 0) {
+      setPreAnalyticDateGateSpecimens(preAnalyticBlocking);
       setPendingFinalizeArgs(excludedInstanceIds);
+      setPendingActionIsSignOut(false);
       return false; // abort — do not finalize until the gate is resolved
     }
 
@@ -738,18 +1192,10 @@ export function useSignOutWorkflow({
     // or confirmed unrecoverable) rather than either silently blocking
     // forever or silently allowing incomplete biomarker-relevant data
     // through.
-    const blockingSpecimens: FixativeGateSpecimen[] = (caseData.specimens ?? [])
-      .filter((sp: Specimen) => {
-        const entry = sp.specimenDictionaryEntryId
-          ? specimenDictionary.find(e => e.id === sp.specimenDictionaryEntryId)
-          : undefined;
-        return entry?.requireFixativeTimeBeforeSignout && !sp.processing?.processedAt;
-      })
-      .map((sp: Specimen) => ({ specimenId: sp.id, label: sp.label, description: sp.description }));
-
-    if (blockingSpecimens.length > 0) {
-      setFixativeGateSpecimens(blockingSpecimens);
+    if (fixativeBlocking.length > 0) {
+      setFixativeGateSpecimens(fixativeBlocking);
       setPendingFinalizeArgs(excludedInstanceIds);
+      setPendingActionIsSignOut(false);
       return false; // abort — do not finalize until the gate is resolved
     }
 
@@ -1095,7 +1541,11 @@ export function useSignOutWorkflow({
     // findings once.
     if (!acknowledgedCritical) {
       const findings = await fetchCriticalFindings();
-      const criticalOnly = findings.filter(f => f.severity === 'critical');
+      // Real, per direct guidance's own severity unification with
+      // PS-129: gates on Critical AND Malignant (both more severe than
+      // the original single 'critical' level this replaced) — Abnormal
+      // alone still doesn't prompt this modal, same original intent.
+      const criticalOnly = findings.filter(f => f.severity === 'Critical' || f.severity === 'Malignant');
       if (criticalOnly.length > 0) {
         setCriticalFindings(criticalOnly);
         setShowCriticalFindingsModal(true);
@@ -1186,7 +1636,7 @@ export function useSignOutWorkflow({
           let resolvedStudyId: string | undefined;
           try {
             const { mockValidationStudyService } = await import('@/services/validationStudies/mockValidationStudyService');
-            const clientId       = caseData?.order?.clientId ?? '';
+            const clientId       = caseData?.order?.facilityId ?? '';
             const pathologistId  = signingUser?.id ?? '';
             const subspecialtyId = caseData?.subspecialtyId;
             const studyResult = await mockValidationStudyService.getStudyForCase(clientId, pathologistId, subspecialtyId);
@@ -1252,6 +1702,7 @@ export function useSignOutWorkflow({
   return {
     finalizeSignOut,
     handleSignOutConfirm,
+    handleReturnToTrainee,
     buildSynopticsForReview,
     finalizeCase,
     missingFields, setMissingFields,
