@@ -35,6 +35,7 @@ export { mockGrossingRoutingOverrideService as grossingRoutingOverrideService } 
 export { mockTemplateSuggestionSignalService as templateSuggestionSignalService } from './templateSuggestions/mockTemplateSuggestionSignalService';
 export { mockLisSyncService as lisSyncService } from './lisSync/mockLisSyncService';
 export { mockSpecimenDictionaryService as specimenDictionaryService } from './specimenDictionary/mockSpecimenDictionaryService';
+export { mockSpecimenCategoryService as specimenCategoryService } from './specimenCategories/mockSpecimenCategoryService';
 export { mockPriorityService as priorityService } from './priority/mockPriorityService';
 export { mockStainTypeService as stainTypeService } from './stains/mockStainTypeService';
 export { mockSectioningProtocolService as sectioningProtocolService } from './stains/mockSectioningProtocolService';

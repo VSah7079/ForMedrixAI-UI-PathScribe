@@ -22,7 +22,7 @@
 
 import { cassetteIdentifier, slideIdentifier, decantIdentifier, decantSlideIdentifier } from '@/types/labels/LabelData';
 import { getBlockLabel } from '@/utils/specimenLabeling';
-import type { HistologyBlock } from '@/types/case/Specimen';
+import type { HistologyBlock, SpecimenTriage } from '@/types/case/Specimen';
 import type { Decant } from '@/types/case/Material';
 import type { Protocol } from '@/services/protocols/IProtocolService';
 import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
@@ -62,7 +62,7 @@ export async function generateDefaultMaterial(
   // unchanged; only the one real call site that actually has a real
   // priority to offer needs to pass it.
   priority?: CasePriority,
-): Promise<{ blocks: HistologyBlock[]; decants: Decant[] }> {
+): Promise<{ blocks: HistologyBlock[]; decants: Decant[]; protocolSnapshot?: { id: string; version: number; name: string }; triage?: SpecimenTriage }> {
   const stainName = (stainTypeId: string) => stainTypes.find(s => s.id === stainTypeId)?.name ?? stainTypeId;
   const blockDisplayId = (blockLabel: string) => fullAccession && specimenLabel ? cassetteIdentifier(fullAccession, specimenLabel, blockLabel) : undefined;
   const stainDisplayId = (blockLabel: string, level: string) => fullAccession && specimenLabel ? slideIdentifier(fullAccession, specimenLabel, blockLabel, level) : undefined;
@@ -80,6 +80,27 @@ export async function generateDefaultMaterial(
   // why: the same protocol record can be mapped from multiple
   // unrelated specimen types, updated once, cascading to all of them.
   const protocol = entry?.protocolId ? protocols.find(p => p.id === entry.protocolId) : undefined;
+  // Real, additive — per the Protocol-Driven Workflow Infrastructure
+  // story's Specimen.protocolSnapshot field (types/case/Specimen.ts).
+  // Captured once, right here, at the exact real moment the protocol
+  // is resolved for this specimen — locks the version so a later edit
+  // to the master Protocol record never retroactively changes what
+  // this already-accessioned specimen shows.
+  const protocolSnapshot = protocol ? { id: protocol.id, version: protocol.version, name: protocol.name } : undefined;
+  // Real, per the Protocol-Driven Workflow Infrastructure story's Part
+  // 2c — initialized once, right here, at the exact real moment the
+  // protocol is resolved for this specimen. Only ever set when the
+  // resolved protocol genuinely requires it; every other specimen gets
+  // no SpecimenTriage at all and is never gated at release. Checklist
+  // item text is copied from Protocol.triageChecklist at this exact
+  // moment — same real "snapshot, not live reference" reasoning as
+  // protocolSnapshot itself, immediately above.
+  const triage: SpecimenTriage | undefined = protocol?.requiresTriage
+    ? {
+        requiredAt: new Date().toISOString(),
+        checklistItems: (protocol.triageChecklist ?? []).map(item => ({ item, confirmed: false })),
+      }
+    : undefined;
 
   // Real, deliberate single resolution — see this function's own,
   // updated header comment. Neither call varies per-pathway (the
@@ -109,65 +130,82 @@ export async function generateDefaultMaterial(
       const sortedTasks = [...pathway.tasks].sort((a, b) => a.stepOrder - b.stepOrder);
 
       if (pathway.materialKind === 'decant') {
-        decantCounter += 1;
-        const decantLabel = decantLabelFor(decantCounter);
-        const stains: Decant['stains'] = [];
-        sortedTasks.forEach((task, taskIdx) => {
-          task.stainTypeIds.forEach((stainTypeId, stainIdx) => {
-            stains.push({
-              id: `${specimenId}-DECANT-${decantLabel}-STAIN-${taskIdx}-${stainIdx}`,
-              stainName: stainName(stainTypeId),
-              status: 'Pending Cut',
-              displayId: decantStainDisplayId(decantLabel, `L${stains.length + 1}`),
+        // Real, additive — per ProtocolPathway.defaultCount (see that
+        // field's own doc comment). Undefined/1 behaves exactly as
+        // before this field existed: one decant for this pathway.
+        const decantInstances = Math.max(1, pathway.defaultCount ?? 1);
+        for (let i = 0; i < decantInstances; i++) {
+          decantCounter += 1;
+          const decantLabel = decantLabelFor(decantCounter);
+          const stains: Decant['stains'] = [];
+          sortedTasks.forEach((task, taskIdx) => {
+            task.stainTypeIds.forEach((stainTypeId, stainIdx) => {
+              stains.push({
+                id: `${specimenId}-DECANT-${decantLabel}-STAIN-${taskIdx}-${stainIdx}`,
+                stainName: stainName(stainTypeId),
+                status: 'Pending Cut',
+                displayId: decantStainDisplayId(decantLabel, `L${stains.length + 1}`),
+              });
             });
           });
-        });
-        decants.push({
-          id: `${specimenId}-DECANT-${decantLabel}`,
-          label: decantLabel,
-          // Real, deliberate mapping — DecantType has no generic
-          // "protocol-driven" value; 'cell_block' is the real,
-          // closer match for a task/stain-bearing pathway (embedded,
-          // processed, sectioned, the same real lifecycle a block
-          // has) than 'residual_fluid' (the leftover, not-further-
-          // processed portion) would be.
-          decantType: 'cell_block',
-          stains,
-          createdAt: new Date().toISOString(),
-          displayId: decantDisplayId(decantLabel),
-          cassetteColorId: decantCassetteColorId,
-        });
+          decants.push({
+            id: `${specimenId}-DECANT-${decantLabel}`,
+            label: decantLabel,
+            // Real, deliberate mapping — DecantType has no generic
+            // "protocol-driven" value; 'cell_block' is the real,
+            // closer match for a task/stain-bearing pathway (embedded,
+            // processed, sectioned, the same real lifecycle a block
+            // has) than 'residual_fluid' (the leftover, not-further-
+            // processed portion) would be.
+            decantType: 'cell_block',
+            stains,
+            createdAt: new Date().toISOString(),
+            displayId: decantDisplayId(decantLabel),
+            cassetteColorId: decantCassetteColorId,
+          });
+        }
         return;
       }
 
-      const blockLabel = getBlockLabel(blockPathwayIndex, specimenLabelStyle);
-      blockPathwayIndex += 1;
-      const stains: HistologyBlock['stains'] = [];
-      sortedTasks.forEach((task, taskIdx) => {
-        task.stainTypeIds.forEach((stainTypeId, stainIdx) => {
-          stains.push({
-            id: `${specimenId}-BLOCK-${blockLabel}-STAIN-${taskIdx}-${stainIdx}`,
-            stainName: stainName(stainTypeId),
-            status: 'Pending Cut',
-            displayId: stainDisplayId(blockLabel, `L${stains.length + 1}`),
+      // Real, additive — per ProtocolPathway.defaultCount (see that
+      // field's own doc comment). Undefined/1 behaves exactly as
+      // before this field existed: one block for this pathway.
+      const blockInstances = Math.max(1, pathway.defaultCount ?? 1);
+      for (let i = 0; i < blockInstances; i++) {
+        const blockLabel = getBlockLabel(blockPathwayIndex, specimenLabelStyle);
+        blockPathwayIndex += 1;
+        const stains: HistologyBlock['stains'] = [];
+        sortedTasks.forEach((task, taskIdx) => {
+          task.stainTypeIds.forEach((stainTypeId, stainIdx) => {
+            stains.push({
+              id: `${specimenId}-BLOCK-${blockLabel}-STAIN-${taskIdx}-${stainIdx}`,
+              stainName: stainName(stainTypeId),
+              status: 'Pending Cut',
+              displayId: stainDisplayId(blockLabel, `L${stains.length + 1}`),
+            });
           });
         });
-      });
-      blocks.push({
-        id: `${specimenId}-BLOCK-${blockLabel}`,
-        label: blockLabel,
-        status: 'Pending',
-        stains,
-        sourcePathwayName: pathway.pathwayName,
-        fixativeType: pathway.fixativeType,
-        processingFormat: pathway.processingFormat,
-        requiresDecal: pathway.requiresDecal,
-        displayId: blockDisplayId(blockLabel),
-        cassetteColorId,
-      });
+        blocks.push({
+          id: `${specimenId}-BLOCK-${blockLabel}`,
+          label: blockLabel,
+          status: 'Pending',
+          stains,
+          sourcePathwayName: pathway.pathwayName,
+          fixativeType: pathway.fixativeType,
+          processingFormat: pathway.processingFormat,
+          requiresDecal: pathway.requiresDecal,
+          displayId: blockDisplayId(blockLabel),
+          cassetteColorId,
+          // Real, additive — per ProtocolPathway.defaultPieceCount (see
+          // that field's own doc comment). Undefined leaves pieceCount
+          // unset, same as every block generated before this field
+          // existed.
+          pieceCount: pathway.defaultPieceCount,
+        });
+      }
     });
 
-    return { blocks, decants };
+    return { blocks, decants, protocolSnapshot, triage };
   }
 
   const stainNames = entry?.defaultStains?.length ? entry.defaultStains : ['H&E'];
@@ -187,5 +225,14 @@ export async function generateDefaultMaterial(
       cassetteColorId,
     }],
     decants: [],
+    // Real, deliberate — this fallback path (no protocol.pathways)
+    // only runs when entry?.protocolId didn't resolve to a real
+    // Protocol at all, so protocolSnapshot is genuinely undefined
+    // here, same as protocol itself two branches up.
+    protocolSnapshot: undefined,
+    // triage was already computed above from the same resolved
+    // protocol, before the pathways-vs-fallback branch — a protocol
+    // with no pathways can still, in principle, require triage.
+    triage,
   };
 }

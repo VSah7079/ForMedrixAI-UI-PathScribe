@@ -1,5 +1,7 @@
 export * from './serviceResult';
 
+import type { ProviderCredential } from '@/types/staff/ProviderCredential';
+
 export interface StaffUser {
   id: string;
   name: string;
@@ -12,6 +14,13 @@ export interface StaffUser {
     email?: string;
     password?: string;
   };
+  /** Real, per direct guidance's own explicit design — sign-out
+   *  permissions stored as real, scoped credentials/sub-capabilities
+   *  on the user record, not a dynamic top-level role. Deliberately a
+   *  separate field from `credentials` above (auth secrets) — same
+   *  word, genuinely different real meaning, kept apart rather than
+   *  overloading one field for two unrelated concepts. */
+  providerCredentials?: ProviderCredential[];
   participationTypeIds?: string[]; // Adding this here will also fix those other 20+ errors!
 }
 

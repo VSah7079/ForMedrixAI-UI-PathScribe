@@ -22,8 +22,8 @@
 // layout modes this now picks between.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RequisitionLabelData, ContainerLabelData, StationLabelData, SecondaryLabelData, DecantContainerLabelData } from '@/types/labels/LabelData';
-import { barcodePayloadForRequisition, barcodePayloadForContainer, barcodePayloadForStation, barcodePayloadForSecondaryLabel, barcodePayloadForDecantContainer } from '@/types/labels/LabelData';
+import type { RequisitionLabelData, ContainerLabelData, StationLabelData, SecondaryLabelData, DecantContainerLabelData, MolecularSpecimenLabelData, MolecularPlateLabelData, MolecularRackLabelData, MolecularDeckLocationLabelData, RequisitionStickerSheetData, RequisitionStickerZoneKind } from '@/types/labels/LabelData';
+import { barcodePayloadForRequisition, barcodePayloadForContainer, barcodePayloadForStation, barcodePayloadForSecondaryLabel, barcodePayloadForDecantContainer, barcodePayloadForMolecularSpecimen, barcodePayloadForMolecularPlate, barcodePayloadForMolecularRack, barcodePayloadForMolecularDeckLocation, REQUISITION_STICKER_ZONE_DIMENSIONS } from '@/types/labels/LabelData';
 import type { LabelSizePreset } from '@/types/labels/LabelSizePreset';
 import { generateBarcodeSvg } from './generateBarcodeSvg';
 
@@ -83,11 +83,78 @@ export function buildRequisitionLabelHtml(data: RequisitionLabelData, preset: La
   const rows = fieldRows([
     ['Patient', data.patientName],
     ['DOB', formatDob(data.dateOfBirth)],
-    ['MRN', data.mrn],
-    ['Provider', data.requestingProvider],
-    ['Facility', data.submittingFacility],
+    // Real, same direct correction as buildRequisitionStickerSheetHtml's
+    // own identical fix above — a genuinely missing identifying field
+    // shows as an explicit placeholder, not a silently collapsed line.
+    ['MRN', data.mrn || 'Not Recorded'],
+    ['Provider', data.requestingProvider || 'Not Recorded'],
+    ['Facility', data.submittingFacility || 'Not Recorded'],
   ]);
   return labelWrapper(preset, escapeHtml(data.fullAccession), rows, barcodeSvg);
+}
+
+// Real, per direct follow-up + supplied research: the real, multi-zone
+// requisition sticker sheet — see RequisitionStickerSheetData's own
+// doc comment (types/labels/LabelData.ts) for the full reasoning.
+// Every real sticker on this sheet carries the same real accession
+// barcode (the one real identifier already known at requisition-print
+// time) — only size, count, and a short zone label differ.
+
+function repeatedStickerHtml(kind: RequisitionStickerZoneKind, count: number, barcodePayload: string, symbology: LabelSizePreset['defaultBarcodeSymbology']): string {
+  const dims = REQUISITION_STICKER_ZONE_DIMENSIONS[kind];
+  const barcodeSvg = generateBarcodeSvg(barcodePayload, symbology, { widthMm: dims.widthMm * 0.6, heightMm: dims.heightMm * 0.7 });
+  const stickers = Array.from({ length: count }, () => `
+    <div class="ps-req-sticker" style="width:${dims.widthMm}mm;height:${dims.heightMm}mm;">
+      <div class="ps-req-sticker-barcode">${barcodeSvg}</div>
+      <div class="ps-req-sticker-text">${escapeHtml(barcodePayload)}</div>
+    </div>`).join('');
+  return `<div class="ps-req-sticker-row">${stickers}</div>`;
+}
+
+export function buildRequisitionStickerSheetHtml(data: RequisitionStickerSheetData, preset: LabelSizePreset): string {
+  const accessionBarcode = barcodePayloadForRequisition(data);
+  const headerBarcodeSvg = generateBarcodeSvg(accessionBarcode, preset.defaultBarcodeSymbology, { widthMm: 20, heightMm: 8 });
+  const headerRows = fieldRows([
+    ['Patient', data.patientName],
+    ['DOB', formatDob(data.dateOfBirth)],
+    // Real, direct correction, per direct follow-up ("if the fields
+    // have no data... it would be valuable to notify the reader"):
+    // fieldRows collapses a field entirely when its own value is
+    // empty — the right, established behavior for a real, optional
+    // field, but wrong for a real identifying/routing field a
+    // specimen's own safe handling depends on. A genuinely missing
+    // MRN or submitting facility now shows as an explicit "Not
+    // Available" placeholder instead of silently vanishing from the
+    // label, matching this same file's own ZPL sibling
+    // (buildRequisitionStickerSheetZpl.ts) exactly, so both real
+    // rendering paths for the same real sheet agree.
+    ['MRN', data.mrn || 'Not Recorded'],
+    ['Provider', data.requestingProvider || 'Not Recorded'],
+    ['Facility', data.submittingFacility || 'Not Recorded'],
+  ]);
+
+  return `
+    <div class="ps-req-sheet" style="width:${preset.widthMm}mm;height:${preset.heightMm}mm;">
+      <div class="ps-req-header">
+        <div class="ps-req-header-text">
+          <div class="ps-label-accession">${escapeHtml(data.fullAccession)}</div>
+          <div class="ps-label-fields">${headerRows}</div>
+        </div>
+        <div class="ps-req-header-barcode">${headerBarcodeSvg}</div>
+      </div>
+      <div class="ps-req-zone">
+        <div class="ps-req-zone-title">Log-In / Transport</div>
+        ${repeatedStickerHtml('log_in', data.logInStickerCount, accessionBarcode, preset.defaultBarcodeSymbology)}
+      </div>
+      <div class="ps-req-zone">
+        <div class="ps-req-zone-title">Specimen / Tube</div>
+        ${repeatedStickerHtml('specimen', data.specimenStickerCount, accessionBarcode, preset.defaultBarcodeSymbology)}
+      </div>
+      <div class="ps-req-zone">
+        <div class="ps-req-zone-title">Cassette / Slide</div>
+        ${repeatedStickerHtml('cassette_slide', data.cassetteSlideStickerCount, accessionBarcode, preset.defaultBarcodeSymbology)}
+      </div>
+    </div>`;
 }
 
 export function buildContainerLabelHtml(data: ContainerLabelData, preset: LabelSizePreset): string {
@@ -180,4 +247,47 @@ export function buildSecondaryLabelHtml(data: SecondaryLabelData, preset: LabelS
         <div class="ps-seclabel-note">was: ${escapeHtml(data.foreignId)}</div>
       </div>
     </div>`;
+}
+
+// ── Molecular Testing Execution Module — Phase 4 ────────────────────
+// Real, per direct follow-up: same real labelWrapper()/fieldRows()
+// pipeline every label kind above already uses — no second, parallel
+// HTML-building mechanism for molecular labels.
+
+export function buildMolecularSpecimenLabelHtml(data: MolecularSpecimenLabelData, preset: LabelSizePreset): string {
+  const barcodeSvg = generateBarcodeSvg(barcodePayloadForMolecularSpecimen(data), preset.defaultBarcodeSymbology);
+  const rows = fieldRows([
+    ['Accession', data.accessionNumber],
+    ['Volume', data.aliquotVolumeUl !== undefined ? `${data.aliquotVolumeUl} µL` : undefined],
+    ['Printed', formatDob(data.printedAt)],
+  ]);
+  return labelWrapper(preset, escapeHtml(data.containerBarcode), rows, barcodeSvg);
+}
+
+export function buildMolecularPlateLabelHtml(data: MolecularPlateLabelData, preset: LabelSizePreset): string {
+  const barcodeSvg = generateBarcodeSvg(barcodePayloadForMolecularPlate(data), preset.defaultBarcodeSymbology);
+  const rows = fieldRows([
+    ['Assay', data.assayName],
+    ['Instrument', data.targetInstrumentId],
+    ['Printed', formatDob(data.printedAt)],
+  ]);
+  return labelWrapper(preset, escapeHtml(data.plateBarcode), rows, barcodeSvg);
+}
+
+export function buildMolecularRackLabelHtml(data: MolecularRackLabelData, preset: LabelSizePreset): string {
+  const barcodeSvg = generateBarcodeSvg(barcodePayloadForMolecularRack(data), preset.defaultBarcodeSymbology);
+  const rows = fieldRows([
+    ['Printed', formatDob(data.printedAt)],
+  ]);
+  return labelWrapper(preset, escapeHtml(data.rackBarcode), rows, barcodeSvg);
+}
+
+export function buildMolecularDeckLocationLabelHtml(data: MolecularDeckLocationLabelData, preset: LabelSizePreset): string {
+  const barcodeSvg = generateBarcodeSvg(barcodePayloadForMolecularDeckLocation(data), preset.defaultBarcodeSymbology);
+  const rows = fieldRows([
+    ['Instrument', data.targetInstrumentId],
+    ['Deck Slot', data.deckSlot],
+    ['Printed', formatDob(data.printedAt)],
+  ]);
+  return labelWrapper(preset, escapeHtml(data.deckLocationLabel), rows, barcodeSvg);
 }

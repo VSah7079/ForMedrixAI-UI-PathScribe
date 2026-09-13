@@ -37,7 +37,7 @@ describe('zplTemplates — real, corrected fix to PS-51 Section 6.2\'s own ZPL t
     // the spec's own "120" quality value was never actually valid —
     // ZPL DataMatrix quality levels are only 0/50/80/100/140/200.
     // ECC200 (GS1's own recommended level) is used instead.
-    expect(zpl).toContain('^BXN,4,200,0,0,1');
+    expect(zpl).toContain('^BXN,4,200,,,1'); // columns/rows blank (auto), not 0 — real, Labelary-verified fix
     expect(zpl).toContain('^FDPS2026-8821');
     expect(zpl).toContain('A1 - BLK-02');
     expect(zpl).toContain('DOE, JOHN');
@@ -72,7 +72,15 @@ describe('zplTemplates — buildSlideZplTemplate, the real, missing slide half o
     const zpl = buildSlideZplTemplate({
       gs1: slideGs1, fullAccession: 'S26-4403', specimenLabel: 'A', blockLabel: '1', level: 'L1', stainName: 'H&E',
     });
-    expect(zpl).toContain('^BXN,2,200,0,0,1');
+    expect(zpl).toContain('^BXN,2,200,,,1'); // columns/rows blank (auto), not 0
+  });
+
+  it('real, direct bug fix verified at the label\'s own real, correct scale (1.0" x 0.25" canvas, 300 dpi) via real Labelary testing: uses ^BY2, not ^BY1 — clears a real "increase module width" linter warning with zero real layout cost, since ^BY never controlled the DataMatrix\'s own module size (that\'s the unchanged "2" in ^BXN,2,...)', () => {
+    const zpl = buildSlideZplTemplate({
+      gs1: slideGs1, fullAccession: 'S26-4403', specimenLabel: 'A', blockLabel: '1', level: 'L1', stainName: 'H&E',
+    });
+    expect(zpl).toContain('^BY2');
+    expect(zpl).not.toContain('^BY1');
   });
 
   it('includes the real ^FH + FNC1 escape fix, same as the cassette template', () => {

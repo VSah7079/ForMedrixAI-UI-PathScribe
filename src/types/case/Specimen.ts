@@ -9,9 +9,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { FlagInstance } from "../flagsRuntime";
 import { CaseComment } from "./CaseComment";
+import { MaterialComment } from "./MaterialComment";
 import type { CasePriority } from "@/services/cases/ICaseService";
 import type { MaterialLocation } from "./Material";
 import type { CytologyCategorySelection } from "@/types/cytology/CytologyReviewRecord";
+import type { RecordedClinicalHistoryEntry } from "@/types/clinicalHistory/RecordedClinicalHistoryEntry";
+import type { CytologyRoseEvaluation } from "@/types/cytology/CytologyRoseEvaluation";
 
 export interface SpecimenCollection {
   collectedAt?: string;
@@ -122,6 +125,15 @@ export interface StainOrder {
    * silently vanish.
    */
   lisRequestStatus?: 'pending' | 'confirmed' | 'rejected';
+  /** Real, per the Protocol-Driven Workflow Infrastructure story's
+   *  Part 3 Grossing Screen: "Stains (default vs user-added flagged
+   *  visually)." Undefined/false — the common case — means this stain
+   *  came from the protocol's own pathway defaults at accession
+   *  (generateDefaultMaterial.ts); true means a grossing tech added it
+   *  at the Grossing Screen, from the allowedAdditionalStainTypeIds-
+   *  filtered dropdown. Drives both the visual flag and Remove Stain's
+   *  own confirmation-required-for-a-default-only rule. */
+  userAdded?: boolean;
   /** A whole-slide scan of this specific stain order, if one exists.
    *  See Material.ts's DigitalAsset — left empty everywhere for now. */
   digitalAssets?: import('./Material').DigitalAsset[];
@@ -248,6 +260,14 @@ export interface StainOrder {
    * billing units, not a guess.
    */
   evaluatedSpecimenIds?: string[];
+  /** Real, per direct follow-up on comment-field parity across
+   *  material types — see HistologyBlock.comments's own doc comment
+   *  for the full reasoning, including why this deliberately uses
+   *  plain-text MaterialComment, not rich-text CaseComment. Real,
+   *  genuine use: a note specific to this one stain order (e.g. a
+   *  repeat requested due to a technical artifact), distinct from
+   *  the block-level or specimen-level threads. */
+  comments?: MaterialComment[];
 }
 
 /** Real, shared shape for a stain-attributed applied or rejected
@@ -318,6 +338,20 @@ export interface HistologyBlock {
    *  bug the old flat string[] shape had, since there was no way to
    *  tell which specific stain a rejection was actually for. */
   coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] };
+  /** Real, per direct follow-up: "we should support comment fields
+   *  associated to the assets. We have them for specimen, but not
+   *  sure for block, stain, decants etc." Confirmed directly before
+   *  adding this: no such field existed on HistologyBlock, StainOrder,
+   *  Decant, or MatrixBlock — only Specimen and Case had a real
+   *  comment thread. Real, per a direct follow-up correction: this
+   *  deliberately uses MaterialComment (plain text), NOT CaseComment
+   *  (rich text/HTML) — see MaterialComment.ts's own header for the
+   *  full reasoning on why case/specimen-level rich text is genuine
+   *  overkill for a short, operational block-level note. Real,
+   *  genuine use: a grossing-assistant or embedding-tech note
+   *  specific to this one block (e.g. an unusual finding at
+   *  embedding), distinct from the specimen-wide comment thread. */
+  comments?: MaterialComment[];
   /**
    * Which processing pathway this block came from, if generated from a
    * multi-pathway Protocol (services/protocols/IProtocolService.ts) —
@@ -510,6 +544,16 @@ export interface HistologyBlock {
    *  ordinary tissue block's own real cassette. */
   cassetteColorId?: string;
   cassetteColorOverridden?: boolean;
+  /** Real, per the Protocol-Driven Workflow Infrastructure story's
+   *  Part 3 Grossing Screen — set true the moment this block's own
+   *  stains diverge from the protocol's own pathway defaults (a
+   *  userAdded stain added, or a protocol-default stain removed).
+   *  Drives the block table's own visual flag; the specimen-level
+   *  "Protocol Modified" indicator (protocol header) is simply
+   *  "any block on this specimen has userModified: true." Undefined —
+   *  the common case — means every stain on this block still matches
+   *  exactly what generateDefaultMaterial.ts originally generated. */
+  userModified?: boolean;
 }
 
 /**
@@ -528,6 +572,71 @@ export type SpecimenLisStatus =
   | 'sync_sent'
   | 'sync_rejected'
   | 'local_only';
+
+/** Real, per the Protocol-Driven Workflow Infrastructure story's Part
+ *  2c — one real, checkable line item from Protocol.triageChecklist
+ *  (services/protocols/IProtocolService.ts), e.g. "Split the core into
+ *  LM/IF/EM portions." `item` is copied from the Protocol at the exact
+ *  moment SpecimenTriage is initialized (accession) — same real
+ *  "snapshot, not live reference" reasoning as Specimen.protocolSnapshot
+ *  — so a later edit to the master Protocol's own checklist wording
+ *  never retroactively changes what an already-accessioned specimen's
+ *  checklist reads. */
+export interface SpecimenTriageChecklistItem {
+  item: string;
+  confirmed: boolean;
+}
+
+/** Real, per the Protocol-Driven Workflow Infrastructure story's Part
+ *  2c. Initialized once, at accession (generateDefaultMaterial.ts),
+ *  only when the resolved Protocol has requiresTriage: true — every
+ *  other specimen has no SpecimenTriage at all and is never gated.
+ *  Real, hard gate (per direct instruction): handleReleaseGrossingBlocks
+ *  (useSpecimenBlockManagement.ts) refuses to release a block on this
+ *  specimen until either every checklistItems entry is confirmed, or
+ *  overrideReason is set. */
+export interface SpecimenTriage {
+  /** When triage became required — set once, at accession, to
+   *  Specimen.protocolSnapshot's own timestamp-equivalent moment.
+   *  Never changes after that. */
+  requiredAt: string;
+  /** Set once every checklistItems entry is confirmed (normal path)
+   *  or once overrideReason is recorded (override path) — whichever
+   *  happens first. Undefined the whole time triage is genuinely still
+   *  pending; its presence alone is what the release gate checks. */
+  completedAt?: string;
+  completedBy?: string;
+  checklistItems: SpecimenTriageChecklistItem[];
+  /** Real, per direct instruction's own override workflow: a
+   *  supervisor's real, required reason for releasing despite an
+   *  incomplete checklist — e.g. a genuine bench emergency. Set
+   *  together with completedAt/completedBy on the override path;
+   *  undefined on the normal, checklist-completed path. Never a silent
+   *  bypass — always a real, recorded reason. */
+  overrideReason?: string;
+}
+
+/** Real, per the Protocol-Driven Workflow Infrastructure story's Part
+ *  3 Grossing Screen audit panel: "every override logged with field,
+ *  original value, new value, actor, timestamp." One real, append-
+ *  only entry per real override — piece count changed, a protocol
+ *  default stain removed, a stain added beyond defaults. Never
+ *  edited or deleted once logged, same real "append-only" discipline
+ *  as Specimen.comments/CaseComment elsewhere in this app. */
+export interface SpecimenGrossingOverride {
+  /** Real, closed set — a specific field name (not free text), so the
+   *  audit panel can group/label overrides consistently rather than
+   *  displaying whatever string a caller happened to pass. */
+  field: 'pieceCount' | 'stainAdded' | 'stainRemoved';
+  /** Which real block this override happened on — e.g. "A1" — always
+   *  present, since every real override this story defines happens at
+   *  the block level, never the specimen level. */
+  blockLabel: string;
+  originalValue: string;
+  newValue: string;
+  actor: string;
+  timestamp: string;
+}
 
 export interface Specimen {
   /** Internal UUID */
@@ -571,8 +680,30 @@ export interface Specimen {
    *  does. A distinct, deduplicated concept SET for analytics/billing
    *  is a real, separate DERIVATION over this raw data
    *  (deriveUniqueConcepts, services/terminologySearch/), never baked
-   *  into storage itself. */
-  coding?: { cpt?: string[]; icd10?: { code: string; description: string }[]; snomed?: { code: string; description: string }[] };
+   *  into storage itself.
+   *
+   *  coding.icdO follows this exact same per-specimen linkage
+   *  reasoning, added per direct research while scoping the
+   *  RFP-APLIS-2026-GLOBAL Broader Cancer Registry Exports gap.
+   *  Genuinely distinct from coding.icd10 above: an ICD-10 code is a
+   *  diagnosis code; an ICD-O-3 code carries a real, standard combined
+   *  morphology/behavior form (e.g. "8500/3") whose own behavior digit
+   *  (in situ vs. malignant) is what a real cancer-registry
+   *  reportability determination depends on — see
+   *  services/cancerRegistry/resolveIcdOBehaviorCode.ts. Confirmed
+   *  directly before adding this field: no such structure existed
+   *  anywhere in this app before now (FHIR_DISPATCH_ARCHITECTURE_PLAN.md's
+   *  own flagged, previously-unconfirmed question) — an ICD-O code
+   *  selected via AddCodeModal.tsx's own 'ICDO' tab had nowhere honest
+   *  to land except this same icd10 array, indistinguishable from a
+   *  plain diagnosis code. Real, honest remaining gap, not fixed here:
+   *  AddCodeModal.tsx's own live ICD-O search is itself a "coming
+   *  soon" placeholder (no backend proxy exists yet, same real
+   *  category as its neighboring ICD-11 placeholder) — this field
+   *  exists so a real capture path (that search, once built, or a
+   *  future manual-entry UI) has somewhere honest to persist to; nothing
+   *  populates it yet. */
+  coding?: { cpt?: string[]; icd10?: { code: string; description: string }[]; snomed?: { code: string; description: string }[]; icdO?: { code: string; description: string }[] };
   /**
    * Real, per direct billing-expert guidance (PS-93): this specimen's
    * own applied/rejected ancillary codes for stains it was explicitly
@@ -670,16 +801,56 @@ export interface Specimen {
    */
   comments?: CaseComment[];
   /**
-   * Confirmation that a specimen's protocol triage checklist
-   * (services/protocols/IProtocolService.ts Protocol.triageChecklist)
-   * was actually followed at the bench — e.g. "split the core into
-   * LM/IF/EM portions." Deliberately retrospective, not a gate before
-   * block creation: blocks are already auto-generated from the
-   * protocol at accession time, so this confirms the physical work
-   * matched what was expected, rather than blocking anything.
+   * Real, per direct guidance's own real LIS/cytology data-modeling
+   * principle: "case-level history forms the diagnostic baseline...
+   * always allow overriding or appending specimen-specific history
+   * onto individual specimens so distinct anatomic sites maintain
+   * their individual clinical context." Real, deliberately ADDITIVE
+   * to Case.order.clinicalHistory — never a replacement — for genuine
+   * multi-specimen cytology cases (e.g. Part A: Right Pleural Fluid,
+   * Part B: Left Pleural Fluid) where a real history item (a prior
+   * result, a targeted radiologic finding) belongs to one specific
+   * specimen's own anatomic site, not the whole case. Real, explicit
+   * scope boundary: combining this with Case.order.clinicalHistory
+   * into one, real "inherited" view during cytotechnologist/
+   * pathologist review is separate, later work — not built here.
    */
-  triageConfirmedAt?: string;
-  triageConfirmedBy?: string;
+  clinicalHistory?: RecordedClinicalHistoryEntry[];
+  /**
+   * Real, per the Protocol-Driven Workflow Infrastructure story's Part
+   * 2c — supersedes the earlier triageConfirmedAt/triageConfirmedBy
+   * pair (a real, simple, retrospective-only confirmation with no
+   * per-item detail and no gating power: "blocks are already auto-
+   * generated from the protocol at accession time, so this confirms
+   * the physical work matched what was expected, rather than blocking
+   * anything"). Per direct instruction, this is now a real, hard gate:
+   * handleReleaseGrossingBlocks (useSpecimenBlockManagement.ts) refuses
+   * to release a block on a specimen with an incomplete, non-
+   * overridden triage record. Initialized at accession
+   * (generateDefaultMaterial.ts) only when the resolved Protocol has
+   * requiresTriage: true — undefined for every specimen whose protocol
+   * doesn't require triage at all, which never sees any gate.
+   */
+  triage?: SpecimenTriage;
+  /** Real, per the Protocol-Driven Workflow Infrastructure story's
+   *  Part 3 Grossing Screen audit panel — see SpecimenGrossingOverride's
+   *  own doc comment. Undefined/empty for a specimen with no real
+   *  overrides yet, which is the common case — most blocks keep their
+   *  protocol defaults untouched. */
+  grossingOverrides?: SpecimenGrossingOverride[];
+  /**
+   * Real, additive — per the Protocol-Driven Workflow Infrastructure
+   * story. Locks the exact Protocol identity/version resolved at
+   * accession (generateDefaultMaterial.ts), so a later edit to the
+   * master Protocol (services/protocols/IProtocolService.ts) never
+   * retroactively changes what an already-accessioned specimen shows
+   * on the Grossing Screen — same real "snapshot, not live reference"
+   * reasoning as ProtocolHistoryEntry.snapshot on Protocol itself.
+   * Undefined for specimens generated before this field existed, or
+   * whose SpecimenEntry has no protocolId configured at all (the
+   * single-block fallback path in generateDefaultMaterial.ts).
+   */
+  protocolSnapshot?: { id: string; version: number; name: string };
   /**
    * Specimen Dictionary entry this specimen was populated from
    * (useSpecimenDictionary's SpecimenEntry.id), if any — lets later code
@@ -869,6 +1040,136 @@ export interface CytologyScreeningRecord {
    *  (resolveCytologyTriageState.ts) does not depend on this field;
    *  it exists purely for real clinical accuracy and reporting. */
   hpvOrderReason?: 'co_test' | 'ascus_reflex' | 'post_treatment_surveillance';
+  /** Real, per direct guidance: "a separate Batch Management [for
+   *  molecular testing]... it will need to associate QA to the
+   *  specimens in their test run locations. Using the engine to
+   *  translate." Real FK to MolecularQcRunRecord.id
+   *  (IMolecularQcRunRecordService.ts) — which real batch/instrument
+   *  run this specimen's own HPV result came from, so a specimen's
+   *  own QC context (instrument, reagent lot, control performance) is
+   *  traceable, not just its final interpreted result. Set only by
+   *  the real, inbound molecular batch event
+   *  (processInboundMolecularBatchEvent.ts, services/hl7/) — same
+   *  "never set by manual UI entry" posture as hpvAbnormalFlag/
+   *  hpvReferenceRange above, since a batch assignment is a real fact
+   *  the sending molecular platform's own interface reports, not
+   *  something a user selects. */
+  molecularRunId?: string;
+  /** Real, per direct follow-up closing PS-211's own, precisely-named
+   *  remaining gap: CytologyHighRiskFactors.abnormalExamFindings
+   *  bundles a real structural finding (a visible lesion/mass — see
+   *  resolveAbnormalExamFindingsFactorFromEncounters.ts, which
+   *  resolves that half from real inbound ICD-10 encounter data) with
+   *  a real, genuinely different thing — "persistent contact bleeding
+   *  during specimen collection." That second half is, by definition,
+   *  a real-time observation made DURING the current collection —
+   *  there is no prior encounter that could ever have coded it, since
+   *  it hadn't happened yet. This is the real, honest, only-possible
+   *  source for that specific half: the collecting clinician's own,
+   *  manual observation, recorded at accessioning — same "Cytology —
+   *  Clinical History & Accessioning Detail" pattern this app's other
+   *  collection-time cytology fields already use (Phase 41). Optional
+   *  and undefined by default — never inferred, never defaulted to
+   *  false as if the question had genuinely been asked and answered
+   *  "no." */
+  persistentContactBleedingAtCollection?: boolean;
+  /** Real, per CAP's own mandatory "5-Year Retrospective Lookback"
+   *  requirement (CYT-QA-03, per direct guidance's own supplied QA
+   *  report specification): whenever a patient is newly diagnosed
+   *  HSIL+/AIS/malignant, every one of their own real, prior
+   *  NEGATIVE/benign GYN cytology results from the preceding 5 years
+   *  must be pulled and re-reviewed, to catch a real, possibly missed
+   *  early finding. Genuinely different from `qcFlag` above — that
+   *  field gates an UPCOMING sign-out; this flags an
+   *  ALREADY-SIGNED-OUT specimen for a real, separate, later
+   *  retrospective re-review, never a pre-release gate on a specimen
+   *  whose report has already been finalized and released. See
+   *  resolveCytologyFiveYearRetrospectiveLookback.ts
+   *  (services/cytology/) for the real trigger/selection logic. */
+  retrospectiveReviewFlag?: {
+    reason: 'five_year_lookback_on_new_high_grade_diagnosis';
+    triggeredByCaseId: string;
+    triggeredBySpecimenId: string;
+    triggeredAt: string;
+    /** Real, per direct guidance's own required outcome categories —
+     *  undefined until a real reviewer actually performs the
+     *  retrospective re-review and records a real, completed outcome. */
+    outcome?: 'confirmed_negative' | 'screening_error' | 'interpretation_error' | 'sampling_error';
+    /** Real, per direct guidance's own requirement: "Mandatory
+     *  documentation of CT retraining or amended report issued" —
+     *  free text, since the specific corrective action taken is not a
+     *  closed, enumerable set. */
+    correctiveAction?: string;
+    reviewedBy?: string;
+    reviewedByName?: string;
+    reviewedAt?: string;
+  };
+  /** Real, per direct guidance: post-sign-out peer review mirrors the
+   *  pre-sign-out QC split exactly — "using both mechanisms...
+   *  is the standard industry practice," combining random baseline
+   *  sampling (CLIA's own documented-QA-program requirement) with
+   *  targeted review of high-risk categories (CAP's own mandate for
+   *  "initial cancer diagnoses"). Real, deliberate shape reuse: same
+   *  `reason` field and same two values as `qcFlag` above, per direct
+   *  guidance's own "reusing your existing qc_random_selection and
+   *  qc_targeted_high_risk logic keeps the system architecture
+   *  consistent" — this is the real, distinguishing `sampling_type`
+   *  direct guidance asked for, named the same way the existing,
+   *  established field already is rather than introducing a second,
+   *  differently-named field for the identical real concept. Cleared
+   *  by a matching real `post_signout_peer_review_random` or
+   *  `post_signout_peer_review_targeted` CytologyReviewRecord — see
+   *  resolveCytologyPostSignOutPeerReviewPoolMembership.ts. Genuinely
+   *  different real event from `retrospectiveReviewFlag` above: this
+   *  is a routine, ongoing QA sample of signed-out cases in general;
+   *  that one is a one-time, triggered lookback specifically prompted
+   *  by a new high-grade diagnosis on the same patient. */
+  postSignOutPeerReviewFlag?: {
+    reason: 'random_selection' | 'targeted_high_risk';
+    flaggedBy: string;
+    flaggedByName: string;
+    flaggedAt: string;
+  };
+  /** Real, per direct guidance: CYT-QA-04 (Cyto-Histologic Correlation
+   *  and Discrepancy Matrix). Real, honest scope, found by direct
+   *  investigation before building anything: surgical pathology's own
+   *  diagnosis (Case.diagnostic.primaryDiagnosis) is free text, not a
+   *  structured, ranked category the way cytology's own
+   *  diagnosticRank is — there is no honest way to compute this
+   *  correlation automatically. What real, mechanical case-selection
+   *  CAN do — find which of this patient's other real cases are
+   *  plausible candidates to correlate against — is what this field
+   *  records; see resolveCytologyHistologyCorrelationCandidates.ts.
+   *  A real human reviewer confirms relevance and records the actual
+   *  comparison via the existing, already-seeded "Cytology-Histology
+   *  Correlation" QaActivityType (qa-activity-cyto-histo) — this field
+   *  only tracks that a real candidate was found and whether that has
+   *  happened yet. */
+  histologyCorrelationCandidates?: {
+    candidateCaseId: string;
+    detectedAt: string;
+    /** Real FK to the QaActivityRecord a human reviewer created once
+     *  they confirmed and recorded the actual correlation for this
+     *  specific candidate — undefined until that happens. */
+    recordedActivityRecordId?: string;
+    /** Real, per direct follow-up wiring the recording UI: this app's
+     *  own candidate detection is deliberately approximate (any
+     *  subsequent case with a non-cytology specimen — see
+     *  resolveCytologyHistologyCorrelationCandidates.ts's own header)
+     *  — a real human reviewer may confirm a given candidate was never
+     *  the relevant biopsy at all. A real, separate, honest field for
+     *  that outcome, never a fabricated recordedActivityRecordId value
+     *  standing in for "dismissed" — that field is a real FK and
+     *  nothing else. */
+    dismissedAsNotRelevant?: boolean;
+  }[];
+  /** Real, per direct guidance's own Step 4 ask ("ROSE / Bedside
+   *  Evaluations Queue") — zero or more real Rapid On-Site
+   *  Evaluations performed for this specimen. Undefined for a real
+   *  specimen with no ROSE ever performed — genuinely different from
+   *  an empty array. See types/cytology/CytologyRoseEvaluation.ts for
+   *  the full, real shape. */
+  roseEvaluations?: CytologyRoseEvaluation[];
   /** Bethesda's own real, optional "Educational Notes and Suggestions"
    *  report component — free text, not a structured category. */
   educationalNotes?: string;

@@ -6073,6 +6073,158 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-conf-btn-secondary:hover:not(:disabled) { border-color: #38bdf8; color: #e2e8f0; }
 .ps-conf-btn-secondary:disabled             { opacity: 0.4; cursor: not-allowed; }
 
+/* Real, direct correction, per direct follow-up ("some dark
+   characters that are almost invisible in the UI"): this class was
+   used across the Molecular Testing Execution Module's own pages
+   with no real CSS rule ever defined for it — every use fell back to
+   whatever the browser's own default button styling happened to be,
+   which does not account for this app's own dark background at all.
+   The `[data-ps-dark="true"] button` rule elsewhere in this file was
+   meant to cover this, but confirmed directly: nothing in this app's
+   real component tree ever sets that attribute, so that rule is real,
+   dead CSS — never actually applied anywhere. Given this real,
+   defined rule now, matching .ps-conf-btn-secondary's own established
+   look. */
+.ps-btn-small {
+  padding:       6px 14px;
+  font-size:     12px;
+  font-weight:   600;
+  border-radius: 6px;
+  border:        1px solid rgba(148,163,184,0.25);
+  cursor:        pointer;
+  background:    transparent;
+  color:         var(--ps-text, #e2e8f0);
+  transition:    all 0.15s;
+  white-space:   nowrap;
+}
+.ps-btn-small:hover:not(:disabled) { border-color: #38bdf8; background: rgba(56,189,248,0.1); }
+.ps-btn-small:disabled             { opacity: 0.4; cursor: not-allowed; }
+
+/* Real, per direct follow-up ("Continue" — converting the Molecular
+   Testing Execution Module's own pages and the Label Designer off
+   inline styles, matching this app's own established Config-registered
+   UI convention of "no inline CSS, named classes only" —
+   PrintSettingsSection.tsx's own header states this rule explicitly).
+   Real, reusable page-shell classes, extracted once here rather than
+   duplicated per file, since the same real shell shape (title +
+   subtitle + a real max-width container) repeats across every one of
+   these pages. */
+.ps-page-container            { padding: 28px 32px 60px; margin: 0 auto; }
+.ps-page-container--narrow    { max-width: 900px; }
+.ps-page-container--medium    { max-width: 1100px; }
+.ps-page-container--wide      { max-width: 1200px; }
+.ps-page-header-row {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     flex-start;
+  margin-bottom:   22px;
+}
+.ps-page-title    { font-size: 26px; font-weight: 800; color: var(--ps-text); margin: 0 0 8px; }
+.ps-page-subtitle { font-size: 13px; color: var(--ps-text-muted); max-width: 640px; margin: 0; line-height: 1.6; }
+.ps-flex-row-gap-8 { display: flex; gap: 8px; align-items: center; }
+.ps-back-btn { margin-bottom: 16px; }
+.ps-panel-box { border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
+.ps-section-title { font-size: 22px; font-weight: 800; margin: 0 0 16px; }
+.ps-mt-16 { margin-top: 16px; }
+.ps-helper-text { font-size: 12px; color: var(--ps-text-muted); }
+.ps-error-text { margin-bottom: 14px; font-size: 12px; color: #ef4444; }
+.ps-rack-position-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.ps-rack-position {
+  aspect-ratio:  1;
+  border-radius: 6px;
+  font-size:     11px;
+  font-weight:   600;
+  padding:       4px;
+  background:    #1f2937;
+  border:        1px solid #374151;
+  color:         #6b7280;
+  cursor:        pointer;
+}
+.ps-rack-position--occupied { background: #65A30D30; border-color: #65A30D; color: #65A30D; cursor: default; }
+.ps-rack-position--selected { border: 2px solid #fff; }
+.ps-btn-small--armed { background: #38bdf8; }
+.ps-mr-8  { margin-right: 8px; }
+.ps-mb-16 { margin-bottom: 16px; }
+.ps-w-full { width: 100%; }
+.ps-panel-title { margin-top: 0; }
+.ps-control-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.ps-input-well-position { width: 90px; }
+.ps-label-inline { margin-bottom: 0; }
+.ps-mb-8  { margin-bottom: 8px; }
+.ps-mb-14 { margin-bottom: 14px; }
+.ps-w-full-mb-8 { width: 100%; margin-bottom: 8px; }
+.ps-locked-badge {
+  font-size:     11px;
+  padding:       4px 10px;
+  border-radius: 12px;
+  background:    #7c3aed22;
+  color:         #a78bfa;
+  font-weight:   600;
+}
+.ps-designer-layout {
+  display:               grid;
+  grid-template-columns: 220px 1fr 260px;
+  gap:                   20px;
+  align-items:           start;
+}
+.ps-panel-heading { margin-top: 0; font-size: 14px; }
+.ps-palette-item {
+  padding:       8px 10px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  border:        1px solid #374151;
+  background:    #1f2937;
+  font-size:     12px;
+  cursor:        grab;
+}
+/* Real, per this same follow-up — width/height are genuinely dynamic
+   (computed from the real, selected label type's own physical mm
+   dimensions), so they remain inline; every static property lives
+   here. */
+.ps-designer-canvas {
+  position:   relative;
+  background: #fff;
+  border:     1px solid #374151;
+  margin:     0 auto;
+}
+/* Real, per this same follow-up — left/top/width/height/fontSize are
+   genuinely dynamic (computed per-field from its own real, saved
+   position/size), so they remain inline; the selected/unselected
+   border+background are a real, discrete two-state toggle, handled
+   with a real modifier class instead, matching the
+   `.ps-rack-position--selected` pattern above. */
+.ps-designer-field {
+  position:      absolute;
+  color:         #000;
+  overflow:      hidden;
+  white-space:   nowrap;
+  cursor:        grab;
+  padding:       2px;
+  border:        1px dashed #94a3b8;
+  background:    transparent;
+}
+.ps-designer-field--selected { border: 2px solid #38bdf8; background: #38bdf822; }
+.ps-canvas-caption { text-align: center; font-size: 11px; color: var(--ps-text-muted); margin-top: 8px; }
+.ps-designer-footer-row { margin-top: 20px; display: flex; gap: 8px; align-items: center; }
+.ps-conf-tr--clickable { cursor: pointer; }
+/* Real, per this same follow-up — a real, per-item status badge whose
+   own color is genuinely dynamic (data-driven, not a fixed, reusable
+   value that belongs as a static class) — every static property lives
+   here; only the real, varying colors themselves are set via CSS
+   custom properties at the call site, computed in JS using this app's
+   own already-established hex+alpha-suffix convention (e.g. `${color}18`)
+   rather than a newer CSS color function this environment can't
+   visually verify. */
+.ps-status-badge {
+  font-size:     11px;
+  font-weight:   600;
+  padding:       3px 10px;
+  border-radius: 6px;
+  background:    var(--status-bg);
+  color:         var(--status-color);
+  border:        1px solid var(--status-border);
+}
+
 .ps-conf-btn-row {
   padding:       5px 14px;
   font-size:     12px;
@@ -6696,6 +6848,13 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 /* Narrow variant for simple confirm dialogs */
 .ps-conf-modal--narrow { max-width: 480px; }
+/* Real, per the Cytology QC Rules admin form — a genuinely larger
+   form (many criteria dimensions) needs more width than the standard
+   narrow modal. */
+.ps-conf-modal--wide { max-width: 720px; max-height: 85vh; overflow-y: auto; }
+.ps-conf-form-section-title { font-size: 13px; font-weight: 600; color: var(--ps-conf-text-2, #cbd5e1); margin: 20px 0 8px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.15); }
+.ps-conf-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 12px; margin-bottom: 10px; }
+.ps-conf-validation-errors { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; color: #fca5a5; font-size: 13px; }
 
 /* Form layout helpers used inside modals */
 .ps-conf-form-row   { display:grid; grid-template-columns:1fr 1fr;     gap:12px; margin-bottom:10px; }
@@ -10657,6 +10816,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 /* ── CaseSearchBar — lookup results and not-found ────────────────────────── */
 .ps-search-input--error              { border-color: rgba(239,68,68,0.5) !important; }
 .ps-search-not-found                 { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #0f172a; border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #ef4444; z-index: 9999; white-space: nowrap; }
+.ps-search-fetching-lis              { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #0f172a; border: 1px solid rgba(96,165,250,0.3); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #60a5fa; z-index: 9999; white-space: nowrap; }
 .ps-casebar-dropdown                   { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #0b1120; border: 1px solid rgba(148,163,184,0.2); border-radius: 10px; overflow: hidden; z-index: 40000; box-shadow: 0 16px 48px rgba(0,0,0,0.9); max-height: 460px; display: flex; flex-direction: column; }
 .ps-casebar-dropdown__header          { padding: 7px 14px; font-size: 11px; color: #64748b; border-bottom: 1px solid rgba(255,255,255,0.06); background: #0b1120; flex-shrink: 0; }
 .ps-casebar-dropdown__col-headers     { display: grid; grid-template-columns: 180px 1fr 90px 60px 80px 90px; gap: 0; padding: 5px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); flex-shrink: 0; position: sticky; top: 0; z-index: 1; }
@@ -11930,7 +12090,7 @@ select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-we
      descendant). .ps-mth-overlay (portaled directly to document.body,
      same real pattern the Dev Tools dropdown fix already used) is now
      also exempted here. */
-  body > *:not(.ps-orch4-shell):not(.ps-mth-overlay) { display: none !important; }
+  body > *:not(.ps-orch4-shell):not(.ps-mth-overlay):not(.ps-cyto-histo-print-overlay) { display: none !important; }
 
   /* Hide nav chrome */
   .ps-orch4-nav,
@@ -17217,6 +17377,301 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   color: #f87171;
 }
 
+/* Real, per the Protocol-Driven Workflow Infrastructure story's Part
+   2c triage gate UI (GrossingReleasePanel.tsx). Base state: triage
+   exists but is genuinely resolved (fully confirmed or overridden) —
+   a quiet, neutral note, not a warning. --blocking overrides to a
+   real amber warning state the moment release is genuinely gated. */
+.ps-grossing-triage-panel {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.ps-grossing-triage-panel--blocking {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.ps-grossing-triage-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ps-grossing-triage-panel--blocking .ps-grossing-triage-title {
+  color: #f59e0b;
+}
+
+.ps-grossing-triage-checklist {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ps-grossing-triage-checklist-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.ps-grossing-triage-override-note {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.ps-grossing-triage-override-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ps-grossing-triage-override-row .ps-batch-text-input {
+  flex: 1;
+}
+
+/* Real, per the Protocol-Driven Workflow Infrastructure story's Part
+   3 Grossing Screen (pages/GrossingScreenPage/). Same real dark-modal
+   visual language as pathscribe.css's own batch-management area,
+   reused directly rather than a third, competing color scheme. */
+.ps-grossing-screen-page {
+  padding: 20px 28px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.ps-grossing-screen-loading {
+  padding: 40px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.ps-grossing-screen-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.ps-grossing-screen-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.ps-grossing-screen-nav-btn {
+  margin-bottom: 8px;
+}
+
+.ps-grossing-specimen-section {
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.ps-grossing-protocol-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ps-grossing-protocol-specimen {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.ps-grossing-protocol-info {
+  font-size: 13px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ps-grossing-protocol-info--none {
+  font-style: italic;
+  color: #64748b;
+}
+
+.ps-grossing-protocol-modified-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.ps-grossing-block-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.ps-grossing-block-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #94a3b8;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ps-grossing-block-table td {
+  padding: 10px;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  vertical-align: top;
+}
+
+.ps-grossing-block-row--modified {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.ps-grossing-piece-count-input {
+  width: 56px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.ps-grossing-stain-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ps-grossing-stain-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ps-grossing-stain-flag {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.ps-grossing-stain--auto .ps-grossing-stain-flag {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.ps-grossing-stain--user-added .ps-grossing-stain-flag {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.ps-grossing-stain-remove {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.ps-grossing-stain-remove:hover {
+  color: #f87171;
+}
+
+.ps-grossing-add-stain-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ps-grossing-add-stain-link {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.ps-grossing-add-block-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.ps-grossing-audit-panel {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ps-grossing-audit-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(148, 163, 184, 0.05);
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.ps-grossing-audit-body {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ps-grossing-audit-empty {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.ps-grossing-audit-row {
+  font-size: 12px;
+  color: #cbd5e1;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.ps-grossing-audit-row:last-child {
+  border-bottom: none;
+}
+
 /* Real fix, per direct UI/UX request: the Temporary/Downtime Placeholder
    Identity toggle, promoted from a de-emphasized inline-text row buried
    in the middle of the demographic-fields grid to a real, top-of-form
@@ -19108,6 +19563,11 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-intraop-action-block { display: flex; flex-direction: column; gap: 8px; padding: 14px; margin-bottom: 12px; background: rgba(8,145,178,0.06); border: 1px solid rgba(8,145,178,0.2); border-radius: 8px; position: relative; }
 .ps-intraop-gate-note { font-size: 11px; color: #64748b; font-style: italic; margin: 2px 0 0; }
+/* Real, per direct follow-up on item 3 of the image/PDF architecture
+   scoping — gross/frozen-section photo capture, wired into
+   IntraopQueuePage.tsx's own Quick Gross step. */
+.ps-intraop-photo-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.ps-intraop-photo-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(148,163,184,0.3); }
 .ps-intraop-skipmenu { position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 20; display: flex; flex-direction: column; gap: 2px; background: #0d1829; border: 1px solid #1e293b; border-radius: 8px; padding: 6px; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
 .ps-intraop-scan-btn { width: 100%; padding: 18px 20px; font-size: 16px; font-weight: 700; border-radius: 12px; }
 .ps-intraop-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
@@ -19323,6 +19783,12 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-triage-tile-badge--amendment_draft { background: rgba(217,119,6,0.2); color: #d97706; }
 .ps-triage-tile-badge--correction_draft { background: rgba(139,92,246,0.2); color: #8b5cf6; }
 .ps-triage-tile-badge--addendum_draft { background: rgba(8,145,178,0.2); color: #0891B2; }
+/* Real, per the Protocol-Driven Workflow Infrastructure story's Part
+   2c worklist badge (PendingGrossingTriageTile.tsx) — a genuinely
+   distinct color from every kind above, since this tile's own real
+   concept (bench grossing checklist) is unrelated to editorial
+   amendment/addendum triage. */
+.ps-triage-tile-badge--pending_triage { background: rgba(13,148,136,0.2); color: #0d9488; }
 .ps-triage-tile-case { font-size: 12px; font-weight: 700; color: #e2e8f0; flex-shrink: 0; }
 .ps-triage-tile-label { font-size: 12px; color: #94a3b8; flex-shrink: 0; }
 .ps-triage-tile-detail { font-size: 11px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -23204,6 +23670,54 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Cyto-Histologic Correlation Report — print view
+   Real, per direct guidance ("Make sure it can be downloaded and
+   printed"). Deliberately reuses the exact, already-proven
+   ps-mth-overlay/ps-mth-print-area pattern above, including its own
+   real, hard-won lessons (visibility hidden/visible swap rather than
+   display:none — a display:none ancestor can never be undone by a
+   descendant; position:absolute, never fixed, since fixed content is
+   tied to a single printed page in most browsers including Chrome,
+   silently clipping anything beyond one page's height).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ps-cyto-histo-print-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+}
+.ps-cyto-histo-print-modal {
+  background: #161616; border-radius: 12px; padding: 24px;
+  width: min(1000px, 92vw); max-height: 88vh; overflow-y: auto;
+}
+.ps-cyto-histo-print-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.ps-cyto-histo-print-title { font-size: 16px; font-weight: 700; color: #fff; }
+.ps-cyto-histo-print-scope { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+.ps-cyto-histo-print-header-actions { display: flex; gap: 8px; }
+.ps-cyto-histo-print-summary { display: flex; gap: 24px; margin-bottom: 16px; font-size: 13px; color: #e5e5e5; flex-wrap: wrap; }
+.ps-cyto-histo-print-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ps-cyto-histo-print-table th, .ps-cyto-histo-print-table td { padding: 8px 10px; border-bottom: 1px solid #2a2a2a; text-align: left; color: #e5e5e5; }
+.ps-cyto-histo-print-table th { color: #9ca3af; font-weight: 600; }
+
+@media print {
+  body * { visibility: hidden; }
+  .ps-cyto-histo-print-area, .ps-cyto-histo-print-area * { visibility: visible; }
+  .ps-cyto-histo-print-overlay {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: none; display: block; overflow: visible;
+  }
+  .ps-cyto-histo-print-modal {
+    position: static; width: 100%; max-width: 100%; max-height: none;
+    overflow: visible; box-shadow: none; border-radius: 0; background: #fff !important;
+  }
+  .ps-cyto-histo-print-header-actions { display: none !important; }
+  .ps-cyto-histo-print-title { color: #111 !important; }
+  .ps-cyto-histo-print-scope, .ps-cyto-histo-print-summary { color: #333 !important; }
+  .ps-cyto-histo-print-table th, .ps-cyto-histo-print-table td { color: #111 !important; border-bottom-color: #ccc !important; }
+  .ps-cyto-histo-print-table th { color: #333 !important; }
+  .ps-cyto-histo-print-table tr { break-inside: avoid; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Batch Management — LIS Batch Management module
    Real feature, per direct, detailed specification. See
    services/batches/IBatchService.ts's own header for the full
@@ -23580,3 +24094,215 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
    input grid. */
 .ps-conf-form-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 .ps-conf-form-grid input, .ps-conf-form-grid select { min-width: 220px; flex: 1; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   OR Suite Live Board — pages/OrSuiteDashboardPage.tsx. Real, per the
+   dismissal workflow spec: visual-only signaling (no audio anywhere),
+   high-contrast states calibrated for a bright, noisy OR viewed from
+   across the room. Exact colors per spec: dark-mode green #1E7E34
+   (this app has no separate light theme — every existing page here is
+   dark-mode only, so only that stop is used).
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ps-orboard-page { min-height: 100vh; background: #0a0a0a; color: #e5e7eb; padding: 24px; }
+
+/* Real, per the unified Cytology QC Peer Review Queue page. */
+.ps-qcqueue-page { min-height: 100vh; background: #0a0a0a; color: #e5e7eb; padding: 24px; }
+.ps-qcqueue-title { font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.ps-qcqueue-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.ps-qcqueue-tab-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.25); background: transparent; color: #cbd5e1; cursor: pointer; font-size: 13px; }
+.ps-qcqueue-tab-btn--active { background: #1e40af; border-color: #1e40af; color: #fff; }
+.ps-qcqueue-list { display: flex; flex-direction: column; gap: 10px; }
+.ps-qcqueue-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 10px; background: #14161b; border: 1px solid rgba(148,163,184,0.15); }
+.ps-qcqueue-row-patient { font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+.ps-qcqueue-row-accession { font-size: 12px; color: #94a3b8; font-weight: 400; }
+.ps-qcqueue-row-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ps-qcqueue-row-actions { display: flex; gap: 8px; }
+.ps-qcqueue-tier-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+.ps-qcqueue-tier-badge--high_escalation { background: rgba(239,68,68,0.15); color: #fca5a5; }
+.ps-qcqueue-tier-badge--targeted_high_consequence { background: rgba(245,158,11,0.15); color: #fcd34d; }
+.ps-qcqueue-tier-badge--routine_random { background: rgba(100,116,139,0.2); color: #cbd5e1; }
+.ps-qcqueue-badge-pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(239,68,68,0.2); color: #fca5a5; font-weight: 600; }
+.ps-qcqueue-sla-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+.ps-qcqueue-sla--ontime { background: rgba(34,197,94,0.15); color: #86efac; }
+.ps-qcqueue-sla--approaching { background: rgba(245,158,11,0.15); color: #fcd34d; }
+.ps-qcqueue-sla--breached { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.ps-qcqueue-assigned-note { font-size: 12px; color: #94a3b8; font-style: italic; }
+.ps-orboard-loading { min-height: 100vh; background: #0a0a0a; color: #9ca3af; display: flex; align-items: center; justify-content: center; }
+
+.ps-orboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.ps-orboard-header-eyebrow { font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+.ps-orboard-header-name { font-size: 36px; font-weight: 700; }
+.ps-orboard-header-location { color: #9ca3af; }
+.ps-orboard-multisuite-row { display: flex; align-items: center; gap: 12px; }
+.ps-orboard-multisuite-toggle { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.ps-orboard-multisuite-select { min-width: 220px; padding: 6px; border-radius: 6px; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; }
+/* Real, per direct request for a sales-demo mode — always visibly
+   labeled, never blending in with real board content. */
+.ps-orboard-header-actions { display: flex; align-items: center; gap: 12px; }
+.ps-orboard-demo-badge {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 4px 10px; border-radius: 10px; background: rgba(96, 165, 250, 0.2); color: #60a5fa;
+}
+
+.ps-orboard-empty { text-align: center; padding: 80px; color: #6b7280; font-size: 20px; }
+
+/* Rows — full-width, one per active specimen, replacing the earlier
+   card grid per direct instruction. */
+.ps-orboard-row-list { display: flex; flex-direction: column; gap: 10px; }
+.ps-orboard-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1.4fr 0.9fr;
+  align-items: center;
+  gap: 16px;
+  background: #111827;
+  border-radius: 12px;
+  padding: 16px 20px;
+  border: 3px solid transparent;
+}
+/* State 1 — In Progress. Border/timer color keyed to real TAT status. */
+.ps-orboard-row--normal { border-color: #22C55E; }
+.ps-orboard-row--warning { border-color: #F59E0B; }
+.ps-orboard-row--overdue { border-color: #EF4444; }
+/* State 2 — Completed, awaiting dismissal. Solid high-contrast green
+   across the entire row, per spec (dark-mode stop #1E7E34). */
+.ps-orboard-row--completed { background: #1E7E34; border-color: #1E7E34; }
+/* Real, per spec's own "flashes brightly between High-Contrast Green
+   and White 3 times... before settling into a solid green state" —
+   fires once on the real transition moment (see the page's own
+   onAnimationEnd handler), never replays on a later poll. */
+.ps-orboard-row--flashing { animation: ps-orboard-completion-flash 1.8s steps(1, end) 1; }
+/* State 3 — Dismissal Pending (modal active). Dimmed 50% overlay on
+   the completed row while the confirm modal is open. */
+.ps-orboard-dismiss-pending-overlay .ps-orboard-row--completed { opacity: 1; }
+/* State 4 — Dismissed. Slides left and fades out over 400ms before
+   the row genuinely leaves the board. */
+.ps-orboard-row--dismissing { animation: ps-orboard-slide-out 0.4s ease-out forwards; }
+
+.ps-orboard-row-context { min-width: 0; }
+.ps-orboard-row-patient { font-size: 22px; font-weight: 700; }
+.ps-orboard-row-meta { color: #9ca3af; font-size: 14px; margin-top: 2px; }
+.ps-orboard-row--completed .ps-orboard-row-meta { color: #D4EDDA; }
+
+.ps-orboard-row-timer { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
+.ps-orboard-row--normal .ps-orboard-row-timer { color: #22C55E; }
+.ps-orboard-row--warning .ps-orboard-row-timer { color: #F59E0B; }
+.ps-orboard-row--overdue .ps-orboard-row-timer { color: #EF4444; animation: ps-orboard-timer-flash-red 1s step-start infinite; }
+.ps-orboard-row--completed .ps-orboard-row-timer { color: #ffffff; }
+
+.ps-orboard-row-diagnostic { min-width: 0; font-size: 15px; }
+.ps-orboard-row-step { color: #9ca3af; }
+/* Real, per spec's own "large, bold font" for the rendered preliminary
+   diagnosis text — white on the solid green row for max contrast. */
+.ps-orboard-row-preliminary { color: #ffffff; font-weight: 700; font-size: 18px; }
+
+.ps-orboard-row-actions { display: flex; flex-direction: column; gap: 8px; }
+.ps-orboard-inprogress-btn {
+  min-height: 44px; padding: 10px; font-size: 14px; font-weight: 700;
+  background: #1f2937; color: #6b7280; border: 1px solid #374151; border-radius: 10px; cursor: not-allowed;
+}
+.ps-orboard-verbal-report-link {
+  background: none; border: none; color: #60a5fa; font-size: 13px; cursor: pointer; padding: 2px 0;
+}
+/* Real, per spec's own two hard requirements: minimum 64x64 touch
+   target for gloved/wall-mounted use, and a continuous soft pulse
+   (opacity 80%-100%) to draw the eye without any audio. */
+.ps-orboard-dismiss-btn {
+  min-height: 64px; min-width: 64px; padding: 14px; font-size: 16px; font-weight: 700;
+  background: #ffffff; color: #0F3D1A; border: none; border-radius: 10px; cursor: pointer;
+  animation: ps-orboard-dismiss-pulse 2s ease-in-out infinite;
+}
+
+/* ── Keyframes — visual-only signaling, no audio anywhere on this page ── */
+@keyframes ps-orboard-completion-flash {
+  0%, 16.66%, 33.33% { background: #1E7E34; }
+  8.33%, 25%, 41.66% { background: #ffffff; }
+  50%, 100% { background: #1E7E34; }
+}
+@keyframes ps-orboard-dismiss-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+@keyframes ps-orboard-timer-flash-red {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.55; }
+}
+@keyframes ps-orboard-slide-out {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-40px); opacity: 0; }
+}
+
+/* ── Modals — verbal report + dismissal confirmation ── */
+.ps-orboard-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.ps-orboard-modal { background: #111827; border-radius: 16px; padding: 32px; min-width: 420px; color: #e5e7eb; }
+.ps-orboard-modal-title { margin-top: 0; }
+.ps-orboard-modal-subtitle { color: #9ca3af; }
+.ps-orboard-pin-input {
+  font-size: 32px; letter-spacing: 12px; text-align: center; width: 100%; padding: 12px;
+  border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb;
+}
+.ps-orboard-error { color: #EF4444; margin-top: 8px; }
+.ps-orboard-modal-actions { display: flex; gap: 12px; margin-top: 20px; justify-content: flex-end; }
+.ps-orboard-field-label { display: block; margin-top: 12px; }
+.ps-orboard-log-report-btn {
+  padding: 10px 18px; background: #22C55E; color: #052e16; border-radius: 8px; border: none; font-weight: 700; cursor: pointer;
+}
+.ps-orboard-log-report-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Safety re-display + mandatory checkbox — dismissal confirmation
+   modal's own Step 2, per spec. */
+.ps-orboard-safety-redisplay { background: #1f2937; border-radius: 10px; padding: 14px 16px; margin: 12px 0; font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
+.ps-orboard-safety-label { color: #9ca3af; margin-right: 6px; }
+.ps-orboard-safety-diagnosis { margin-top: 4px; }
+.ps-orboard-safety-diagnosis-text { font-weight: 700; font-size: 17px; margin-top: 2px; }
+.ps-orboard-readback-checkbox { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; margin: 12px 0; cursor: pointer; }
+.ps-orboard-readback-checkbox input { width: 20px; height: 20px; }
+.ps-orboard-confirm-dismiss-btn {
+  min-height: 48px; padding: 10px 18px; background: #3B82F6; color: #fff; border-radius: 8px; border: none; font-weight: 700; cursor: pointer;
+}
+.ps-orboard-confirm-dismiss-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Terminal binding screen ── */
+.ps-orboard-setup-page { min-height: 100vh; background: #0a0a0a; color: #e5e7eb; display: flex; align-items: center; justify-content: center; }
+.ps-orboard-setup-content { text-align: center; }
+.ps-orboard-setup-description { color: #9ca3af; }
+.ps-orboard-setup-select { font-size: 20px; padding: 12px; border-radius: 8px; }
+.ps-orboard-setup-empty { color: #6b7280; margin-top: 16px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Molecular Order Queue — pages/MolecularOrderQueuePage/. Real, per
+   direct request to demo HPV orders/reflex genotyping. Same dark
+   visual language as the rest of this app's admin/queue surfaces.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ps-molq-page { padding: 24px 28px; max-width: 1000px; margin: 0 auto; color: #e5e7eb; }
+.ps-molq-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+.ps-molq-subtitle { color: #9ca3af; font-size: 14px; margin: 0 0 20px; }
+
+.ps-molq-demo-panel {
+  background: #111827; border: 1px solid rgba(96,165,250,0.3); border-radius: 12px;
+  padding: 18px 20px; margin-bottom: 24px;
+}
+.ps-molq-demo-title { font-size: 15px; font-weight: 700; color: #60a5fa; margin-bottom: 6px; }
+.ps-molq-demo-description { color: #9ca3af; font-size: 13px; margin: 0 0 12px; }
+.ps-molq-field-label { display: block; font-size: 13px; color: #9ca3af; margin: 10px 0 4px; }
+.ps-molq-demo-btn { margin-top: 10px; margin-right: 10px; }
+.ps-molq-outcome { margin-top: 12px; padding: 8px 12px; background: rgba(34,197,94,0.1); border-radius: 8px; color: #4ade80; font-size: 13px; }
+
+.ps-molq-loading, .ps-molq-empty { text-align: center; padding: 40px; color: #6b7280; }
+
+.ps-molq-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ps-molq-table th { text-align: left; padding: 8px 10px; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid rgba(148,163,184,0.2); }
+.ps-molq-table td { padding: 10px; border-bottom: 1px solid rgba(148,163,184,0.08); }
+.ps-molq-row--reflex { background: rgba(96,165,250,0.06); }
+
+/* WsiViewerLaunchButton.tsx — small, inline launch control shown per
+   stain chip once a real, physical slide exists (Coverslipped or
+   beyond). */
+.ps-wsi-launch-wrap { display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; }
+.ps-wsi-launch-select { font-size: 10px; padding: 1px 3px; border-radius: 6px; background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+.ps-wsi-launch-btn {
+  font-size: 10px; color: #93c5fd; background: rgba(96,165,250,0.15); border: 1px solid rgba(96,165,250,0.4);
+  border-radius: 999px; padding: 1px 6px; cursor: pointer;
+}
+.ps-wsi-launch-error { color: #f87171; font-size: 11px; margin-left: 2px; cursor: help; }

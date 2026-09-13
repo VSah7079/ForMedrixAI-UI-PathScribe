@@ -5,6 +5,7 @@
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import '../pathscribe.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -76,6 +77,7 @@ const MicrosoftIcon = () => (
 );
 
 const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const navigate  = useNavigate();
 
@@ -189,7 +191,7 @@ const LoginPage: React.FC = () => {
           {/* Form */}
           <form onSubmit={handleSubmit}>
             <div className="ps-login-field">
-              <label className="ps-login-field-label" htmlFor="login-email">Email</label>
+              <label className="ps-login-field-label" htmlFor="login-email">{t('login.email')}</label>
               <input
                 id="login-email"
                 ref={emailRef}
@@ -208,7 +210,7 @@ const LoginPage: React.FC = () => {
                   keeps the form on a single left axis and stops the link
                   competing with the primary action below. */}
               <div className="ps-login-label-row">
-                <label className="ps-login-field-label" htmlFor="login-password">Password</label>
+                <label className="ps-login-field-label" htmlFor="login-password">{t('login.password')}</label>
                 <a href="#" className="ps-login-forgot" onClick={e => { e.preventDefault(); setError('Password reset isn\u2019t available in this demo \u2014 contact your administrator.'); }}>
                   Forgot password?
                 </a>
@@ -242,7 +244,7 @@ const LoginPage: React.FC = () => {
             )}
 
             <button type="submit" disabled={loading} className="ps-login-submit">
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
 

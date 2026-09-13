@@ -101,3 +101,23 @@ export function generateCytologyReportPdf(content: CytologyReportContent): jsPDF
 
   return doc;
 }
+
+/** Real, per direct confirmation to build item 5 of the image/PDF
+ *  architecture scoping — composes this file's own real, existing
+ *  jsPDF text rendering with embedImageAssociationsIntoPdf.ts's own
+ *  real, fidelity-preserving image embedding and stream-level PDF
+ *  merging (spec §3). Kept as a separate, new async function rather
+ *  than changing generateCytologyReportPdf's own signature — every
+ *  existing caller of that synchronous function keeps working
+ *  unchanged; only a caller that actually has real
+ *  content.imageAssociations to embed needs to reach for this one.
+ *  Real, honest no-op when there's nothing to embed — never a wasted
+ *  pdf-lib round-trip on a report with no real associations. */
+export async function generateCytologyReportPdfWithAttachments(content: CytologyReportContent): Promise<Uint8Array> {
+  const doc = generateCytologyReportPdf(content);
+  const baseBytes = new Uint8Array(doc.output('arraybuffer'));
+  if (!content.imageAssociations || content.imageAssociations.length === 0) return baseBytes;
+
+  const { embedImageAssociationsIntoPdf } = await import('../imageAssociation/embedImageAssociationsIntoPdf');
+  return embedImageAssociationsIntoPdf(baseBytes, content.imageAssociations);
+}

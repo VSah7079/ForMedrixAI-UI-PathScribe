@@ -1,0 +1,555 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "back": "Retour",
+    "next": "Suivant",
+    "loading": "Chargement…",
+    "yes": "Oui",
+    "no": "Non",
+    "search": "Rechercher",
+    "add": "Ajouter",
+    "remove": "Retirer",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "required": "Obligatoire",
+    "optional": "Facultatif",
+    "signOut": "Déconnexion",
+    "showInactive": "Afficher les inactifs",
+    "deactivate": "Désactiver",
+    "reactivate": "Réactiver",
+    "select": "Sélectionner"
+  },
+  "nav": {
+    "home": "Accueil",
+    "worklist": "Liste de travail",
+    "search": "Recherche",
+    "accession": "Accession",
+    "batchManagement": "Gestion des lots",
+    "configuration": "Configuration",
+    "audit": "Journal d'audit",
+    "qualityAssurance": "Assurance qualité"
+  },
+  "login": {
+    "title": "Connexion à PathScribe",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "signingIn": "Connexion en cours…",
+    "invalidCredentials": "E-mail ou mot de passe invalide."
+  },
+  "language": {
+    "label": "Langue",
+    "en": "English",
+    "fr": "Français",
+    "de": "Deutsch",
+    "nl": "Nederlands",
+    "ko": "한국어"
+  },
+  "batchManagement": {
+    "pageTitle": "Gestion des lots",
+    "pageSubtitle": "Suivez des groupes de cassettes et de lames à travers les étapes de traitement (Décalcification / traitement spécial, Traitement, Inclusion, Microtomie, Coloration, Vérification finale) à l'aide de codes-barres de contenants — traçabilité par scan, réconciliation et journalisation des écarts qualité.",
+    "nodes": {
+      "Decal / Special Processing": "Décalcification / Traitement spécial",
+      "Processing": "Traitement",
+      "Embedding": "Inclusion",
+      "Microtomy / Sectioning": "Microtomie / Coupe",
+      "Staining": "Coloration",
+      "Checkout": "Vérification finale",
+      "External Referral": "Envoi externe",
+      "Cytology Processing": "Traitement cytologique",
+      "Cytology Staining": "Coloration cytologique",
+      "Cytology Imaging": "Imagerie cytologique"
+    },
+    "nodeTileLabel": {
+      "Decal / Special Processing": "Décal / Spécial",
+      "Processing": "Traitement",
+      "Embedding": "Inclusion",
+      "Microtomy / Sectioning": "Microtomie",
+      "Staining": "Coloration",
+      "Checkout": "Vérification",
+      "External Referral": "Envoi",
+      "Cytology Processing": "Cyto Traitement",
+      "Cytology Staining": "Cyto Coloration",
+      "Cytology Imaging": "Cyto Imagerie"
+    },
+    "status": {
+      "active": "Actif",
+      "reconciling": "Réconciliation",
+      "complete": "Terminé",
+      "aborted": "Annulé"
+    },
+    "filterTileTitle": "Filtrer par : {{node}}",
+    "filterTileTitleActive": "Affichage : {{node}} — cliquez pour réinitialiser",
+    "disposalTile": "Élimination",
+    "disposalTitle": "File d'élimination — éléments actuellement éligibles à l'élimination",
+    "pendingLoadTile": "Chargement en attente",
+    "pendingLoadTitle": "Chargement de lot en attente — éléments imprimés non encore scannés dans un lot",
+    "engraverMonitorTile": "Moniteur graveur",
+    "engraverMonitorTitle": "Moniteur graveur — état de haut niveau des graveurs, en temps réel, depuis le Cassette Engine",
+    "lookupPlaceholder": "Scanner ou saisir un code-barres de lot principal…",
+    "newContainer": "Nouveau contenant",
+    "loading": "Chargement des lots…",
+    "activeSectionLabel": "Actifs et en réconciliation ({{count}})",
+    "closedSectionLabel": "Terminés et annulés ({{count}})",
+    "emptyActive": "Aucun lot actif. Créez-en un pour commencer.",
+    "itemCount_one": "{{count}} élément",
+    "itemCount_other": "{{count}} éléments",
+    "rackCheckedOutError": "Le portoir « {{value}} » est déjà affecté à un autre lot actif.",
+    "notFoundError": "Aucun lot ni contenant enregistré trouvé pour « {{value}} »."
+  },
+  "newContainerModal": {
+    "title": "Nouveau contenant",
+    "containerType": "Type de contenant",
+    "targetWorkstation": "Poste de travail cible",
+    "noStation": "— Aucun poste —",
+    "processingNode": "Étape de traitement",
+    "autoSetFromStation": "↳ Défini à partir de l'étape de {{station}}.",
+    "stationMismatchWarning": "⚠ {{station}} est normalement un poste « {{node}} » — vérifiez que c'est intentionnel.",
+    "protocolLabel": "Protocole / Paramètres d'exécution",
+    "protocolPlaceholder": "ex. Cycle H&E standard de nuit",
+    "priority": "Priorité",
+    "routine": "Routine",
+    "stat": "STAT",
+    "solutionType": "Type de solution",
+    "targetDuration": "Durée cible / Minuterie d'alerte",
+    "hours": "h",
+    "minutes": "min",
+    "warningAlertAt": "Alerte à {{duration}} — {{minutesBefore}} minutes avant la cible.",
+    "referenceLabDestination": "Laboratoire de référence de destination",
+    "selectReferenceLab": "— sélectionner un laboratoire de référence —",
+    "noReferenceLabConfigured": "Aucun établissement n'est actuellement configuré avec le rôle de laboratoire de référence — ajoutez-en un dans les paramètres des établissements.",
+    "testPanelRequested": "Test / Panel demandé (facultatif)",
+    "testPanelPlaceholder": "ex. Panel NGS Foundation Medicine CDx",
+    "stainProtocol": "Protocole de coloration",
+    "selectStainProtocol": "— sélectionner un protocole de coloration —",
+    "containerIdentifierMode": "Mode d'identification du contenant",
+    "disposableLabelTitle": "Le système génère une nouvelle étiquette horodatée à usage unique",
+    "disposableLabel": "Étiquette jetable",
+    "reusableRackTitle": "Utiliser un portoir réutilisable déjà gravé au laser — aucune nouvelle étiquette imprimée",
+    "reusableRack": "Portoir réutilisable",
+    "rackId": "ID du portoir",
+    "rackIdPlaceholder": "Scanner ou saisir, ex. {{example}}",
+    "generating": "Génération…",
+    "generateAndPrint": "Générer et imprimer",
+    "startSession": "Démarrer la session",
+    "sessionStarted": "Session démarrée",
+    "containerCreated": "Contenant créé",
+    "rackCheckedOutNoPrint": "Le portoir {{barcode}} est maintenant affecté à ce lot — aucune nouvelle étiquette à imprimer.",
+    "printInstructions": "Imprimez ce code-barres principal du lot et apposez-le sur le contenant physique.",
+    "print": "Imprimer",
+    "continueScanItems": "Continuer — Scanner les éléments"
+  },
+  "grossingRelease": {
+    "cassettesResolved_one": "{{count}} cassette résolue — prête à libérer",
+    "cassettesResolved_other": "{{count}} cassettes résolues — prêtes à libérer",
+    "blockLabel": "Bloc {{specimenLabel}}{{blockLabel}}",
+    "removeBlockTitle": "Supprimer le bloc {{specimenLabel}}{{blockLabel}} — non créé physiquement",
+    "triageResolved": "Triage confirmé",
+    "triageRequired": "Triage requis avant libération",
+    "overriddenNote": "Triage contourné : {{reason}}",
+    "overrideReasonPlaceholder": "Motif du contournement du triage…",
+    "overrideAndRelease": "Contourner et libérer",
+    "releaseBlockedTitle": "Libération impossible — le triage est incomplet. Confirmez la liste de contrôle ou indiquez un motif de contournement.",
+    "releaseAndPrintAll": "Libérer et imprimer tout"
+  },
+  "pendingTriageTile": {
+    "title_one": "Triage de découpe en attente ({{count}})",
+    "title_other": "Triage de découpe en attente ({{count}})",
+    "badge": "Triage",
+    "specimenLabel": "Prélèvement {{specimenLabel}}",
+    "progress": "{{confirmed}} sur {{total}} éléments de la liste confirmés"
+  },
+  "grossingScreen": {
+    "caseNotFound": "Dossier introuvable.",
+    "backToCase": "← Retour au dossier",
+    "pageTitle": "Découpe — {{accession}}",
+    "specimenHeader": "Prélèvement {{label}} — {{description}}",
+    "protocolVersion": "Protocole : {{name}} (v{{version}})",
+    "protocolModified": "Protocole modifié",
+    "noProtocol": "Aucun protocole affecté",
+    "col": {
+      "blockId": "ID du bloc",
+      "pieceCount": "Nombre de pièces",
+      "stains": "Colorations",
+      "status": "Statut",
+      "actions": "Actions",
+      "slideId": "ID de la lame",
+      "stain": "Coloration",
+      "imagerBatch": "Lot d'imagerie",
+      "fovCount": "Nombre de champs (FOV)"
+    },
+    "userAdded": "Ajouté manuellement",
+    "autoGenerated": "Généré automatiquement",
+    "removeStainTitle": "Supprimer la coloration",
+    "selectStain": "— sélectionner une coloration —",
+    "addStain": "Ajouter une coloration",
+    "removeBlockedTitle": "Suppression impossible — le bloc est déjà « {{status}} »",
+    "removeBlock": "Supprimer le bloc",
+    "notYetImaged": "Pas encore imagé",
+    "addBlock": "Ajouter un bloc ({{pathwayName}})",
+    "auditPanelTitle_one": "Journal d'audit ({{count}} modification)",
+    "auditPanelTitle_other": "Journal d'audit ({{count}} modifications)",
+    "noOverrides": "Aucune modification enregistrée.",
+    "auditEntry": "Bloc {{blockLabel}} — {{field}} modifié de « {{originalValue}} » à « {{newValue}} » par {{actor}} le {{timestamp}}",
+    "auditField": {
+      "pieceCount": "Nombre de pièces",
+      "stainAdded": "Coloration ajoutée",
+      "stainRemoved": "Coloration supprimée"
+    },
+    "confirmRemoveStainTitle": "Supprimer la coloration par défaut du protocole ?",
+    "confirmRemoveStainBody": "Cette coloration est un défaut du protocole affecté. Sa suppression sera enregistrée comme une modification.",
+    "confirmRemove": "Supprimer",
+    "concurrencyConflict": "Ce dossier a été mis à jour ailleurs. Rechargez pour voir la dernière version.",
+    "reload": "Recharger",
+    "openGrossingScreen": "🔬 Ouvrir l'écran de découpe"
+  },
+  "orSuiteDashboard": {
+    "bindDisplayTitle": "Associer cet écran",
+    "bindDisplayDescription": "Sélectionnez le terminal de salle d'opération que représente ce moniteur. Cette association est persistante — elle survit aux redémarrages.",
+    "cancelDismiss": "Annuler",
+    "confirmAndDismiss": "Confirmer et clôturer",
+    "confirmDismissalTitle": "Confirmer la clôture",
+    "continue": "Continuer",
+    "dismissCase": "Clôturer le cas",
+    "dismissFailedGeneric": "Impossible de clôturer ce cas. Réessayez.",
+    "dismissing": "Clôture en cours…",
+    "enterPinDismiss": "Entrez votre code PIN à 4 chiffres pour clôturer ce cas.",
+    "enterPinVerbal": "Entrez votre code PIN à 4 chiffres pour enregistrer ce compte rendu verbal.",
+    "inProgress": "En cours",
+    "loadingTerminal": "Chargement du terminal…",
+    "logVerbalReport": "Enregistrer un compte rendu verbal",
+    "logging": "Enregistrement…",
+    "mrn": "N° dossier :",
+    "multiSuiteOverview": "Vue multi-salles",
+    "noActiveRequests": "Aucune demande d'examen extemporané active pour le moment.",
+    "noTerminalsConfigured": "Aucun terminal configuré — ajoutez-en un dans la configuration système.",
+    "noteOptional": "Note (facultatif)",
+    "orRoom": "Salle d'opération :",
+    "orSuiteTerminal": "Terminal de salle d'opération",
+    "patient": "Patient :",
+    "pinInvalidRole": "Ce code PIN n'appartient pas au personnel de bloc opératoire.",
+    "pinNotRecognized": "Code PIN non reconnu.",
+    "preliminaryDiagnosis": "Diagnostic préliminaire :",
+    "preliminaryLabel": "PRÉLIMINAIRE : {{diagnosis}}",
+    "readbackConfirmedLabel": "Relecture du résultat confirmée avec le chirurgien",
+    "room": "Salle {{room}}",
+    "rowMeta": "Prélèvement {{specimenLabel}} · Chirurgien : {{surgeon}} · Pathologiste : {{pathologist}}",
+    "selectTerminal": "— sélectionner un terminal —",
+    "surgeonName": "Nom du chirurgien",
+    "verbalReportBy": "Compte rendu verbal — {{staffName}}",
+    "verifyIdentity": "Vérifier l'identité",
+    "startDemo": "Démarrer la démo",
+    "stopDemo": "Arrêter la démo",
+    "demoModeActive": "Mode démo — données fictives"
+  },
+  "molecularOrderQueue": {
+    "pageTitle": "File des commandes moléculaires",
+    "pageSubtitle": "Commandes de tests moléculaires et d'instruments sortantes — déclenchées automatiquement à l'enregistrement, ou par un déclencheur de génotypage réflexe HPV sur un dépistage autonome positif.",
+    "demoPanelTitle": "Démo : commande HPV et workflow réflexe",
+    "demoPanelDescription": "Fonctionne avec le dossier de démonstration réel {{accession}}, prélèvement A — déjà configuré avec un co-test HPV en attente. Mettez en file la commande du test, puis simulez le retour du résultat de laboratoire.",
+    "assayLabel": "Test utilisé",
+    "assayStandalone": "st-hpv-highrisk-screen (autonome)",
+    "assayBundled": "st-hpv-reflex (groupé)",
+    "queueOrderBtn": "Mettre en file la commande de co-test HPV",
+    "resultLabel": "Résultat simulé",
+    "resultPositive": "Positif",
+    "resultNegative": "Négatif",
+    "simulateResultBtn": "Simuler un résultat HPV entrant",
+    "demoOrderQueued": "Commande mise en file.",
+    "resultApplied": "Résultat appliqué.",
+    "resultAppliedWithReflex": "Résultat appliqué — commande réflexe de génotypage déclenchée ci-dessous.",
+    "resultOutcome": "Résultat : {{outcome}}",
+    "noEntries": "Aucune commande en file pour le moment.",
+    "col": {
+      "type": "Type",
+      "accession": "N° dossier",
+      "assay": "Test",
+      "reason": "Motif",
+      "status": "Statut",
+      "queuedAt": "Mis en file le"
+    },
+    "typeMolecular": "Moléculaire",
+    "typeInstrument": "Instrument",
+    "reasonReflex": "Génotypage réflexe HPV",
+    "reason": {
+      "protocol_configured": "Configuré par protocole (enregistrement)",
+      "hpv_reflex_genotyping": "Génotypage réflexe HPV"
+    },
+    "status": {
+      "QUEUED": "En file",
+      "SENT": "Envoyé",
+      "FAILED": "Échoué"
+    }
+  },
+  "wsiViewerLaunch": {
+    "selectVendorTitle": "Sélectionner le visualiseur WSI",
+    "launchTitle": "Ouvrir cette lame dans le visualiseur WSI configuré",
+    "launchLabel": "Ouvrir dans le visualiseur",
+    "blockedError": "Fenêtre bloquée — veuillez autoriser les fenêtres contextuelles pour ce site et réessayer"
+  },
+  "vendorIntegrations": {
+    "category": {
+      "dp_ai": "Pathologie numérique / IA",
+      "wsi_viewers": "Visualiseurs WSI",
+      "image_management": "Systèmes de gestion d'images",
+      "gross_imaging": "Imagerie macroscopique et télépathologie"
+    }
+  },
+  "imsVendorDictionary": {
+    "title": "Systèmes de gestion d'images",
+    "description": "Stockage d'images/PDF en référence uniquement — PathScribe ne conserve jamais directement les données binaires d'images ou de PDF ; chaque association pointe vers un système externe réel configuré ici, qu'il s'agisse d'un VNA/PACS/DAM d'entreprise ou du serveur de fichiers local d'un site plus petit.",
+    "addSystemBtn": "+ Ajouter un système",
+    "addTitle": "Ajouter un système de gestion d'images",
+    "editTitle": "Modifier le système de gestion d'images",
+    "nameLabel": "Nom",
+    "deploymentLabel": "Modèle de déploiement",
+    "authLabel": "Méthode d'authentification",
+    "baseUrlLabel": "URL de base",
+    "baseUrlPlaceholder": "https://vna.votrelabo.org ou une adresse de serveur de fichiers interne",
+    "tokenWarning": "N'incluez jamais de jeton d'autorisation dans cette URL — un jeton à courte durée de vie est résolu au moment de la requête, jamais stocké ici.",
+    "noBaseUrl": "Aucune URL de base configurée",
+    "emptyRow": "Aucun système de gestion d'images enregistré.",
+    "deployment": {
+      "enterprise_ims": "IMS d'entreprise (VNA / PACS / DAM)",
+      "on_prem_file_server": "Serveur de fichiers local"
+    },
+    "auth": {
+      "none": "Aucune",
+      "signed_url": "URL signée",
+      "oauth2_bearer": "Jeton porteur OAuth 2.0",
+      "mtls": "TLS mutuel (mTLS)"
+    }
+  },
+  "grossImagingVendorDictionary": {
+    "title": "Imagerie macroscopique et télépathologie",
+    "description": "Systèmes d'imagerie au point de capture et de télépathologie pour le poste de découpe — annotation, mesure des dimensions et diffusion en direct pour un avis peropératoire ou à distance. Nettement distinct d'un visualiseur WSI ou d'un stockage d'images passif.",
+    "addVendorBtn": "+ Ajouter un fournisseur",
+    "addTitle": "Ajouter un fournisseur d'imagerie macroscopique",
+    "editTitle": "Modifier le fournisseur d'imagerie macroscopique",
+    "nameLabel": "Nom du fournisseur / produit",
+    "authLabel": "Méthode d'authentification",
+    "baseUrlLabel": "URL de base",
+    "baseUrlPlaceholder": "https://gross-imaging.votrelabo.org",
+    "telepathologyCheckbox": "Prend en charge la diffusion en direct de télépathologie",
+    "telepathologyCapable": "Compatible télépathologie",
+    "staticOnly": "Capture statique uniquement",
+    "emptyRow": "Aucun fournisseur d'imagerie macroscopique enregistré.",
+    "auth": {
+      "none": "Aucune",
+      "signed_url": "URL signée",
+      "oauth2_bearer": "Jeton porteur OAuth 2.0",
+      "mtls": "TLS mutuel (mTLS)"
+    }
+  },
+  "cytologyQcRules": {
+    "title": "Règles d'assurance qualité en cytologie",
+    "description": "Configurez les règles automatisées qui échantillonnent, attribuent et acheminent les cas de cytologie pour la relecture qualité.",
+    "addRuleBtn": "+ Ajouter une règle",
+    "addTitle": "Ajouter une règle QC",
+    "editTitle": "Modifier la règle QC",
+    "duplicateBtn": "Dupliquer",
+    "emptyRow": "Aucune règle QC enregistrée.",
+    "nameLabel": "Nom de la règle",
+    "descriptionLabel": "Description",
+    "priorityLabel": "Priorité d'évaluation (la plus élevée est évaluée en premier)",
+    "slaHoursLabel": "Délai (heures)",
+    "tierLabel": "Niveau de priorité de relecture",
+    "priorityInline": "Priorité {{priority}}",
+    "commaListPlaceholder": "Valeurs séparées par des virgules",
+    "jurisdictionsHint": "Ne cochez rien pour appliquer cette règle dans toutes les juridictions.",
+    "facilityIdsLabel": "IDs des établissements réalisateurs",
+    "eligibleReviewerRolesLabel": "Rôles de relecteurs éligibles",
+    "highRiskFlagsLabel": "Indicateurs à haut risque",
+    "bethesdaLabel": "Classifications de Bethesda",
+    "snomedLabel": "Codes de concept SNOMED",
+    "resultIsNegativeLabel": "Filtre de résultat",
+    "section": {
+      "basics": "Informations de base",
+      "samplingLogic": "Logique d'échantillonnage",
+      "location": "Localisation et juridiction",
+      "provider": "Prestataire",
+      "specimen": "Spécimen",
+      "clinicalDiagnostic": "Risque clinique et champ diagnostique"
+    },
+    "sampling": {
+      "percentage": "Pourcentage",
+      "interval": "Intervalle (tous les N cas)",
+      "fixedVolume": "Volume fixe (les N premiers cas)",
+      "ratePercentPlaceholder": "Taux %",
+      "everyNthPlaceholder": "Tous les N cas",
+      "firstNPlaceholder": "N premiers cas"
+    },
+    "tier": {
+      "high_escalation": "Priorité 1 — Escalade élevée",
+      "targeted_high_consequence": "Priorité 2 — Ciblée à conséquence élevée",
+      "routine_random": "Priorité 3 — Aléatoire de routine"
+    },
+    "role": {
+      "pathologist": "Pathologiste",
+      "cytotechnologist": "Cytotechnologue"
+    },
+    "onboarding": {
+      "new_hire": "Nouvelle recrue",
+      "probationary": "Période d'essai"
+    },
+    "specimenCategory": {
+      "gyn_pap": "Frottis gynécologique",
+      "non_gyn_fluid": "Liquide non gynécologique",
+      "fna": "Cytoponction à l'aiguille fine (FNA)"
+    },
+    "adequacy": {
+      "satisfactory": "Satisfaisant",
+      "unsatisfactory": "Insatisfaisant",
+      "limited": "Limité"
+    },
+    "resultFilter": {
+      "any": "Tout résultat",
+      "negative": "Négatif uniquement",
+      "nonNegative": "Non négatif uniquement"
+    }
+  },
+  "cytologyQcQueue": {
+    "pageTitle": "File de relecture QC en cytologie",
+    "tab": {
+      "all": "Tous les éléments",
+      "escalations_discrepancies": "Escalades et divergences",
+      "routine_random": "Routine et aléatoire"
+    },
+    "assignToMeBtn": "M'attribuer",
+    "recordConcurrenceBtn": "Enregistrer la concordance",
+    "recordDiscrepancyBtn": "Enregistrer une divergence",
+    "assignedToOther": "Attribué à un autre relecteur",
+    "emptyRow": "Aucun cas dans cette file.",
+    "slaStatus": {
+      "on_time": "Dans les délais",
+      "approaching": "Délai proche",
+      "breached": "Délai dépassé"
+    },
+    "discrepancyModalTitle": "Enregistrer une divergence",
+    "primaryCodeLabel": "Code diagnostique principal",
+    "secondaryCodeLabel": "Code diagnostique secondaire",
+    "severityLabel": "Gravité",
+    "severity": {
+      "major": "Majeure",
+      "minor": "Mineure"
+    },
+    "commentaryLabel": "Commentaire du relecteur",
+    "submitDiscrepancyBtn": "Soumettre la divergence"
+  },
+  "cytologyScreening": {
+    "requestReviewBtn": "Dem. relecture",
+    "openEmrBtn": "Ouvrir DME",
+    "teamBtn": "Équipe",
+    "delegateBtn": "Déléguer",
+    "flagsBtn": "Indicateurs",
+    "codesBtn": "Codes",
+    "requestPeerReviewBtn": "Demander une relecture",
+    "patientHistory": {
+      "title": "Antécédents cyto/histo du patient",
+      "subtitle": "(cas antérieurs pour ce patient)",
+      "priorPapSection": "Frottis antérieurs",
+      "priorBiopsySection": "Biopsies chirurgicales antérieures",
+      "noFinalDx": "aucun diagnostic final enregistré",
+      "viewCase": "Voir le dossier"
+    },
+    "materialBtn": "Matériel",
+    "materialDrawer": {
+      "specimenLabel": "Spécimen",
+      "noDecants": "Aucun décantat enregistré pour ce spécimen.",
+      "decantType": {
+        "residual_fluid": "Liquide résiduel",
+        "cell_block": "Bloc cellulaire"
+      },
+      "addResidualFluidBtn": "Ajouter un liquide résiduel",
+      "addCellBlockBtn": "Ajouter un bloc cellulaire"
+    },
+    "synopticBtn": "Synoptique",
+    "synopticDrawer": {
+      "title": "Rapport synoptique",
+      "previewBanner": "Moteur de modèles personnalisés • Saisie de données structurées",
+      "selectTemplate": "Sélectionner un modèle synoptique",
+      "validationError": "Veuillez compléter tous les champs synoptiques requis.",
+      "saveBtn": "Enregistrer le synoptique",
+      "unvalidatedTermsTitle": "Termes cliniques non validés",
+      "unvalidatedTermsExplanation": "Ce rapport contient des termes cliniques affichés dans leur forme canonique (anglais) car aucune traduction validée cliniquement n’existe encore pour votre langue. Vérifiez attentivement ces termes avant de diffuser ce rapport.",
+      "acknowledgmentLabel": "J’ai vérifié les termes non validés ci-dessus et je confirme leur exactitude clinique pour ce rapport.",
+      "acknowledgmentRequiredError": "Vous devez confirmer les termes non validés ci-dessus avant d’enregistrer.",
+      "generatedNarrativeTitle": "Récit généré (brouillon — à vérifier avant utilisation)",
+      "insertIntoNotesBtn": "Insérer dans les notes",
+      "narrative": {
+        "procedure": "Acte : {value}.",
+        "site": "Site : {value}.",
+        "thyroid": {
+          "noduleSize": "Taille du nodule cible : {value} cm.",
+          "follicularGroupCount": "Nombre de groupes folliculaires : {value}.",
+          "bethesdaCategory": "Catégorie diagnostique de Bethesda : {value}.",
+          "colloid": "Colloïde : {value}."
+        },
+        "numberOfPasses": "Nombre de passages : {value}.",
+        "rosePerformed": "L'évaluation rapide sur site (ROSE) a été {value}.",
+        "specimenIs": "L'échantillon est {value}.",
+        "reasonUnsatisfactory": "Motif de l'évaluation insatisfaisante : {value}.",
+        "cellularity": "Cellularité : {value}.",
+        "architecturalPattern": "Architecture : {value}.",
+        "nuclearFeatures": "Caractéristiques nucléaires : {value}.",
+        "background": "Fond : {value}.",
+        "molecularTesting": "Tests moléculaires : {value}.",
+        "molecularPlatform": "Plateforme moléculaire : {value}.",
+        "cellBlockIhc": "Immunohistochimie sur bloc cellulaire : {value}.",
+        "radiologicCorrelation": "Corrélation radiologique : {value}."
+      },
+      "unvalidatedSegmentTooltip": "Traduction non validée — affichée sous forme canonique/anglaise. Terme du lexique : {key}"
+    },
+    "printBtn": "Imprimer",
+    "fiveYearLookback": {
+      "title": "Suivi rétrospectif sur 5 ans",
+      "subtitle": "(exigé par le CAP — résultats négatifs antérieurs dans la fenêtre de suivi)",
+      "viewSlide": "Voir le dossier"
+    },
+    "roseBtn": "ROSE",
+    "roseDrawer": {
+      "priorEvaluations": "Évaluations ROSE antérieures",
+      "recordNew": "Enregistrer une nouvelle évaluation",
+      "location": {
+        "radiology": "Radiologie",
+        "clinic": "Clinique",
+        "operating_room": "Salle d’opération",
+        "other": "Autre"
+      },
+      "locationLabel": "Lieu",
+      "passLabel": "Passage {{n}}",
+      "adequacy": {
+        "adequate": "Adéquat",
+        "inadequate": "Inadéquat",
+        "indeterminate": "Indéterminé"
+      },
+      "impressionPlaceholder": "Impression préliminaire (ex. Bénin, compatible avec un nodule colloïde)",
+      "addPassBtn": "Ajouter un passage",
+      "saveBtn": "Évaluation"
+    }
+  },
+  "cytologyWorklist": {
+    "breadcrumbLabel": "Espace de cytologie",
+    "domain": {
+      "gyn": "Cytologie GYN",
+      "nonGyn": "File Non-GYN / FNA"
+    },
+    "qaComplianceSectionLabel": "AQ et conformité",
+    "organSite": {
+      "all": "Tous les sites",
+      "THYROID": "Thyroïde",
+      "LUNG_EBUS": "Poumon/EBUS",
+      "BODY_FLUID": "Liquides corporels/lavages",
+      "URINE": "Urine/Système de Paris",
+      "SALIVARY_GLAND": "Glande salivaire",
+      "BREAST": "Sein",
+      "GI_PANCREATIC": "GI/Pancréatique",
+      "OTHER_NGYN": "Autre"
+    }
+  }
+}

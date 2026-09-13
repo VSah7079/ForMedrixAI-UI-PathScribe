@@ -60,7 +60,7 @@ export const mockHardwareContainerRegistryService: IHardwareContainerRegistrySer
     return { ok: true, data: container };
   },
 
-  async create(draft: { rackId: string; containerType: ContainerType; facilityId?: string }): Promise<ServiceResult<HardwareContainer>> {
+  async create(draft: { rackId: string; containerType: ContainerType; facilityId?: string; isSmartContainer?: boolean; storageConditionTypeId?: string }): Promise<ServiceResult<HardwareContainer>> {
     const containers = loadContainers();
     const normalized = draft.rackId.trim().toUpperCase();
     if (containers.some(c => c.rackId.toUpperCase() === normalized)) {
@@ -69,10 +69,21 @@ export const mockHardwareContainerRegistryService: IHardwareContainerRegistrySer
     const container: HardwareContainer = {
       id: genId(), rackId: draft.rackId.trim(), containerType: draft.containerType,
       status: 'Available', facilityId: draft.facilityId, createdAt: new Date().toISOString(),
+      isSmartContainer: draft.isSmartContainer, storageConditionTypeId: draft.isSmartContainer ? draft.storageConditionTypeId : undefined,
     };
     containers.push(container);
     saveContainers(containers);
     return { ok: true, data: container };
+  },
+
+  async update(id: ID, changes: { isSmartContainer?: boolean; storageConditionTypeId?: string }): Promise<ServiceResult<HardwareContainer>> {
+    const containers = loadContainers();
+    const idx = containers.findIndex(c => c.id === id);
+    if (idx === -1) return { ok: false, error: `No hardware container found with id "${id}".` };
+    const updated: HardwareContainer = { ...containers[idx], ...changes, updatedAt: new Date().toISOString() };
+    const next = [...containers]; next[idx] = updated;
+    saveContainers(next);
+    return { ok: true, data: updated };
   },
 
   async checkOut(rackId: string, batchId: ID): Promise<ServiceResult<HardwareContainer>> {

@@ -9,6 +9,11 @@ describe('resolveCytologyTriageState — real, given "HPV-First" triage rules', 
     expect(resolveCytologyTriageState('co_testing', 'Negative', true)).toBe('not_applicable');
   });
 
+  it('real, per direct guidance\'s own German G-BA protocol: cytology_only is also never gated — no HPV testing happens in this real mode at all', () => {
+    expect(resolveCytologyTriageState('cytology_only', undefined, false)).toBe('not_applicable');
+    expect(resolveCytologyTriageState('cytology_only', 'Positive', false)).toBe('not_applicable');
+  });
+
   it('primary_hpv_reflex with no result yet: awaiting_hpv_result, regardless of collection type', () => {
     expect(resolveCytologyTriageState('primary_hpv_reflex', undefined, false)).toBe('awaiting_hpv_result');
     expect(resolveCytologyTriageState('primary_hpv_reflex', undefined, true)).toBe('awaiting_hpv_result');

@@ -74,3 +74,33 @@ export async function checkDepartmentReferences(departmentId: string): Promise<R
   const count = res.ok ? res.data.filter((e) => e.departmentId === departmentId).length : 0;
   return toResult([{ label: 'Specimen Dictionary entries', count }]);
 }
+
+/** Real, per this file's own header — "Client" is the Client Dictionary
+ *  UI's own name for a Facility record, not a separate entity
+ *  (ClientDictionaryPage.tsx: `import type { Facility as Client }`,
+ *  reconciled June 2026 to share the exact same facilityService
+ *  every other real screen already uses). Deliberately identical
+ *  logic to checkFacilityReferences — a real Client and a real
+ *  Facility are the same record under two different labels, so a
+ *  second, independent reference-check would just be this same
+ *  check duplicated, genuinely risking drift between the two over
+ *  time. */
+export async function checkClientReferences(clientId: string): Promise<ReferenceCheckResult> {
+  return checkFacilityReferences(clientId);
+}
+
+/** Real, honest limit, stated plainly rather than guessed: a
+ *  SpecimenEntry is documented (ISpecimenCategoryService.ts's own
+ *  header) as needing a real specimenCategoryId field "added to
+ *  specimenTypes.ts separately" — confirmed directly that field does
+ *  not exist anywhere on SpecimenEntry yet, so there is genuinely no
+ *  real, live reference to check today. Returns an honest "no
+ *  references" rather than fabricating a check against a field that
+ *  isn't there. Real, deliberate shape so the actual check drops in
+ *  with zero structural change once specimenCategoryId exists —
+ *  mirroring checkDepartmentReferences's own exact
+ *  filter-and-count pattern is the intended, obvious next step, not
+ *  a new design question. */
+export async function checkSpecimenCategoryReferences(_categoryId: string): Promise<ReferenceCheckResult> {
+  return toResult([{ label: 'Specimen Dictionary entries', count: 0 }]);
+}

@@ -49,6 +49,7 @@ import { getSessionUser, canFinalizeCase } from '@/services/auth/caseAccessContr
 import { countersignService, userService, fppeAssignmentService, qaSupervisionAssignmentService } from '@/services';
 import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { intraoperativeService } from '@/services';
+import { dispatchCancerRegistryReportIfApplicable } from '@/services/cancerRegistry/dispatchCancerRegistryReportIfApplicable';
 import { amendmentService, reportVersionService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { syncPrimaryAssignee } from '@/services/cases/caseAssignmentSync';
@@ -722,6 +723,19 @@ export function useSignOutWorkflow({
       }
     }
     await finalizeSignOut();
+
+    // Real, per the RFP-APLIS-2026-GLOBAL Broader Cancer Registry
+    // Exports gap — per FHIR_DISPATCH_ARCHITECTURE_PLAN.md's own
+    // already-settled, critical finding, this is the ONLY real place
+    // in this app a general cancer registry report may ever be
+    // triggered from: a genuine, confirmed surgical pathology sign-out
+    // — never cytology. Fire-and-forget: a real dispatch-side failure
+    // must never block the case's own, already-successful sign-out,
+    // same real posture as every other post-sign-out side effect in
+    // this function.
+    if (caseData?.id && caseData.order?.facilityId) {
+      dispatchCancerRegistryReportIfApplicable(caseData, caseData.order.facilityId, caseData.order.facilityName).catch(() => {});
+    }
 
     // Real, per direct guidance ("Path B Execution Plan"): the real
     // case-level state transition + buffer decision, performed here in

@@ -2865,7 +2865,7 @@ const MOCK_CASES: Case[] = [
     accession: { accessionNumber: '5002', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-5002-CYT-001' },
     originHospitalId: 'HOSP-001', originEnterpriseId: 'ENT-DEFAULT',
     patient: { id: 'PAT-CYT-002', mrn: '100502', firstName: 'Angela', lastName: 'Torres', dateOfBirth: isoYearsAgo(41, 9, 18), sex: 'F', phone: '555-401-1002', email: 'angela.torres@example.org', address: '77 Sunrise Blvd, Phoenix, AZ 85004' },
-    specimens: [{ id: 'S26-5002-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(3), collectedAt: isoDaysAgo(3), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: { hpvCoTestOrdered: true, hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected', hpvGenotypeDetail: { hpv16: true, hpv18Or45: false, otherHighRisk: false } } } as any],
+    specimens: [{ id: 'S26-5002-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(3), collectedAt: isoDaysAgo(3), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: { hpvCoTestOrdered: true, hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected', hpvGenotypeDetail: { hpv16: true, hpv18Or45: false, otherHighRisk: false }, molecularRunId: 'mqc-001' } } as any],
     order: { priority: 'Routine', requestingProvider: 'Dr. Amanda Chen', facilityId: 'c1', facilityName: 'Metro General Hospital', clinicalIndication: 'History of ASC-US, prior cotest HPV-positive.', receivedDate: isoDaysAgo(3), assignedTo: 'PATH-001' },
     diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
     synopticReports: [],
@@ -3045,7 +3045,7 @@ const MOCK_CASES: Case[] = [
     // detected genuinely makes this case eligible for cytology
     // screening now — appears in Fenwick Women's own real Pool/My
     // Worklist tiles, ready for a real BSCC/RCPath screen.
-    specimens: [{ id: 'S26-6003-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(4), collectedAt: isoDaysAgo(4), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected', hpvGenotypeDetail: { hpv16: true, hpv18Or45: false, otherHighRisk: false } } } as any],
+    specimens: [{ id: 'S26-6003-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(4), collectedAt: isoDaysAgo(4), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected', hpvGenotypeDetail: { hpv16: true, hpv18Or45: false, otherHighRisk: false }, molecularRunId: 'mqc-001' } } as any],
     order: { priority: 'Routine', requestingProvider: 'Dr. Priya Shah', facilityId: 'c-fenwick-womens', facilityName: "Fenwick Women's Hospital", clinicalIndication: 'Routine NHS Cervical Screening Programme recall — reflex cytology following positive primary hrHPV.', receivedDate: isoDaysAgo(4), assignedTo: null },
     diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
     synopticReports: [],
@@ -3083,6 +3083,394 @@ const MOCK_CASES: Case[] = [
       },
     } as any],
     order: { priority: 'Routine', requestingProvider: 'Dr. Min-jun Park', facilityId: 'c-kr-seoul-general', facilityName: 'Seoul General Screening Center', clinicalIndication: 'National Cancer Screening Program (KNCSP) biennial cervical cytology.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real Germany seed cases (Sep 2026) ─────────────────────────────────────
+  // Real, per direct guidance's own German G-BA age-stratified
+  // information: Ages 20-34 get annual, real cytology_only screening
+  // (no HPV at all); Ages 35+ get real co_testing every 3 years.
+  // Berlin Frauenklinik Zytologie (c-de-berlin-frauenklinik) is
+  // configured with the real age-stratified rule
+  // (mockFacilityCytologyScreeningStrategyOverrideService.ts) and
+  // real München III nomenclature. Two cases, one per real age
+  // bracket, demonstrating both real, distinct screening modes.
+
+  {
+    id: 'S26-8001-CYT-001',
+    accession: { accessionNumber: '8001', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-8001-CYT-001' },
+    originHospitalId: 'c-de-berlin-frauenklinik', originEnterpriseId: 'c-de-berlin-frauenklinik',
+    // Real, under the German age threshold (35) — real cytology_only mode, no HPV at all.
+    patient: { id: 'PAT-CYT-012', mrn: '400801', firstName: 'Lena', lastName: 'Hoffmann', dateOfBirth: isoYearsAgo(28, 3, 11), sex: 'F', phone: '+49 30 555 0601', email: 'lena.hoffmann@example.de', address: 'Torstraße 12, 10119 Berlin' },
+    specimens: [{
+      id: 'S26-8001-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(3), collectedAt: isoDaysAgo(3), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        hpvCoTestOrdered: false,
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-de001-primary',
+          primaryInterpretationId: 'mn3-group-i',
+          adequacySelections: [{ categoryId: 'mn3-adeq-satisfactory' }],
+          selectedBy: 'PATH-DE-001', selectedByName: 'Dr. Anke Weber', selectedAt: isoDaysAgo(2),
+        },
+      },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Anke Weber', facilityId: 'c-de-berlin-frauenklinik', facilityName: 'Berlin Frauenklinik Zytologie', clinicalIndication: 'G-BA organized screening — annual primary Pap cytology (age 20-34).', receivedDate: isoDaysAgo(3), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(3), updatedAt: isoDaysAgo(2),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  {
+    id: 'S26-8002-CYT-001',
+    accession: { accessionNumber: '8002', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-8002-CYT-001' },
+    originHospitalId: 'c-de-berlin-frauenklinik', originEnterpriseId: 'c-de-berlin-frauenklinik',
+    // Real, at/above the German age threshold — real co_testing mode.
+    patient: { id: 'PAT-CYT-013', mrn: '400802', firstName: 'Petra', lastName: 'Schulz', dateOfBirth: isoYearsAgo(42, 8, 27), sex: 'F', phone: '+49 30 555 0602', email: 'petra.schulz@example.de', address: 'Kastanienallee 45, 10435 Berlin' },
+    specimens: [{
+      id: 'S26-8002-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(4), collectedAt: isoDaysAgo(4), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        hpvCoTestOrdered: true, hpvResult: 'Negative', hpvAbnormalFlag: 'N', hpvReferenceRange: 'Not Detected',
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-de002-primary',
+          primaryInterpretationId: 'mn3-group-i',
+          adequacySelections: [{ categoryId: 'mn3-adeq-satisfactory' }],
+          selectedBy: 'PATH-DE-001', selectedByName: 'Dr. Anke Weber', selectedAt: isoDaysAgo(3),
+        },
+      },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Anke Weber', facilityId: 'c-de-berlin-frauenklinik', facilityName: 'Berlin Frauenklinik Zytologie', clinicalIndication: 'G-BA organized screening — co-testing every 3 years (age 35+).', receivedDate: isoDaysAgo(4), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(4), updatedAt: isoDaysAgo(3),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real demo cases for the 6 newly-seeded geographies (Sep 2026) ──────────
+  // Real, per direct guidance's own request: "defined seed data and
+  // defined facilities... so we can test the different workflows."
+  // One real, representative case per new geography, each chosen to
+  // demonstrate that geography's own most distinctive real pathway.
+
+  // Netherlands — real, already-reviewed CISOE-A case (Positive
+  // hrHPV → real reflex cytology screened). Real cisoeAScore
+  // populated directly on the review record below (PS-183) since the
+  // real 6-axis entry UI is not yet built — this is the only way to
+  // demonstrate a real, populated score today. S4 (mild dyskaryosis)
+  // correctly maps to LSIL via resolveCisoeAToBethesda.ts.
+  {
+    id: 'S26-9001-CYT-001',
+    accession: { accessionNumber: '9001', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9001-CYT-001' },
+    originHospitalId: 'c-nl-amsterdam-cyto', originEnterpriseId: 'c-nl-amsterdam-cyto',
+    patient: { id: 'PAT-CYT-014', mrn: '500901', firstName: 'Anneke', lastName: 'de Vries', dateOfBirth: isoYearsAgo(33, 6, 14), sex: 'F', phone: '+31 20 555 1301', email: 'anneke.devries@example.nl', address: 'Prinsengracht 100, 1015 Amsterdam' },
+    specimens: [{
+      id: 'S26-9001-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected',
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-nl001-primary',
+          primaryInterpretationId: 'cyto-squam-lsil',
+          adequacySelections: [{ categoryId: 'cyto-adeq-satisfactory' }],
+          selectedBy: 'PATH-NL-001', selectedByName: 'Dr. Willem Bakker', selectedAt: isoDaysAgo(1),
+        },
+      },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Willem Bakker', facilityId: 'c-nl-amsterdam-cyto', facilityName: 'Amsterdam Cytologie Centrum', clinicalIndication: 'Bevolkingsonderzoek baarmoederhalskanker — reflex cytology, real hrHPV-positive.', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // Real, per direct guidance on APAC-QA-01 (external proficiency
+  // testing): "the synthetic cases are accessioned into the system
+  // and resulted... sent to [the provider]... a response is sent
+  // back showing the scores." A real, clearly-synthetic CAP
+  // proficiency-testing challenge case, accessioned and screened the
+  // exact same real way as any real patient case — proficiencyTestContext
+  // is the one real, structural difference. Patient name/MRN are
+  // deliberately, unmistakably synthetic (never confusable with a
+  // real patient), matching this app's own established convention
+  // for every other clearly-synthetic seed record.
+  {
+    id: 'S26-PT001-CYT-001',
+    accession: { accessionNumber: 'PT001', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-PT001-CYT-001' },
+    proficiencyTestContext: { provider: 'CAP', challengeReferenceId: 'CAP-GYN-2026-A-03' },
+    originHospitalId: 'c-hfhs-01', originEnterpriseId: 'c-hfhs-01',
+    patient: { id: 'PAT-CYT-PT001', mrn: 'PT-SYNTH-0001', firstName: 'CAP Gyn', lastName: 'Survey Challenge A-03', dateOfBirth: isoYearsAgo(45, 0, 1), sex: 'F' },
+    specimens: [{
+      id: 'S26-PT001-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based (CAP GYN Survey slide)', receivedAt: isoDaysAgo(10), collectedAt: isoDaysAgo(10), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {},
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'CAP Surveys', facilityId: 'c-hfhs-01', facilityName: 'Henry Ford Health System', clinicalIndication: 'CAP GYN Cytology Survey — external proficiency-testing challenge slide, not a real patient.', receivedDate: isoDaysAgo(10), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(10), updatedAt: isoDaysAgo(9),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // Real, per this same guidance — three total PT challenge cases,
+  // deliberately mixed real outcomes (see
+  // mockCytologyProficiencyTestResultService.ts's own seed) so
+  // APAC-QA-01 has real, non-trivial data to aggregate — an all-
+  // satisfactory dataset would never demonstrate the report's own
+  // real purpose.
+  {
+    id: 'S26-PT002-CYT-001',
+    accession: { accessionNumber: 'PT002', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-PT002-CYT-001' },
+    proficiencyTestContext: { provider: 'CAP', challengeReferenceId: 'CAP-GYN-2026-A-07' },
+    originHospitalId: 'c-hfhs-01', originEnterpriseId: 'c-hfhs-01',
+    patient: { id: 'PAT-CYT-PT002', mrn: 'PT-SYNTH-0002', firstName: 'CAP Gyn', lastName: 'Survey Challenge A-07', dateOfBirth: isoYearsAgo(45, 0, 1), sex: 'F' },
+    specimens: [{ id: 'S26-PT002-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based (CAP GYN Survey slide)', receivedAt: isoDaysAgo(10), collectedAt: isoDaysAgo(10), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: {} } as any],
+    order: { priority: 'Routine', requestingProvider: 'CAP Surveys', facilityId: 'c-hfhs-01', facilityName: 'Henry Ford Health System', clinicalIndication: 'CAP GYN Cytology Survey — external proficiency-testing challenge slide, not a real patient.', receivedDate: isoDaysAgo(10), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [], status: 'in-progress' as CaseStatus, createdAt: isoDaysAgo(10), updatedAt: isoDaysAgo(9),
+    caseFlags: [], specimenFlags: [], reportingMode: 'orchestrator', coding: {},
+  } as any,
+  {
+    id: 'S26-PT003-CYT-001',
+    accession: { accessionNumber: 'PT003', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-PT003-CYT-001' },
+    proficiencyTestContext: { provider: 'CAP', challengeReferenceId: 'CAP-GYN-2026-B-02' },
+    originHospitalId: 'c-hfhs-01', originEnterpriseId: 'c-hfhs-01',
+    patient: { id: 'PAT-CYT-PT003', mrn: 'PT-SYNTH-0003', firstName: 'CAP Gyn', lastName: 'Survey Challenge B-02', dateOfBirth: isoYearsAgo(45, 0, 1), sex: 'F' },
+    specimens: [{ id: 'S26-PT003-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based (CAP GYN Survey slide)', receivedAt: isoDaysAgo(4), collectedAt: isoDaysAgo(4), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap', cytologyScreening: {} } as any],
+    order: { priority: 'Routine', requestingProvider: 'CAP Surveys', facilityId: 'c-hfhs-01', facilityName: 'Henry Ford Health System', clinicalIndication: 'CAP GYN Cytology Survey — external proficiency-testing challenge slide, not a real patient.', receivedDate: isoDaysAgo(4), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [], status: 'in-progress' as CaseStatus, createdAt: isoDaysAgo(4), updatedAt: isoDaysAgo(4),
+    caseFlags: [], specimenFlags: [], reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // France — real reflex_triggered case (age 42, at/above the real 30
+  // threshold — primary hrHPV pathway).
+  {
+    id: 'S26-9002-CYT-001',
+    accession: { accessionNumber: '9002', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9002-CYT-001' },
+    originHospitalId: 'c-fr-paris-cyto', originEnterpriseId: 'c-fr-paris-cyto',
+    patient: { id: 'PAT-CYT-015', mrn: '500902', firstName: 'Camille', lastName: 'Moreau', dateOfBirth: isoYearsAgo(42, 2, 9), sex: 'F', phone: '+33 1 55 55 1302', email: 'camille.moreau@example.fr', address: '10 Rue de Rivoli, 75004 Paris' },
+    specimens: [{
+      id: 'S26-9002-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(3), collectedAt: isoDaysAgo(3), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected' },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Sophie Lefèvre', facilityId: 'c-fr-paris-cyto', facilityName: 'Centre de Cytologie Paris', clinicalIndication: 'Programme national de dépistage organisé — primary hrHPV (age 30+), reflex cytology.', receivedDate: isoDaysAgo(3), assignedTo: null },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'pool' as CaseStatus, poolId: '1', poolName: 'Cytology',
+    createdAt: isoDaysAgo(3), updatedAt: isoDaysAgo(3),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // Belgium — real, under-30 case (age 27, below the real 30
+  // threshold — real cytology_only pathway, no HPV at all).
+  {
+    id: 'S26-9003-CYT-001',
+    accession: { accessionNumber: '9003', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9003-CYT-001' },
+    originHospitalId: 'c-be-brussels-cyto', originEnterpriseId: 'c-be-brussels-cyto',
+    patient: { id: 'PAT-CYT-016', mrn: '500903', firstName: 'Marie', lastName: 'Dubois', dateOfBirth: isoYearsAgo(27, 10, 5), sex: 'F', phone: '+32 2 555 1303', email: 'marie.dubois@example.be', address: 'Rue Neuve 123, 1000 Brussels' },
+    specimens: [{
+      id: 'S26-9003-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {},
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Julie Lambert', facilityId: 'c-be-brussels-cyto', facilityName: 'Brussel Cytologie Instituut', clinicalIndication: 'INAMI-RIZIV organized screening — primary Pap cytology (age 25-29).', receivedDate: isoDaysAgo(2), assignedTo: 'PATH-001' },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // Canada — real reflex_triggered case (British Columbia, transitioned to primary hrHPV).
+  {
+    id: 'S26-9004-CYT-001',
+    accession: { accessionNumber: '9004', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9004-CYT-001' },
+    originHospitalId: 'c-ca-vancouver-cyto', originEnterpriseId: 'c-ca-vancouver-cyto',
+    patient: { id: 'PAT-CYT-017', mrn: '500904', firstName: 'Emily', lastName: 'MacDonald', dateOfBirth: isoYearsAgo(36, 4, 22), sex: 'F', phone: '+1 604 555 1304', email: 'emily.macdonald@example.ca', address: '789 Robson St, Vancouver, BC' },
+    specimens: [{
+      id: 'S26-9004-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected' },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Sarah Chen', facilityId: 'c-ca-vancouver-cyto', facilityName: 'Vancouver Cytology Laboratory', clinicalIndication: 'BC Cervix Screening Program — primary hrHPV, reflex cytology.', receivedDate: isoDaysAgo(2), assignedTo: null },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'pool' as CaseStatus, poolId: '1', poolName: 'Cytology',
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(2),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // New Zealand — real, distinctive self-collection recall case
+  // (positive self-swab -> real recall for clinician-collected LBC,
+  // PS-178's own architecture, now demonstrated for a second country).
+  {
+    id: 'S26-9005-CYT-001',
+    accession: { accessionNumber: '9005', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9005-CYT-001' },
+    originHospitalId: 'c-nz-auckland-cyto', originEnterpriseId: 'c-nz-auckland-cyto',
+    patient: { id: 'PAT-CYT-018', mrn: '500905', firstName: 'Aroha', lastName: 'Ngata', dateOfBirth: isoYearsAgo(31, 12, 3), sex: 'F', phone: '+64 9 555 1305', email: 'aroha.ngata@example.nz', address: '15 Queen St, Auckland' },
+    specimens: [{
+      id: 'S26-9005-SP-1', label: 'A', description: 'Self-collected vaginal swab, HPV only', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-hpv-self',
+      cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected' },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Hemi Walker', facilityId: 'c-nz-auckland-cyto', facilityName: 'Auckland Cytology Services', clinicalIndication: 'NCSP primary hrHPV — self-collected vaginal swab, positive result.', receivedDate: isoDaysAgo(1), assignedTo: null },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(1), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // Australia — real "ordered state": awaiting the primary hrHPV
+  // result, clinician-collected specimen (the real HPV Triage tile's
+  // own working example, now demonstrated for a second country).
+  {
+    id: 'S26-9006-CYT-001',
+    accession: { accessionNumber: '9006', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9006-CYT-001' },
+    originHospitalId: 'c-au-sydney-cyto', originEnterpriseId: 'c-au-sydney-cyto',
+    patient: { id: 'PAT-CYT-019', mrn: '500906', firstName: 'Isla', lastName: 'Thompson', dateOfBirth: isoYearsAgo(29, 7, 18), sex: 'F', phone: '+61 2 555 1306', email: 'isla.thompson@example.au', address: '45 George St, Sydney NSW' },
+    specimens: [{
+      id: 'S26-9006-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(1), collectedAt: isoDaysAgo(1), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {},
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Olivia Chen', facilityId: 'c-au-sydney-cyto', facilityName: 'Sydney Cytology & Pathology', clinicalIndication: 'NCSP primary hrHPV — clinician-collected LBC, result pending.', receivedDate: isoDaysAgo(1), assignedTo: null },
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(1), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real demo case: UK CSMS QA (Sep 2026) ───────────────────────────────────
+  // Real, per direct guidance's own real mechanism: already signed
+  // out and dispatched to CSMS, with the real 'f36' (CSMS Eligibility
+  // Verification Needed) flag already applied — demonstrating the new
+  // real "CSMS QA" worklist tab with something to show immediately,
+  // rather than requiring a fresh sign-out first.
+  {
+    id: 'S26-9101-CYT-001',
+    accession: { accessionNumber: '9101', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9101-CYT-001' },
+    originHospitalId: 'c-fenwick-womens', originEnterpriseId: 'c-trust-fenwick',
+    patient: { id: 'PAT-CYT-020', mrn: '200602', firstName: 'Margaret', lastName: 'Ellison', dateOfBirth: isoYearsAgo(52, 5, 9), sex: 'F', phone: '+44 191 555 0202', email: 'margaret.ellison@example.co.uk', address: '8 Fenwick Grove, Newcastle upon Tyne' },
+    specimens: [{
+      id: 'S26-9101-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-uk9101-primary',
+          primaryInterpretationId: 'bscc-negative',
+          adequacySelections: [{ categoryId: 'bscc-adeq-satisfactory' }],
+          selectedBy: 'PATH-UK-001', selectedByName: 'Dr. Priya Shah', selectedAt: isoDaysAgo(1),
+        },
+      },
+    } as any],
+    // Real, per direct guidance's own correction: this demo case is
+    // flagged specifically because reasonForStudy was never captured
+    // at accessioning — kept genuinely absent here, not set, so the
+    // seed data stays consistent with the real, corrected flag
+    // trigger.
+    order: { priority: 'Routine', requestingProvider: 'Dr. Priya Shah', facilityId: 'c-fenwick-womens', facilityName: "Fenwick Women's Hospital", clinicalIndication: 'Routine NHS Cervical Screening Programme recall.', receivedDate: isoDaysAgo(2), assignedTo: null } as any,
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'complete' as CaseStatus,
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(1),
+    caseFlags: [{
+      id: 'csms-elig-seed-9101', flagDefinitionId: 'f36', appliedAt: isoDaysAgo(1), appliedBy: 'system',
+      source: 'system', deletedAt: null, deletedBy: null,
+    }] as any,
+    specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real demo case: Ireland CervicalCheck (Sep 2026) ────────────────────────
+  // Real, reflex-triggered case (Positive hrHPV → real reflex cytology
+  // screened), same real pathway as every other primary_hpv_reflex
+  // country already built. Real Bethesda nomenclature — no separate
+  // Irish dictionary needed, per direct research confirmation.
+  {
+    id: 'S26-9201-CYT-001',
+    accession: { accessionNumber: '9201', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9201-CYT-001' },
+    originHospitalId: 'c-ie-ncsl-dublin', originEnterpriseId: 'c-ie-ncsl-dublin',
+    patient: { id: 'PAT-CYT-021', mrn: '700901', firstName: 'Siobhan', lastName: 'Kelly', dateOfBirth: isoYearsAgo(38, 3, 22), sex: 'F', phone: '+353 1 555 1501', email: 'siobhan.kelly@example.ie', address: '42 Rathgar Road, Dublin 6' },
+    specimens: [{
+      id: 'S26-9201-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: { hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected' },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Aoife Byrne', facilityId: 'c-ie-ncsl-dublin', facilityName: 'National Cervical Screening Laboratory', clinicalIndication: 'CervicalCheck organized screening — primary hrHPV, reflex cytology.', receivedDate: isoDaysAgo(2), assignedTo: null } as any,
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'pool' as CaseStatus, poolId: '1', poolName: 'Cytology',
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(2),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real demo case: Australia NCSR (Sep 2026) ───────────────────────────────
+  // Real, already-reviewed, ready-for-sign-out case — demonstrating
+  // the real, live NCSR dispatch end to end (the existing S26-9006 is
+  // deliberately still awaiting its HPV result, per PS-185's own
+  // design, so a second, ready case is needed here).
+  {
+    id: 'S26-9301-CYT-001',
+    accession: { accessionNumber: '9301', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9301-CYT-001' },
+    originHospitalId: 'c-au-sydney-cyto', originEnterpriseId: 'c-au-sydney-cyto',
+    patient: { id: 'PAT-CYT-022', mrn: '600601', firstName: 'Chloe', lastName: 'Nguyen', dateOfBirth: isoYearsAgo(34, 9, 11), sex: 'F', phone: '+61 2 555 1601', email: 'chloe.nguyen@example.au', address: '12 Glebe Point Rd, Glebe NSW' },
+    specimens: [{
+      id: 'S26-9301-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected',
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-au9301-primary',
+          primaryInterpretationId: 'cyto-squam-ascus',
+          adequacySelections: [{ categoryId: 'cyto-adeq-satisfactory' }],
+          selectedBy: 'PATH-AU-001', selectedByName: 'Dr. Olivia Chen', selectedAt: isoDaysAgo(1),
+        },
+      },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Olivia Chen', facilityId: 'c-au-sydney-cyto', facilityName: 'Sydney Cytology & Pathology', clinicalIndication: 'NCSP primary hrHPV — reflex cytology.', receivedDate: isoDaysAgo(2), assignedTo: null } as any,
+    diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
+    synopticReports: [],
+    status: 'in-progress' as CaseStatus,
+    createdAt: isoDaysAgo(2), updatedAt: isoDaysAgo(1),
+    caseFlags: [], specimenFlags: [],
+    reportingMode: 'orchestrator', coding: {},
+  } as any,
+
+  // ── Real demo case: Northern Ireland (Sep 2026) ─────────────────────────────
+  // Real, already-reviewed, ready-for-sign-out case — demonstrating the
+  // real, live Northern Ireland Cervical Screening Programme dispatch
+  // end to end, with the real BSCC/RCPath nomenclature already
+  // confirmed for this facility above.
+  {
+    id: 'S26-9401-CYT-001',
+    accession: { accessionNumber: '9401', accessionPrefix: 'S', accessionYear: 2026, fullAccession: 'S26-9401-CYT-001' },
+    originHospitalId: 'c-ni-lagan-valley', originEnterpriseId: 'c-ni-lagan-valley',
+    patient: { id: 'PAT-CYT-023', mrn: '800701', firstName: 'Orla', lastName: 'McKendry', dateOfBirth: isoYearsAgo(41, 6, 14), sex: 'F', phone: '+44 28 555 1801', email: 'orla.mckendry@example.co.uk', address: '54 Malone Road, Belfast BT9 5BS' },
+    specimens: [{
+      id: 'S26-9401-SP-1', label: 'A', description: 'Cervical/vaginal Pap smear, liquid-based', receivedAt: isoDaysAgo(2), collectedAt: isoDaysAgo(2), specimenFlags: [], specimenDictionaryEntryId: 'sp-cyto-pap',
+      cytologyScreening: {
+        hpvResult: 'Positive', hpvAbnormalFlag: 'A', hpvReferenceRange: 'Not Detected',
+        finalDiagnosis: {
+          reviewRecordId: 'cyto-review-seed-ni9401-primary',
+          primaryInterpretationId: 'bscc-low-grade-dyskaryosis',
+          adequacySelections: [{ categoryId: 'bscc-adeq-satisfactory' }],
+          selectedBy: 'PATH-NI-001', selectedByName: 'Dr. Fiona Hamill', selectedAt: isoDaysAgo(1),
+        },
+      },
+    } as any],
+    order: { priority: 'Routine', requestingProvider: 'Dr. Fiona Hamill', facilityId: 'c-ni-lagan-valley', facilityName: "Lagan Valley Women's Health Centre", clinicalIndication: 'Northern Ireland Cervical Screening Programme — primary hrHPV, reflex cytology.', receivedDate: isoDaysAgo(2), assignedTo: null } as any,
     diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
     synopticReports: [],
     status: 'in-progress' as CaseStatus,
@@ -3359,7 +3747,7 @@ export const mockPatientHistory = mockPatientHistoryMap['S26-4401'] ?? DEFAULT_H
 // ─── Persisted case store ─────────────────────────────────────────────────────
 // Version bump here forces a re-seed whenever mock data changes structurally.
 // Increment MOCK_VERSION whenever MOCK_CASES fields are added/changed.
-const MOCK_VERSION = '39'; // bumped: real, per direct guidance's own South Korea Phase 4 work — new Korean seed case (S26-7001) at Seoul General Screening Center (c-kr-seoul-general, a new real facility), ready for Sign Out to demonstrate the new KNCSP/KCCR centralized registry dispatch.
+const MOCK_VERSION = '45'; // bumped: real, new Northern Ireland demo case (S26-9401) added at the new Lagan Valley Women's Health Centre facility (c-ni-lagan-valley) — real reflex-triggered pathway.
 const VERSION_KEY  = 'pathscribe_mock_cases_version';
 
 const storedVersion = localStorage.getItem(VERSION_KEY);

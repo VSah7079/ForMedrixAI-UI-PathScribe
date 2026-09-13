@@ -18,6 +18,14 @@ import { mockHardwareContainerRegistryService } from '../hardwareContainers/mock
 import { CONTAINER_TYPE_CODE } from '../hardwareContainers/IHardwareContainerRegistryService';
 import type { ContainerType } from '../hardwareContainers/IHardwareContainerRegistryService';
 import { DEFAULT_PRINT_SETTINGS_CONFIG } from '../printSettings/IPrintSettingsService';
+import { buildReferralManifestPayload } from '../referral/buildReferralManifestPayload';
+import { mockReferralOutboundQueueService } from '../referral/mockReferralOutboundQueueService';
+import { mockReferralTrackingService } from '../referral/mockReferralTrackingService';
+import { caseRouter } from '../cases/CaseRouter';
+import { ConcurrencyConflictError } from '../cases/ConcurrencyConflictError';
+import { mockDpVendorService } from '../digitalPathology/mockDpVendorService';
+import { mockAiScreeningResultService } from '../digitalPathology/mockAiScreeningResultService';
+import { mockMolecularOrderOutboundQueueService } from '../molecularOrders/mockMolecularOrderOutboundQueueService';
 import type { PrintSettingsConfig } from '../printSettings/IPrintSettingsService';
 import type {
   IBatchService, Batch, BatchItem, AddItemOutcome,
@@ -100,6 +108,148 @@ function findBatch(batches: Batch[], id: ID): Batch | undefined {
   return batches.find(b => b.id === id);
 }
 
+// Real, additive — per 'Cytology Staining' (stainer rack batch),
+// Part 3 of the Protocol-Driven Workflow Infrastructure story:
+// "completion transitions slides to 'Ready for Screening'." Real,
+// deliberate reuse of the existing StainOrderStatus value 'Ready for
+// Review' rather than adding a near-duplicate 'Ready for Screening'
+// string — same real vocabulary-drift concern BATCH_PROCESSING_NODES'
+// own header already documents for 'Microtomy' vs 'Microtomy /
+// Sectioning'. A cytology slide that's ready for the cytotechnologist
+// to screen and a histology slide that's ready for the pathologist to
+// review are the same real state (stained, coverslipped, ready for a
+// human's first look) — one shared status, not two competing ones.
+//
+// Fire-and-forget, same real posture as dispatchReferralIfApplicable
+// above — a real failure resolving/persisting this must never block
+// the batch's own, already-successful completion.
+async function transitionSlidesToReadyForScreeningIfApplicable(batch: Batch): Promise<void> {
+  if (batch.processingNode !== 'Cytology Staining') return;
+  try {
+    // Real, deliberate per-case grouping — several items in the same
+    // rack batch commonly belong to the same case (or even the same
+    // specimen), and each needs its own real caseRouter.updateCase
+    // call, not one call per item racing against itself.
+    const byCase = new Map<string, { caseId: string; specimens: any[] }>();
+    for (const item of batch.items) {
+      const resolved = await resolveMaterialFromScan(item.displayId);
+      if (!resolved) continue;
+      const entry = byCase.get(resolved.caseData.id) ?? { caseId: resolved.caseData.id, specimens: (resolved.caseData.specimens as any[]) ?? [] };
+      entry.specimens = entry.specimens.map((sp: any) => {
+        if (sp.label !== resolved.specimenLetter) return sp;
+        const updateStain = (stain: any) => stain.displayId === item.displayId ? { ...stain, status: 'Ready for Review' } : stain;
+        return {
+          ...sp,
+          blocks: (sp.blocks ?? []).map((b: any) => ({ ...b, stains: (b.stains ?? []).map(updateStain) })),
+          decants: (sp.decants ?? []).map((d: any) => ({ ...d, stains: (d.stains ?? []).map(updateStain) })),
+        };
+      });
+      byCase.set(resolved.caseData.id, entry);
+    }
+    for (const { caseId, specimens } of byCase.values()) {
+      try {
+        await caseRouter.updateCase(caseId, { specimens } as any);
+      } catch (e) {
+        if (e instanceof ConcurrencyConflictError) {
+          await caseRouter.updateCase(caseId, { specimens } as any);
+        } else {
+          throw e;
+        }
+      }
+    }
+    mockAuditService.logEvent({
+      type: 'system', event: 'Cytology Staining Batch Complete — Slides Ready for Screening',
+      detail: `Batch ${batch.masterBarcode}: ${batch.items.length} slide(s) transitioned to Ready for Review.`,
+      user: 'System', caseId: null, confidence: null,
+    }).catch(() => {});
+  } catch (e) {
+    console.error('[Batch] Failed to transition slides to Ready for Screening on Cytology Staining completion:', e);
+  }
+}
+
+// Real, additive — per 'Cytology Imaging' (imager batch), closing the
+// Story 10 gap: "mockAiScreeningResultService.order() had no real
+// callers." This is that real caller. One order per distinct
+// specimen (never per slide) — a real AI screening product screens a
+// specimen's slide(s) as one unit, not once per individual slide in
+// the imaging batch.
+//
+// Real, deliberate default-vendor resolution: no explicit "default
+// vendor" flag exists anywhere in the DP Vendor Dictionary
+// (services/digitalPathology/mockDpVendorService.ts) — resolves via
+// getByModality('cervical_cytology'), which already returns only
+// active vendors sorted by sortOrder, and takes the first. Today that
+// resolves to Hologic Genius (sortOrder 5), the same real vendor
+// Part 2b's own instrument trigger targets — not a hardcoded vendor
+// ID, so this adapts automatically if the Dictionary's own
+// configuration changes. Skips honestly (logs, never throws) if no
+// active cervical_cytology vendor is configured at all.
+async function triggerAiScreeningOrderIfApplicable(batch: Batch): Promise<void> {
+  if (batch.processingNode !== 'Cytology Imaging') return;
+  try {
+    const vendorRes = await mockDpVendorService.getByModality('cervical_cytology');
+    const vendorId = vendorRes.ok ? vendorRes.data[0]?.id : undefined;
+    if (!vendorId) {
+      mockAuditService.logEvent({
+        type: 'system', event: 'Cytology Imaging Batch Complete — AI Screening Order Skipped',
+        detail: `Batch ${batch.masterBarcode}: no active cervical_cytology AI vendor configured — no screening order placed.`,
+        user: 'System', caseId: null, confidence: null,
+      }).catch(() => {});
+      return;
+    }
+
+    const ordered = new Set<string>(); // `${caseId}:${specimenId}` — real de-dup, one order per specimen
+    for (const item of batch.items) {
+      const resolved = await resolveMaterialFromScan(item.displayId);
+      if (!resolved) continue;
+      const specimen = ((resolved.caseData.specimens as any[]) ?? []).find((sp: any) => sp.label === resolved.specimenLetter);
+      if (!specimen) continue;
+      const key = `${resolved.caseData.id}:${specimen.id}`;
+      if (ordered.has(key)) continue;
+      ordered.add(key);
+      await mockAiScreeningResultService.order({
+        caseId: resolved.caseData.id,
+        specimenId: specimen.id,
+        vendorId,
+        orderedAt: new Date().toISOString(),
+      });
+    }
+    mockAuditService.logEvent({
+      type: 'system', event: 'Cytology Imaging Batch Complete — AI Screening Ordered',
+      detail: `Batch ${batch.masterBarcode}: AI screening ordered for ${ordered.size} specimen(s).`,
+      user: 'System', caseId: null, confidence: null,
+    }).catch(() => {});
+  } catch (e) {
+    console.error('[Batch] Failed to order AI screening on Cytology Imaging completion:', e);
+  }
+}
+
+// Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+// Laboratory Specimen Referral gap: dispatches the real outbound
+// manifest and creates the real tracking record the moment an
+// 'External Referral' batch genuinely completes reconciliation —
+// "Automated creation of outgoing referral manifests," per that
+// gap's own wording, not a separate, manual trigger a tech has to
+// remember to click. Fire-and-forget: a real referral-side failure
+// must never block the batch's own, already-successful reconciliation
+// completion, the same real posture the rack-release call above
+// already takes.
+function dispatchReferralIfApplicable(batch: Batch): void {
+  if (batch.processingNode !== 'External Referral') return;
+  if (!batch.referralDestinationFacilityId) return;
+  try {
+    const payload = buildReferralManifestPayload(batch);
+    mockReferralOutboundQueueService.enqueue({ batchId: batch.id, payload }).catch(() => {});
+    mockReferralTrackingService.createOnDispatch(batch.id).catch(() => {});
+  } catch {
+    // Real, honest no-op: buildReferralManifestPayload's own real
+    // guard clauses (wrong node, missing destination) are already
+    // checked above; this catch exists only for a genuinely
+    // unexpected failure, which must never block the batch's own
+    // completion.
+  }
+}
+
 export const mockBatchService: IBatchService = {
   async getAll(): Promise<ServiceResult<Batch[]>> {
     return { ok: true, data: loadBatches() };
@@ -146,6 +296,9 @@ export const mockBatchService: IBatchService = {
       processingNode: draft.processingNode,
       solutionType: draft.processingNode === 'Decal / Special Processing' ? draft.solutionType : undefined,
       targetDurationMinutes: draft.processingNode === 'Decal / Special Processing' ? draft.targetDurationMinutes : undefined,
+      referralDestinationFacilityId: draft.processingNode === 'External Referral' ? draft.referralDestinationFacilityId : undefined,
+      referralTestRequested: draft.processingNode === 'External Referral' ? draft.referralTestRequested : undefined,
+      cytologyStainTypeId: draft.processingNode === 'Cytology Staining' ? draft.cytologyStainTypeId : undefined,
       protocol: draft.protocol,
       priority: draft.priority,
       status: 'active',
@@ -173,10 +326,22 @@ export const mockBatchService: IBatchService = {
       detail: `Batch ${batch.masterBarcode} created — ${batch.processingNode}, protocol "${batch.protocol}", ${batch.priority}.`,
       user: draft.createdByUserName, caseId: null, confidence: null,
     }).catch(() => {});
+    // Real, per the Protocol-Driven Workflow Infrastructure story's
+    // Part 2b instrument trigger — "at cytology batch creation,
+    // enqueues 'order.instrument' for the Hologic processor." Fire-
+    // and-forget, same real posture as every other outbound dispatch
+    // in this app: a real queueing failure here must never block the
+    // batch's own, already-successful creation.
+    if (batch.processingNode === 'Cytology Processing') {
+      mockMolecularOrderOutboundQueueService.enqueue({
+        eventType: 'order.instrument',
+        payload: { masterBarcode: batch.masterBarcode, instrumentVendor: 'Hologic' },
+      }).catch(console.error);
+    }
     return { ok: true, data: batch };
   },
 
-  async addItemByScan(batchId: ID, scannedValue: string, byUserId: string, byUserName: string): Promise<AddItemOutcome> {
+  async addItemByScan(batchId: ID, scannedValue: string, byUserId: string, byUserName: string, fovCount?: number): Promise<AddItemOutcome> {
     const batches = loadBatches();
     const batch = findBatch(batches, batchId);
     if (!batch) return { outcome: 'not-found', reason: `No batch found with id "${batchId}".` };
@@ -221,6 +386,11 @@ export const mockBatchService: IBatchService = {
       addedAt: new Date().toISOString(),
       addedByUserId: byUserId,
       addedByUserName: byUserName,
+      // Real, additive — per BatchItem.fovCount's own doc comment:
+      // only ever meaningful on a 'Cytology Imaging' batch. A caller
+      // passing fovCount on any other node is silently ignored here
+      // rather than stored as meaningless data.
+      fovCount: batch.processingNode === 'Cytology Imaging' ? fovCount : undefined,
     };
     const updatedBatch: Batch = { ...batch, items: [...batch.items, item] };
     const updatedBatches = batches.map(b => b.id === batchId ? updatedBatch : b);
@@ -382,9 +552,20 @@ export const mockBatchService: IBatchService = {
     if (batch.unexpectedScans.length > 0) {
       return { ok: false, error: `${batch.unexpectedScans.length} unexpected item(s) scanned that don't belong to this batch: ${batch.unexpectedScans.map(s => s.scannedDisplayId).join(', ')}. Resolve them or use a supervisor override.` };
     }
+    // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+    // Laboratory Sensor & Cold-Chain Integration gap — "workflow hold
+    // triggers if transit temperature exceeds defined parameters."
+    // Same real "hard stop, supervisor override available" posture as
+    // the two checks immediately above.
+    if (batch.coldChainExcursion && !batch.coldChainExcursion.acknowledgedAt) {
+      return { ok: false, error: `A real cold-chain excursion (${batch.coldChainExcursion.temperatureCelsius}°C, detected ${batch.coldChainExcursion.detectedAt}) has not been acknowledged. Acknowledge it or use a supervisor override.` };
+    }
 
     const updatedBatch: Batch = { ...batch, status: 'complete', completedAt: new Date().toISOString() };
     saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    dispatchReferralIfApplicable(updatedBatch);
+    transitionSlidesToReadyForScreeningIfApplicable(updatedBatch).catch(() => {});
+    triggerAiScreeningOrderIfApplicable(updatedBatch).catch(() => {});
     // Real FR-3.2 "disbanding logic" — auto-release on a real,
     // successful completion path, not just the explicit "Release Rack"
     // action. Fire-and-forget: a real hardware check-in failure must
@@ -414,6 +595,9 @@ export const mockBatchService: IBatchService = {
       override: { byUserId, byUserName, reason: reason.trim(), at: new Date().toISOString() },
     };
     saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    dispatchReferralIfApplicable(updatedBatch);
+    transitionSlidesToReadyForScreeningIfApplicable(updatedBatch).catch(() => {});
+    triggerAiScreeningOrderIfApplicable(updatedBatch).catch(() => {});
     if (updatedBatch.identifierMode === 'semi_permanent' && updatedBatch.linkedRackId) {
       mockHardwareContainerRegistryService.checkIn(updatedBatch.linkedRackId).catch(() => {});
     }
@@ -422,6 +606,66 @@ export const mockBatchService: IBatchService = {
       type: 'system', event: 'Batch Reconciliation Overridden',
       detail: `Batch ${batch.masterBarcode} force-completed by supervisor override — ${missingCount} missing item(s), ${batch.unexpectedScans.length} unexpected scan(s). Reason: ${reason.trim()}`,
       user: byUserName, caseId: null, confidence: null,
+    }).catch(() => {});
+    return { ok: true, data: updatedBatch };
+  },
+
+  async setColdChainExcursion(batchId: ID, readingId: string, temperatureCelsius: number, detectedAt: string): Promise<ServiceResult<Batch>> {
+    const batches = loadBatches();
+    const batch = findBatch(batches, batchId);
+    if (!batch) return { ok: false, error: `No batch found with id "${batchId}".` };
+    if (batch.coldChainExcursion && !batch.coldChainExcursion.acknowledgedAt) {
+      return { ok: false, error: `Batch ${batch.masterBarcode} already has an unacknowledged cold-chain excursion on file — acknowledge it before recording a new one.` };
+    }
+    const updatedBatch: Batch = { ...batch, coldChainExcursion: { detectedAt, readingId, temperatureCelsius } };
+    saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    mockAuditService.logEvent({
+      type: 'system', event: 'Cold-Chain Excursion Detected',
+      detail: `Batch ${batch.masterBarcode}: real cold-chain excursion detected at ${temperatureCelsius}°C (reading ${readingId}). Batch completion blocked until acknowledged.`,
+      user: 'System', caseId: null, confidence: null,
+    }).catch(() => {});
+    return { ok: true, data: updatedBatch };
+  },
+
+  async acknowledgeColdChainExcursion(batchId: ID, byUserId: string, byUserName: string, note: string): Promise<ServiceResult<Batch>> {
+    if (!note.trim()) return { ok: false, error: 'A real note is required to acknowledge a cold-chain excursion.' };
+    const batches = loadBatches();
+    const batch = findBatch(batches, batchId);
+    if (!batch) return { ok: false, error: `No batch found with id "${batchId}".` };
+    if (!batch.coldChainExcursion) return { ok: false, error: `Batch ${batch.masterBarcode} has no real cold-chain excursion on file.` };
+    const updatedBatch: Batch = {
+      ...batch,
+      coldChainExcursion: {
+        ...batch.coldChainExcursion,
+        acknowledgedAt: new Date().toISOString(), acknowledgedByUserId: byUserId, acknowledgedByUserName: byUserName, acknowledgedNote: note.trim(),
+      },
+    };
+    saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    mockAuditService.logEvent({
+      type: 'user', event: 'Cold-Chain Excursion Acknowledged',
+      detail: `Batch ${batch.masterBarcode}: cold-chain excursion acknowledged. Note: ${note.trim()}`,
+      user: byUserName, caseId: null, confidence: null,
+    }).catch(() => {});
+    return { ok: true, data: updatedBatch };
+  },
+
+  // Real, additive — per 'Cytology Processing' (CytologyInstrumentStatus's
+  // own doc comment, IBatchService.ts). Called by
+  // processInboundCytologyInstrumentStatusEvent.ts the moment the
+  // ThinPrep instrument reports a real status transition.
+  async setCytologyInstrumentStatus(batchId: ID, status): Promise<ServiceResult<Batch>> {
+    const batches = loadBatches();
+    const batch = findBatch(batches, batchId);
+    if (!batch) return { ok: false, error: `No batch found with id "${batchId}".` };
+    if (batch.processingNode !== 'Cytology Processing') {
+      return { ok: false, error: `Batch ${batch.masterBarcode} is a '${batch.processingNode}' batch, not 'Cytology Processing' — instrument status only applies to a ThinPrep processor batch.` };
+    }
+    const updatedBatch: Batch = { ...batch, cytologyInstrumentStatus: status };
+    saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    mockAuditService.logEvent({
+      type: 'system', event: 'Cytology Instrument Status Update',
+      detail: `Batch ${batch.masterBarcode} (Cytology Processing): instrument reports '${status}'.`,
+      user: 'System', caseId: null, confidence: null,
     }).catch(() => {});
     return { ok: true, data: updatedBatch };
   },

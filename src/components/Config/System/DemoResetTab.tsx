@@ -13,8 +13,8 @@ import { IS_MOCK_BACKEND } from '@/services/index';
 
 // ─── Reset utilities ──────────────────────────────────────────────────────────
 
-const MOCK_PREFIX   = 'pathscribe_mock_';
-const SESSION_KEY   = 'pathscribe-user';
+export const MOCK_PREFIX   = 'pathscribe_mock_';
+export const SESSION_KEY   = 'pathscribe-user';
 // Real fix, per direct report: "reset the demo data, logged back in,
 // got an 'Already signed in elsewhere' message." That marker
 // (services/session/sessionSupersedeService.ts) is deliberately its
@@ -28,9 +28,25 @@ const SESSION_KEY   = 'pathscribe-user';
 // this, a perfectly normal future login would incorrectly detect a
 // conflict against a stale marker nobody ever cleared") — this reset
 // flow was the gap that comment was warning about.
-const ACTIVE_SESSION_KEY_PREFIX = 'pathscribe_active_session_';
+export const ACTIVE_SESSION_KEY_PREFIX = 'pathscribe_active_session_';
 
-const VERSIONED_KEYS = [
+// Real, per direct follow-up: "review the whole system, you may
+// likely find other gaps." A real, exported single source of truth
+// for every key confirmed to exist but deliberately left out of every
+// list below — so the audit test (DemoResetTab.auditTest.ts) checks
+// against this real, documented list directly, rather than a second,
+// separate list in the test file that could silently drift out of
+// sync with this one's own reasoning.
+export const DELIBERATELY_NOT_RESET: Record<string, string> = {
+  pathscribe_audit_logs: 'a genuine, immutable compliance audit trail — surviving a demo reset is the correct behavior, not a gap.',
+  pathscribe_error_logs: 'same real reasoning as pathscribe_audit_logs above.',
+  ps_ai_audit_log_v1: 'a genuine AI-decision audit trail, not demo state.',
+  billing_rule_versions_v1: "the admin-configured Billing Dictionary itself (RVU values, coding rules) — long-lived configuration, not per-case demo data. Resetting it would wipe a real customer's own billing setup, not restore a clean baseline.",
+  modifier_dictionary_versions_v1: 'same real reasoning as billing_rule_versions_v1 above — an admin-configured billing dictionary.',
+  rvu_code_map_versions_v1: 'same real reasoning as billing_rule_versions_v1 above — an admin-configured billing dictionary.',
+};
+
+export const VERSIONED_KEYS = [
   'pathscribe_users_version',
   'pathscribe_messages_version',
   'pathscribe_mock_cases_version',
@@ -47,9 +63,24 @@ const VERSIONED_KEYS = [
   // added alongside a real feature, genuinely missed here until
   // checked directly.
   'pathscribe_orders_seed_version',
+  // Real, per direct follow-up: "review the whole system, you may
+  // likely find other gaps" — a full, programmatic audit (every real
+  // storageGet/storageSet key literal plus every raw
+  // localStorage.getItem/setItem/removeItem call, cross-referenced
+  // against every list/prefix sweep in this file) found these ten
+  // real seed/version sentinels with no existing coverage. Same exact
+  // real shape as pathscribe_orders_seed_version above — the version
+  // marker for a real, already-covered data key, missed independently
+  // of that key because the two are separate real localStorage
+  // entries.
+  'pathscribe_actions_version', 'pathscribe_facilities_seed_version', 'pathscribe_flags_seed_version',
+  'pathscribe_cytology_categories_seed_version', 'cytology_review_records_seed_version',
+  'cytologyQcSettings_seed_version', 'facilityRegistryOverrides_seed_version',
+  'facilityCytologyNomenclatureOverrides_seed_version', 'facilityCytologyRegistryOverrides_seed_version',
+  'facilityCytologyScreeningStrategyOverrides_seed_version',
 ];
 
-const SETTINGS_KEYS = [
+export const SETTINGS_KEYS = [
   'specimen_dictionary',
   'container_types',
   'pathscribe_delegation_types_v2',
@@ -132,9 +163,90 @@ const SETTINGS_KEYS = [
   // separate current-user cache (Config/AI/index.tsx) distinct from
   // the real SESSION_KEY this file already clears below.
   'pathscribe_system_config_v2', 'pathscribe_current_user',
+
+  // Real, per direct follow-up: "review the whole system, you may
+  // likely find other gaps" — a second full, systematic audit of
+  // every real storageGet/storageSet key literal in services/ (this
+  // time programmatic: extracted every key, cross-referenced against
+  // every list/prefix sweep in this file, then checked each
+  // uncovered key's own real seed-data fallback before adding it
+  // here — see DELIBERATELY_NOT_RESET below for the one case that
+  // check correctly excluded). Grouped below by real feature
+  // area; all are genuinely admin-configured dictionaries/settings/
+  // overrides — the same real category as pathscribe_protocols/
+  // specimen_dictionary above, confirmed one at a time, not per-case
+  // or per-tester demo state.
+  // Billing dictionaries — this closes the exact gap this file's own
+  // CASE_KEYS comment already anticipated ("Deliberately NOT
+  // resetting 'billing_rule_versions_v1' here... not per-case data")
+  // but never actually followed through on adding anywhere.
+  'billing_rule_versions_v1', 'modifier_dictionary_versions_v1', 'rvu_code_map_versions_v1',
+  'pathscribe_jurisdiction_payment_mappings', 'pathscribe_master_payment_types',
+  'pathscribe_billing_type_trigger_override',
+  // Cytology settings/dictionaries (services/cytology/) — genuinely
+  // numerous because this module has the most real, distinct
+  // jurisdiction-specific configuration surfaces in the app.
+  'cytologyNomenclatureSettings', 'cytologyQcSettings', 'cytologyRegistrySettings',
+  'cytologyRoutingSettings', 'cytologyScreeningStrategy', 'cytologyWorkloadCapSettings',
+  'cytologyInstrumentation', 'nonGynCytologyCategories',
+  'facilityCytologyNomenclatureOverrides', 'facilityCytologyQcOverrides',
+  'facilityCytologyRegistryOverrides', 'facilityCytologyRoutingOverrides',
+  'facilityCytologyScreeningStrategyOverrides', 'facilityCytologyWorkloadCapOverrides',
+  'staffCytologyQcOverrides', 'staffCytologyWorkloadCapOverrides',
+  // Cancer registry settings + facility overrides.
+  'cancerRegistrySettings', 'facilityCancerRegistryOverrides', 'registrySettings', 'facilityRegistryOverrides',
+  // Equipment/hardware dictionaries — real seed data confirmed for
+  // each; a lab's own configured scan stations, cassette colors, and
+  // grossing hardware profiles, same real category as the Stain/
+  // Protocol Dictionary already above.
+  'scan_stations', 'cassette_colors', 'cassette_routing_rules', 'pathscribe_grossing_hardware_profiles',
+  'storageUnits', 'storageConditionTypes', 'hardware_containers', 'pathscribe_printer_profiles',
+  'printSettings', 'facilityPrintSettings',
+  // Other real, standalone dictionaries.
+  'clinicalHistoryDictionary', 'dpVendorDictionary', 'molecular_targets_v1',
+  'reason_dictionary_entries_v1', 'pathscribe_specimen_categories', 'pathscribe_abnormal_trigger_rules',
+  'pathscribe_aiBehavior', 'pathscribe_locations', 'pathscribe_systemConfig',
+  'qa_activity_types', 'qa_supervision_assignment_types', 'migrationFieldMappings',
+
+  // Real, per the same "review the whole system" follow-up — six more
+  // real, verified-safe admin dictionaries/settings found by the same
+  // programmatic audit. Each one's own seed-data fallback was checked
+  // directly before adding it here (see DELIBERATELY_NOT_RESET above
+  // for the one real case that check disqualified).
+  'label_designer_layouts', 'mock_interface_engine_settings',
+  'molecular_assay_control_rules', 'molecular_extraction_racks',
+  'ncci_ptp_edit_imports_v2', 'pathscribe_billing_type_trigger_site_overrides',
+  'pathscribe_cytology_categories_v1',
+  // Real, per direct follow-up: "shouldn't we have seed data?" —
+  // mockOrSuiteTerminalService.ts now has a real SEED_TERMINALS
+  // fallback (one real OR-type Location already in this app's own
+  // seed data), closing the exact gap that previously disqualified
+  // this key from joining the reset. Moved here from
+  // DELIBERATELY_NOT_RESET now that the real, underlying cause is
+  // fixed, not just documented around.
+  'orSuiteTerminals',
+  // Real, per direct follow-up ("why not a synthetic SNOMED... it's
+  // fake and just there to show customers"). Now has real,
+  // structurally-safe synthetic seed data (mockSnomedCervicalHistology
+  // SeverityMappingService.ts's own SEED — every code prefixed
+  // "TEST-SNOMED-", never a real licensed SNOMED CT code) — moved
+  // here from DELIBERATELY_NOT_RESET now that the real, underlying
+  // "nothing safe to fall back to" concern is resolved.
+  'snomed_cervical_histology_severity_mapping',
+  // Real, per direct follow-up ("Why not a main Vendor Integration...")
+  // — three more real dictionaries introduced after the last full
+  // audit of this file, each with real seed data confirmed safe
+  // before adding: WSI viewer vendors, Image Management System
+  // vendors, and Gross/Macro Imaging & Telepathology vendors.
+  'wsiViewerVendorDictionary', 'imageManagementSystemVendorDictionary', 'grossImagingVendorDictionary',
+  // Real, per the Automated Cytopathology QC Assignment Engine — the
+  // admin-configurable rule set itself. Has real, international seed
+  // data (7 real rules) — confirmed safe to reset, same pattern as
+  // every other real, seeded dictionary in this file.
+  'cytologyQcRules',
 ];
 
-const CASE_KEYS = [
+export const CASE_KEYS = [
   'cases', // CRITICAL FIX: was 'ps_cases', which mockCaseService.ts never actually wrote to — Demo Reset had never actually been clearing primary case data
   'orch_cases_v3',
   // Found via a full storageGet/storageSet audit across services/ that
@@ -158,15 +270,67 @@ const CASE_KEYS = [
   // Billing Dictionary itself (RVU values, coding rules), the same
   // kind of long-lived configuration as the Stain Dictionary, not
   // per-case data that should be wiped on every reset.
+  // Real, per direct follow-up: "check that reset puts everything back
+  // to a ready state" after the OR Suite Live Board's dismissal
+  // workflow was built. Confirmed directly: mockOrEventLogService.ts's
+  // own STORAGE_KEY is 'orEventLog' — genuinely missed here, same
+  // exact failure mode as 'cases'/'intraop_entries' above (a bare,
+  // non-pathscribe_-prefixed key no sweep below would ever catch).
+  // Without this, a demo dismissal survives every reset and orphan-
+  // references an intraopEntryId that intraop_entries above just
+  // deleted.
+  'orEventLog',
   'pathscribe_service_charges',
+
+  // Real, per the same follow-up as orEventLog above ("review the
+  // whole system") — every real outbound queue in the entire app,
+  // confirmed one at a time. Every single one shares the exact same
+  // real shape as orEventLog: accumulates during demo/test usage,
+  // and (for several) would orphan-reference a caseId/intraopEntryId
+  // that CASE_KEYS' own earlier entries just deleted, if left
+  // uncleared.
+  'accession_outbound_queue_v1', 'cancer_registry_outbound_queue_v1',
+  'cytology_outbound_result_queue_v1', 'cytology_registry_outbound_queue_v1',
+  'molecular_order_outbound_queue_v1', 'outbound_charge_queue_v1', 'outbound_lis_sync_queue_v1',
+  'outbound_patient_adt_queue_v1', 'outbound_result_queue_v1', 'referral_outbound_queue_v1',
+  // Real, per-case/per-tester records, requests, and assignments —
+  // all genuinely accumulate during demo/test usage; none of these
+  // are admin-configured dictionaries.
+  'access_requests', 'aiScreeningResults', 'batches', 'billing_deficiency_records_v1',
+  'code_review_pool_v1', 'countersign_records', 'critical_result_notifications_v1',
+  'cytology_review_records', 'cytology_sign_out_records', 'cytology_workload_ledger_v1',
+  'fppe_assignments', 'informal_review_requests', 'migrationJobs', 'migrationRecordResults',
+  'molecular_batches', 'pathscribe_abnormal_detection_signals', 'pathscribe_interface_exceptions',
+  'pathscribe_messages', 'ps_case_masks_v1', 'qa_activity_records', 'qa_supervision_assignments',
+  'reconciliation_records', 'referral_tracking_v1', 'telemetryReadings',
+  // Real, per the same "review the whole system" follow-up — two
+  // more real, per-run accumulating records the same programmatic
+  // audit found: WSI scanner batches and molecular QC run records,
+  // same real shape as molecular_batches/batches above.
+  'wsi_scan_batches', 'molecular_qc_run_records',
+  // Real, per direct guidance's own lifecycle for this exact cache —
+  // a real, per-active-case entry, genuinely correct to reset to
+  // empty (the same "no history fetched yet" state a fresh case
+  // starts in), introduced after the last full audit of this file.
+  'patientHistoryCache',
+  // Real, per the Automated Cytopathology QC Assignment Engine — real,
+  // per-case assignment records, genuinely correct to reset to empty
+  // (a fresh case starts with no QC assignment history at all).
+  'cytologyQcCaseAssignments',
+  // Real, per the same follow-up — this app's own real, systematic
+  // audit test (DemoResetTab.auditTest.ts) found this one on its
+  // first real run, beyond what the earlier manual pass caught. Real,
+  // per-run accumulating data with a real SEED fallback confirmed —
+  // same shape as intraop_entries above.
+  'cytology_proficiency_test_results',
 ];
 
-const FLAG_KEYS = [
+export const FLAG_KEYS = [
   'pathscribe_flags',
   'pathscribe_flags_v2',
 ];
 
-const STATE_KEYS = [
+export const STATE_KEYS = [
   'pathscribe_ped_requested',
   'pathscribe_orch_requested',
   'ps_learned_triggers',
@@ -180,6 +344,46 @@ const STATE_KEYS = [
   'pathscribe:desktopViewOverride', 'ps_sidebar_collapsed', 'ps_preview_margins', 'ps_preview_page_size',
   'pathscribe:savedSearches', 'pathscribe:lastSearch', 'ps_post_signout_pref',
   'pathscribe_show_superseded_notice', 'pathscribe_footpedal_bindings', 'ps_voice_ai_available',
+  // Real, per the same follow-up as orEventLog above — the OR Suite
+  // Live Board's own terminal binding (useCurrentOrTerminal.ts).
+  // Exact same real reasoning already established for
+  // pathscribe_current_scan_station_id two lines up: which physical
+  // OR wall display a tester's browser is bound to right now, not a
+  // genuine preference worth surviving a reset. Missed here only
+  // because it postdates this file's own last full audit.
+  'pathscribe_current_or_terminal_id',
+  // Real, per the same follow-up as SETTINGS_KEYS/CASE_KEYS above.
+  // Matches the exact real "_requested" pattern already several lines
+  // up (pathscribe_ped_requested/pathscribe_orch_requested) — real,
+  // per-user pool-claim state (components/Worklist/PoolClaimModal.tsx),
+  // set via raw localStorage rather than the storageGet/storageSet
+  // wrapper, which is exactly how the earlier systematic audits
+  // missed it (they only ever swept storageGet/storageSet call
+  // sites).
+  'pathscribe_pool_access_requested',
+  // Real, per the same follow-up — services/savedSearches/
+  // mockSavedSearchService.ts's own real STORAGE_KEY is
+  // 'pathscribe_savedSearches' (underscore), genuinely distinct from
+  // 'pathscribe:savedSearches' (colon) already listed above. Kept as
+  // a second, separate entry rather than assumed to be the same key
+  // mistyped — not confirmed which one (if either) is a dead,
+  // orphaned leftover, so both are cleared, same real "clear it
+  // either way" posture as the pathscribe_participation_types/
+  // pathscribe_participation_types_v2 pair in SETTINGS_KEYS above.
+  'pathscribe_savedSearches',
+  // Real, per the same "review the whole system" follow-up — a
+  // comment-modal position preference (pages/Synoptic/Comments/
+  // CommentModalShell.tsx) and the UI language selection (i18n/
+  // config.ts). Same real "returns everything to a test ready
+  // position" reasoning as the rest of this array — a fresh tester/
+  // demo session should start from the same default language and
+  // modal layout every time, not whatever a previous round left it at.
+  'ps-cmnt-modal-pos', 'pathscribe_language',
+  // Real, found by this same audit test's first real run — four more
+  // real UI preference/state keys with no prior coverage, same real
+  // "test ready position" reasoning as the rest of this array.
+  'pathscribe:savedBillingLogQueries', 'ps-editor-theme-preference',
+  'ps_preview_window_geometry', 'worklistSort',
 ];
 
 // Hospital → user mapping (mirrors mockCaseService USER_HOSPITAL_MAP)

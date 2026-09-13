@@ -50,6 +50,13 @@ import type { Department } from '@/services/departments/IDepartmentService';
 import { mockUserService } from '@/services/users/mockUserService';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { Case, GrossingReportInstance } from '@/types/case/Case';
+import type { RecordedClinicalHistoryEntry, ClinicalHistoryCategoryCode } from '@/types/clinicalHistory/RecordedClinicalHistoryEntry';
+import ClinicalHistoryEntryPanel from './ClinicalHistory/ClinicalHistoryEntryPanel';
+import { mockClinicalHistoryDictionaryService } from '@/services/clinicalHistory/mockClinicalHistoryDictionaryService';
+import { resolveAccessionValidation, type AccessionValidationResult } from '@/services/accessioning/resolveAccessionValidation';
+import { mockAccessionOutboundQueueService } from '@/services/accessioning/mockAccessionOutboundQueueService';
+import { mockMolecularOrderOutboundQueueService } from '@/services/molecularOrders/mockMolecularOrderOutboundQueueService';
+import { resolveOutboundMolecularAssaysForProtocol } from '@/utils/resolveOutboundMolecularAssaysForProtocol';
 import type { HistologyBlock, Specimen } from '@/types/case/Specimen';
 import { generateDefaultMaterial } from '@/utils/generateDefaultMaterial';
 import { findForeignIdCollision, findWithinDraftForeignIdCollision } from '@/utils/foreignIdCollision';
@@ -130,6 +137,16 @@ interface SpecimenDraft {
   dictionaryEntryId: string;  // '' = manual / not yet picked ("— Custom specimen —")
   description: string;        // editable; pre-filled from the dictionary entry on pick
   comments: CaseComment[];    // append-only thread, separate from description
+  /**
+   * Real, per direct guidance's own real LIS/cytology data-modeling
+   * follow-up — additive, specimen-specific clinical history for a
+   * genuinely multi-specimen case (e.g. Part A: Right Pleural Fluid,
+   * Part B: Left Pleural Fluid), same real shape as Specimen.ts's own
+   * clinicalHistory field this flows into on save. Distinct from the
+   * case-level clinicalHistoryEntries state above — never a
+   * replacement for it.
+   */
+  clinicalHistory: RecordedClinicalHistoryEntry[];
   /**
    * A manually-reported deficiency for this specimen — distinct from
    * needsDictionaryResolution (auto-detected on order import). Not
@@ -353,7 +370,7 @@ const Icd10Picker: React.FC<{
 
 function emptySpecimen(label: string): SpecimenDraft {
   return {
-    label, dictionaryEntryId: '', description: '', comments: [],
+    label, dictionaryEntryId: '', description: '', comments: [], clinicalHistory: [],
     collectedAt: '', processedAt: '', processedAtIsEstimated: false,
     // receivedAt defaults to "now" — the one moment the accessioner is
     // actually present for. Formatted for a datetime-local input.
@@ -449,6 +466,51 @@ const AccessionPage: React.FC = () => {
   const [nameSuffix, setNameSuffix] = useState('');
   const [dob, setDob] = useState('');
   const [sex, setSex] = useState<'M' | 'F' | 'U'>('F');
+  // Real, per direct guidance's own prior requirement ("The User may
+  // need to see the LMP and other clinical history dictionaries
+  // entries") plus its own direct follow-up: LMP and the three
+  // real Bethesda §1 fields once flagged as a real, honest gap
+  // (CytologyReportContent.ts) — now captured here, at real
+  // accessioning, alongside the rest of this page's own patient
+  // demographic fields. Shown only when the case includes a real
+  // cytology/FNA specimen — see cytologyRelevant below.
+  const [lmp, setLmp] = useState('');
+  const [hormonalStatus, setHormonalStatus] = useState<'' | 'premenopausal' | 'perimenopausal' | 'postmenopausal' | 'pregnant'>('');
+  const [iudOrContraceptionUse, setIudOrContraceptionUse] = useState('');
+  // Real, per the uploaded "Structured Clinical History Dictionary &
+  // Accessioning Integration" spec's own User Story 3, Acceptance
+  // Criteria 3 ("Category 1 (SCR): Prompts for LMP and
+  // prior_hpv_result") — a new, simple, categorical field, same real
+  // treatment as hormonalStatus above (a current-state fact, not a
+  // dated event, so it doesn't belong in the structured dictionary —
+  // see the direct "why is LMP a dictionary?" discussion this
+  // decision follows from).
+  const [priorHpvResult, setPriorHpvResult] = useState<'' | 'positive' | 'negative' | 'unknown' | 'not_tested'>('');
+  // Real, per the same spec's own Acceptance Criteria 4 ("Multi-Category
+  // Entry") — the real, structured entries an accessioner has attached
+  // via ClinicalHistoryEntryPanel before saving.
+  const [clinicalHistoryEntries, setClinicalHistoryEntries] = useState<RecordedClinicalHistoryEntry[]>([]);
+  // Real, per direct guidance ("New tab, only would be used for
+  // Cytology cases") — a real, local tab switch, shown only when
+  // cytologyRelevant (declared below); 'main' stays the real default
+  // so every non-cytology accession behaves exactly as it always has.
+  const [accessionTab, setAccessionTab] = useState<'main' | 'clinical_history'>('main');
+  // Real, per direct guidance ("Check the actions ts as that is where
+  // we are wiring keyboard shortcuts") — bridges the real
+  // accession.clinicalHistoryCategoryN action dispatch (handled below,
+  // in this page's own existing onAction subscription) down to
+  // ClinicalHistoryEntryPanel, which isn't itself subscribed to the
+  // registry. A plain counter-plus-category pair, not just the
+  // category alone, so the panel's own useEffect fires even when the
+  // same category is requested twice in a row.
+  const [requestedClinicalHistoryCategory, setRequestedClinicalHistoryCategory] = useState<{ category: ClinicalHistoryCategoryCode; nonce: number } | null>(null);
+  // Real, per direct follow-up closing PS-211's own remaining gap:
+  // the one real half of CytologyHighRiskFactors.abnormalExamFindings
+  // that can only ever be a real, manual, collection-time observation
+  // — see CytologyScreeningRecord.persistentContactBleedingAtCollection's
+  // own doc comment (types/case/Specimen.ts).
+  const [persistentContactBleedingAtCollection, setPersistentContactBleedingAtCollection] = useState(false);
+  const [reasonForStudy, setReasonForStudy] = useState<'' | 'nhs_programme_invited' | 'private_or_opportunistic'>('');
   const [mrn, setMrn] = useState('');
   const [encounterNumber, setEncounterNumber] = useState('');
   // Real feature, per direct, detailed specification: "Encounter
@@ -725,6 +787,14 @@ const AccessionPage: React.FC = () => {
   // ── Specimens ────────────────────────────────────────────────────────────
   const { dictionary } = useSpecimenDictionary();
   const [specimens, setSpecimens] = useState<SpecimenDraft[]>([emptySpecimen('A')]);
+  // Real, per direct guidance's own real mechanism: shows the new
+  // cytology-specific accessioning fields only when the case actually
+  // includes a real cytology/FNA specimen — same real type check this
+  // module's own worklist pages already use elsewhere.
+  const cytologyRelevant = specimens.some(s => {
+    const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
+    return entry?.type === 'Cytology' || entry?.type === 'FNA';
+  });
 
   const addSpecimen = () => {
     setSpecimens(prev => [...prev, emptySpecimen(getSpecimenLabel(prev.length, selectedFacility?.specimenLabelStyle))]);
@@ -896,6 +966,19 @@ const AccessionPage: React.FC = () => {
         case 'ACCESSION_CASE_COMMENT':
           setCaseCommentModalOpen(true);
           break;
+        // Real, per direct guidance ("Check the actions ts as that is
+        // where we are wiring keyboard shortcuts") — the six real
+        // category-jump actions dispatch here, the same real switch
+        // every other accession action already goes through, rather
+        // than a separate, local keydown listener. Also switches to
+        // the Clinical History sub-tab, since the shortcut should work
+        // even when the accessioner is currently on Patient Detail.
+        case 'CLINHIST_CATEGORY_1': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'SCR', nonce: (prev?.nonce ?? 0) + 1 })); break;
+        case 'CLINHIST_CATEGORY_2': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'SYM', nonce: (prev?.nonce ?? 0) + 1 })); break;
+        case 'CLINHIST_CATEGORY_3': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'RAD_LAB', nonce: (prev?.nonce ?? 0) + 1 })); break;
+        case 'CLINHIST_CATEGORY_4': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'PRIOR_PATH', nonce: (prev?.nonce ?? 0) + 1 })); break;
+        case 'CLINHIST_CATEGORY_5': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'MAL_STAGE', nonce: (prev?.nonce ?? 0) + 1 })); break;
+        case 'CLINHIST_CATEGORY_6': setAccessionTab('clinical_history'); setRequestedClinicalHistoryCategory(prev => ({ category: 'HIGH_RISK', nonce: (prev?.nonce ?? 0) + 1 })); break;
       }
     });
     return unsubscribe;
@@ -1046,9 +1129,24 @@ const AccessionPage: React.FC = () => {
   // the form — used to decide whether picking an order needs a warning
   // first. Deliberately not gating on every field (e.g. priority/sex
   // defaults don't count as "unsaved work").
+  //
+  // Real, direct fix, per direct follow-up ("take a look at the dirty
+  // flag logic"): confirmed this list was never updated when the
+  // Structured Clinical History Dictionary work added lmp,
+  // hormonalStatus, priorHpvResult, iudOrContraceptionUse,
+  // clinicalHistoryEntries, and per-specimen clinicalHistory — an
+  // accessioner who filled in only those fields and nothing else would
+  // have gotten zero unsaved-changes warning on navigating away or
+  // closing the tab, silently losing real, entered clinical data. This
+  // is exactly the kind of manually-maintained list a centralized
+  // Required Fields registry (see the newly-filed Jira ticket) would
+  // make structurally safer — a field newly wired into that registry
+  // could feed this check automatically instead of relying on every
+  // future page author remembering to update this array by hand.
   const hasUnsavedProgress = () =>
     givenNames.trim() || familyNames.trim() || dob || mrn.trim() ||
-    clinicalIndication.trim() || caseComments.length > 0 || specimens.some(s => s.description.trim());
+    clinicalIndication.trim() || caseComments.length > 0 || specimens.some(s => s.description.trim() || s.clinicalHistory.length > 0) ||
+    lmp || hormonalStatus || priorHpvResult || iudOrContraceptionUse.trim() || clinicalHistoryEntries.length > 0;
 
   // Real, confirmed gap: this page had no connection at all to the
   // app's shared unsaved-changes warning system (DirtyStateContext) —
@@ -1065,7 +1163,7 @@ const AccessionPage: React.FC = () => {
     // whatever page the user navigates to next.
     return () => setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [givenNames, familyNames, dob, mrn, clinicalIndication, caseComments, specimens]);
+  }, [givenNames, familyNames, dob, mrn, clinicalIndication, caseComments, specimens, lmp, hormonalStatus, priorHpvResult, iudOrContraceptionUse, clinicalHistoryEntries]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -1765,6 +1863,11 @@ const AccessionPage: React.FC = () => {
           label: s.label,
           description: s.description.trim(),
           comments: s.comments.length ? s.comments : undefined,
+          // Real, per direct guidance's own real LIS/cytology data-
+          // modeling follow-up — additive, specimen-specific clinical
+          // history, only ever set for a real cytology/FNA case (same
+          // real gating as clinicalHistoryEntries/Case.order above).
+          clinicalHistory: cytologyRelevant && s.clinicalHistory.length ? s.clinicalHistory : undefined,
           specimenDictionaryEntryId: s.dictionaryEntryId || undefined,
           // Real feature, per direct request: "if the specimen level is
           // deterministic, why should we make them assign?" This is a
@@ -1798,6 +1901,17 @@ const AccessionPage: React.FC = () => {
           externalId: s.externalId.trim() || undefined,
           externalIdSource: s.externalIdSource.trim() || undefined,
           specimenFlags: [],
+          // Real, per direct follow-up closing PS-211's own remaining
+          // gap: the one real half of
+          // CytologyHighRiskFactors.abnormalExamFindings that can
+          // only ever be a real, manual, collection-time observation.
+          // Applied per real, cytology/FNA-relevant specimen — the
+          // same real entry.type check cytologyRelevant above already
+          // uses — never attached to a non-cytology specimen in the
+          // same accession batch.
+          cytologyScreening: (entry?.type === 'Cytology' || entry?.type === 'FNA') && persistentContactBleedingAtCollection
+            ? { persistentContactBleedingAtCollection: true }
+            : undefined,
           ...(await generateDefaultMaterial(entry, `${caseId}-SP-${s.label}`, selectedFacility?.specimenLabelStyle, stainTypes, protocols, fullAccession, s.label, priority)),
           // kept alongside the record (not part of Specimen's own shape)
           // purely to feed evaluateGrossingTemplateAssignment below —
@@ -1950,6 +2064,25 @@ const AccessionPage: React.FC = () => {
         if (encounterResult.ok) resolvedEncounterId = encounterResult.data.id;
       }
 
+      // Real, per the uploaded spec's own User Story 5, Acceptance
+      // Criteria 1 and 2 — resolved BEFORE newCase is constructed, so
+      // the real, computed accessionStatus can be set directly on the
+      // order object below rather than a separate, second
+      // updateCase() round-trip immediately after creation. Only ever
+      // meaningful for a real cytology/FNA case (same real gating as
+      // every other clinical-history-specific field in this
+      // function) — a non-cytology case has no clinicalHistory
+      // anywhere to validate.
+      let accessionValidation: AccessionValidationResult = { valid: true, errors: [] };
+      if (cytologyRelevant) {
+        const dictRes = await mockClinicalHistoryDictionaryService.getAll();
+        accessionValidation = resolveAccessionValidation(
+          clinicalHistoryEntries,
+          specimens.map(s => ({ label: s.label, clinicalHistory: s.clinicalHistory })),
+          dictRes.ok ? dictRes.data : [],
+        );
+      }
+
       const newCase: Case = {
         id: caseId,
         reportingMode: 'orchestrator',
@@ -1993,7 +2126,25 @@ const AccessionPage: React.FC = () => {
           lastName: familyNames.trim(),
           dateOfBirth: new Date(dob).toISOString(),
           sex,
-        },
+          // Real, per direct guidance's own prior requirement ("The
+          // User may need to see the LMP and other clinical history
+          // dictionaries entries") plus its own direct follow-up:
+          // captured here, at real accessioning, only ever set when
+          // the case actually includes a real cytology/FNA specimen
+          // (cytologyRelevant) — never populated with empty strings
+          // for a non-cytology case.
+          lastMenstrualPeriod: cytologyRelevant && lmp ? new Date(lmp).toISOString() : undefined,
+          hormonalStatus: cytologyRelevant && hormonalStatus ? hormonalStatus : undefined,
+          // Real, per the uploaded "Structured Clinical History
+          // Dictionary & Accessioning Integration" spec's own
+          // Acceptance Criteria 3 — a new, simple field, same real
+          // treatment as hormonalStatus above. Retires the old,
+          // free-text priorAbnormalPapHpvHistory field: its real,
+          // structured replacement (HX_PRIOR_ABNL_PAP_HPV) is now
+          // captured via clinicalHistoryEntries below instead.
+          priorHpvResult: cytologyRelevant && priorHpvResult ? priorHpvResult : undefined,
+          iudOrContraceptionUse: cytologyRelevant && iudOrContraceptionUse.trim() ? iudOrContraceptionUse.trim() : undefined,
+        } as any,
         specimens: specimenRecords.map(({ _entry, ...sp }) => sp),
         order: {
           priority,
@@ -2012,7 +2163,23 @@ const AccessionPage: React.FC = () => {
           assignedParticipationTypeId: assignedTo ? 'primary' : undefined,
           intakeType,
           outsidePatientData: intakeType === 'outside' ? outsidePatientData : undefined,
-        },
+          // Real, per direct guidance's own real OBR-31/reasonCode
+          // work — captured here, at real accessioning, only for a
+          // real cytology/FNA case.
+          reasonForStudy: cytologyRelevant && reasonForStudy ? reasonForStudy : undefined,
+          // Real, per the uploaded spec's own User Story 2/3 — the
+          // real, structured clinical history entries attached via
+          // ClinicalHistoryEntryPanel, only ever set for a real
+          // cytology/FNA case (same real gating as every other
+          // cytology-specific field above).
+          clinicalHistory: cytologyRelevant && clinicalHistoryEntries.length ? clinicalHistoryEntries : undefined,
+          // Real, per the uploaded spec's own User Story 5, Acceptance
+          // Criteria 2 — only ever set for a real cytology/FNA case;
+          // undefined (never a fabricated 'COMPLETE') for every other
+          // case, which never had real clinical history to validate
+          // in the first place.
+          accessionStatus: cytologyRelevant ? (accessionValidation.valid ? 'COMPLETE' : 'DEFICIENT') : undefined,
+        } as any,
         diagnostic: { grossDescription: '', microscopicDescription: '', ancillaryStudies: '' },
         grossingReports,
         createdAt: nowIso,
@@ -2020,6 +2187,60 @@ const AccessionPage: React.FC = () => {
       };
 
       await caseRouter.createCase(newCase);
+
+      // Real, per the uploaded spec's own User Story 5, Acceptance
+      // Criteria 2 and 3 — enqueues the real, appropriate outbound
+      // event now that the case genuinely, persistently exists. Only
+      // ever meaningful for a real cytology/FNA case; fire-and-forget
+      // (never awaited beyond the enqueue itself, never blocks
+      // accessioning) — same real posture as every other outbound
+      // dispatch in this app, since a real interface engine consuming
+      // this queue is a separate, later concern from accessioning
+      // itself succeeding.
+      if (cytologyRelevant) {
+        const chMessageId = crypto.randomUUID();
+        if (accessionValidation.valid) {
+          mockAccessionOutboundQueueService.enqueue({
+            caseId,
+            eventType: 'order.accessioned',
+            organisationId: selectedFacility?.id ?? clientId,
+            payload: { messageId: chMessageId, timestamp: nowIso, orderId: caseId, clinicalHistory: clinicalHistoryEntries },
+          }).catch(console.error);
+        } else {
+          mockAccessionOutboundQueueService.enqueue({
+            caseId,
+            eventType: 'order.deficiency.created',
+            organisationId: selectedFacility?.id ?? clientId,
+            payload: { messageId: chMessageId, timestamp: nowIso, orderId: caseId, errors: accessionValidation.errors },
+          }).catch(console.error);
+        }
+      }
+
+      // Real, per the Protocol-Driven Workflow Infrastructure story's
+      // Part 2b accession trigger — reads PathwayTask.sendOutboundOrder
+      // for each specimen's own assigned protocol (specimenRecords
+      // still carries _entry here; it's only stripped when building
+      // newCase.specimens above) and enqueues a real 'order.molecular'
+      // entry per flagged assay. This is how the HPV co-test fires
+      // automatically for a ThinPrep specimen configured with
+      // st-hpv-reflex on its protocol — no separate HPV configuration
+      // service needed. Fire-and-forget, same real posture as the
+      // accession outbound queue immediately above.
+      for (const sp of specimenRecords) {
+        const specimenProtocol = sp._entry?.protocolId ? protocols.find(p => p.id === sp._entry?.protocolId) : undefined;
+        const assayIds = resolveOutboundMolecularAssaysForProtocol(specimenProtocol);
+        for (const assayCode of assayIds) {
+          mockMolecularOrderOutboundQueueService.enqueue({
+            caseId,
+            eventType: 'order.molecular',
+            payload: {
+              accessionNumber: fullAccession, specimenLetter: sp.label, assayCode,
+              orderReason: 'protocol_configured', priority,
+            },
+          }).catch(console.error);
+        }
+      }
+
       // Real feature, per direct follow-up on the label-printing scope
       // — set immediately, not gated on the background AI refinement
       // below; see this state's own declaration for why.
@@ -2563,6 +2784,110 @@ const AccessionPage: React.FC = () => {
                   <option value="U">Other / Unspecified</option>
                 </select>
               </div>
+              {cytologyRelevant && (
+                <div className="ps-card-dark" style={{ gridColumn: '1 / -1', padding: 16, marginTop: 4, marginBottom: 4 }}>
+                  <div className="ps-label" style={{ marginBottom: 10, fontWeight: 700 }}>
+                    Cytology — Clinical History &amp; Accessioning Detail
+                  </div>
+                  {/* Real, per direct guidance ("New tab, only would be
+                      used for Cytology cases") — a real, local sub-tab
+                      inside this existing, cytologyRelevant-gated card,
+                      rather than a page-wide restructure. 'main' is
+                      the real default, matching every field already
+                      here today. */}
+                  <div className="ps-sub-tab-group" style={{ marginBottom: 14 }}>
+                    <button type="button" className={`ps-sub-tab-btn${accessionTab === 'main' ? ' active' : ''}`} onClick={() => setAccessionTab('main')}>
+                      Patient Detail
+                    </button>
+                    <button type="button" className={`ps-sub-tab-btn${accessionTab === 'clinical_history' ? ' active' : ''}`} onClick={() => setAccessionTab('clinical_history')}>
+                      Clinical History{clinicalHistoryEntries.length > 0 ? ` (${clinicalHistoryEntries.length})` : ''}
+                    </button>
+                  </div>
+
+                  {accessionTab === 'main' && (
+                    <>
+                      <div className="ps-accession-specimen-row-3col">
+                        <div>
+                          <label className="ps-label" htmlFor="accession-lmp">Last Menstrual Period</label>
+                          <input id="accession-lmp" className="ps-input-dark" type="date" value={lmp} onChange={e => setLmp(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="ps-label" htmlFor="accession-hormonal-status">Hormonal Status</label>
+                          <select id="accession-hormonal-status" className="ps-input-dark" value={hormonalStatus} onChange={e => setHormonalStatus(e.target.value as typeof hormonalStatus)}>
+                            <option value="">— not specified —</option>
+                            <option value="premenopausal">Premenopausal</option>
+                            <option value="perimenopausal">Perimenopausal</option>
+                            <option value="postmenopausal">Postmenopausal</option>
+                            <option value="pregnant">Pregnant</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="ps-label" htmlFor="accession-reason-for-study">Reason for Study</label>
+                          <select id="accession-reason-for-study" className="ps-input-dark" value={reasonForStudy} onChange={e => setReasonForStudy(e.target.value as typeof reasonForStudy)}>
+                            <option value="">— not specified —</option>
+                            <option value="nhs_programme_invited">Routine programme-invited screening</option>
+                            <option value="private_or_opportunistic">Private / opportunistic test</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="ps-accession-specimen-row-3col" style={{ marginTop: 12 }}>
+                        {/* Real, per the uploaded spec's own Acceptance
+                            Criteria 3 ("Category 1 (SCR): Prompts for
+                            LMP and prior_hpv_result") — a new, simple
+                            field, same real treatment as hormonalStatus
+                            above. The old free-text "Prior Abnormal
+                            Pap/HPV/Procedure History" input is retired
+                            here — its real, structured replacement
+                            (HX_PRIOR_ABNL_PAP_HPV) lives on the
+                            Clinical History tab now. */}
+                        <div>
+                          <label className="ps-label" htmlFor="accession-prior-hpv-result">Prior HPV Result</label>
+                          <select id="accession-prior-hpv-result" className="ps-input-dark" value={priorHpvResult} onChange={e => setPriorHpvResult(e.target.value as typeof priorHpvResult)}>
+                            <option value="">— not specified —</option>
+                            <option value="positive">Positive</option>
+                            <option value="negative">Negative</option>
+                            <option value="not_tested">Not Tested</option>
+                            <option value="unknown">Unknown</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="ps-label" htmlFor="accession-iud">IUD / Contraception Use</label>
+                          <input id="accession-iud" className="ps-input-dark" value={iudOrContraceptionUse} onChange={e => setIudOrContraceptionUse(e.target.value)} placeholder="e.g. Copper IUD in place…" />
+                        </div>
+                      </div>
+                      <label className="ps-accession-checkbox-row" style={{ marginTop: 12 }}>
+                        <input type="checkbox" checked={persistentContactBleedingAtCollection}
+                          onChange={e => setPersistentContactBleedingAtCollection(e.target.checked)} />
+                        Persistent contact bleeding observed during specimen collection
+                      </label>
+                    </>
+                  )}
+
+                  {accessionTab === 'clinical_history' && (
+                    <ClinicalHistoryEntryPanel
+                      specimenTypes={Array.from(new Set(specimens
+                        .map(s => s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId)?.type : undefined)
+                        .filter((t): t is string => !!t)))}
+                      targets={[
+                        { id: 'case', label: 'Case-Level (applies to all specimens)', entries: clinicalHistoryEntries },
+                        // Real, per direct guidance's own real LIS/
+                        // cytology data-modeling follow-up — only
+                        // offered as separate targets when this case
+                        // genuinely has more than one real specimen;
+                        // the panel itself hides the selector entirely
+                        // in the single-specimen case.
+                        ...(specimens.length > 1 ? specimens.map((s, i) => ({ id: `specimen-${i}`, label: `Specimen ${s.label}`, entries: s.clinicalHistory })) : []),
+                      ]}
+                      onChangeTarget={(targetId, newEntries) => {
+                        if (targetId === 'case') { setClinicalHistoryEntries(newEntries); return; }
+                        const idx = Number(targetId.replace('specimen-', ''));
+                        setSpecimens(prev => prev.map((s, i) => i === idx ? { ...s, clinicalHistory: newEntries } : s));
+                      }}
+                      requestedCategory={requestedClinicalHistoryCategory}
+                    />
+                  )}
+                </div>
+              )}
               <div>
                 <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   Patient ID (optional)

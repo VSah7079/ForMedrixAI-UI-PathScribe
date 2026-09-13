@@ -51,6 +51,7 @@ const REAL_LIVE_CONTEXTS = new Set([
   'SYSTEM', 'NAVIGATION', // GLOBAL_CATEGORIES — always eligible
   'ACCESSION', 'WORKLIST', 'CONFIGURATION', 'CASE_VIEW', 'INTRAOP', 'SEARCH', 'SYNOPTIC', 'CONTRIBUTION', 'AUDIT',
   'MESSAGES', // set by the messages drawer, not a page — confirmed separately
+  'CYTOLOGY', // set by CytologyScreeningPage.tsx's own useEffect — confirmed directly, same pattern as SynopticReportPage.tsx's own SYNOPTIC context
 ]);
 
 describe('mockActionRegistryService — real regression guard against orphaned/colliding actions', () => {

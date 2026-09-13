@@ -59,7 +59,7 @@ function isWithin(iso: string | undefined, start: number, end: number): boolean 
  *  populated aiSuggestions - the actual signal already used elsewhere
  *  in this app (e.g. the AI confidence badge) for "AI touched this
  *  case," not a fabricated new one. */
-function wasAiAssisted(c: CaseForDashboardCalc): boolean {
+export function wasAiAssisted(c: CaseForDashboardCalc): boolean {
   return (c.synopticReports ?? []).some(r => r.aiSuggestions && Object.keys(r.aiSuggestions).length > 0);
 }
 
@@ -246,7 +246,7 @@ export interface CaseForRvuCalc extends CaseForDashboardCalc {
  *  to the honest, rule-based default only for specimens with no real
  *  codes assigned at all - a specimen with real codes never has the
  *  rule-based default layered on top of it. */
-function realWorkRvuForCase(c: CaseForRvuCalc, versions: RvuTableVersion[], dictionaryEntries: SpecimenEntryForCptResolution[] = []): number {
+export function realWorkRvuForCase(c: CaseForRvuCalc, versions: RvuTableVersion[], dictionaryEntries: SpecimenEntryForCptResolution[] = []): number {
   const resolvedVersion = c.diagnostic?.issuedDate ? resolveVersionEffectiveAt(versions, c.diagnostic.issuedDate) : null;
   const entries = resolvedVersion?.entries ?? CODE_MAP_TABLE;
 

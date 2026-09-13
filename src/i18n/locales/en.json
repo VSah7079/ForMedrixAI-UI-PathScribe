@@ -1,0 +1,555 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "search": "Search",
+    "add": "Add",
+    "remove": "Remove",
+    "active": "Active",
+    "inactive": "Inactive",
+    "required": "Required",
+    "optional": "Optional",
+    "signOut": "Sign Out",
+    "showInactive": "Show inactive",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "select": "Select"
+  },
+  "nav": {
+    "home": "Home",
+    "worklist": "Worklist",
+    "search": "Search",
+    "accession": "Accession",
+    "batchManagement": "Batch Management",
+    "configuration": "Configuration",
+    "audit": "Audit Log",
+    "qualityAssurance": "Quality Assurance"
+  },
+  "login": {
+    "title": "Sign in to PathScribe",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In",
+    "signingIn": "Signing in…",
+    "invalidCredentials": "Invalid email or password."
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "fr": "Français",
+    "de": "Deutsch",
+    "nl": "Nederlands",
+    "ko": "한국어"
+  },
+  "batchManagement": {
+    "pageTitle": "Batch Management",
+    "pageSubtitle": "Track groups of cassettes and slides through processing nodes (Decal / Special Processing, Processing, Embedding, Microtomy, Staining, Checkout) via container barcodes — chain-of-custody scanning, reconciliation, and QA discrepancy logging.",
+    "nodes": {
+      "Decal / Special Processing": "Decal / Special Processing",
+      "Processing": "Processing",
+      "Embedding": "Embedding",
+      "Microtomy / Sectioning": "Microtomy / Sectioning",
+      "Staining": "Staining",
+      "Checkout": "Checkout",
+      "External Referral": "External Referral",
+      "Cytology Processing": "Cytology Processing",
+      "Cytology Staining": "Cytology Staining",
+      "Cytology Imaging": "Cytology Imaging"
+    },
+    "nodeTileLabel": {
+      "Decal / Special Processing": "Decal / Special",
+      "Processing": "Processing",
+      "Embedding": "Embedding",
+      "Microtomy / Sectioning": "Microtomy",
+      "Staining": "Staining",
+      "Checkout": "Checkout",
+      "External Referral": "Referral",
+      "Cytology Processing": "Cyto Processing",
+      "Cytology Staining": "Cyto Staining",
+      "Cytology Imaging": "Cyto Imaging"
+    },
+    "status": {
+      "active": "Active",
+      "reconciling": "Reconciling",
+      "complete": "Complete",
+      "aborted": "Aborted"
+    },
+    "filterTileTitle": "Filter by: {{node}}",
+    "filterTileTitleActive": "Showing: {{node}} — click to reset",
+    "disposalTile": "Disposal",
+    "disposalTitle": "Disposal Queue — items that qualify for disposal right now",
+    "pendingLoadTile": "Pending Load",
+    "pendingLoadTitle": "Pending Batch Load — printed items not yet scanned into any batch",
+    "engraverMonitorTile": "Engraver Monitor",
+    "engraverMonitorTitle": "Engraver Monitor — real, high-level engraver device status from the Cassette Engine",
+    "lookupPlaceholder": "Scan or enter a master batch barcode…",
+    "newContainer": "New Container",
+    "loading": "Loading batches…",
+    "activeSectionLabel": "Active & Reconciling ({{count}})",
+    "closedSectionLabel": "Complete & Aborted ({{count}})",
+    "emptyActive": "No active batches. Create one to get started.",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "rackCheckedOutError": "Rack \"{{value}}\" is already checked out to another active batch.",
+    "notFoundError": "No batch or registered container found for \"{{value}}\"."
+  },
+  "newContainerModal": {
+    "title": "New Container",
+    "containerType": "Container Type",
+    "targetWorkstation": "Target Workstation",
+    "noStation": "— No station —",
+    "processingNode": "Processing Node",
+    "autoSetFromStation": "↳ Set from {{station}}'s own stage.",
+    "stationMismatchWarning": "⚠ {{station}} is normally a {{node}} station — double-check this is intentional.",
+    "protocolLabel": "Protocol / Run Parameters",
+    "protocolPlaceholder": "e.g. Standard H&E Overnight Run",
+    "priority": "Priority",
+    "routine": "Routine",
+    "stat": "STAT",
+    "solutionType": "Solution Type",
+    "targetDuration": "Target Duration / Alert Timer",
+    "hours": "hr",
+    "minutes": "min",
+    "warningAlertAt": "Warning alert at {{duration}} — {{minutesBefore}} minutes before target.",
+    "referenceLabDestination": "Reference Lab Destination",
+    "selectReferenceLab": "— select reference lab —",
+    "noReferenceLabConfigured": "No facility is currently configured with the Reference Lab role — add one in Facility settings first.",
+    "testPanelRequested": "Test / Panel Requested (optional)",
+    "testPanelPlaceholder": "e.g. Foundation Medicine CDx NGS Panel",
+    "stainProtocol": "Stain Protocol",
+    "selectStainProtocol": "— select stain protocol —",
+    "containerIdentifierMode": "Container Identifier Mode",
+    "disposableLabelTitle": "System generates a new, single-use, timestamped label",
+    "disposableLabel": "Disposable Label",
+    "reusableRackTitle": "Use an existing, laser-engraved reusable rack — no new label printed",
+    "reusableRack": "Reusable Rack",
+    "rackId": "Rack ID",
+    "rackIdPlaceholder": "Scan or enter e.g. {{example}}",
+    "generating": "Generating…",
+    "generateAndPrint": "Generate & Print",
+    "startSession": "Start Session",
+    "sessionStarted": "Session Started",
+    "containerCreated": "Container Created",
+    "rackCheckedOutNoPrint": "Rack {{barcode}} is now checked out to this batch — no new label to print.",
+    "printInstructions": "Print this Master Batch Barcode and affix it to the physical carrier.",
+    "print": "Print",
+    "continueScanItems": "Continue — Scan Items"
+  },
+  "grossingRelease": {
+    "cassettesResolved_one": "{{count}} cassette resolved — ready to release",
+    "cassettesResolved_other": "{{count}} cassettes resolved — ready to release",
+    "blockLabel": "Block {{specimenLabel}}{{blockLabel}}",
+    "removeBlockTitle": "Remove Block {{specimenLabel}}{{blockLabel}} — not physically created",
+    "triageResolved": "Triage confirmed",
+    "triageRequired": "Triage required before release",
+    "overriddenNote": "Triage overridden: {{reason}}",
+    "overrideReasonPlaceholder": "Reason for overriding triage…",
+    "overrideAndRelease": "Override & Release",
+    "releaseBlockedTitle": "Cannot release — triage is incomplete. Confirm the checklist or provide an override reason.",
+    "releaseAndPrintAll": "Release & Print All"
+  },
+  "pendingTriageTile": {
+    "title_one": "Pending Grossing Triage ({{count}})",
+    "title_other": "Pending Grossing Triage ({{count}})",
+    "badge": "Triage",
+    "specimenLabel": "Specimen {{specimenLabel}}",
+    "progress": "{{confirmed}} of {{total}} checklist items confirmed"
+  },
+  "grossingScreen": {
+    "caseNotFound": "Case not found.",
+    "backToCase": "← Back to Case",
+    "pageTitle": "Grossing — {{accession}}",
+    "specimenHeader": "Specimen {{label}} — {{description}}",
+    "protocolVersion": "Protocol: {{name}} (v{{version}})",
+    "protocolModified": "Protocol Modified",
+    "noProtocol": "No protocol assigned",
+    "col": {
+      "blockId": "Block ID",
+      "pieceCount": "Piece Count",
+      "stains": "Stains",
+      "status": "Status",
+      "actions": "Actions",
+      "slideId": "Slide ID",
+      "stain": "Stain",
+      "imagerBatch": "Imager Batch",
+      "fovCount": "FOV Count"
+    },
+    "userAdded": "User-added",
+    "autoGenerated": "Auto-generated",
+    "removeStainTitle": "Remove stain",
+    "selectStain": "— select stain —",
+    "addStain": "Add Stain",
+    "removeBlockedTitle": "Cannot remove — block is already \"{{status}}\"",
+    "removeBlock": "Remove Block",
+    "notYetImaged": "Not yet imaged",
+    "addBlock": "Add Block ({{pathwayName}})",
+    "auditPanelTitle_one": "Audit Trail ({{count}} override)",
+    "auditPanelTitle_other": "Audit Trail ({{count}} overrides)",
+    "noOverrides": "No overrides recorded.",
+    "auditEntry": "Block {{blockLabel}} — {{field}} changed from \"{{originalValue}}\" to \"{{newValue}}\" by {{actor}} on {{timestamp}}",
+    "auditField": {
+      "pieceCount": "Piece Count",
+      "stainAdded": "Stain Added",
+      "stainRemoved": "Stain Removed"
+    },
+    "confirmRemoveStainTitle": "Remove Protocol Default Stain?",
+    "confirmRemoveStainBody": "This stain is a default from the assigned protocol. Removing it will be logged as an override.",
+    "confirmRemove": "Remove",
+    "concurrencyConflict": "This case was updated elsewhere. Reload to see the latest version.",
+    "reload": "Reload",
+    "openGrossingScreen": "🔬 Open Grossing Screen"
+  },
+  "orSuiteDashboard": {
+    "bindDisplayTitle": "Bind this display",
+    "bindDisplayDescription": "Select which OR Suite Terminal this monitor represents. This binding is sticky — it survives reloads and restarts.",
+    "cancelDismiss": "Cancel",
+    "confirmAndDismiss": "Confirm & dismiss",
+    "confirmDismissalTitle": "Confirm dismissal",
+    "continue": "Continue",
+    "dismissCase": "Dismiss case",
+    "dismissFailedGeneric": "Could not dismiss this case. Try again.",
+    "dismissing": "Dismissing…",
+    "enterPinDismiss": "Enter your 4-digit PIN to dismiss this case.",
+    "enterPinVerbal": "Enter your 4-digit PIN to log this verbal report.",
+    "inProgress": "In progress",
+    "loadingTerminal": "Loading terminal…",
+    "logVerbalReport": "Log verbal report",
+    "logging": "Logging…",
+    "mrn": "MRN:",
+    "multiSuiteOverview": "Multi-suite overview",
+    "noActiveRequests": "No active frozen section requests right now.",
+    "noTerminalsConfigured": "No terminals configured yet — add one under System Configuration.",
+    "noteOptional": "Note (optional)",
+    "orRoom": "OR room:",
+    "orSuiteTerminal": "OR suite terminal",
+    "patient": "Patient:",
+    "pinInvalidRole": "This PIN does not belong to OR staff.",
+    "pinNotRecognized": "PIN not recognized.",
+    "preliminaryDiagnosis": "Preliminary diagnosis:",
+    "preliminaryLabel": "PRELIMINARY: {{diagnosis}}",
+    "readbackConfirmedLabel": "Verbal result read-back confirmed with operating surgeon",
+    "room": "Room {{room}}",
+    "rowMeta": "Specimen {{specimenLabel}} · Surgeon: {{surgeon}} · Pathologist: {{pathologist}}",
+    "selectTerminal": "— select terminal —",
+    "surgeonName": "Surgeon name",
+    "verbalReportBy": "Verbal report — {{staffName}}",
+    "verifyIdentity": "Verify identity",
+    "startDemo": "Start demo",
+    "stopDemo": "Stop demo",
+    "demoModeActive": "Demo mode — not real patient data"
+  },
+  "molecularOrderQueue": {
+    "pageTitle": "Molecular Order Queue",
+    "pageSubtitle": "Outbound molecular assay and instrument orders — fired automatically at accession, or by an HPV reflex genotyping trigger on a positive standalone screen.",
+    "demoPanelTitle": "Demo: HPV order & reflex workflow",
+    "demoPanelDescription": "Operates against real seed case {{accession}}, Specimen A — already configured with an HPV co-test pending. Queue the assay order, then simulate the lab result coming back.",
+    "assayLabel": "Assay used",
+    "assayStandalone": "st-hpv-highrisk-screen (standalone)",
+    "assayBundled": "st-hpv-reflex (bundled)",
+    "queueOrderBtn": "Queue HPV co-test order",
+    "resultLabel": "Simulated result",
+    "resultPositive": "Positive",
+    "resultNegative": "Negative",
+    "simulateResultBtn": "Simulate inbound HPV result",
+    "demoOrderQueued": "Order queued.",
+    "resultApplied": "Result applied.",
+    "resultAppliedWithReflex": "Result applied — genotyping reflex order fired below.",
+    "resultOutcome": "Outcome: {{outcome}}",
+    "noEntries": "No orders queued yet.",
+    "col": {
+      "type": "Type",
+      "accession": "Accession",
+      "assay": "Assay",
+      "reason": "Reason",
+      "status": "Status",
+      "queuedAt": "Queued at"
+    },
+    "typeMolecular": "Molecular",
+    "typeInstrument": "Instrument",
+    "reasonReflex": "HPV reflex genotyping",
+    "reason": {
+      "protocol_configured": "Protocol-configured (accession)",
+      "hpv_reflex_genotyping": "HPV reflex genotyping"
+    },
+    "status": {
+      "QUEUED": "Queued",
+      "SENT": "Sent",
+      "FAILED": "Failed"
+    }
+  },
+  "wsiViewerLaunch": {
+    "selectVendorTitle": "Select WSI viewer",
+    "launchTitle": "Launch this slide in the configured WSI viewer",
+    "launchLabel": "Launch in Viewer",
+    "blockedError": "Popup blocked — please allow popups for this site and try again"
+  },
+  "vendorIntegrations": {
+    "category": {
+      "dp_ai": "Digital Pathology / AI",
+      "wsi_viewers": "WSI Viewers",
+      "image_management": "Image Management Systems",
+      "gross_imaging": "Gross / Macro Imaging & Telepathology"
+    }
+  },
+  "imsVendorDictionary": {
+    "title": "Image Management Systems",
+    "description": "Real, reference-only image/PDF storage — PathScribe never persists binary image or PDF payloads directly; every association points at a real, external system configured here, whether an enterprise VNA/PACS/DAM or a smaller site's own on-prem file server.",
+    "addSystemBtn": "+ Add System",
+    "addTitle": "Add Image Management System",
+    "editTitle": "Edit Image Management System",
+    "nameLabel": "Name",
+    "deploymentLabel": "Deployment Model",
+    "authLabel": "Authentication Method",
+    "baseUrlLabel": "Base URL",
+    "baseUrlPlaceholder": "https://vna.yourlab.org or an internal file-server address",
+    "tokenWarning": "Never include an authorization token in this URL — a short-lived token is resolved fresh at request time, never stored here.",
+    "noBaseUrl": "No base URL configured yet",
+    "emptyRow": "No Image Management Systems on file.",
+    "deployment": {
+      "enterprise_ims": "Enterprise IMS (VNA / PACS / DAM)",
+      "on_prem_file_server": "On-Prem File Server"
+    },
+    "auth": {
+      "none": "None",
+      "signed_url": "Signed URL",
+      "oauth2_bearer": "OAuth 2.0 Bearer Token",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "grossImagingVendorDictionary": {
+    "title": "Gross / Macro Imaging & Telepathology",
+    "description": "Point-of-capture imaging and telepathology systems for the grossing/cut-up bench — annotation, dimension measurement, and live streaming for intraoperative or remote review. Genuinely distinct from a WSI viewer or a passive image store.",
+    "addVendorBtn": "+ Add Vendor",
+    "addTitle": "Add Gross Imaging Vendor",
+    "editTitle": "Edit Gross Imaging Vendor",
+    "nameLabel": "Vendor / Product Name",
+    "authLabel": "Authentication Method",
+    "baseUrlLabel": "Base URL",
+    "baseUrlPlaceholder": "https://gross-imaging.yourlab.org",
+    "telepathologyCheckbox": "Supports live telepathology streaming",
+    "telepathologyCapable": "Telepathology-capable",
+    "staticOnly": "Static capture only",
+    "emptyRow": "No Gross Imaging vendors on file.",
+    "auth": {
+      "none": "None",
+      "signed_url": "Signed URL",
+      "oauth2_bearer": "OAuth 2.0 Bearer Token",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "cytologyQcRules": {
+    "title": "Cytology QC Assignment Rules",
+    "description": "Configure the automated rules that sample, assign, and route cytology cases for quality-control peer review.",
+    "addRuleBtn": "+ Add Rule",
+    "addTitle": "Add QC Rule",
+    "editTitle": "Edit QC Rule",
+    "duplicateBtn": "Duplicate",
+    "emptyRow": "No QC rules on file.",
+    "nameLabel": "Rule Name",
+    "descriptionLabel": "Description",
+    "priorityLabel": "Evaluation Priority (higher evaluates first)",
+    "slaHoursLabel": "SLA (hours)",
+    "tierLabel": "Peer Review Priority Tier",
+    "priorityInline": "Priority {{priority}}",
+    "commaListPlaceholder": "Comma-separated values",
+    "jurisdictionsHint": "Leave all unchecked to apply this rule in every jurisdiction.",
+    "facilityIdsLabel": "Performing Facility IDs",
+    "eligibleReviewerRolesLabel": "Eligible Reviewer Roles",
+    "highRiskFlagsLabel": "High-Risk Flags",
+    "bethesdaLabel": "Bethesda Classifications",
+    "snomedLabel": "SNOMED Concept Codes",
+    "resultIsNegativeLabel": "Result Filter",
+    "section": {
+      "basics": "Basics",
+      "samplingLogic": "Sampling Logic",
+      "location": "Location & Jurisdiction",
+      "provider": "Provider",
+      "specimen": "Specimen",
+      "clinicalDiagnostic": "Clinical Risk & Diagnostic Scope"
+    },
+    "sampling": {
+      "percentage": "Percentage",
+      "interval": "Interval (every Nth case)",
+      "fixedVolume": "Fixed Volume (first N cases)",
+      "ratePercentPlaceholder": "Rate %",
+      "everyNthPlaceholder": "Every Nth case",
+      "firstNPlaceholder": "First N cases"
+    },
+    "tier": {
+      "high_escalation": "Priority 1 — High Escalation",
+      "targeted_high_consequence": "Priority 2 — Targeted High-Consequence",
+      "routine_random": "Priority 3 — Routine Random"
+    },
+    "role": {
+      "pathologist": "Pathologist",
+      "cytotechnologist": "Cytotechnologist"
+    },
+    "onboarding": {
+      "new_hire": "New Hire",
+      "probationary": "Probationary"
+    },
+    "specimenCategory": {
+      "gyn_pap": "GYN Pap",
+      "non_gyn_fluid": "Non-GYN Fluid",
+      "fna": "Fine Needle Aspiration (FNA)"
+    },
+    "adequacy": {
+      "satisfactory": "Satisfactory",
+      "unsatisfactory": "Unsatisfactory",
+      "limited": "Limited"
+    },
+    "resultFilter": {
+      "any": "Any result",
+      "negative": "Negative only",
+      "nonNegative": "Non-negative only"
+    }
+  },
+  "cytologyQcQueue": {
+    "pageTitle": "Cytology QC Peer Review Queue",
+    "tab": {
+      "all": "All Items",
+      "escalations_discrepancies": "Escalations & Discrepancies",
+      "routine_random": "Routine & Random"
+    },
+    "assignToMeBtn": "Assign to Me",
+    "recordConcurrenceBtn": "Record Concurrence",
+    "recordDiscrepancyBtn": "Record Discrepancy",
+    "assignedToOther": "Assigned to another reviewer",
+    "emptyRow": "No cases in this queue.",
+    "slaStatus": {
+      "on_time": "On Time",
+      "approaching": "Approaching SLA",
+      "breached": "SLA Breached"
+    },
+    "discrepancyModalTitle": "Record Discrepancy",
+    "primaryCodeLabel": "Primary Diagnostic Code",
+    "secondaryCodeLabel": "Secondary Diagnostic Code",
+    "severityLabel": "Severity",
+    "severity": {
+      "major": "Major",
+      "minor": "Minor"
+    },
+    "commentaryLabel": "Reviewer Commentary",
+    "submitDiscrepancyBtn": "Submit Discrepancy"
+  },
+  "cytologyScreening": {
+    "requestReviewBtn": "Req. Review",
+    "openEmrBtn": "Open EMR",
+    "teamBtn": "Team",
+    "delegateBtn": "Delegate",
+    "flagsBtn": "Flags",
+    "codesBtn": "Codes",
+    "requestPeerReviewBtn": "Request Peer Review",
+    "patientHistory": {
+      "title": "Patient Cyto/Histo History",
+      "subtitle": "(prior cases for this patient)",
+      "priorPapSection": "Prior Pap Smears",
+      "priorBiopsySection": "Prior Surgical Biopsies",
+      "noFinalDx": "no final diagnosis on record",
+      "viewCase": "View Case"
+    },
+    "materialBtn": "Material",
+    "materialDrawer": {
+      "specimenLabel": "Specimen",
+      "noDecants": "No decants recorded for this specimen.",
+      "decantType": {
+        "residual_fluid": "Residual Fluid",
+        "cell_block": "Cell Block"
+      },
+      "addResidualFluidBtn": "Add Residual Fluid",
+      "addCellBlockBtn": "Add Cell Block"
+    },
+    "synopticBtn": "Synoptic",
+    "synopticDrawer": {
+      "title": "Synoptic Reporting",
+      "previewBanner": "Custom Template Engine • Structured Data Entry",
+      "selectTemplate": "Select Synoptic Template",
+      "validationError": "Please complete all required synoptic fields.",
+      "saveBtn": "Save Synoptic",
+      "unvalidatedTermsTitle": "Unvalidated Clinical Terms",
+      "unvalidatedTermsExplanation": "This report contains clinical terms shown in their canonical (English) form because no clinically validated translation exists yet for your language. Review these terms carefully before releasing this report.",
+      "acknowledgmentLabel": "I have reviewed the unvalidated terms above and confirm they are clinically accurate for this report.",
+      "acknowledgmentRequiredError": "You must acknowledge the unvalidated terms above before saving.",
+      "generatedNarrativeTitle": "Generated Narrative (draft — review before use)",
+      "insertIntoNotesBtn": "Insert into Notes",
+      "narrative": {
+        "procedure": "Procedure: {value}.",
+        "site": "Site: {value}.",
+        "thyroid": {
+          "noduleSize": "Target nodule size: {value} cm.",
+          "follicularGroupCount": "Follicular group count: {value}.",
+          "bethesdaCategory": "Bethesda Diagnostic Category: {value}.",
+          "colloid": "Colloid: {value}."
+        },
+        "numberOfPasses": "Number of passes: {value}.",
+        "rosePerformed": "Rapid on-site evaluation (ROSE) was {value}.",
+        "specimenIs": "The specimen is {value}.",
+        "reasonUnsatisfactory": "Reason for unsatisfactory assessment: {value}.",
+        "cellularity": "Cellularity: {value}.",
+        "architecturalPattern": "Architectural pattern: {value}.",
+        "nuclearFeatures": "Nuclear features: {value}.",
+        "background": "Background: {value}.",
+        "molecularTesting": "Molecular testing: {value}.",
+        "molecularPlatform": "Molecular platform: {value}.",
+        "cellBlockIhc": "Cell block immunohistochemistry: {value}.",
+        "radiologicCorrelation": "Radiologic correlation: {value}."
+      },
+      "unvalidatedSegmentTooltip": "Unvalidated translation — shown in canonical/English form. Lexicon term: {key}"
+    },
+    "printBtn": "Print",
+    "fiveYearLookback": {
+      "title": "5-Year Retrospective Lookback",
+      "subtitle": "(CAP-mandated — prior negative results in the lookback window)",
+      "viewSlide": "View Case"
+    },
+    "roseBtn": "ROSE",
+    "roseDrawer": {
+      "priorEvaluations": "Prior ROSE Evaluations",
+      "recordNew": "Record New Evaluation",
+      "location": {
+        "radiology": "Radiology",
+        "clinic": "Clinic",
+        "operating_room": "Operating Room",
+        "other": "Other"
+      },
+      "locationLabel": "Location",
+      "passLabel": "Pass {{n}}",
+      "adequacy": {
+        "adequate": "Adequate",
+        "inadequate": "Inadequate",
+        "indeterminate": "Indeterminate"
+      },
+      "impressionPlaceholder": "Preliminary impression (e.g. Benign, consistent with colloid nodule)",
+      "addPassBtn": "Add Pass",
+      "saveBtn": "Save Evaluation"
+    }
+  },
+  "cytologyWorklist": {
+    "breadcrumbLabel": "Cytology Workspace",
+    "domain": {
+      "gyn": "GYN Cytology",
+      "nonGyn": "Non-GYN / FNA Queue"
+    },
+    "qaComplianceSectionLabel": "QA & Compliance",
+    "organSite": {
+      "all": "All Sites",
+      "THYROID": "Thyroid",
+      "LUNG_EBUS": "Lung/EBUS",
+      "BODY_FLUID": "Body Fluids/Washings",
+      "URINE": "Urine/Paris System",
+      "SALIVARY_GLAND": "Salivary Gland",
+      "BREAST": "Breast",
+      "GI_PANCREATIC": "GI/Pancreatic",
+      "OTHER_NGYN": "Other"
+    }
+  }
+}

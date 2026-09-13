@@ -1,0 +1,14 @@
+pathscribe-update-210.zip — files to DELETE from your local project
+(a zip can only add/overwrite files, not remove them — these 5 files
+were retired as part of the Cell Block → Decant migration and are
+dead code if left in place):
+
+src/types/cytology/CytologyCellBlock.ts
+src/services/cytology/resolveCytologyCellBlockMutations.ts
+src/services/cytology/resolveCytologyCellBlockMutations.test.ts
+src/services/cytology/resolveCytologyCellBlockAncillaryPendingMembership.ts
+src/services/cytology/resolveCytologyCellBlockAncillaryPendingMembership.test.ts
+
+After deleting these and extracting/overlaying this zip's src/ folder
+into your project, run npm install if needed and npx tsc --noEmit to
+confirm a clean build on your own machine.

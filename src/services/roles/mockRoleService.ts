@@ -32,6 +32,14 @@ const SEED_ROLES: Role[] = [
   { id: 'pa',          name: "Pathologists' Assistant (PA)", canViewPediatric: false, canViewOrchestration: false, description: "Performs macroscopic examination, grossing, and specimen description. Distinct certified profession (PA(ASCP)/AAPA) — not the general-healthcare 'Physician Assistant.' No microscopic, diagnosis, or sign-out access.", color: '#F28B82', caseAccess: true, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Pathologists Assistant'], builtIn: true, participationTypeIds: ['grossing'] },
   { id: 'admin',       name: 'Admin',       canViewPediatric: false, canViewOrchestration: false,       description: 'System administrator with configuration access but no clinical case access.',    color: '#FDD663', caseAccess: false, configAccess: true,  permissions: DEFAULT_ROLE_PERMISSIONS['Admin'],       builtIn: true  },
   { id: 'physician',   name: 'Physician',   canViewPediatric: false, canViewOrchestration: false,   description: 'External ordering physician. Directory only — no app access.',                   color: '#C084FC', caseAccess: false, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Physician'],   builtIn: true  },
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+  // Intraoperative/Frozen Section Dashboard's own Location-First +
+  // Quick Auth design. Same real "directory only — no app access"
+  // posture as Physician above — OR staff never log into the main
+  // app; they exist here only to be resolved by quickAuthPin
+  // (resolveStaffByQuickAuthPin.ts) and attributed on the OR
+  // terminal's own audit log.
+  { id: 'or-staff',    name: 'Or Staff',    canViewPediatric: false, canViewOrchestration: false,   description: 'Operating room staff (RN, circulator, surgeon) using the Intraoperative Dashboard\'s quick-auth PIN. Directory only — no general app access.', color: '#93C5FD', caseAccess: false, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Or Staff'],   builtIn: true  },
 ];
 
 const load = () => storageGet<Role[]>('pathscribe_roles', SEED_ROLES);

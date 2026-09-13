@@ -42,11 +42,37 @@
  *  Screener (random selection or targeted high-risk), Senior/Lead
  *  Cytotechnologist ("Secondary Reviewer"), and the Diagnostic
  *  Reviewer/Sign-out Pathologist. */
+import type { CisoeAScore } from './CisoeAScore';
+
 export type CytologyReviewRole =
   | 'primary_screen'
   | 'qc_random_selection'
   | 'qc_targeted_high_risk'
   | 'secondary_reviewer'
+  | 'pathologist_review'
+  // Real, per direct guidance: post-sign-out peer review mirrors the
+  // pre-sign-out QC split exactly ("using both mechanisms... is the
+  // standard industry practice") — a genuinely separate real event
+  // from every role above, all of which are pre-sign-out. Deliberately
+  // NOT reusing 'secondary_reviewer' (already an established,
+  // different, pre-sign-out concept — see resolveCytologyReviewerRole.ts).
+  | 'post_signout_peer_review_random'
+  | 'post_signout_peer_review_targeted';
+
+/** Real, per direct guidance's own CLIA 42 CFR § 493.1274 workload
+ *  specification: "how this specific pass was executed" — genuinely
+ *  distinct from CytologyReviewRole (who/why) and
+ *  Specimen.cytologyScreening.computerAssistedScreening (a specimen-
+ *  level tool-availability flag) — this is the real, missing link the
+ *  real SCU (Screening Credit Unit) weighting needs to function at
+ *  all. See resolveCytologyScuWeight.ts for the real, per-mode weight
+ *  table, and resolveCytologyReviewMode.ts for the real, safe default
+ *  applied to legacy records with no reviewMode on file. */
+export type CytologyReviewMode =
+  | 'primary_manual'
+  | 'liquid_nongyn'
+  | 'fov_assisted'
+  | 'fov_manual_rescreen'
   | 'pathologist_review';
 
 /** Real, per direct UI-review follow-up: one dictionary selection
@@ -95,6 +121,29 @@ export interface CytologyReviewRecord {
    *  each selection carries its own comment. */
   recommendations?: CytologyCategorySelection[];
 
+  /** Real, per direct guidance's own full CISOE-A specification
+   *  (types/cytology/CisoeAScore.ts): the real, independently-stored
+   *  6-component matrix for a real Dutch CISOE-A/KOPAC-B review. Only
+   *  ever populated for a real 'palga_cisoea' review — undefined for
+   *  every other real nomenclature system. When present, this is the
+   *  real, authoritative source of truth for this review's own
+   *  findings; `primaryInterpretationId` above is still populated
+   *  (via resolveCisoeAToBethesda.ts, at real review-creation time)
+   *  with the real, mapped Bethesda-equivalent specifically so every
+   *  existing resolver that reads it (sign-out gating, QA agreement,
+   *  report content) keeps working correctly, unmodified — it becomes
+   *  a real, derived "translated" value rather than the primary
+   *  source of truth for a CISOE-A review specifically. */
+  cisoeAScore?: CisoeAScore;
+
+  /** Real, per direct guidance's own CLIA workload specification —
+   *  optional, per Pete's own "existing/legacy data doesn't break"
+   *  requirement. Undefined on every review recorded before this
+   *  phase; resolveCytologyReviewMode.ts applies the real, safe
+   *  default rather than every real reader needing its own fallback
+   *  logic. */
+  reviewMode?: CytologyReviewMode;
+
   /** Real, per the original module's own explicit routing requirement.
    *  A deliberate SNAPSHOT taken at THIS review's own creation, never a
    *  live re-derivation. See resolveCytologyReviewRequirement
@@ -103,6 +152,51 @@ export interface CytologyReviewRecord {
   requiresPathologistReview: boolean;
 
   notes?: string;
+
+  /** Real, per direct guidance's own confirmed recommendation
+   *  (weighing "a formatted text block in Notes" vs. "a discrete
+   *  synopticData JSON field" vs. Surgical's own case-level
+   *  synopticReports array): a discrete field, tied to the specific
+   *  review it belongs to — matches Cytology's own simpler,
+   *  single-review-record model rather than introducing a separate
+   *  report-instance array Cytology has no other real use for. Real,
+   *  per direct guidance's own confirmed migration design: values are
+   *  the same real, discrete field values regardless of which
+   *  template schema version produced them (plain-string labels
+   *  today, i18n labelKey-driven labels once that migration happens)
+   *  — only the DISPLAY layer changes with that migration, never this
+   *  stored shape. Keyed by the originating template's own field id;
+   *  undefined for any review with no real synoptic template
+   *  attached. */
+  synopticData?: {
+    templateId: string;
+    answers: Record<string, string | string[]>;
+    /** Real, per direct guidance's own confirmed correction: "Instead
+     *  of just hiding/showing a warning on the UI side, tie the
+     *  checkbox directly to the underlying document metadata." A
+     *  dismissible UI banner leaves no real trace once dismissed — a
+     *  real, attributable, document-level acknowledgment is required
+     *  instead. Undefined means no real acknowledgment has ever been
+     *  recorded — the honest default, never assumed given just
+     *  because the field hasn't been checked. Real, per this same
+     *  guidance's own standard pattern: an explicit checkbox tied to
+     *  real workflow state, not an implicit inference from whether a
+     *  lexicon entry happens to exist. */
+    translationValidationAcknowledgment?: {
+      acknowledgedBy: string;
+      acknowledgedByName: string;
+      acknowledgedAt: string;
+      /** Real, per direct guidance's own patient-safety framing — the
+       *  exact, real set of unvalidated term keys that were present
+       *  AT THE MOMENT of this real acknowledgment, not re-derived
+       *  later. If the answers change afterward (a real, different
+       *  unvalidated term could appear), this specific acknowledgment
+       *  no longer honestly covers the new state — a real caller must
+       *  compare this list against the current unvalidated set rather
+       *  than trusting the acknowledgment blindly forever. */
+      acknowledgedUnvalidatedTermKeys: string[];
+    };
+  };
 
   recordedAt: string;
   recordedBy: { userId: string; userName: string };

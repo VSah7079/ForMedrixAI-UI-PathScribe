@@ -49,7 +49,9 @@ import type {
 import { ManagementReviewModal } from './modals/ManagementReviewModal';
 import { fetchGlobalDeficiencies } from '@/services/deficiencies/fetchGlobalDeficiencies';
 import { IntraopLinkageTab } from '@/components/QualityAssurance/IntraopLinkageTab';
+import { EnterpriseRollupTab } from '@/components/QualityAssurance/EnterpriseRollupTab';
 import { ReconciliationTab } from '@/components/QualityAssurance/ReconciliationTab';
+import { CytologyQaTab } from '@/components/QualityAssurance/CytologyQaTab';
 import { CountersignTurnaroundTab } from '@/components/QualityAssurance/CountersignTurnaroundTab';
 import { AccessRequestResponseTab } from '@/components/QualityAssurance/AccessRequestResponseTab';
 import { FppeTrackingTab } from '@/components/QualityAssurance/FppeTrackingTab';
@@ -69,7 +71,7 @@ import { auditService } from '@/services';
 import type { BillingDeficiencyRecord, BillingDeficiencyType } from '@/types/billing/BillingDeficiencyRecord';
 import type { CodeReviewPoolEntry } from '@/types/billing/CodeReviewPoolEntry';
 
-type Pillar = 'operations' | 'financials' | 'capa';
+type Pillar = 'operations' | 'financials' | 'capa' | 'cytology' | 'enterprise';
 // Real, per direct guidance: "CAPA Engine only ever sees things once
 // they've been escalated or closed" - Operations owns the raw,
 // still-open deficiency list; CAPA Engine only sees items once a
@@ -80,7 +82,7 @@ type Pillar = 'operations' | 'financials' | 'capa';
 // effectiveness check), just previously shown alongside 'open' items
 // in the same tab. This tab split is what changed, not the lifecycle
 // itself.
-type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'patient-management' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review';
+type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'patient-management' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review' | 'cytology-qa' | 'enterprise-rollup';
 
 // Real, per direct guidance on the QA reorganization: which tabs
 // belong to which pillar. Operations = the raw deficiency list plus
@@ -97,6 +99,18 @@ const PILLAR_TABS: Record<Pillar, Tab[]> = {
   operations: ['case-specimen', 'intraop-linkage', 'discordance', 'countersign', 'fppe', 'drift-correction', 'patient-match-review', 'patient-management', 'access-requests'],
   capa: ['escalated', 'closed', 'reviews'],
   financials: ['financials-open', 'financials-resolved', 'financials-code-review'],
+  // Real, per direct guidance: Cytology QA promoted from a tile inside
+  // Operations to its own, real top-level pillar — it's a genuinely
+  // separate clinical-quality domain (aggregate QA agreement reporting
+  // for cytology specifically), not one more nonconformance type
+  // alongside Discordance/Countersign/etc. Only ever one real tab —
+  // no tile grid needed to switch between sub-views that don't exist.
+  cytology: ['cytology-qa'],
+  // Real, per the RFP-APLIS-2026-GLOBAL Enterprise Business
+  // Intelligence Rollup Dashboard gap — a genuinely new, cross-
+  // cutting pillar (operational + financial + diagnostic + TAT),
+  // not naturally owned by any single existing pillar above.
+  enterprise: ['enterprise-rollup'],
 };
 
 const formatTimestamp = (iso?: string) => {
@@ -971,6 +985,8 @@ const QualityAssurancePage: React.FC = () => {
           { key: 'operations', label: 'Operations' },
           { key: 'financials', label: 'Financials' },
           { key: 'capa', label: 'CAPA Engine' },
+          { key: 'cytology', label: '🔬 Cytology QA' },
+          { key: 'enterprise', label: '🌐 Enterprise Rollup' },
         ] as const).map(p => (
           <button
             key={p.key}
@@ -982,6 +998,7 @@ const QualityAssurancePage: React.FC = () => {
         ))}
       </div>
 
+      {pillar !== 'cytology' && pillar !== 'enterprise' && (
       <div className="ps-qa-tab-tiles">
         {([
           { key: 'case-specimen', label: '⚠️ Deficiencies', count: openCount, color: '#EF4444', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
@@ -1044,6 +1061,7 @@ const QualityAssurancePage: React.FC = () => {
           </button>
         )}
       </div>
+      )}
 
       {pillar === 'financials' && tab === 'financials-code-review' && (
         <div className="ps-conf-table-wrap">
@@ -1152,7 +1170,9 @@ const QualityAssurancePage: React.FC = () => {
       <>
 
       {tab === 'intraop-linkage' && <IntraopLinkageTab />}
+      {tab === 'enterprise-rollup' && <EnterpriseRollupTab />}
       {tab === 'discordance' && <ReconciliationTab />}
+      {tab === 'cytology-qa' && <CytologyQaTab />}
       {tab === 'countersign' && <CountersignTurnaroundTab />}
       {tab === 'fppe' && <FppeTrackingTab />}
       {tab === 'drift-correction' && <DriftCorrectionTab />}

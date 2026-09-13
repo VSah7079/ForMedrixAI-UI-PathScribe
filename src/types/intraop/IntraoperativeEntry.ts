@@ -24,6 +24,8 @@
 // see mockIntraoperativeService's addMilestone for why.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { DigitalAsset } from '@/types/case/Material';
+
 export type MilestoneType =
   | 'gross_logged'
   | 'touch_prep_performed'
@@ -120,6 +122,18 @@ export interface IntraopSpecimen {
   specimenLabel: string;
   arrivalTimestamp: string; // TAT baseline, per specimen — different specimens in the same session can arrive at genuinely different moments
   milestones: MilestoneEntry[];
+  /** Real, per direct follow-up on item 3 of the image/PDF
+   *  architecture scoping — confirmed directly that no real gross/
+   *  frozen-section photo capture existed anywhere in the intraop
+   *  workflow before this, even though it's explicitly named in both
+   *  PAX-it!'s and PathoZoom®'s own real capabilities. Uses the same
+   *  real DigitalAsset shape as HistologyBlock's own block-face
+   *  photos (types/case/Material.ts) — never a second, parallel
+   *  photo type. Every entry's own url is a real, uploaded reference
+   *  (services/imageAssociation/IImageUploadService.ts) — never a
+   *  base64 frame stored directly, per this same session's own
+   *  confirmed §1.1 compliance fix. */
+  digitalAssets?: DigitalAsset[];
   preliminaryCytologyDictation?: string;
   /** Phase 1 of a real two-phase gross description model — rapid,
    *  high-velocity capture at the bench: dimensions/weight, which
@@ -158,6 +172,30 @@ export interface IntraopSpecimen {
    *  setFrozenSectionDiagnosis (mockIntraoperativeService.ts) - the real
    *  moment the diagnosis is actually rendered. */
   frozenDiagnosisRenderedAt?: string;
+  /** Real, per the OR Suite Live Board's own dismissal workflow spec —
+   *  the deliberate, distinct second confirmation point at the END of
+   *  the workflow (sign-out/dismissal read-back protocol) for THIS one
+   *  specimen's own row on the board — separate from the session-level
+   *  verbalReportLog above (real-time, whenever an urgent finding
+   *  needs to be called in; both are kept, per direct confirmation:
+   *  "replacing the standalone button with only a dismissal-time
+   *  checkbox would create a significant patient safety and audit
+   *  gap"). Undefined the whole time a completed specimen sits on the
+   *  OR Live Board awaiting dismissal — its presence alone is what
+   *  removes that row from the active board (mirrors
+   *  frozenDiagnosisRenderedAt's own "presence is the state" design). */
+  dismissedFromBoardAt?: string;
+  dismissedByUserId?: string;
+  dismissedByUserName?: string;
+  /** The mandatory verification checkbox's own real answer — "Verbal
+   *  result read-back confirmed with Operating Surgeon." Always true
+   *  when dismissedFromBoardAt is set: the real Confirm & Dismiss
+   *  button stays disabled until this is checked, so there's no real
+   *  path to a dismissal record with this false — kept as an explicit
+   *  field anyway because a real, immutable audit record should state
+   *  the fact it attests to, not require the reader to infer it from
+   *  "well, dismissal happened, so it must have been checked." */
+  surgeonReadbackConfirmed?: boolean;
   /** Real, itemized record of what was actually produced at the bench
    *  for this specimen, per direct guidance — separate from
    *  milestones[] above (workflow-sequence tracking only). A single

@@ -1,0 +1,50 @@
+pathscribe-update-211.zip — corrective delivery, fixing the 22 errors
+from your last `npx tsc --noEmit` run
+
+WHAT HAPPENED: update-210's file list was reconstructed from my own
+memory of this conversation, not a real diff — and it missed files
+that were modified but never actually shipped in any earlier update
+either. Two genuinely different root causes, both fixed by this zip:
+
+1. TWO TYPE/INTERFACE FILES WERE EXTENDED BUT NEVER DELIVERED, WHILE
+   THEIR CONSUMERS WERE (11 errors in mockBatchService.ts, 2 in
+   NewContainerModal.tsx, 1 in BatchManagementPage.tsx, 1 in
+   GrossingScreenPage.tsx, 6 in CytologyScreeningPage.tsx):
+
+   - services/batches/IBatchService.ts — missing the Cytology Batch
+     Integration additions (processingNode values 'Cytology
+     Processing'/'Cytology Staining'/'Cytology Imaging',
+     Batch.cytologyInstrumentStatus, Batch.cytologyStainTypeId,
+     BatchItem.fovCount). Your consuming files already expected these
+     — only the type definition itself was missing.
+
+   - services/cytology/resolveCytologySignOutGate.ts — missing the
+     `synopticTranslationCheck` parameter (blocks sign-out on
+     unvalidated clinical-term translations, added this session).
+     CytologyScreeningPage.tsx already calls it with 8 arguments;
+     your copy only accepted 6-7.
+
+   Pulled in with it (verified, not guessed): the sign-out gate's own
+   full dependency chain — resolveHasAdvancedSignOutCertification.ts,
+   resolveAdvancedCytologySignOutJurisdictionPolicy.ts,
+   resolveNormalizedCredentialCapabilities.ts, and their test files.
+   I don't have certainty these were already on your machine, and
+   the cost of a redundant file is far lower than another round of
+   this — so all included defensively.
+
+2. A GENUINELY MISSING FILE (1 error):
+   - services/cytology/mockPathologyLexiconService.ts — imported by
+     CytologySynopticFormView.tsx and CytologyScreeningPage.tsx
+     (both shipped in update-210), but never itself included in any
+     delivery I can account for.
+
+VERIFIED: all 10 files here compile clean together in my own sandbox
+(npx tsc --noEmit, 0 errors) alongside everything from update-210.
+
+No files need deleting for this one — everything here is either new
+or a straight overwrite of what update-210 (or earlier) already
+delivered.
+
+Recommend: apply this, run npx tsc --noEmit once more, and if
+anything else surfaces, paste it back — I'd rather catch a third
+round now than have this resurface with the India push.

@@ -32,13 +32,36 @@
 import type { CytologyReviewRole, CytologyReviewRecord } from '@/types/cytology/CytologyReviewRecord';
 import type { CytologyScreeningRecord } from '@/types/case/Specimen';
 import { resolveCytologyQcPoolMembership } from './resolveCytologyQcPoolMembership';
+import { resolveCytologyPostSignOutPeerReviewPoolMembership } from './resolveCytologyPostSignOutPeerReviewPoolMembership';
 
 export function resolveCytologyReviewerRole(
   existingReviews: Pick<CytologyReviewRecord, 'role'>[],
   isPathologist: boolean,
   qcFlag?: CytologyScreeningRecord['qcFlag'],
+  // Real, per direct follow-up closing PS-214's own remaining gap: a
+  // real, previously-missing check — peer review specifically
+  // requires a genuinely DIFFERENT pathologist from whoever signed
+  // the original report out. Without originalSignerId/currentUserId,
+  // the same pathologist could otherwise "peer review" their own
+  // work, defeating the entire real purpose of the mechanism.
+  // Deliberately grouped as one object rather than three more bare
+  // parameters, since all three only ever matter together.
+  postSignOutPeerReview?: {
+    flag: CytologyScreeningRecord['postSignOutPeerReviewFlag'];
+    originalSignerId: string | undefined;
+    currentUserId: string;
+  },
 ): CytologyReviewRole {
-  if (isPathologist) return 'pathologist_review';
+  if (isPathologist) {
+    if (
+      postSignOutPeerReview?.flag &&
+      postSignOutPeerReview.originalSignerId !== postSignOutPeerReview.currentUserId &&
+      resolveCytologyPostSignOutPeerReviewPoolMembership(postSignOutPeerReview.flag, existingReviews)
+    ) {
+      return postSignOutPeerReview.flag.reason === 'random_selection' ? 'post_signout_peer_review_random' : 'post_signout_peer_review_targeted';
+    }
+    return 'pathologist_review';
+  }
 
   if (qcFlag && resolveCytologyQcPoolMembership(qcFlag, existingReviews)) {
     return qcFlag.reason === 'random_selection' ? 'qc_random_selection' : 'qc_targeted_high_risk';

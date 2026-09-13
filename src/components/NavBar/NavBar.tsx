@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import '../../pathscribe.css';
@@ -8,6 +9,7 @@ import { EnhancementRequestButton } from '../EnhancementRequest/EnhancementReque
 import { loadEnhancementConfig } from '../../services/enhancementRequestService';
 import { VoiceToggleButton } from '../Voice/VoiceToggleButton';
 import { NavBarScanStation } from './NavBarScanStation';
+import LanguageSwitcher from './LanguageSwitcher';
 import CaseSearchBar from '../Search/CaseSearchBar';
 import { VoiceCommandOverlay } from '../Voice/VoiceCommandOverlay';
 import { VoiceMissPrompt } from '../Voice/VoiceMissPrompt';
@@ -224,6 +226,7 @@ interface NavBarProps {
 }
 
 const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }) => {
+  const { t } = useTranslation();
   const { user }                                   = useAuth();
   const { unreadCount, hasUrgent, setPortalOpen } = useMessaging();
   const messagesLabel = unreadCount > 0 ? `Messages, ${unreadCount} unread` : 'Messages';
@@ -421,8 +424,12 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
             </svg>
           </button>
 
+          {/* Real, per the RFP-APLIS-2026-GLOBAL Multi-Language UI &
+              Localization Framework gap. */}
+          <LanguageSwitcher />
+
           {/* Logout */}
-          <button type="button" className="ps-nav-btn" onClick={onLogout} aria-label="Log out" title="Log out">
+          <button type="button" className="ps-nav-btn" onClick={onLogout} aria-label={t('common.signOut')} title={t('common.signOut')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

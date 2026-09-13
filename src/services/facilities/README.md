@@ -33,7 +33,7 @@ same change.
 - **`IFacilityService.ts`** — `Facility` type, `FacilityRole` union
   (`performing_lab` | `internal_submitting_location` |
   `internal_ordering_client` | `external_ordering_client` |
-  `specimen_acquisition`),
+  `specimen_acquisition` | `reference_lab`),
   `FACILITY_ROLE_LABELS` (display strings), `FACILITY_ROLE_TOOLTIPS`
   (real, per-role hover text — further defines what each role actually
   means/gates, shown in `ClientEditorModal.tsx` via a native `title`
@@ -240,6 +240,53 @@ same change.
   resolution path instead of papering over the type error.
 - No Firestore stub exists yet for this folder (mock-only, matching
   most of this codebase's current phase).
+
+## Registry settings (`IRegistrySettingsService.ts`, `IFacilityRegistryOverrideService.ts`, and their two mock services + resolver)
+
+Real, per direct guidance: generalized here from `services/cytology/` — a
+facility's centralized-registry affiliation (e.g. "this Dutch lab reports
+to PALGA") is a real, facility-level fact, not a specimen-type-specific
+one. PALGA is confirmed universal across all Dutch pathology (histology,
+cytology, autopsy, molecular); Australia's NCSR records both cytology and
+histopathology. Left namespaced as `Cytology`-specific, a future surgical
+pathology module would have needed an identically-shaped, separately-
+maintained override table, risking the same real fact drifting out of
+sync between two hand-maintained records. Same real, established two-tier
+cascade shape as this module's own facility-override pattern elsewhere
+(Tier 1 enterprise default via `mockRegistrySettingsService`, Tier 2
+facility override via `mockFacilityRegistryOverrideService`, resolved by
+`resolveEffectiveRegistrySettings`). All five real, researched facility
+overrides (Korea/KNCSP-KCCR, UK/CSMS, Ireland/CervicalCheck, Netherlands/
+PALGA, Australia/NCSR) migrated verbatim — see `src/services/cytology/README.md`'s
+own Phase 45 for the full reasoning. What deliberately did **not** move:
+dispatch trigger logic and payload content stay in `services/cytology/`,
+since those genuinely are cytology-specific, for real clinical reasons.
+
+## `reference_lab` role, added per RFP-APLIS-2026-GLOBAL follow-up
+
+Genuinely different in direction from every other role above — every
+existing role describes a facility that sends orders/specimens TO
+this lab; `reference_lab` is the reverse, a facility THIS lab sends
+specimens TO for outsourced, specialized testing (molecular, NGS,
+reference IHC). Makes that facility selectable as a real destination
+when creating an `'External Referral'` `Batch` (`services/batches/`,
+see that folder's own README) — see `services/referral/README.md`
+for the rest of that real, separate module.
+
+**A real, pre-existing duplication found and fixed while adding this
+role, worth knowing about independent of this specific change**: two
+separate, parallel modal components both edit the same real
+`Facility.roles` field from their own, separately-maintained
+`FACILITY_ROLE_ORDER: FacilityRole[]` array —
+`components/FacilityDictionary/FacilityEditorModal.tsx` and
+`components/ClientDictionary/ClientEditorModal.tsx` (the latter's own
+directory name is a leftover from the pre-rename `Client` entity,
+confirmed still genuinely in use via `ClientDictionaryPage.tsx`, not
+dead code). Neither list is derived from the real `FacilityRole` type
+itself, so TypeScript has no way to catch a role added to one without
+the other — both were updated by hand for `reference_lab` here, but
+this is a real, standing risk for the next new role, not just a
+one-time miss.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

@@ -19,9 +19,29 @@ export interface StaffUser {
   voiceProfile?: VoiceProfileId | null;
   /** Professional credentials suffix (e.g. MD, FCAP, MBChB, FRCPath) */
   credentials?: string;
+  /** Real, per direct guidance's own explicit design — sign-out
+   *  permissions stored as real, scoped credentials/sub-capabilities
+   *  on the user record, not a dynamic top-level role. Deliberately a
+   *  separate field from `credentials` above (a formatted display
+   *  suffix) — same word, genuinely different real meaning. Real,
+   *  honest note: this app has two, separate, pre-existing StaffUser
+   *  definitions (this one and types/index.ts's own) — this field is
+   *  added to both for consistency, not a sign either has been
+   *  unified into the other. */
+  providerCredentials?: import('@/types/staff/ProviderCredential').ProviderCredential[];
   /** Option C — user-level pediatric qualification flag.
    * Must also be on the facility's authorizedPediatricPathologistIds list. */
   canViewPediatric?: boolean;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+   *  Intraoperative/Frozen Section Dashboard's own Location-First +
+   *  Quick Auth design ("Proximity Badge Tap (RFID/NFC) or 4-digit
+   *  PIN"). Real, honest mock scope: a genuine RFID/NFC badge reader
+   *  is real hardware integration this codebase cannot build — the
+   *  PIN half is real and fully working today, standing in for
+   *  whichever real credential a real deployment actually wires up.
+   *  Only meaningful for a real 'or-staff' role — lab staff keep
+   *  using the existing, real login. */
+  quickAuthPin?: string;
   /**
    * User-level flag granting visibility into Orchestration/Outreach cases
    * (O26- prefix, routed by CaseRouter to the PathScribe Firestore service)

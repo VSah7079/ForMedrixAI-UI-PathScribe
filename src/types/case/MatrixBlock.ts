@@ -157,4 +157,10 @@ export interface MatrixBlock {
   externalIdSource?: string;
   createdAt: string;
   createdBy: string;
+  /** Real, per direct follow-up on comment-field parity across
+   *  material types — see HistologyBlock.comments's own doc comment
+   *  (types/case/Specimen.ts) for the full reasoning, including why
+   *  this deliberately uses plain-text MaterialComment, not rich-text
+   *  CaseComment. */
+  comments?: import('./MaterialComment').MaterialComment[];
 }

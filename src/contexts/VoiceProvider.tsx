@@ -8,6 +8,8 @@ import { resolveVoiceAiConfig } from '../components/Config/AI/resolveVoiceAiMode
 import { getSessionUser } from '../services/auth/caseAccessControl';
 import { MockVoiceMacroService } from '../services/voicemacro/mockVoiceMacroService';
 import { isVoiceMacroVisibleTo, applyVoiceMacroSubstitutions, type VoiceMacro } from '../types/voiceMacros';
+import { getVoiceProfileRecognitionLang, getVoiceProfileLanguage } from '../constants/voiceProfiles';
+import { getPunctuationMapForLanguage } from './punctuationMaps';
 
 export type VoicePhase = 'standby' | 'ai' | 'local' | 'dictate';
 
@@ -109,7 +111,12 @@ async function checkStructuredContentAvailable(): Promise<boolean> {
 }
 
 function norm(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  // Real, per direct follow-up — same real Unicode-awareness fix as
+  // services/actionRegistry/mockActionRegistryService.ts's own norm()
+  // (see that file's own fuller comment): the previous ASCII-only
+  // regex destroyed non-Latin-script transcripts entirely (Korean
+  // normalized to an empty string) and mangled accented Latin text.
+  return s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
 }
 
 function parseShortcut(shortcut: string) {
@@ -123,63 +130,30 @@ function parseShortcut(shortcut: string) {
   };
 }
 
-// ── Punctuation substitution map ──────────────────────────────────────────────
-const PUNCT_MAP: Record<string, string> = {
-  'period':              '. ',
-  'comma':               ', ',
-  'question mark':       '? ',
-  'exclamation mark':    '! ',
-  'exclamation point':   '! ',
-  'colon':               ': ',
-  'semicolon':           '; ',
-  'new line':            '\n',
-  'new paragraph':       '\n\n',
-  'open paren':          '(',
-  'close paren':         ') ',
-  'open parenthesis':    '(',
-  'close parenthesis':   ') ',
-  'hyphen':              '-',
-  'dash':                ' \u2014 ',
-  'em dash':             ' \u2014 ',
-  'percent':             '% ',
-  'percent sign':        '% ',
-  'slash':               '/',
-  'backslash':           '\\',
-  'open bracket':        '[',
-  'close bracket':       '] ',
-  'open brace':          '{',
-  'close brace':         '} ',
-  'equals':              ' = ',
-  'plus':                ' + ',
-  'asterisk':            '*',
-  'at sign':             '@',
-  'hash':                '#',
-  'ampersand':           '&',
-  'tab':                 '\t',
-  'space':               ' ',
-  'ellipsis':            '\u2026 ',
-  'dot dot dot':         '\u2026 ',
-};
+// ── Punctuation substitution map (real, per-language — see
+//    ./punctuationMaps.ts's own header for the full account of the
+//    real, deliberate French/German/Dutch/Korean additions) ─────────
 
 /**
  * Apply punctuation substitution + smart capitalization.
  * - Capitalizes the first character of the segment
  * - Capitalizes the character after sentence-ending punctuation (. ? !)
  */
-function applyPunctuation(text: string): string {
+function applyPunctuation(text: string, language: import('../constants/voiceProfiles').VoiceProfileLanguage = 'en'): string {
+  const punctMap = getPunctuationMapForLanguage(language);
   const tokens = text.split(/\s+/);
   const out: string[] = [];
   let i = 0;
   while (i < tokens.length) {
     const twoWord = tokens.slice(i, i + 2).join(' ').toLowerCase();
-    if (PUNCT_MAP[twoWord] !== undefined) {
-      out.push(PUNCT_MAP[twoWord]);
+    if (punctMap[twoWord] !== undefined) {
+      out.push(punctMap[twoWord]);
       i += 2;
       continue;
     }
     const oneWord = tokens[i].toLowerCase();
-    if (PUNCT_MAP[oneWord] !== undefined) {
-      out.push(PUNCT_MAP[oneWord]);
+    if (punctMap[oneWord] !== undefined) {
+      out.push(punctMap[oneWord]);
       i++;
       continue;
     }
@@ -450,8 +424,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    // Apply local punctuation + capitalization + learned corrections
-    const localExpanded     = applyPunctuation(text);
+    // Apply local punctuation + capitalization + learned corrections.
+    // Real, per this file's own new language-aware punctuation-map
+    // wiring — resolves the real, current voice profile's own real
+    // language (not always English) so a French/German/Dutch/Korean
+    // dictation session's own real punctuation vocabulary is actually
+    // recognized, not silently defaulted to the English map.
+    const localExpanded     = applyPunctuation(text, getVoiceProfileLanguage(accent));
     const localWithLearning0 = applyDictationLearning(text, localExpanded);
 
     // Real, per direct guidance (voice-trigger recognition wiring —
@@ -512,7 +491,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const recognition           = new SpeechRecognition();
     recognition.continuous      = true;
     recognition.interimResults  = true;
-    recognition.lang            = accent;
+    recognition.lang            = getVoiceProfileRecognitionLang(accent);
 
     recognition.onend = () => {
       if (recognitionRef.current === recognition && phaseRef.current !== 'standby') {
@@ -544,7 +523,12 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         // ── COMMAND ──────────────────────────────────────────────────────────
-        const action = mockActionRegistryService.findActionByTrigger(text);
+        // Real, per src/MULTILANG_VOICE_COMMANDS_PLAN.md's own scoped
+        // pieces 1-2 — the current voice profile's own real language,
+        // so a genuine, real French/German/Dutch/Korean command
+        // trigger (once translated content exists) is actually
+        // matched, not silently only ever checked against English.
+        const action = mockActionRegistryService.findActionByTrigger(text, getVoiceProfileLanguage(accent));
         if (action) {
           pendingMissRef.current = null;
           mockActionRegistryService.executeAction(action, text);

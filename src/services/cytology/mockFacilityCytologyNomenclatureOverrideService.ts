@@ -16,8 +16,49 @@ const SEED: FacilityCytologyNomenclatureOverride[] = [
     overrides: { nomenclatureSystem: 'bscc_rcpath' },
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   },
+  {
+    // Real, confirmed gap, closed: Ardgowan NHS Health Board
+    // (jurisdiction: 'GB_SCT') had no nomenclature override at all.
+    // Real, direct confirmation this is correct, not assumed: per
+    // direct guidance's own "Jurisdiction Breakdown" information,
+    // "Scotland/Wales/NI... Clinical Protocol: Pathology reporting
+    // must adhere to RCPath (Royal College of Pathologists) datasets
+    // mapped to SNOMED CT" — RCPath is the real, UK-wide clinical
+    // standard, not England-specific. BSCC/RCPath is the same real
+    // system already confirmed for Fenwick Women's Hospital above;
+    // this is the same real nomenclature, a second, distinct real UK
+    // facility, not a second, separate dictionary.
+    id: 'fac-nomenclature-seed-ardgowan-hb', facilityId: 'c-ardgowan-hb',
+    overrides: { nomenclatureSystem: 'bscc_rcpath' },
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    // Real, per direct research: RCPath's own real report into the
+    // Southern Health and Social Care Trust's cervical cytology
+    // laboratory directly confirms RCPath oversight of Northern
+    // Ireland's own cytology lab services — the same real BSCC/RCPath
+    // nomenclature already confirmed for England and Scotland.
+    id: 'fac-nomenclature-seed-lagan-valley', facilityId: 'c-ni-lagan-valley',
+    overrides: { nomenclatureSystem: 'bscc_rcpath' },
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'fac-nomenclature-seed-berlin-frauenklinik', facilityId: 'c-de-berlin-frauenklinik',
+    overrides: { nomenclatureSystem: 'munchen_iiib' },
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    // Real, per direct guidance's own request: two facilities per real
+    // geography. The Netherlands is the one new geography here that
+    // needs a real nomenclature override — France, Belgium, Canada,
+    // New Zealand, and Australia all use real Bethesda, matching the
+    // Enterprise default, so none of them need one.
+    id: 'fac-nomenclature-seed-amsterdam-cyto', facilityId: 'c-nl-amsterdam-cyto',
+    overrides: { nomenclatureSystem: 'palga_cisoea' },
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  },
 ];
-const SEED_VERSION = '1';
+const SEED_VERSION = '5'; // bumped: real, new Northern Ireland facility (c-ni-lagan-valley) nomenclature override added — BSCC/RCPath.
 const SEED_VERSION_KEY = 'facilityCytologyNomenclatureOverrides_seed_version';
 if (storageGet<string | null>(SEED_VERSION_KEY, null) !== SEED_VERSION) {
   storageSet(STORAGE_KEY, SEED);

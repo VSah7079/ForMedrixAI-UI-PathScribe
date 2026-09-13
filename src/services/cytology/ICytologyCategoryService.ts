@@ -60,7 +60,7 @@ export type CytologyCategorySection = 'adequacy' | 'general_categorization' | 'i
  *  'bethesda' is this dictionary's original, real system (US, Canada,
  *  Australia, New Zealand, South Korea); 'bscc_rcpath' (UK, Scotland,
  *  Ireland) is the first real, additional system, added this phase. */
-export type CytologyNomenclatureSystem = 'bethesda' | 'bscc_rcpath' | 'munchen_iiib' | 'sfcc';
+export type CytologyNomenclatureSystem = 'bethesda' | 'bscc_rcpath' | 'munchen_iiib' | 'sfcc' | 'palga_cisoea';
 
 /** Real, per direct guidance: "The user can indicate if the entry is a
  *  Primary, Secondary or both. When entering the Primary, the
@@ -94,6 +94,20 @@ export interface CytologyCategoryEntry {
   /** The real, standard Bethesda term itself — e.g. "Atypical squamous
    *  cells of undetermined significance". */
   label:         string;
+  /** Real, per direct guidance: SFCC (France) is not a separate
+   *  classification structure — confirmed directly against official
+   *  French sources (HAS/ANAES's own 2002 recommendations, still the
+   *  cited reference in 2016+ French government guidance): "Cette
+   *  terminologie est recommandée par la SFCC" refers to Bethesda
+   *  itself, and "Le système de Bethesda 2014 doit être utilisé pour
+   *  programme de dépistage du CCU." Only ever set on a real
+   *  'bethesda' entry — getByNomenclatureSystem('sfcc') returns these
+   *  same Bethesda entries with label/description swapped to their
+   *  French text, never a separate, duplicated entry set (which would
+   *  risk drifting out of sync with Bethesda over time, and would
+   *  misrepresent SFCC as a structurally distinct system when it is
+   *  not). */
+  labelFr?:      string;
   /** Real, standard short form where the Bethesda System has one —
    *  e.g. "ASC-US", "ASC-H", "LSIL", "HSIL", "AIS". Undefined where no
    *  standard abbreviation exists (most adequacy/organism/reactive-
@@ -112,6 +126,10 @@ export interface CytologyCategoryEntry {
    *  description is written, but every real caller displaying review
    *  or report content should prefer this field over `label`. */
   description?:  string;
+  /** Real, per this file's own labelFr doc comment — the matching
+   *  French description text, only ever set alongside labelFr on a
+   *  real 'bethesda' entry. */
+  descriptionFr?: string;
   /** Real, per the original module's own explicit routing requirement
    *  ("negative primary screens... directly to sign-out, while...
    *  abnormal screens... to the Pathologist review queue") — whether a

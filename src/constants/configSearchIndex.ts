@@ -19,7 +19,7 @@
  */
 
 export type ConfigTabId =
-  | 'ai' | 'protocols' | 'staff' | 'voice' | 'system'
+  | 'ai' | 'protocols' | 'staff' | 'voice' | 'system' | 'cytology'
   | 'actions' | 'macros' | 'templates' | 'validation' | 'demo';
 
 export interface ConfigSearchEntry {
@@ -75,6 +75,30 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
     synonyms: ['voice recognition', 'voice commands ai'] },
 
   // ── System tab ─────────────────────────────────────────────────────────────
+  { id: 'sys-dp-vendors', label: 'Vendor Integrations — Digital Pathology / AI', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'vendor_integrations',
+    description: 'Real, named computational-pathology AI vendors (Paige, Ibex, PathAI, Proscia, Hologic) this lab may order screening results from — shared across cytology and surgical pathology. One category within the consolidated Vendor Integrations screen.',
+    synonyms: ['ai vendor', 'digital pathology', 'computational pathology', 'paige', 'ibex', 'pathai', 'proscia', 'hologic', 'fda cleared'] },
+  { id: 'sys-wsi-viewer-vendors', label: 'Vendor Integrations — WSI Viewers', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'vendor_integrations',
+    description: 'Real, launchable whole-slide-image viewer platforms and their real launch URL templates — configure a vendor\'s real viewer URL here so "Launch in Viewer" can route to a specific slide. One category within the consolidated Vendor Integrations screen.',
+    synonyms: ['wsi viewer', 'whole slide imaging', 'scanner', 'leica', 'aperio', 'roche', 'upath', 'hamamatsu', 'philips', 'intellisite', 'launch url', 'dicom'] },
+  { id: 'sys-ims-vendors', label: 'Vendor Integrations — Image Management Systems', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'vendor_integrations',
+    description: 'Real, reference-only image/PDF storage endpoints — an enterprise VNA/PACS/DAM or a smaller site\'s own on-prem file server. PathScribe never stores the binary payload itself, only a URL pointing here. One category within the consolidated Vendor Integrations screen.',
+    synonyms: ['image management', 'vna', 'pacs', 'dam', 'on-prem', 'file server', 'image storage', 'pdf storage', 'fallback url'] },
+  { id: 'sys-gross-imaging-vendors', label: 'Vendor Integrations — Gross / Macro Imaging & Telepathology', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'vendor_integrations',
+    description: 'Real, point-of-capture gross/macro imaging and telepathology vendors for the cut-up bench (PAX-it!/PAXcam, Smart In Media PathoZoom®, Milestone Medical MacroPATH) — annotation, measurement, and live streaming, distinct from a WSI viewer or passive image store. One category within the consolidated Vendor Integrations screen.',
+    synonyms: ['gross imaging', 'macro imaging', 'telepathology', 'grossing camera', 'cut-up', 'paxit', 'paxcam', 'pathozoom', 'smart in media', 'macropath', 'milestone medical'] },
+  { id: 'sys-cytology-qc-rules', label: 'Cytology QC Rules', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'cytology_qc_rules',
+    description: 'Real, admin-configurable rules that sample, assign, and route cytology cases for QC peer review — criteria, sampling logic (percentage/interval/fixed-volume), priority tier, and SLA. Seeded with real, international default rules (US CLIA, UK NHS, EU ISO 15189, Australia NATA).',
+    synonyms: ['qc rules', 'quality control', 'rescreen', 'peer review', 'cytology qc', 'clia', 'rapid rescreen', 'assignment engine'] },
+  { id: 'sys-or-suite-terminals', label: 'OR Suite Terminals', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'or_suite_terminals',
+    description: 'Real, per-OR "Station Identity" wall-display terminals for the Intraoperative/Frozen Section Dashboard, each bound to one specific Location.',
+    synonyms: ['or dashboard', 'intraoperative dashboard', 'frozen section', 'or suite', 'station identity', 'operating room terminal'] },
+  { id: 'sys-migration-field-mappings', label: 'Migration Field Mappings', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'migration_field_mappings',
+    description: 'Real, admin-editable mapping from a legacy LIS\'s own source field names to this app\'s migration target fields, for the Historical Data Migration Engine.',
+    synonyms: ['data migration', 'legacy import', 'field mapping', 'legacy lis', 'bulk import'] },
+  { id: 'sys-cancer-registry-settings', label: 'Cancer Registry Reporting', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'cancer_registry_settings',
+    description: 'Real, facility-scoped central cancer registry setting (NAACCR, CPAC, COSD, INCa, ADT/GEKID, AIHW, NZ Cancer Registry, KCCR) for surgical pathology sign-out reporting — genuinely separate from Cytology Registry Reporting.',
+    synonyms: ['naaccr', 'cpac', 'cosd', 'inca', 'gekid', 'aihw', 'kccr', 'cancer registry', 'tumor registry', 'icd-o'] },
   // Real, per direct follow-up ("did we work on this yet? Per-facility
   // Specimen Deficiencies" → the config search bug this surfaced): five
   // entries removed here — LIS Integration Enabled/Endpoint/Owns Case
@@ -132,6 +156,46 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
   { id: 'sys-info', label: 'System Information', tabId: 'system', tabLabel: 'System', confidence: 'verified',
     description: 'Application version, AI provider/model, and API connectivity status for support diagnostics.',
     synonyms: ['build version', 'support report', 'app version'] },
+
+  // ── Cytology tab ───────────────────────────────────────────────────────────
+  // Real, per direct report ("when I searched for Cytology, the
+  // search did not return anything") — the three real, pre-existing
+  // entries below were originally added under 'system' as a fix for
+  // that report; relocated here (same real ids, section values, and
+  // synonyms) now that Cytology has its own real, dedicated
+  // Configuration tab (Config/Cytology/index.tsx). Six new entries
+  // added alongside them for the real, previously-missing cascade
+  // settings screens built in the same pass.
+  { id: 'sys-cytology-categories', label: 'Interpretation and Recommendations (Cytology)', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_categories',
+    description: 'Standardized specimen adequacy, general categorization, interpretation/result, and clinical recommendation vocabulary for GYN cytology — Bethesda, BSCC/RCPath (UK), München III (Germany), and SFCC (France, French-labeled Bethesda).',
+    synonyms: ['cytology', 'bethesda', 'pap smear', 'cervical cytology', 'bscc', 'rcpath', 'sfcc', 'munchen', 'dyskaryosis'] },
+  { id: 'sys-non-gyn-cytology-categories', label: 'Non-GYN Classification (Milan/Paris)', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'non_gyn_cytology_categories',
+    description: 'Real, admin-editable diagnostic category dictionaries for the Milan System (salivary gland FNA) and the Paris System (urinary tract cytology, TPS 2.0) — separate from GYN cervical cytology.',
+    synonyms: ['milan system', 'paris system', 'salivary gland cytology', 'urinary cytology', 'urine cytology', 'non-gyn', 'sump', 'hguc', 'nhguc'] },
+  { id: 'sys-cytology-qc', label: 'Cytology QC Random Selection Rate', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_qc_settings',
+    description: 'The real, configured rate at which negative GYN cytology screens are randomly selected for 10% rescreening QC.',
+    synonyms: ['cytology', 'rescreening', 'random selection', 'qc rate'] },
+  { id: 'sys-cytology-histo-correlation', label: 'Cyto-Histologic Correlation (SNOMED Mapping)', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'snomed_histology_severity_mapping',
+    description: 'Maps SNOMED-coded histology diagnoses to a real severity rank, for automated cytology-histology correlation QA.',
+    synonyms: ['cytology', 'histology correlation', 'snomed mapping', 'cyto-histo'] },
+  { id: 'cyt-nomenclature', label: 'Cytology Nomenclature System', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_nomenclature',
+    description: 'Two-tier cascade (Enterprise + Facility) controlling which real reporting terminology a lab\'s interpretation dropdowns use.',
+    synonyms: ['cytology', 'nomenclature', 'bethesda', 'bscc', 'sfcc', 'palga', 'terminology system'] },
+  { id: 'cyt-registry', label: 'Cytology Registry Reporting', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_registry',
+    description: 'Two-tier cascade controlling which real, national centralized registry a lab\'s signed-out GYN cytology results report to.',
+    synonyms: ['cytology', 'registry', 'csms', 'cervicalcheck', 'palga', 'ncsr', 'kncsp'] },
+  { id: 'cyt-routing', label: 'Non-GYN Cytology Routing', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_routing',
+    description: 'Two-tier cascade controlling which real worklist a non-GYN cytology specimen lands on for review.',
+    synonyms: ['cytology', 'routing', 'non-gyn', 'fna', 'body fluid'] },
+  { id: 'cyt-screening-strategy', label: 'Cytology Screening Strategy', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_screening_strategy',
+    description: 'Two-tier cascade controlling the base cervical screening strategy a lab follows — co-testing, primary HPV reflex, or cytology only.',
+    synonyms: ['cytology', 'screening strategy', 'co-testing', 'primary hpv', 'reflex'] },
+  { id: 'cyt-workload-cap', label: 'Cytology Daily Workload Cap', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_workload_cap',
+    description: 'Three-tier cascade (Enterprise + Facility + Staff) controlling the maximum real number of GYN cytology slides a cytotechnologist may screen in one day (CLIA workload limit).',
+    synonyms: ['cytology', 'workload cap', 'daily slide cap', 'clia', 'cytotechnologist'] },
+  { id: 'cyt-instrumentation', label: 'Cytology Assisted Instrumentation', tabId: 'cytology', tabLabel: 'Cytology', confidence: 'verified', section: 'cytology_instrumentation',
+    description: 'Global setting for whether a lab digitizes cervical cytology slides (WSI) or uses a traditional, physical-guided scope.',
+    synonyms: ['cytology', 'instrumentation', 'wsi', 'whole slide imaging', 'traditional guided'] },
 
   // ── Staff tab ──────────────────────────────────────────────────────────────
   { id: 'staff-add', label: 'Add Staff Member', tabId: 'staff', tabLabel: 'Staff', confidence: 'verified',

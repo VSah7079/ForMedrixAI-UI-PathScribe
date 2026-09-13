@@ -28,7 +28,7 @@
 import { validateGs1Fields, buildGs1DataMatrix } from './gs1DataMatrix';
 import type { Gs1LabelFields } from './gs1DataMatrix';
 import { buildCassetteZplTemplate, buildSlideZplTemplate } from './zplTemplates';
-import { printZplViaQzTray } from './qzTrayBridge';
+import { dispatchZplLabel } from './dispatchZplLabel';
 import { buildNetworkPrintPayload, dispatchNetworkPrintJob } from './dispatchNetworkPrintJob';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 
@@ -40,32 +40,14 @@ export interface PrintCassetteSlideLabelError {
   message: string;
 }
 
-const NOT_IMPLEMENTED_MESSAGE = (bridgeType: string) =>
-  `Printer bridge "${bridgeType}" is a real, configured option but has no working dispatch implementation yet — only qz_tray and direct_interface_engine are wired up. See PrinterBridgeType's own doc comment.`;
-
-/** Real, shared routing for the qz_tray/other bridges — given an
- *  already-built ZPL string, dispatches it via whichever real bridge
- *  the printer profile is configured for. direct_interface_engine is
- *  handled separately by each caller (see printCassetteLabel/
- *  printSlideLabel), since that path needs its own real, per-label-
- *  type payload shape, not a generic ZPL string. */
-async function dispatchViaConfiguredBridge(
-  printer: PrinterProfile,
-  zpl: string,
-  copies: number,
-): Promise<PrintCassetteSlideLabelResult | PrintCassetteSlideLabelError> {
-  if (printer.bridgeType === 'qz_tray') {
-    const result = await printZplViaQzTray(printer.printerId, zpl, copies);
-    // Real, deliberate cast — this project's own tsconfig.json has
-    // strictNullChecks disabled, under which TypeScript cannot
-    // reliably narrow a discriminated union to its `ok: false` branch.
-    // Same real, established workaround used throughout this app's
-    // own test suites (e.g. qzTrayBridge.test.ts) for the identical
-    // situation.
-    return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
-  }
-  return { ok: false, message: NOT_IMPLEMENTED_MESSAGE(printer.bridgeType) };
-}
+/** Real, shared routing for the qz_tray/other bridges — extracted to
+ *  dispatchZplLabel.ts (utils/labels/) so container and molecular
+ *  labels can reuse the exact same real QZ Tray dispatch path, rather
+ *  than a second, duplicated copy of this same routing logic.
+ *  direct_interface_engine is handled separately by each caller (see
+ *  printCassetteLabel/printSlideLabel below), since that path needs
+ *  its own real, per-label-type payload shape, not a generic ZPL
+ *  string. */
 
 export interface PrintCassetteLabelInput {
   fullAccession: string;
@@ -155,7 +137,7 @@ export async function printCassetteLabel(
     gs1, accessionNumber: input.fullAccession, specimenDesignator: input.specimenLabel,
     blockId: blockLabel, patientName: input.patientName,
   });
-  return dispatchViaConfiguredBridge(printer, zpl, input.copies ?? 1);
+  return dispatchZplLabel(printer, zpl, input.copies ?? 1);
 }
 
 export interface PrintSlideLabelInput {
@@ -214,5 +196,5 @@ export async function printSlideLabel(
     gs1, fullAccession: input.fullAccession, specimenLabel: input.specimenLabel,
     blockLabel, level: input.level, stainName: input.stainName,
   });
-  return dispatchViaConfiguredBridge(printer, zpl, input.copies ?? 1);
+  return dispatchZplLabel(printer, zpl, input.copies ?? 1);
 }

@@ -22,6 +22,7 @@ import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { getFacilityDateParts } from '@/utils/facilityTime';
 import { isUrgentCase } from '@/utils/caseUrgency';
 import { AmendedAddendaTriageTile } from './AmendedAddendaTriageTile';
+import { PendingGrossingTriageTile } from './PendingGrossingTriageTile';
 import { flagService }    from '@/services';
 import { amendmentService, lisAmendmentNoticeService, informalReviewService } from '@/services';
 import type { AmendmentType } from '@/types/reports/AmendmentRecord';
@@ -1065,6 +1066,7 @@ const WorklistPage: React.FC = () => {
 
             {/* Worklist table — height measured from viewport top offset */}
             <AmendedAddendaTriageTile pathologistId={user?.id ?? ''} />
+            <PendingGrossingTriageTile cases={realCases} />
             <div
               ref={wrapperRef}
               data-capture-hide="true"

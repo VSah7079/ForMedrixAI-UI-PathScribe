@@ -3,7 +3,7 @@
 // CytologyOutboundResultQueueEntry.ts's own established shape exactly,
 // with `registryId` carried explicitly, since a facility's real
 // registry destination is itself a real, configurable value
-// (ICytologyRegistrySettingsService.ts), not a single fixed one the
+// (IRegistrySettingsService.ts), not a single fixed one the
 // way the EHR/LIS ORU dispatch has.
 export interface CytologyRegistryOutboundQueueEntry {
   id: string;

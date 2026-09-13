@@ -43,4 +43,25 @@ describe('resolveCytologyReviewerRole — real, per direct guidance\'s own defau
     expect(resolveCytologyReviewerRole([], false, undefined)).toBe('primary_screen');
     expect(resolveCytologyReviewerRole([{ role: 'primary_screen' }], false, undefined)).toBe('secondary_reviewer');
   });
+
+  it('a real, pending post-sign-out peer review flag correctly overrides the plain Pathologist Review default for a genuinely DIFFERENT pathologist', () => {
+    const flagRandom = { reason: 'random_selection' as const, flaggedBy: 'system', flaggedByName: 'Automatic', flaggedAt: '2026-09-06T00:00:00.000Z' };
+    const flagTargeted = { reason: 'targeted_high_risk' as const, flaggedBy: 'system', flaggedByName: 'Automatic', flaggedAt: '2026-09-06T00:00:00.000Z' };
+    const context = { flag: flagRandom, originalSignerId: 'path-A', currentUserId: 'path-B' };
+    expect(resolveCytologyReviewerRole([], true, undefined, context)).toBe('post_signout_peer_review_random');
+    expect(resolveCytologyReviewerRole([], true, undefined, { ...context, flag: flagTargeted })).toBe('post_signout_peer_review_targeted');
+  });
+
+  it('a real, critical integrity check: the SAME pathologist who signed out the original report never gets assigned the peer-review role for their own case — falls back to plain Pathologist Review', () => {
+    const flag = { reason: 'random_selection' as const, flaggedBy: 'system', flaggedByName: 'Automatic', flaggedAt: '2026-09-06T00:00:00.000Z' };
+    const context = { flag, originalSignerId: 'path-A', currentUserId: 'path-A' };
+    expect(resolveCytologyReviewerRole([], true, undefined, context)).toBe('pathologist_review');
+  });
+
+  it('a real, already-cleared peer review flag no longer overrides the default for a different pathologist either', () => {
+    const flag = { reason: 'random_selection' as const, flaggedBy: 'system', flaggedByName: 'Automatic', flaggedAt: '2026-09-06T00:00:00.000Z' };
+    const context = { flag, originalSignerId: 'path-A', currentUserId: 'path-B' };
+    const reviews = [{ role: 'post_signout_peer_review_random' as const }];
+    expect(resolveCytologyReviewerRole(reviews, true, undefined, context)).toBe('pathologist_review');
+  });
 });

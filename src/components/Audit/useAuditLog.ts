@@ -232,6 +232,10 @@ export type AuditPayload = {
   case_search_no_results:     { query: string };
   case_search_performed:      { query: string; resultCount: number };
   case_search_opened:         { query: string; caseId: string; accession?: string; matchedField?: string };
+  // Real, per direct guidance's own full "On-Demand Fetch &
+  // Fallback" design — a real local cache miss that a live LIS
+  // fetch (Option A) successfully resolved.
+  case_fetched_on_demand_from_lis: { query: string; caseId: string };
 
   // ── Validation Studies (additional — some entries already existed above) ──
   validation_study_submitted:           { studyName: string; committeeName: string; submittedBy: string };

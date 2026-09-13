@@ -99,10 +99,46 @@ import type { DecalSolutionType } from './DecalBatch';
  *  no guess" behavior in NewContainerModal.tsx — no code change
  *  needed there), same as any other station whose workflowStage was
  *  never a batch-container concept to begin with. */
+// Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+// Laboratory Specimen Referral gap: "review the Batch operations as
+// this is the logical place to host this functionality." An outgoing
+// referral shipment is genuinely the same real shape as every other
+// node here — a real, scannable manifest of items, tracked and
+// reconciled — just with an external reference lab as the real
+// destination instead of an internal processing station. Added as a
+// seventh, genuinely distinct node rather than a second, parallel
+// batch system.
+// Real, per the Protocol-Driven Workflow Infrastructure story's Part
+// 2a. Three genuinely distinct cytology-specific container stages —
+// same real "master barcode tracking a physical carrier's manifest"
+// shape as every node above, just for cytology's own real equipment
+// chain (ThinPrep processor -> stainer rack -> imager) instead of
+// histology's processor/embedding/microtome chain. Kept as three
+// separate nodes, not folded into 'Processing'/'Staining' above,
+// because each one carries genuinely different node-specific data
+// (Batch.cytologyInstrumentStatus, Batch.cytologyStainTypeId,
+// BatchItem.fovCount below) and drives genuinely different real
+// completion behavior (StainOrder status transition, AI screening
+// order trigger) that a histology Processing/Staining batch must
+// never accidentally also run.
 export const BATCH_PROCESSING_NODES = [
-  'Decal / Special Processing', 'Processing', 'Embedding', 'Microtomy / Sectioning', 'Staining', 'Checkout',
+  'Decal / Special Processing', 'Processing', 'Embedding', 'Microtomy / Sectioning', 'Staining', 'Checkout', 'External Referral',
+  'Cytology Processing', 'Cytology Staining', 'Cytology Imaging',
 ] as const;
 export type BatchProcessingNode = typeof BATCH_PROCESSING_NODES[number];
+
+/** Real, additive — per 'Cytology Processing' (ThinPrep processor
+ *  batch). The instrument's own real, sequential run status, reported
+ *  inbound via CytologyInstrumentStatusEvent (services/hl7/
+ *  processInboundCytologyInstrumentStatusEvent.ts) and persisted here
+ *  so the batch's own real-time status is visible wherever active
+ *  batches are already shown — no separate, second "dashboard"
+ *  surface, since Batch Management already fills that role for every
+ *  other node. 'Loaded to Instrument' is set by PathScribe itself the
+ *  moment a vial is scanned into the batch (mirrors every other
+ *  node's own "item added" moment); the remaining three are real,
+ *  vendor-reported statuses that only ever arrive inbound. */
+export type CytologyInstrumentStatus = 'Loaded to Instrument' | 'In Process' | 'Cell Transfer' | 'Slide Prep Complete';
 
 export type BatchPriority = 'STAT' | 'Routine';
 
@@ -173,6 +209,14 @@ export interface BatchItem {
    *  that's only ever been in the one batch it was originally scanned
    *  into — the common case, not something every item needs to carry. */
   transferHistory?: BatchItemTransfer[];
+  /** Real, additive — per 'Cytology Imaging' (imager batch). The
+   *  scanner's own real, reported field-of-view count for this one
+   *  slide, captured at the same real moment the slide's barcode is
+   *  scanned into the batch (addItemByScan's optional fifth
+   *  argument) — never a separate, second scan event. Undefined for
+   *  every item on every other processingNode; only ever meaningful
+   *  on a 'Cytology Imaging' batch. */
+  fovCount?: number;
 }
 
 /** A real, extra item scanned out during reconciliation that never
@@ -246,6 +290,51 @@ export interface Batch {
    *  'complete' at the same time — its real job is done once every
    *  item has moved on. */
   transferredToBatchId?: string;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+   *  Laboratory Specimen Referral gap. Both fields only meaningful
+   *  when processingNode === 'External Referral' — the same real
+   *  "node-specific optional fields on the shared Batch shape"
+   *  pattern already established for Decal above.
+   *  referralDestinationFacilityId references a real Facility
+   *  carrying the new 'reference_lab' role — never a second,
+   *  free-text destination name competing with the real Facility
+   *  dictionary. */
+  referralDestinationFacilityId?: string;
+  /** Real, free-text description of the specific test/panel being
+   *  referred out, e.g. "Foundation Medicine CDx NGS Panel" — same
+   *  real, honest "site vocabulary varies too much for a closed enum"
+   *  reasoning as `protocol` below, not a second, competing field. */
+  referralTestRequested?: string;
+  /** Real, additive — per 'Cytology Processing' (ThinPrep processor
+   *  batch). See CytologyInstrumentStatus's own doc comment above.
+   *  Only meaningful when processingNode === 'Cytology Processing'. */
+  cytologyInstrumentStatus?: CytologyInstrumentStatus;
+  /** Real, additive — per 'Cytology Staining' (stainer rack batch).
+   *  The real stain protocol selected from the Diagnostic Catalog
+   *  (StainType.id, services/stains/IStainService.ts) this rack ran —
+   *  same real FK-not-free-text reasoning as PathwayTask.stainTypeIds.
+   *  Only meaningful when processingNode === 'Cytology Staining'. */
+  cytologyStainTypeId?: string;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+   *  Laboratory Sensor & Cold-Chain Integration gap — "workflow hold
+   *  triggers if transit temperature exceeds defined parameters."
+   *  Reuses this same real Batch's own established completion-gating
+   *  pattern (the same real mechanism that already blocks completion
+   *  on missing/unexpected items) rather than a new, separate hold
+   *  type — set the moment a genuine excursion is detected on a
+   *  HardwareContainer currently checked out to this batch; cleared
+   *  only by an explicit, real acknowledgement (never silently, and
+   *  never merely because a later reading came back normal — a real
+   *  excursion already happened and still needs a human decision). */
+  coldChainExcursion?: {
+    detectedAt: string;
+    readingId: string;
+    temperatureCelsius: number;
+    acknowledgedAt?: string;
+    acknowledgedByUserId?: string;
+    acknowledgedByUserName?: string;
+    acknowledgedNote?: string;
+  };
   /** Free text — real run/protocol name, e.g. "Standard H&E Overnight
    *  Run." Same real, honest reasoning as every other free-text
    *  protocol/vocabulary field elsewhere in this app (MaterialLocation.
@@ -317,6 +406,16 @@ export interface IBatchService {
      *  Batch.solutionType/targetDurationMinutes's own doc comments. */
     solutionType?: DecalSolutionType;
     targetDurationMinutes?: number;
+    /** Both only meaningful (and only shown by NewContainerModal.tsx)
+     *  when processingNode === 'External Referral' — see
+     *  Batch.referralDestinationFacilityId/referralTestRequested's
+     *  own doc comments. */
+    referralDestinationFacilityId?: string;
+    referralTestRequested?: string;
+    /** Only meaningful (and only shown by NewContainerModal.tsx) when
+     *  processingNode === 'Cytology Staining' — see
+     *  Batch.cytologyStainTypeId's own doc comment. */
+    cytologyStainTypeId?: string;
   }): Promise<ServiceResult<Batch>>;
   /** Real, central add-item path — resolves `scannedValue` against
    *  this app's own real material tree (via resolveMaterialFromScan.ts,
@@ -326,8 +425,14 @@ export interface IBatchService {
    *  ...alert if an incompatible specimen is added" starting point;
    *  richer, tissue-type-specific protocol rules are a real, later
    *  refinement once this app has a real tissue-type field to validate
-   *  against (confirmed directly — none exists yet). */
-  addItemByScan(batchId: ID, scannedValue: string, byUserId: string, byUserName: string): Promise<AddItemOutcome>;
+   *  against (confirmed directly — none exists yet).
+   *
+   *  Real, additive fifth argument — per 'Cytology Imaging'
+   *  (BatchItem.fovCount's own doc comment): the imager's own real,
+   *  reported field-of-view count for this one slide, captured at the
+   *  same real scan moment. Ignored (never stored) on every other
+   *  processingNode. */
+  addItemByScan(batchId: ID, scannedValue: string, byUserId: string, byUserName: string, fovCount?: number): Promise<AddItemOutcome>;
   removeItem(batchId: ID, itemId: ID, byUserId: string, byUserName: string): Promise<ServiceResult<Batch>>;
   /** Real feature, per direct follow-up: "Is there a mechanism to move
    *  an asset from one container to the other?" A real, single,
@@ -358,6 +463,23 @@ export interface IBatchService {
    *  real, required reason, and always recorded (BatchOverride) —
    *  never a silent bypass. */
   overrideAndComplete(batchId: ID, byUserId: string, byUserName: string, reason: string): Promise<ServiceResult<Batch>>;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+   *  Laboratory Sensor & Cold-Chain Integration gap — called by
+   *  processInboundTelemetryReadingEvent.ts the moment a genuine
+   *  excursion is detected on a HardwareContainer currently checked
+   *  out to a real batch. Refuses outright if the batch already has
+   *  an unacknowledged excursion on file — a second, real excursion
+   *  before the first is even acknowledged is a genuinely more severe
+   *  situation, never silently overwritten. */
+  setColdChainExcursion(batchId: ID, readingId: string, temperatureCelsius: number, detectedAt: string): Promise<ServiceResult<Batch>>;
+  acknowledgeColdChainExcursion(batchId: ID, byUserId: string, byUserName: string, note: string): Promise<ServiceResult<Batch>>;
+  /** Real, additive — per 'Cytology Processing'. Called by
+   *  processInboundCytologyInstrumentStatusEvent.ts the moment the
+   *  ThinPrep instrument reports a real status transition for the
+   *  batch it's currently running. Fails honestly if the batch isn't
+   *  genuinely a 'Cytology Processing' batch — this instrument-status
+   *  field means nothing on any other node. */
+  setCytologyInstrumentStatus(batchId: ID, status: CytologyInstrumentStatus): Promise<ServiceResult<Batch>>;
   abort(batchId: ID, byUserId: string, byUserName: string, reason: string): Promise<ServiceResult<Batch>>;
   /** The spec's own FR-3.1 "[ 🔓 Release Rack ]" action pill — a real,
    *  explicit, manual release of a semi-permanent batch's own rack

@@ -11,7 +11,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
-import { batchService, hardwareContainerRegistryService, printSettingsService } from '@/services';
+import { useTranslation } from 'react-i18next';
+import { batchService, hardwareContainerRegistryService, printSettingsService, facilityService, stainTypeService } from '@/services';
+import type { Facility } from '@/services/facilities/IFacilityService';
+import type { StainType } from '@/services';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
 import { generateBarcodeSvg } from '@/utils/labels/generateBarcodeSvg';
 import { dispatchContainerLabelPrint } from '@/utils/labels/dispatchContainerLabelPrint';
@@ -63,6 +66,7 @@ function deriveNodeFromStation(station: ScanStation | undefined): BatchProcessin
 }
 
 const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userName, stationId, initialRackId }) => {
+  const { t } = useTranslation();
   const [containerType, setContainerType] = useState<ContainerType>(CONTAINER_TYPES[0]);
   const [processingNode, setProcessingNode] = useState<BatchProcessingNode>(BATCH_PROCESSING_NODES[0]);
   const [nodeAutoDerived, setNodeAutoDerived] = useState(false);
@@ -78,6 +82,26 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
   // rather than asking a tech to type raw minutes; combined into one
   // real targetDurationMinutes value on create.
   const [solutionType, setSolutionType] = useState<DecalSolutionType>(DECAL_SOLUTION_TYPES[0]);
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+  // Laboratory Specimen Referral gap — the real, existing Facility
+  // dictionary's own reference_lab-role entries, fetched fresh so a
+  // newly added reference lab is immediately selectable here too.
+  const [referenceLabs, setReferenceLabs] = useState<Facility[]>([]);
+  const [referralDestinationFacilityId, setReferralDestinationFacilityId] = useState('');
+  const [referralTestRequested, setReferralTestRequested] = useState('');
+  useEffect(() => {
+    facilityService.getAll().then(res => {
+      if (res.ok) setReferenceLabs(res.data.filter(f => f.roles.includes('reference_lab')));
+    });
+  }, []);
+  // Real, additive — per 'Cytology Staining' (Batch.cytologyStainTypeId's
+  // own doc comment). Same real "node-specific required field, fetched
+  // from the real dictionary" pattern as referenceLabs above.
+  const [stainTypes, setStainTypes] = useState<StainType[]>([]);
+  const [cytologyStainTypeId, setCytologyStainTypeId] = useState('');
+  useEffect(() => {
+    stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
+  }, []);
   const [targetHours, setTargetHours] = useState(4);
   const [targetMinutesExtra, setTargetMinutesExtra] = useState(0);
 
@@ -146,10 +170,19 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
   }, [containerType]);
 
   const isDecalNode = processingNode === 'Decal / Special Processing';
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+  // Laboratory Specimen Referral gap — same real "node-specific
+  // required fields" pattern as isDecalNode above.
+  const isReferralNode = processingNode === 'External Referral';
+  // Real, additive — same real "node-specific required field" pattern
+  // as isDecalNode/isReferralNode above.
+  const isCytologyStainingNode = processingNode === 'Cytology Staining';
   const targetDurationMinutes = targetHours * 60 + targetMinutesExtra;
   const canCreate = protocol.trim().length > 0
     && (identifierMode === 'disposable' || rackId.trim().length > 0)
-    && (!isDecalNode || targetDurationMinutes > 0);
+    && (!isDecalNode || targetDurationMinutes > 0)
+    && (!isReferralNode || referralDestinationFacilityId.trim().length > 0)
+    && (!isCytologyStainingNode || cytologyStainTypeId.trim().length > 0);
 
   // Real, derived (not stateful) mismatch check — recomputed on every
   // render from whatever's currently selected, so it stays correct
@@ -175,6 +208,9 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
       rackId: identifierMode === 'semi_permanent' ? rackId.trim() : undefined,
       solutionType: isDecalNode ? solutionType : undefined,
       targetDurationMinutes: isDecalNode ? targetDurationMinutes : undefined,
+      referralDestinationFacilityId: isReferralNode ? referralDestinationFacilityId : undefined,
+      referralTestRequested: isReferralNode ? (referralTestRequested.trim() || undefined) : undefined,
+      cytologyStainTypeId: isCytologyStainingNode ? cytologyStainTypeId : undefined,
     });
     setBusy(false);
     if ('error' in res) { setError(res.error); return; }
@@ -201,28 +237,28 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
         {!createdBatch ? (
           <>
             <div className="ps-batch-modal-header">
-              <div className="ps-batch-modal-title">🖨️ New Container</div>
+              <div className="ps-batch-modal-title">🖨️ {t('newContainerModal.title')}</div>
               <button className="ps-mth-close" onClick={onClose}>✕</button>
             </div>
             <div className="ps-batch-modal-body">
-              <label className="ps-batch-field-label">Container Type</label>
+              <label className="ps-batch-field-label">{t('newContainerModal.containerType')}</label>
               <select className="ps-batch-select" value={containerType} onChange={e => setContainerType(e.target.value as ContainerType)}>
-                {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {CONTAINER_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
               </select>
 
-              <label className="ps-batch-field-label">Target Workstation</label>
+              <label className="ps-batch-field-label">{t('newContainerModal.targetWorkstation')}</label>
               <select className="ps-batch-select" value={targetStationId ?? ''} onChange={e => handleStationChange(e.target.value || null)}>
-                <option value="">— No station —</option>
+                <option value="">{t('newContainerModal.noStation')}</option>
                 {stations.map(s => <option key={s.id} value={s.id}>{s.name}{s.workflowStage ? ` (${s.workflowStage})` : ''}</option>)}
               </select>
 
-              <label className="ps-batch-field-label">Processing Node</label>
+              <label className="ps-batch-field-label">{t('newContainerModal.processingNode')}</label>
               <select
                 className="ps-batch-select"
                 value={processingNode}
                 onChange={e => { setProcessingNode(e.target.value as BatchProcessingNode); setNodeAutoDerived(false); }}
               >
-                {BATCH_PROCESSING_NODES.map(node => <option key={node} value={node}>{node}</option>)}
+                {BATCH_PROCESSING_NODES.map(node => <option key={node} value={node}>{t(`batchManagement.nodes.${node}`)}</option>)}
               </select>
               {/* Real feature, per direct follow-up: "we should be
                   consistent with respect to the scan stations. I see a
@@ -234,36 +270,36 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                   than asking for the same real fact twice with no
                   cross-check. */}
               {nodeAutoDerived && !stationNodeMismatch && (
-                <div className="ps-batch-node-hint">↳ Set from {selectedStation?.name}'s own stage.</div>
+                <div className="ps-batch-node-hint">{t('newContainerModal.autoSetFromStation', { station: selectedStation?.name })}</div>
               )}
               {stationNodeMismatch && (
                 <div className="ps-batch-node-hint ps-batch-node-hint--warn">
-                  ⚠ {selectedStation?.name} is normally a {stationDerivedNode} station — double-check this is intentional.
+                  {t('newContainerModal.stationMismatchWarning', { station: selectedStation?.name, node: stationDerivedNode ? t(`batchManagement.nodes.${stationDerivedNode}`) : stationDerivedNode })}
                 </div>
               )}
 
-              <label className="ps-batch-field-label">Protocol / Run Parameters</label>
+              <label className="ps-batch-field-label">{t('newContainerModal.protocolLabel')}</label>
               <input
                 className="ps-batch-text-input"
                 type="text"
-                placeholder="e.g. Standard H&E Overnight Run"
+                placeholder={t('newContainerModal.protocolPlaceholder')}
                 value={protocol}
                 onChange={e => setProtocol(e.target.value)}
               />
 
-              <label className="ps-batch-field-label">Priority</label>
+              <label className="ps-batch-field-label">{t('newContainerModal.priority')}</label>
               <div className="ps-batch-priority-toggle">
                 <button
                   className={`ps-batch-priority-btn${priority === 'Routine' ? ' ps-batch-priority-btn--active' : ''}`}
                   onClick={() => setPriority('Routine')}
                 >
-                  Routine
+                  {t('newContainerModal.routine')}
                 </button>
                 <button
                   className={`ps-batch-priority-btn ps-batch-priority-btn--stat${priority === 'STAT' ? ' ps-batch-priority-btn--active' : ''}`}
                   onClick={() => setPriority('STAT')}
                 >
-                  STAT
+                  {t('newContainerModal.stat')}
                 </button>
               </div>
 
@@ -278,12 +314,12 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                   clock — see DecalBatch.ts's own getDecalTimerState. */}
               {isDecalNode && (
                 <>
-                  <label className="ps-batch-field-label">Solution Type</label>
+                  <label className="ps-batch-field-label">{t('newContainerModal.solutionType')}</label>
                   <select className="ps-batch-select" value={solutionType} onChange={e => setSolutionType(e.target.value as DecalSolutionType)}>
                     {DECAL_SOLUTION_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
 
-                  <label className="ps-batch-field-label">Target Duration / Alert Timer</label>
+                  <label className="ps-batch-field-label">{t('newContainerModal.targetDuration')}</label>
                   <div className="ps-batch-duration-row">
                     <div className="ps-batch-duration-field">
                       <input
@@ -292,7 +328,7 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                         value={targetHours}
                         onChange={e => setTargetHours(Math.max(0, parseInt(e.target.value, 10) || 0))}
                       />
-                      <span className="ps-batch-duration-unit">hr</span>
+                      <span className="ps-batch-duration-unit">{t('newContainerModal.hours')}</span>
                     </div>
                     <div className="ps-batch-duration-field">
                       <input
@@ -301,12 +337,55 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                         value={targetMinutesExtra}
                         onChange={e => setTargetMinutesExtra(Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
                       />
-                      <span className="ps-batch-duration-unit">min</span>
+                      <span className="ps-batch-duration-unit">{t('newContainerModal.minutes')}</span>
                     </div>
                   </div>
                   <div className="ps-batch-duration-hint">
-                    Warning alert at {formatDecalDuration(Math.max(0, targetDurationMinutes - DECAL_WARNING_MINUTES_BEFORE_TARGET))} — {DECAL_WARNING_MINUTES_BEFORE_TARGET} minutes before target.
+                    {t('newContainerModal.warningAlertAt', { duration: formatDecalDuration(Math.max(0, targetDurationMinutes - DECAL_WARNING_MINUTES_BEFORE_TARGET)), minutesBefore: DECAL_WARNING_MINUTES_BEFORE_TARGET })}
                   </div>
+                </>
+              )}
+
+              {/* Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+                  Inter-Laboratory Specimen Referral gap — only shown for
+                  this one real processing node. Destination is a real
+                  Facility carrying the reference_lab role, never a
+                  free-text destination name. */}
+              {isReferralNode && (
+                <>
+                  <label className="ps-batch-field-label">{t('newContainerModal.referenceLabDestination')}</label>
+                  <select className="ps-batch-select" value={referralDestinationFacilityId} onChange={e => setReferralDestinationFacilityId(e.target.value)}>
+                    <option value="">{t('newContainerModal.selectReferenceLab')}</option>
+                    {referenceLabs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  {referenceLabs.length === 0 && (
+                    <div className="ps-batch-duration-hint">
+                      {t('newContainerModal.noReferenceLabConfigured')}
+                    </div>
+                  )}
+
+                  <label className="ps-batch-field-label">{t('newContainerModal.testPanelRequested')}</label>
+                  <input
+                    className="ps-batch-text-input"
+                    value={referralTestRequested}
+                    onChange={e => setReferralTestRequested(e.target.value)}
+                    placeholder={t('newContainerModal.testPanelPlaceholder')}
+                  />
+                </>
+              )}
+
+              {/* Real, additive — per 'Cytology Staining' (Batch.
+                  cytologyStainTypeId's own doc comment). Only shown for
+                  this one real processing node. Real FK into the Stain
+                  Dictionary (the "Diagnostic Catalog"), never a
+                  free-text stain name. */}
+              {isCytologyStainingNode && (
+                <>
+                  <label className="ps-batch-field-label">{t('newContainerModal.stainProtocol')}</label>
+                  <select className="ps-batch-select" value={cytologyStainTypeId} onChange={e => setCytologyStainTypeId(e.target.value)}>
+                    <option value="">{t('newContainerModal.selectStainProtocol')}</option>
+                    {stainTypes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 </>
               )}
 
@@ -316,31 +395,31 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                   shows for the three real, physical container types. */}
               {isHardwareEligible(containerType) && (
                 <>
-                  <label className="ps-batch-field-label">Container Identifier Mode</label>
+                  <label className="ps-batch-field-label">{t('newContainerModal.containerIdentifierMode')}</label>
                   <div className="ps-batch-priority-toggle">
                     <button
                       className={`ps-batch-priority-btn${identifierMode === 'disposable' ? ' ps-batch-priority-btn--active' : ''}`}
                       onClick={() => setIdentifierMode('disposable')}
-                      title="System generates a new, single-use, timestamped label"
+                      title={t('newContainerModal.disposableLabelTitle')}
                     >
-                      Disposable Label
+                      {t('newContainerModal.disposableLabel')}
                     </button>
                     <button
                       className={`ps-batch-priority-btn${identifierMode === 'semi_permanent' ? ' ps-batch-priority-btn--active' : ''}`}
                       onClick={() => setIdentifierMode('semi_permanent')}
-                      title="Use an existing, laser-engraved reusable rack — no new label printed"
+                      title={t('newContainerModal.reusableRackTitle')}
                     >
-                      Reusable Rack
+                      {t('newContainerModal.reusableRack')}
                     </button>
                   </div>
 
                   {identifierMode === 'semi_permanent' && (
                     <>
-                      <label className="ps-batch-field-label">Rack ID</label>
+                      <label className="ps-batch-field-label">{t('newContainerModal.rackId')}</label>
                       <input
                         className="ps-batch-text-input"
                         type="text"
-                        placeholder={`Scan or enter e.g. ${printSettings.rackBarcodePrefix}-${printSettings.containerTypeCodes[containerType]}-04`}
+                        placeholder={t('newContainerModal.rackIdPlaceholder', { example: `${printSettings.rackBarcodePrefix}-${printSettings.containerTypeCodes[containerType]}-04` })}
                         value={rackId}
                         onChange={e => setRackId(e.target.value)}
                       />
@@ -361,9 +440,9 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
               {error && <div className="ps-batch-modal-error">{error}</div>}
             </div>
             <div className="ps-batch-modal-footer">
-              <button className="ps-btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="ps-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
               <button className="ps-btn-primary" disabled={!canCreate || busy} onClick={handleCreate}>
-                {busy ? 'Generating…' : identifierMode === 'disposable' ? 'Generate & Print' : 'Start Session'}
+                {busy ? t('newContainerModal.generating') : identifierMode === 'disposable' ? t('newContainerModal.generateAndPrint') : t('newContainerModal.startSession')}
               </button>
             </div>
           </>
@@ -371,31 +450,31 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
           <>
             <div className="ps-batch-modal-header">
               <div className="ps-batch-modal-title">
-                {createdBatch.identifierMode === 'semi_permanent' ? 'Session Started' : 'Container Created'}
+                {createdBatch.identifierMode === 'semi_permanent' ? t('newContainerModal.sessionStarted') : t('newContainerModal.containerCreated')}
               </div>
               <button className="ps-mth-close" onClick={() => onCreated(createdBatch)}>✕</button>
             </div>
             <div className="ps-batch-modal-body ps-batch-barcode-body">
               {createdBatch.identifierMode === 'semi_permanent' ? (
                 <div className="ps-batch-barcode-label">
-                  Rack {createdBatch.masterBarcode} is now checked out to this batch — no new label to print.
+                  {t('newContainerModal.rackCheckedOutNoPrint', { barcode: createdBatch.masterBarcode })}
                 </div>
               ) : (
                 <>
-                  <div className="ps-batch-barcode-label">Print this Master Batch Barcode and affix it to the physical carrier.</div>
+                  <div className="ps-batch-barcode-label">{t('newContainerModal.printInstructions')}</div>
                   {barcodeSvg && (
                     <div className="ps-batch-barcode-svg-wrap" dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
                   )}
                 </>
               )}
               <div className="ps-batch-barcode-value">{createdBatch.masterBarcode}</div>
-              <div className="ps-batch-barcode-meta">{createdBatch.containerType} · {createdBatch.processingNode} · {createdBatch.protocol} · {createdBatch.priority}</div>
+              <div className="ps-batch-barcode-meta">{createdBatch.containerType} · {t(`batchManagement.nodes.${createdBatch.processingNode}`)} · {createdBatch.protocol} · {createdBatch.priority}</div>
             </div>
             <div className="ps-batch-modal-footer">
               {createdBatch.identifierMode !== 'semi_permanent' && (
-                <button className="ps-btn-secondary" onClick={() => window.print()}>🖨️ Print</button>
+                <button className="ps-btn-secondary" onClick={() => window.print()}>🖨️ {t('newContainerModal.print')}</button>
               )}
-              <button className="ps-btn-primary" onClick={() => onCreated(createdBatch)}>Continue — Scan Items</button>
+              <button className="ps-btn-primary" onClick={() => onCreated(createdBatch)}>{t('newContainerModal.continueScanItems')}</button>
             </div>
           </>
         )}

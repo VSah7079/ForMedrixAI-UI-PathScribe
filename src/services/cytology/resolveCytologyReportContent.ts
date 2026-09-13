@@ -60,9 +60,9 @@ export function resolveCytologyReportContent(
   review: Pick<CytologyReviewRecord,
     'adequacySelections' | 'generalCategorizationId' |
     'primaryInterpretationId' | 'primaryInterpretationComment' |
-    'additionalInterpretations' | 'recommendations'>,
+    'additionalInterpretations' | 'recommendations' | 'cisoeAScore' | 'requiresPathologistReview'>,
   categories: CytologyCategoryEntry[],
-  patient: { name: string; dateOfBirth?: string; mrn?: string; lastMenstrualPeriod?: string },
+  patient: { name: string; dateOfBirth?: string; mrn?: string; lastMenstrualPeriod?: string; hormonalStatus?: 'premenopausal' | 'perimenopausal' | 'postmenopausal' | 'pregnant'; priorAbnormalPapHpvHistory?: string; iudOrContraceptionUse?: string },
   order: { accessionNumber: string; orderingProvider?: string },
   specimen: {
     typeDescription: string;
@@ -88,6 +88,9 @@ export function resolveCytologyReportContent(
     specimenCollectedAt: specimen.collectedAt,
     specimenReceivedAt: specimen.receivedAt,
     lastMenstrualPeriod: patient.lastMenstrualPeriod,
+    hormonalStatus: patient.hormonalStatus,
+    priorAbnormalPapHpvHistory: patient.priorAbnormalPapHpvHistory,
+    iudOrContraceptionUse: patient.iudOrContraceptionUse,
 
     specimenTypeDescription: specimen.typeDescription,
     preparationMethod: specimen.preparationMethod,
@@ -98,6 +101,8 @@ export function resolveCytologyReportContent(
 
     primaryInterpretation: withComment(review.primaryInterpretationId, review.primaryInterpretationComment, categories),
     additionalInterpretations: (review.additionalInterpretations ?? []).map(s => withComment(s.categoryId, s.comment, categories)),
+    cisoeAScore: review.cisoeAScore,
+    requiresPathologistReview: review.requiresPathologistReview,
 
     hpvResult: formatHpvResult(specimen.hpvResult, specimen.hpvGenotypeDetail, specimen.hpvOrderReason),
     computerAssistedScreening: specimen.computerAssistedScreening,

@@ -22,6 +22,7 @@ import { storageGet, storageSet }               from '../mockStorage';
 import { Subspecialty }                         from '../subspecialties/ISubspecialtyService';
 import { mockFacilityService }                  from '../facilities/mockFacilityService';
 import { resolvePerformingLabFacilityId }       from '../facilities/IFacilityService';
+import { ensureHistoryFetchStarted }             from '../patientHistory/ensureHistoryFetchStarted';
 
 // ─── Routing config ───────────────────────────────────────────────────────────
 // In production this comes from LISSection config in the System Tab.
@@ -257,6 +258,17 @@ export async function resolveCasePerformingLab(caseData: Case): Promise<string |
 // ─── Main routing function ────────────────────────────────────────────────────
 
 export async function routeCase(caseData: Case): Promise<RoutingResult> {
+  // Real, per direct guidance: "when [a case gets pulled and assigned]
+  // is the first time PathScribe [is] aware of the case" — this
+  // function is called from the real HL7 inbound handler and the
+  // real LIS polling service (see this file's own header) whether a
+  // case ends up directly assigned or pool-routed, making it the
+  // real, single point to start an Assist-mode patient-history fetch.
+  // Deliberately fire-and-forget (never awaited) — a slow or failed
+  // history fetch must never block or fail the real routing decision
+  // this function exists for.
+  ensureHistoryFetchStarted(caseData).catch(() => {});
+
   const config = getRoutingConfig();
 
   // Already assigned — nothing to do
@@ -365,7 +377,14 @@ export async function routeCase(caseData: Case): Promise<RoutingResult> {
 
 // ─── Apply pool routing to case ───────────────────────────────────────────────
 
-async function applyPoolRouting(
+// Real, per direct guidance's own CLIA workload Phase 2 request
+// ("Automated Reassignment Queue Routing"): exported so the real
+// workload capacity check (CytologyScreeningPage.tsx) can reuse the
+// exact same real, established "return this case to its pool,
+// explicitly unassigned" logic, rather than duplicating the same
+// mockCaseService.updateCase shape a second, potentially-divergent
+// way.
+export async function applyPoolRouting(
   caseData: Case,
   poolId:   string,
   poolName: string,

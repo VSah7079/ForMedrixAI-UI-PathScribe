@@ -6,6 +6,11 @@ import type { Facility } from '../../../services';
 import FlagConfigPage            from './FlagConfigPage';
 import SpecimenDictionarySection from './SpecimenDictionarySection';
 import StainDictionarySection from './StainDictionarySection';
+import VendorIntegrationsSection from './VendorIntegrationsSection';
+import CytologyQcRulesSection from './CytologyQcRulesSection';
+import OrSuiteTerminalsSection from './OrSuiteTerminalsSection';
+import MigrationFieldMappingsSection from './MigrationFieldMappingsSection';
+import CancerRegistrySettingsSection from './CancerRegistrySettingsSection';
 import ProtocolDictionarySection from './ProtocolDictionarySection';
 import PrinterProfilesSection from './PrinterProfilesSection';
 import GrossingRouteOverridesSection from './GrossingRouteOverridesSection';
@@ -15,6 +20,7 @@ import ScanStationsSection from './ScanStationsSection';
 import CassetteRoutingRulesSection from './CassetteRoutingRulesSection';
 import CassetteColorsSection from './CassetteColorsSection';
 import PrintSettingsSection from './PrintSettingsSection';
+import LabelDesignerPage from '../../../pages/LabelDesignerPage/LabelDesignerPage';
 import SubspecialtiesSection     from './SubspecialtiesSection';
 import FontsSection              from './FontsSection';
 import DocumentStyleSection      from './DocumentStyleSection';
@@ -57,8 +63,6 @@ import PhysiciansSection from './PhysiciansSection';
 import DeficienciesSection from './DeficienciesSection';
 import AbnormalTriggerRulesSection from './AbnormalTriggerRulesSection';
 import QAConfigurationCenterSection from './QAConfigurationCenterSection';
-import CytologyCategoriesSection from './CytologyCategoriesSection';
-import CytologyQcSettingsSection from './CytologyQcSettingsSection';
 import { resetConfigScroll } from '../../../utils/resetConfigScroll';
 
 // ── Section registry ──────────────────────────────────────────────────────────
@@ -68,6 +72,11 @@ type SystemSection =
   | 'subspecialties'
   | 'specimens'
   | 'stains'
+  | 'vendor_integrations'
+  | 'cytology_qc_rules'
+  | 'or_suite_terminals'
+  | 'migration_field_mappings'
+  | 'cancer_registry_settings'
   | 'departments'
   | 'container_types'
   | 'scan_stations'
@@ -80,7 +89,6 @@ type SystemSection =
   | 'release_buffer'
   | 'contribution_settings'
   | 'qa_config_center'
-  | 'cytology_qc_settings'
   | 'external_resources'
   | 'research_feed'
   | 'protocols'
@@ -99,6 +107,7 @@ type SystemSection =
   | 'modifier_dictionary'
   | 'participation_types'
   | 'print_settings'
+  | 'label_designer'
   | 'printer_profiles'
   | 'terminology'
   | 'crosswalk'
@@ -108,8 +117,7 @@ type SystemSection =
   | 'routing_rules'
   | 'physicians'
   | 'deficiencies'
-  | 'abnormal_trigger_rules'
-  | 'cytology_categories';
+  | 'abnormal_trigger_rules';
 
 // Real, per PS-85 (Jira) — every item in this file belonged to
 // exactly one of five real, named groups (Workstation & Hardware,
@@ -140,6 +148,7 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   // itself (Workstation & Hardware → ... → Integrations) is
   // unchanged — only the order of items within each group.
   { id: 'print_settings',      emoji: '🖨️', label: 'Print Settings'        , group: 'Workstation & Hardware' },
+  { id: 'label_designer',      emoji: '🏷️', label: 'Label Designer'        , group: 'Workstation & Hardware' },
   { id: 'printer_profiles',    emoji: '🖨️', label: 'Printer Profiles'      , group: 'Workstation & Hardware' },
   { id: 'scan_stations',       emoji: '📍', label: 'Scan Stations'         , group: 'Workstation & Hardware' },
 
@@ -148,6 +157,24 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   { id: 'cassette_routing_rules', emoji: '🧊', label: 'Cassette Routing Rules', group: 'Lab Materials & Workflows' },
   { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
   { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
+  // Real, per this module's own DP/AI vendor integration plan's final
+  // remaining item. Placed in the same real group as the diagnostic
+  // catalog above — this is shared, cross-module infrastructure
+  // (surgical pathology + cytology both order AI screenings from it),
+  // never a cytology-only setting.
+  { id: 'vendor_integrations', emoji: '🔌', label: 'Vendor Integrations', group: 'Lab Materials & Workflows' },
+  { id: 'cytology_qc_rules', emoji: '🔬', label: 'Cytology QC Rules', group: 'Lab Materials & Workflows' },
+  // Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
+  // Intraoperative/Frozen Section Dashboard — same real group as the
+  // other lab-hardware/workflow registries.
+  { id: 'or_suite_terminals',  emoji: '🏥', label: 'OR Suite Terminals'     , group: 'Lab Materials & Workflows' },
+  // Real, per the RFP-APLIS-2026-GLOBAL Historical Data Migration
+  // Engine gap.
+  { id: 'migration_field_mappings', emoji: '📦', label: 'Migration Field Mappings', group: 'Lab Materials & Workflows' },
+  // Real, per the RFP-APLIS-2026-GLOBAL Broader Cancer Registry
+  // Exports gap — genuinely separate from Cytology's own Registry
+  // Reporting subtab, per the RFP's own "Non-Cytology-Scoped" title.
+  { id: 'cancer_registry_settings', emoji: '🏛️', label: 'Cancer Registry Reporting', group: 'Lab Materials & Workflows' },
   { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Lab Materials & Workflows' },
   { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
   { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
@@ -155,7 +182,6 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   // ── Clinical Lookups ──
   { id: 'governing_bodies',    emoji: '📋', label: 'Governing Bodies'      , group: 'Clinical Lookups' },
   { id: 'abnormal_trigger_rules', emoji: '🚩', label: 'Abnormal Trigger Rules', group: 'Clinical Lookups' },
-  { id: 'cytology_categories', emoji: '🧫', label: 'Interpretation and Recommendations (Cytology)', group: 'Clinical Lookups' },
   { id: 'participation_types', emoji: '👥', label: 'Participation Types'   , group: 'Clinical Lookups' },
   { id: 'protocols',           emoji: '🧬', label: 'Protocol Dictionary'   , group: 'Clinical Lookups' },
   { id: 'departments', emoji: '🗂️', label: 'Departments'   , group: 'Clinical Lookups' },
@@ -181,7 +207,6 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   { id: 'external_resources',  emoji: '🌐', label: 'External Resources'    , group: 'Administration & Compliance' },
   { id: 'release_buffer',      emoji: '⏳', label: 'Post-Sign-Out Release Buffer', group: 'Administration & Compliance' },
   { id: 'qa_config_center',    emoji: '✅', label: 'QA Configuration Center' , group: 'Administration & Compliance' },
-  { id: 'cytology_qc_settings', emoji: '🎯', label: 'Cytology QC Random Selection Rate', group: 'Administration & Compliance' },
   { id: 'research_feed',       emoji: '📰', label: 'Research Feed'         , group: 'Administration & Compliance' },
   { id: 'session_security',    emoji: '🔒', label: 'Session Security'      , group: 'Administration & Compliance' },
 
@@ -257,6 +282,11 @@ const SystemTab: React.FC = () => {
       case 'subspecialties':      return <SubspecialtiesSection />;
       case 'specimens':           return <SpecimenDictionarySection />;
       case 'stains':              return <StainDictionarySection />;
+      case 'vendor_integrations': return <VendorIntegrationsSection />;
+      case 'cytology_qc_rules': return <CytologyQcRulesSection />;
+      case 'or_suite_terminals':  return <OrSuiteTerminalsSection />;
+      case 'migration_field_mappings': return <MigrationFieldMappingsSection />;
+      case 'cancer_registry_settings': return <CancerRegistrySettingsSection />;
       case 'protocols':           return <ProtocolDictionarySection />;
       case 'printer_profiles':    return <PrinterProfilesSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'grossing_route_overrides': return <GrossingRouteOverridesSection />;
@@ -266,6 +296,7 @@ const SystemTab: React.FC = () => {
       case 'cassette_routing_rules': return <CassetteRoutingRulesSection />;
       case 'cassette_colors': return <CassetteColorsSection />;
       case 'print_settings': return <PrintSettingsSection selectedFacilityId={workstationFacilityId || undefined} />;
+      case 'label_designer': return <LabelDesignerPage />;
       case 'fonts':               return <FontsSection />;
       case 'document_style':      return <DocumentStyleSection />;
       case 'retention':           return <RetentionSection />;
@@ -296,9 +327,7 @@ const SystemTab: React.FC = () => {
       case 'physicians':       return <PhysiciansSection />;
       case 'deficiencies':     return <DeficienciesSection />;
       case 'abnormal_trigger_rules': return <AbnormalTriggerRulesSection />;
-      case 'cytology_categories': return <CytologyCategoriesSection />;
       case 'qa_config_center': return <QAConfigurationCenterSection />;
-      case 'cytology_qc_settings': return <CytologyQcSettingsSection />;
       default:                    return null;
     }
   };

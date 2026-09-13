@@ -12,7 +12,7 @@ const SIGN_OUT_RECORD: CytologySignOutRecord = {
     primaryInterpretation: 'Atypical squamous cells of undetermined significance (ASC-US).',
     additionalInterpretations: ['Trichomonas vaginalis organisms identified.'],
     recommendations: ['Colposcopic evaluation recommended.'],
-    signedBy: { name: 'Dr. Second', isPathologist: true }, signedAt: '2026-09-04T10:00:00.000Z',
+    requiresPathologistReview: true, signedBy: { name: 'Dr. Second', isPathologist: true }, signedAt: '2026-09-04T10:00:00.000Z',
   },
   signedBy: { userId: 'PATH-002', userName: 'Dr. Second', isPathologist: true },
   signedAt: '2026-09-04T10:00:00.000Z',
@@ -58,5 +58,37 @@ describe('buildCytologyOruR01Payload — real, cytology-specific dispatch payloa
     const first = buildCytologyOruR01Payload(SIGN_OUT_RECORD);
     const second = buildCytologyOruR01Payload(SIGN_OUT_RECORD);
     expect(first.messageId).not.toBe(second.messageId);
+  });
+
+  it('a real Bethesda review (no cisoeAScore on the report content) carries no geographyExtension at all — not an empty placeholder', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD);
+    expect(payload.geographyExtension).toBeUndefined();
+  });
+
+  it('a real CISOE-A review carries its own, real, native score as a geographyExtension, alongside the universal Bethesda-translated narrative — never instead of it', () => {
+    const cisoeARecord: CytologySignOutRecord = {
+      ...SIGN_OUT_RECORD,
+      reportContent: {
+        ...SIGN_OUT_RECORD.reportContent,
+        cisoeAScore: {
+          composition: { value: 1 }, inflammation: { value: 1 },
+          squamous: { value: 4 }, otherEndometrium: { value: 1 }, endocervical: { value: 1 },
+          adequacy: 'satisfactory',
+        },
+      },
+    };
+    const payload = buildCytologyOruR01Payload(cisoeARecord);
+    expect(payload.geographyExtension).toEqual({
+      type: 'cisoe_a',
+      score: {
+        composition: { value: 1 }, inflammation: { value: 1 },
+        squamous: { value: 4 }, otherEndometrium: { value: 1 }, endocervical: { value: 1 },
+        adequacy: 'satisfactory',
+      },
+    });
+    // Real, deliberate: the universal, Bethesda-translated narrative is
+    // still present and unchanged — the extension is additive, never a
+    // replacement for what every other real destination already gets.
+    expect(payload.narrative.primaryInterpretation).toBe('Atypical squamous cells of undetermined significance (ASC-US).');
   });
 });

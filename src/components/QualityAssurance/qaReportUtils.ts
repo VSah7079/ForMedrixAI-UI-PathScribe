@@ -16,33 +16,14 @@
 //    go look at).
 // ─────────────────────────────────────────────────────────────────────────────
 import * as XLSX from 'xlsx';
-import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
 
-export type QaScope =
-  | { level: 'enterprise' }
-  | { level: 'client'; clientId: string }
-  // Added alongside the Post-Finalization Drift tab — the real
-  // organisation-level scope, previously missing entirely from this
-  // type. 'client' filters by referring provider (order.clientId);
-  // this filters by which lab organisation actually owns the case
-  // (Case.originHospitalId, resolved via the same
-  // getOrganisationByHospitalId chain services/auth/caseAccessControl.ts
-  // already uses as the real tenant boundary elsewhere in this app).
-  // These are genuinely different, both-real dimensions — a referring
-  // client and the lab organisation processing their case are not the
-  // same thing — so this is additive, not a replacement for the
-  // existing client-level scope.
-  | { level: 'organisation'; organisationId: string };
-
-/** Real Case shape is untyped `any` at this layer (matches the loose
- *  typing caseRouter.getAll() already returns elsewhere in this
- *  codebase) — only the fields this needs. */
-export function caseMatchesScope(c: { order?: { clientId?: string }; originHospitalId?: string }, scope: QaScope): boolean {
-  if (scope.level === 'enterprise') return true;
-  if (scope.level === 'client') return c?.order?.clientId === scope.clientId;
-  const org = getOrganisationByHospitalId(c?.originHospitalId ?? '');
-  return org?.id === scope.organisationId;
-}
+// Real, per direct follow-up: QaScope and caseMatchesScope moved to
+// services/qualityAssurance/qaScope.ts — a real service must never
+// depend on a type defined in components/. Re-exported here so this
+// file's own seven existing real callers need no import changes.
+import type { QaScope } from '@/services/qualityAssurance/qaScope';
+export type { QaScope } from '@/services/qualityAssurance/qaScope';
+export { caseMatchesScope } from '@/services/qualityAssurance/qaScope';
 
 /**
  * Real, single source of truth for "what should this scope be called in

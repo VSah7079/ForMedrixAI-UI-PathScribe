@@ -1,0 +1,555 @@
+{
+  "common": {
+    "save": "Opslaan",
+    "cancel": "Annuleren",
+    "delete": "Verwijderen",
+    "edit": "Bewerken",
+    "close": "Sluiten",
+    "confirm": "Bevestigen",
+    "back": "Terug",
+    "next": "Volgende",
+    "loading": "Laden…",
+    "yes": "Ja",
+    "no": "Nee",
+    "search": "Zoeken",
+    "add": "Toevoegen",
+    "remove": "Verwijderen",
+    "active": "Actief",
+    "inactive": "Inactief",
+    "required": "Verplicht",
+    "optional": "Optioneel",
+    "signOut": "Afmelden",
+    "showInactive": "Inactieve tonen",
+    "deactivate": "Deactiveren",
+    "reactivate": "Reactiveren",
+    "select": "Selecteren"
+  },
+  "nav": {
+    "home": "Start",
+    "worklist": "Werklijst",
+    "search": "Zoeken",
+    "accession": "Accession",
+    "batchManagement": "Batchbeheer",
+    "configuration": "Configuratie",
+    "audit": "Auditlogboek",
+    "qualityAssurance": "Kwaliteitsborging"
+  },
+  "login": {
+    "title": "Aanmelden bij PathScribe",
+    "email": "E-mail",
+    "password": "Wachtwoord",
+    "signIn": "Aanmelden",
+    "signingIn": "Bezig met aanmelden…",
+    "invalidCredentials": "Ongeldig e-mailadres of wachtwoord."
+  },
+  "language": {
+    "label": "Taal",
+    "en": "English",
+    "fr": "Français",
+    "de": "Deutsch",
+    "nl": "Nederlands",
+    "ko": "한국어"
+  },
+  "batchManagement": {
+    "pageTitle": "Batchbeheer",
+    "pageSubtitle": "Volg groepen cassettes en objectglaasjes door de verwerkingsstappen (Decalcificatie / speciale verwerking, Verwerking, Inbedding, Microtomie, Kleuring, Eindcontrole) via containerbarcodes — traceerbaarheid door scannen, reconciliatie en registratie van kwaliteitsafwijkingen.",
+    "nodes": {
+      "Decal / Special Processing": "Decalcificatie / Speciale verwerking",
+      "Processing": "Verwerking",
+      "Embedding": "Inbedding",
+      "Microtomy / Sectioning": "Microtomie / Snijden",
+      "Staining": "Kleuring",
+      "Checkout": "Eindcontrole",
+      "External Referral": "Externe doorverwijzing",
+      "Cytology Processing": "Cytologie-verwerking",
+      "Cytology Staining": "Cytologie-kleuring",
+      "Cytology Imaging": "Cytologie-beeldvorming"
+    },
+    "nodeTileLabel": {
+      "Decal / Special Processing": "Decal / Speciaal",
+      "Processing": "Verwerking",
+      "Embedding": "Inbedding",
+      "Microtomy / Sectioning": "Microtomie",
+      "Staining": "Kleuring",
+      "Checkout": "Controle",
+      "External Referral": "Doorverwijzing",
+      "Cytology Processing": "Cyto-verwerking",
+      "Cytology Staining": "Cyto-kleuring",
+      "Cytology Imaging": "Cyto-beeldvorming"
+    },
+    "status": {
+      "active": "Actief",
+      "reconciling": "Reconciliatie",
+      "complete": "Voltooid",
+      "aborted": "Afgebroken"
+    },
+    "filterTileTitle": "Filteren op: {{node}}",
+    "filterTileTitleActive": "Weergave: {{node}} — klik om te resetten",
+    "disposalTile": "Vernietiging",
+    "disposalTitle": "Vernietigingswachtrij — items die nu in aanmerking komen voor vernietiging",
+    "pendingLoadTile": "In afwachting",
+    "pendingLoadTitle": "Batch nog te laden — afgedrukte items die nog in geen enkele batch zijn gescand",
+    "engraverMonitorTile": "Graveermonitor",
+    "engraverMonitorTitle": "Graveermonitor — realtime status op hoog niveau van graveerapparaten vanuit de Cassette Engine",
+    "lookupPlaceholder": "Scan of voer een hoofdbatchbarcode in…",
+    "newContainer": "Nieuwe container",
+    "loading": "Batches laden…",
+    "activeSectionLabel": "Actief & in reconciliatie ({{count}})",
+    "closedSectionLabel": "Voltooid & afgebroken ({{count}})",
+    "emptyActive": "Geen actieve batches. Maak er een aan om te beginnen.",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "rackCheckedOutError": "Rek \"{{value}}\" is al uitgecheckt naar een andere actieve batch.",
+    "notFoundError": "Geen batch of geregistreerde container gevonden voor \"{{value}}\"."
+  },
+  "newContainerModal": {
+    "title": "Nieuwe container",
+    "containerType": "Containertype",
+    "targetWorkstation": "Doelwerkstation",
+    "noStation": "— Geen station —",
+    "processingNode": "Verwerkingsstap",
+    "autoSetFromStation": "↳ Ingesteld op basis van de fase van {{station}}.",
+    "stationMismatchWarning": "⚠ {{station}} is normaal een \"{{node}}\"-station — controleer of dit bedoeld is.",
+    "protocolLabel": "Protocol / Loopparameters",
+    "protocolPlaceholder": "bijv. Standaard H&E-nachtrun",
+    "priority": "Prioriteit",
+    "routine": "Routine",
+    "stat": "STAT",
+    "solutionType": "Type oplossing",
+    "targetDuration": "Doelduur / Waarschuwingstimer",
+    "hours": "u",
+    "minutes": "min",
+    "warningAlertAt": "Waarschuwing bij {{duration}} — {{minutesBefore}} minuten voor het doel.",
+    "referenceLabDestination": "Bestemming referentielaboratorium",
+    "selectReferenceLab": "— selecteer referentielaboratorium —",
+    "noReferenceLabConfigured": "Er is momenteel geen instelling geconfigureerd met de rol Referentielaboratorium — voeg er eerst een toe bij de instellingen van faciliteiten.",
+    "testPanelRequested": "Aangevraagde test / panel (optioneel)",
+    "testPanelPlaceholder": "bijv. Foundation Medicine CDx NGS-panel",
+    "stainProtocol": "Kleuringsprotocol",
+    "selectStainProtocol": "— selecteer kleuringsprotocol —",
+    "containerIdentifierMode": "Containeridentificatiemodus",
+    "disposableLabelTitle": "Het systeem genereert een nieuw, eenmalig te gebruiken, tijdgestempeld label",
+    "disposableLabel": "Wegwerplabel",
+    "reusableRackTitle": "Gebruik een bestaand, lasergegraveerd herbruikbaar rek — geen nieuw label wordt afgedrukt",
+    "reusableRack": "Herbruikbaar rek",
+    "rackId": "Rek-ID",
+    "rackIdPlaceholder": "Scan of voer in, bijv. {{example}}",
+    "generating": "Bezig met genereren…",
+    "generateAndPrint": "Genereren & afdrukken",
+    "startSession": "Sessie starten",
+    "sessionStarted": "Sessie gestart",
+    "containerCreated": "Container aangemaakt",
+    "rackCheckedOutNoPrint": "Rek {{barcode}} is nu uitgecheckt naar deze batch — geen nieuw label om af te drukken.",
+    "printInstructions": "Druk deze hoofdbatchbarcode af en bevestig deze op de fysieke drager.",
+    "print": "Afdrukken",
+    "continueScanItems": "Doorgaan — Items scannen"
+  },
+  "grossingRelease": {
+    "cassettesResolved_one": "{{count}} cassette opgelost — klaar om vrij te geven",
+    "cassettesResolved_other": "{{count}} cassettes opgelost — klaar om vrij te geven",
+    "blockLabel": "Blok {{specimenLabel}}{{blockLabel}}",
+    "removeBlockTitle": "Blok {{specimenLabel}}{{blockLabel}} verwijderen — fysiek niet aangemaakt",
+    "triageResolved": "Triage bevestigd",
+    "triageRequired": "Triage vereist vóór vrijgave",
+    "overriddenNote": "Triage overschreven: {{reason}}",
+    "overrideReasonPlaceholder": "Reden voor het overschrijven van triage…",
+    "overrideAndRelease": "Overschrijven & vrijgeven",
+    "releaseBlockedTitle": "Vrijgeven niet mogelijk — triage is onvolledig. Bevestig de checklist of geef een reden voor overschrijving op.",
+    "releaseAndPrintAll": "Alles vrijgeven & afdrukken"
+  },
+  "pendingTriageTile": {
+    "title_one": "Openstaande snijtriage ({{count}})",
+    "title_other": "Openstaande snijtriage ({{count}})",
+    "badge": "Triage",
+    "specimenLabel": "Monster {{specimenLabel}}",
+    "progress": "{{confirmed}} van {{total}} checklistitems bevestigd"
+  },
+  "grossingScreen": {
+    "caseNotFound": "Zaak niet gevonden.",
+    "backToCase": "← Terug naar zaak",
+    "pageTitle": "Snijden — {{accession}}",
+    "specimenHeader": "Monster {{label}} — {{description}}",
+    "protocolVersion": "Protocol: {{name}} (v{{version}})",
+    "protocolModified": "Protocol gewijzigd",
+    "noProtocol": "Geen protocol toegewezen",
+    "col": {
+      "blockId": "Blok-ID",
+      "pieceCount": "Aantal stukken",
+      "stains": "Kleuringen",
+      "status": "Status",
+      "actions": "Acties",
+      "slideId": "Objectglaasje-ID",
+      "stain": "Kleuring",
+      "imagerBatch": "Beeldvormingsbatch",
+      "fovCount": "FOV-aantal"
+    },
+    "userAdded": "Handmatig toegevoegd",
+    "autoGenerated": "Automatisch gegenereerd",
+    "removeStainTitle": "Kleuring verwijderen",
+    "selectStain": "— selecteer kleuring —",
+    "addStain": "Kleuring toevoegen",
+    "removeBlockedTitle": "Verwijderen niet mogelijk — blok is al \"{{status}}\"",
+    "removeBlock": "Blok verwijderen",
+    "notYetImaged": "Nog niet in beeld gebracht",
+    "addBlock": "Blok toevoegen ({{pathwayName}})",
+    "auditPanelTitle_one": "Auditlog ({{count}} wijziging)",
+    "auditPanelTitle_other": "Auditlog ({{count}} wijzigingen)",
+    "noOverrides": "Geen wijzigingen geregistreerd.",
+    "auditEntry": "Blok {{blockLabel}} — {{field}} gewijzigd van \"{{originalValue}}\" naar \"{{newValue}}\" door {{actor}} op {{timestamp}}",
+    "auditField": {
+      "pieceCount": "Aantal stukken",
+      "stainAdded": "Kleuring toegevoegd",
+      "stainRemoved": "Kleuring verwijderd"
+    },
+    "confirmRemoveStainTitle": "Standaardkleuring van protocol verwijderen?",
+    "confirmRemoveStainBody": "Deze kleuring is een standaard van het toegewezen protocol. Verwijderen wordt geregistreerd als een wijziging.",
+    "confirmRemove": "Verwijderen",
+    "concurrencyConflict": "Deze zaak is elders bijgewerkt. Herlaad om de nieuwste versie te zien.",
+    "reload": "Herladen",
+    "openGrossingScreen": "🔬 Snijscherm openen"
+  },
+  "orSuiteDashboard": {
+    "bindDisplayTitle": "Dit scherm koppelen",
+    "bindDisplayDescription": "Selecteer welke OK-terminal dit scherm vertegenwoordigt. Deze koppeling blijft behouden — ook na herstarten.",
+    "cancelDismiss": "Annuleren",
+    "confirmAndDismiss": "Bevestigen & afsluiten",
+    "confirmDismissalTitle": "Afsluiten bevestigen",
+    "continue": "Doorgaan",
+    "dismissCase": "Casus afsluiten",
+    "dismissFailedGeneric": "Kan deze casus niet afsluiten. Probeer het opnieuw.",
+    "dismissing": "Bezig met afsluiten…",
+    "enterPinDismiss": "Voer uw 4-cijferige pincode in om deze casus af te sluiten.",
+    "enterPinVerbal": "Voer uw 4-cijferige pincode in om dit mondelinge verslag te registreren.",
+    "inProgress": "Bezig",
+    "loadingTerminal": "Terminal wordt geladen…",
+    "logVerbalReport": "Mondeling verslag registreren",
+    "logging": "Bezig met registreren…",
+    "mrn": "Patiëntnummer:",
+    "multiSuiteOverview": "Overzicht meerdere OK's",
+    "noActiveRequests": "Op dit moment geen actieve vriescoupe-aanvragen.",
+    "noTerminalsConfigured": "Nog geen terminals geconfigureerd — voeg er een toe bij systeemconfiguratie.",
+    "noteOptional": "Notitie (optioneel)",
+    "orRoom": "OK-kamer:",
+    "orSuiteTerminal": "OK-terminal",
+    "patient": "Patiënt:",
+    "pinInvalidRole": "Deze pincode behoort niet tot OK-personeel.",
+    "pinNotRecognized": "Pincode niet herkend.",
+    "preliminaryDiagnosis": "Voorlopige diagnose:",
+    "preliminaryLabel": "VOORLOPIG: {{diagnosis}}",
+    "readbackConfirmedLabel": "Terugkoppeling van resultaat bevestigd met opererend chirurg",
+    "room": "Kamer {{room}}",
+    "rowMeta": "Monster {{specimenLabel}} · Chirurg: {{surgeon}} · Patholoog: {{pathologist}}",
+    "selectTerminal": "— selecteer terminal —",
+    "surgeonName": "Naam chirurg",
+    "verbalReportBy": "Mondeling verslag — {{staffName}}",
+    "verifyIdentity": "Identiteit verifiëren",
+    "startDemo": "Demo starten",
+    "stopDemo": "Demo stoppen",
+    "demoModeActive": "Demomodus — geen echte patiëntgegevens"
+  },
+  "molecularOrderQueue": {
+    "pageTitle": "Wachtrij moleculaire orders",
+    "pageSubtitle": "Uitgaande moleculaire test- en apparaatorders — automatisch geactiveerd bij accessie, of door een HPV-reflex-genotyperingstrigger bij een positieve zelfstandige screening.",
+    "demoPanelTitle": "Demo: HPV-order & reflex-workflow",
+    "demoPanelDescription": "Werkt met de echte demo-casus {{accession}}, monster A — al geconfigureerd met een openstaande HPV-co-test. Zet de testorder in de wachtrij en simuleer vervolgens de binnenkomende labuitslag.",
+    "assayLabel": "Gebruikte test",
+    "assayStandalone": "st-hpv-highrisk-screen (zelfstandig)",
+    "assayBundled": "st-hpv-reflex (gebundeld)",
+    "queueOrderBtn": "HPV-co-testorder in wachtrij zetten",
+    "resultLabel": "Gesimuleerde uitslag",
+    "resultPositive": "Positief",
+    "resultNegative": "Negatief",
+    "simulateResultBtn": "Binnenkomende HPV-uitslag simuleren",
+    "demoOrderQueued": "Order in wachtrij geplaatst.",
+    "resultApplied": "Uitslag toegepast.",
+    "resultAppliedWithReflex": "Uitslag toegepast — reflex-genotyperingsorder hieronder geactiveerd.",
+    "resultOutcome": "Resultaat: {{outcome}}",
+    "noEntries": "Nog geen orders in de wachtrij.",
+    "col": {
+      "type": "Type",
+      "accession": "Toegangsnummer",
+      "assay": "Test",
+      "reason": "Reden",
+      "status": "Status",
+      "queuedAt": "In wachtrij op"
+    },
+    "typeMolecular": "Moleculair",
+    "typeInstrument": "Apparaat",
+    "reasonReflex": "HPV-reflex-genotypering",
+    "reason": {
+      "protocol_configured": "Protocol-geconfigureerd (accessie)",
+      "hpv_reflex_genotyping": "HPV-reflex-genotypering"
+    },
+    "status": {
+      "QUEUED": "In wachtrij",
+      "SENT": "Verzonden",
+      "FAILED": "Mislukt"
+    }
+  },
+  "wsiViewerLaunch": {
+    "selectVendorTitle": "WSI-viewer selecteren",
+    "launchTitle": "Dit preparaat openen in de geconfigureerde WSI-viewer",
+    "launchLabel": "Openen in viewer",
+    "blockedError": "Pop-up geblokkeerd — sta pop-ups toe voor deze site en probeer het opnieuw"
+  },
+  "vendorIntegrations": {
+    "category": {
+      "dp_ai": "Digitale pathologie / AI",
+      "wsi_viewers": "WSI-viewers",
+      "image_management": "Beeldbeheersystemen",
+      "gross_imaging": "Macro-beeldvorming & telepathologie"
+    }
+  },
+  "imsVendorDictionary": {
+    "title": "Beeldbeheersystemen",
+    "description": "Zuiver referentie-opslag van beelden/pdf's — PathScribe slaat nooit binaire beeld- of pdf-gegevens rechtstreeks op; elke koppeling verwijst naar een hier geconfigureerd, echt extern systeem, of dat een enterprise VNA/PACS/DAM is of de eigen lokale bestandsserver van een kleinere locatie.",
+    "addSystemBtn": "+ Systeem toevoegen",
+    "addTitle": "Beeldbeheersysteem toevoegen",
+    "editTitle": "Beeldbeheersysteem bewerken",
+    "nameLabel": "Naam",
+    "deploymentLabel": "Implementatiemodel",
+    "authLabel": "Authenticatiemethode",
+    "baseUrlLabel": "Basis-URL",
+    "baseUrlPlaceholder": "https://vna.uwlab.org of een intern bestandsserveradres",
+    "tokenWarning": "Neem nooit een autorisatietoken op in deze URL — een kortlevend token wordt telkens opnieuw opgehaald bij het verzoek, nooit hier opgeslagen.",
+    "noBaseUrl": "Nog geen basis-URL geconfigureerd",
+    "emptyRow": "Geen beeldbeheersystemen aanwezig.",
+    "deployment": {
+      "enterprise_ims": "Enterprise IMS (VNA / PACS / DAM)",
+      "on_prem_file_server": "Lokale bestandsserver"
+    },
+    "auth": {
+      "none": "Geen",
+      "signed_url": "Ondertekende URL",
+      "oauth2_bearer": "OAuth 2.0-bearertoken",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "grossImagingVendorDictionary": {
+    "title": "Macro-beeldvorming & telepathologie",
+    "description": "Beeldvormings- en telepathologiesystemen bij de snijtafel — annotatie, afmetingsmeting en live streaming voor intraoperatieve of externe beoordeling. Wezenlijk anders dan een WSI-viewer of een passieve beeldopslag.",
+    "addVendorBtn": "+ Leverancier toevoegen",
+    "addTitle": "Macro-beeldvormingsleverancier toevoegen",
+    "editTitle": "Macro-beeldvormingsleverancier bewerken",
+    "nameLabel": "Leveranciers-/productnaam",
+    "authLabel": "Authenticatiemethode",
+    "baseUrlLabel": "Basis-URL",
+    "baseUrlPlaceholder": "https://gross-imaging.uwlab.org",
+    "telepathologyCheckbox": "Ondersteunt live telepathologie-streaming",
+    "telepathologyCapable": "Telepathologie-geschikt",
+    "staticOnly": "Alleen statische opname",
+    "emptyRow": "Geen macro-beeldvormingsleveranciers aanwezig.",
+    "auth": {
+      "none": "Geen",
+      "signed_url": "Ondertekende URL",
+      "oauth2_bearer": "OAuth 2.0-bearertoken",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "cytologyQcRules": {
+    "title": "Cytologie QC-toewijzingsregels",
+    "description": "Configureer de geautomatiseerde regels die cytologiegevallen bemonsteren, toewijzen en routeren voor kwaliteitscontrole-peerreview.",
+    "addRuleBtn": "+ Regel toevoegen",
+    "addTitle": "QC-regel toevoegen",
+    "editTitle": "QC-regel bewerken",
+    "duplicateBtn": "Dupliceren",
+    "emptyRow": "Geen QC-regels aanwezig.",
+    "nameLabel": "Regelnaam",
+    "descriptionLabel": "Beschrijving",
+    "priorityLabel": "Evaluatieprioriteit (hogere wordt eerst geëvalueerd)",
+    "slaHoursLabel": "SLA (uren)",
+    "tierLabel": "Prioriteitsniveau peer review",
+    "priorityInline": "Prioriteit {{priority}}",
+    "commaListPlaceholder": "Door komma's gescheiden waarden",
+    "jurisdictionsHint": "Laat alles uitgevinkt om deze regel in elk rechtsgebied toe te passen.",
+    "facilityIdsLabel": "ID's uitvoerende faciliteiten",
+    "eligibleReviewerRolesLabel": "In aanmerking komende beoordelaarsrollen",
+    "highRiskFlagsLabel": "Hoogrisico-markeringen",
+    "bethesdaLabel": "Bethesda-classificaties",
+    "snomedLabel": "SNOMED-conceptcodes",
+    "resultIsNegativeLabel": "Resultaatfilter",
+    "section": {
+      "basics": "Basisgegevens",
+      "samplingLogic": "Bemonsteringslogica",
+      "location": "Locatie & rechtsgebied",
+      "provider": "Zorgverlener",
+      "specimen": "Specimen",
+      "clinicalDiagnostic": "Klinisch risico & diagnostisch bereik"
+    },
+    "sampling": {
+      "percentage": "Percentage",
+      "interval": "Interval (elke Nde geval)",
+      "fixedVolume": "Vast volume (eerste N gevallen)",
+      "ratePercentPlaceholder": "Percentage",
+      "everyNthPlaceholder": "Elke Nde geval",
+      "firstNPlaceholder": "Eerste N gevallen"
+    },
+    "tier": {
+      "high_escalation": "Prioriteit 1 — Hoge escalatie",
+      "targeted_high_consequence": "Prioriteit 2 — Gericht, hoge impact",
+      "routine_random": "Prioriteit 3 — Routinematig willekeurig"
+    },
+    "role": {
+      "pathologist": "Patholoog",
+      "cytotechnologist": "Cytotechnoloog"
+    },
+    "onboarding": {
+      "new_hire": "Nieuwe medewerker",
+      "probationary": "Proeftijd"
+    },
+    "specimenCategory": {
+      "gyn_pap": "GYN Pap",
+      "non_gyn_fluid": "Niet-GYN-vloeistof",
+      "fna": "Dunnenaaldaspiratie (FNA)"
+    },
+    "adequacy": {
+      "satisfactory": "Voldoende",
+      "unsatisfactory": "Onvoldoende",
+      "limited": "Beperkt"
+    },
+    "resultFilter": {
+      "any": "Elk resultaat",
+      "negative": "Alleen negatief",
+      "nonNegative": "Alleen niet-negatief"
+    }
+  },
+  "cytologyQcQueue": {
+    "pageTitle": "Cytologie QC peer review-wachtrij",
+    "tab": {
+      "all": "Alle items",
+      "escalations_discrepancies": "Escalaties & afwijkingen",
+      "routine_random": "Routine & willekeurig"
+    },
+    "assignToMeBtn": "Aan mij toewijzen",
+    "recordConcurrenceBtn": "Overeenstemming vastleggen",
+    "recordDiscrepancyBtn": "Afwijking vastleggen",
+    "assignedToOther": "Toegewezen aan een andere beoordelaar",
+    "emptyRow": "Geen gevallen in deze wachtrij.",
+    "slaStatus": {
+      "on_time": "Op tijd",
+      "approaching": "SLA nadert",
+      "breached": "SLA overschreden"
+    },
+    "discrepancyModalTitle": "Afwijking vastleggen",
+    "primaryCodeLabel": "Primaire diagnosecode",
+    "secondaryCodeLabel": "Secundaire diagnosecode",
+    "severityLabel": "Ernst",
+    "severity": {
+      "major": "Ernstig",
+      "minor": "Licht"
+    },
+    "commentaryLabel": "Opmerking beoordelaar",
+    "submitDiscrepancyBtn": "Afwijking indienen"
+  },
+  "cytologyScreening": {
+    "requestReviewBtn": "Beoord. aanvr.",
+    "openEmrBtn": "EPD openen",
+    "teamBtn": "Team",
+    "delegateBtn": "Delegeren",
+    "flagsBtn": "Markeringen",
+    "codesBtn": "Codes",
+    "requestPeerReviewBtn": "Peer review aanvragen",
+    "patientHistory": {
+      "title": "Cyto-/histo-voorgeschiedenis patient",
+      "subtitle": "(eerdere gevallen van deze patiënt)",
+      "priorPapSection": "Eerdere uitstrijkjes",
+      "priorBiopsySection": "Eerdere chirurgische biopten",
+      "noFinalDx": "geen einddiagnose geregistreerd",
+      "viewCase": "Bekijk zaak"
+    },
+    "materialBtn": "Materiaal",
+    "materialDrawer": {
+      "specimenLabel": "Specimen",
+      "noDecants": "Geen decantaat geregistreerd voor dit specimen.",
+      "decantType": {
+        "residual_fluid": "Restvloeistof",
+        "cell_block": "Celblok"
+      },
+      "addResidualFluidBtn": "Restvloeistof toevoegen",
+      "addCellBlockBtn": "Celblok toevoegen"
+    },
+    "synopticBtn": "Synoptisch",
+    "synopticDrawer": {
+      "title": "Synoptische rapportage",
+      "previewBanner": "Aangepaste sjabloon-engine • Gestructureerde gegevensinvoer",
+      "selectTemplate": "Selecteer synoptisch sjabloon",
+      "validationError": "Vul alle vereiste synoptische velden in.",
+      "saveBtn": "Synoptiek opslaan",
+      "unvalidatedTermsTitle": "Niet-gevalideerde klinische termen",
+      "unvalidatedTermsExplanation": "Dit rapport bevat klinische termen in hun canonieke (Engelse) vorm, omdat er nog geen klinisch gevalideerde vertaling bestaat voor uw taal. Controleer deze termen zorgvuldig voordat u dit rapport vrijgeeft.",
+      "acknowledgmentLabel": "Ik heb de bovenstaande niet-gevalideerde termen gecontroleerd en bevestig dat ze klinisch correct zijn voor dit rapport.",
+      "acknowledgmentRequiredError": "U moet de bovenstaande niet-gevalideerde termen bevestigen voordat u opslaat.",
+      "generatedNarrativeTitle": "Gegenereerde tekst (concept — controleren voór gebruik)",
+      "insertIntoNotesBtn": "Invoegen in notities",
+      "narrative": {
+        "procedure": "Procedure: {value}.",
+        "site": "Locatie: {value}.",
+        "thyroid": {
+          "noduleSize": "Doelgrootte nodus: {value} cm.",
+          "follicularGroupCount": "Aantal folliculaire groepen: {value}.",
+          "bethesdaCategory": "Bethesda-diagnosecategorie: {value}.",
+          "colloid": "Colloid: {value}."
+        },
+        "numberOfPasses": "Aantal passages: {value}.",
+        "rosePerformed": "Snelle evaluatie ter plaatse (ROSE) werd {value}.",
+        "specimenIs": "Het specimen is {value}.",
+        "reasonUnsatisfactory": "Reden voor onbevredigende beoordeling: {value}.",
+        "cellularity": "Cellulariteit: {value}.",
+        "architecturalPattern": "Architecturaal patroon: {value}.",
+        "nuclearFeatures": "Nucleaire kenmerken: {value}.",
+        "background": "Achtergrond: {value}.",
+        "molecularTesting": "Moleculaire testing: {value}.",
+        "molecularPlatform": "Moleculair platform: {value}.",
+        "cellBlockIhc": "Immunohistochemie op celblok: {value}.",
+        "radiologicCorrelation": "Radiologische correlatie: {value}."
+      },
+      "unvalidatedSegmentTooltip": "Niet-gevalideerde vertaling — weergegeven in canonieke/Engelse vorm. Lexicon-term: {key}"
+    },
+    "printBtn": "Afdrukken",
+    "fiveYearLookback": {
+      "title": "5-jaars retrospectieve terugblik",
+      "subtitle": "(CAP-verplicht — eerdere negatieve resultaten binnen de terugblikperiode)",
+      "viewSlide": "Bekijk zaak"
+    },
+    "roseBtn": "ROSE",
+    "roseDrawer": {
+      "priorEvaluations": "Eerdere ROSE-beoordelingen",
+      "recordNew": "Nieuwe beoordeling registreren",
+      "location": {
+        "radiology": "Radiologie",
+        "clinic": "Kliniek",
+        "operating_room": "Operatiekamer",
+        "other": "Overig"
+      },
+      "locationLabel": "Locatie",
+      "passLabel": "Punctie {{n}}",
+      "adequacy": {
+        "adequate": "Voldoende",
+        "inadequate": "Onvoldoende",
+        "indeterminate": "Onbepaald"
+      },
+      "impressionPlaceholder": "Voorlopige indruk (bijv. Benigne, passend bij colloidnodus)",
+      "addPassBtn": "Punctie toevoegen",
+      "saveBtn": "Beoordeling opslaan"
+    }
+  },
+  "cytologyWorklist": {
+    "breadcrumbLabel": "Cytologie-werkruimte",
+    "domain": {
+      "gyn": "GYN-cytologie",
+      "nonGyn": "Niet-GYN/FNA-wachtrij"
+    },
+    "qaComplianceSectionLabel": "KA & naleving",
+    "organSite": {
+      "all": "Alle locaties",
+      "THYROID": "Schildklier",
+      "LUNG_EBUS": "Long/EBUS",
+      "BODY_FLUID": "Lichaamsvocht/spoelingen",
+      "URINE": "Urine/Paris-systeem",
+      "SALIVARY_GLAND": "Speekselklier",
+      "BREAST": "Borst",
+      "GI_PANCREATIC": "GI/Pancreas",
+      "OTHER_NGYN": "Overig"
+    }
+  }
+}

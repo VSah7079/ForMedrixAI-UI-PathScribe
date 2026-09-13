@@ -69,6 +69,7 @@ const FACILITY_ROLE_ORDER: FacilityRole[] = [
   'internal_ordering_client',
   'external_ordering_client',
   'specimen_acquisition',
+  'reference_lab',
 ];
 
 // ─── Blank form state ─────────────────────────────────────────────────────────

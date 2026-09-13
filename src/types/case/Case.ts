@@ -12,6 +12,7 @@ import type { CaseHold } from "./CaseHold";
 import type { MatrixBlock } from "./MatrixBlock";
 import { CaseComment } from "./CaseComment";
 import type { Icd10Code } from "@/services/diagnosisCodes/IDiagnosisCodesService";
+import type { RecordedClinicalHistoryEntry } from "@/types/clinicalHistory/RecordedClinicalHistoryEntry";
 import type { OutsidePatientFinancialData } from "@/types/billing/OutsidePatientFinancialData";
 import { CaseStatus } from "./CaseStatus";
 import type { FieldLineageEntry } from '@/types/reports/FieldLineage';
@@ -117,6 +118,46 @@ export interface OrderMetadata {
    */
   icd10Codes?: Icd10Code[];
   clinicalIndication?: string;
+  /**
+   * Real, per the uploaded "Structured Clinical History Dictionary &
+   * Accessioning Integration" spec's own User Story 2 — the real,
+   * structured clinical_history array a validated inbound accession
+   * JSON payload carries, recorded here at the order level (same real
+   * placement as clinicalIndication/reasonForStudy/icd10Codes above —
+   * this is order-level metadata, not a per-specimen concept).
+   */
+  clinicalHistory?: RecordedClinicalHistoryEntry[];
+  /**
+   * Real, per the uploaded spec's own User Story 5, Acceptance
+   * Criteria 2 ("Incomplete orders automatically set accession_status
+   * = 'DEFICIENT'"). Real, per direct guidance's own explicit answer
+   * to the real specimen-vs-order deficiency-scoping question ("New,
+   * order-level deficiency status") — a genuinely new, order-level
+   * concept, deliberately NOT folded into the existing, specimen-
+   * scoped SpecimenDeficiency mechanism (services/deficiencies/),
+   * which has no real way to represent a deficiency belonging to the
+   * order as a whole rather than one specific specimen. Undefined on
+   * every case accessioned before this field existed — never
+   * defaulted to 'COMPLETE' retroactively, which would be a real,
+   * fabricated claim about historical data this app has no way to
+   * actually verify.
+   */
+  accessionStatus?: 'COMPLETE' | 'DEFICIENT';
+  /**
+   * Real, per direct guidance's own research: a real, standard HL7
+   * field — OBR-31 "Reason for Study" (CWE), mapping directly to
+   * FHIR's ServiceRequest.reasonCode — exists specifically to carry
+   * why a test was ordered. Left distinct from both clinicalIndication
+   * (free text) and the pre-existing, generic, unused reasonCodes
+   * field above, for the same real reason clinicalIndication already
+   * is: an unambiguous, structured field for a specific, real concept,
+   * not a repurposed vague one. First real use: distinguishing a
+   * routine, programme-invited screening test from a private or
+   * opportunistic one, for real UK CSMS registry action-code dispatch
+   * (resolveCsmsActionCode.ts) — undefined for every case where this
+   * distinction doesn't apply.
+   */
+  reasonForStudy?: 'nhs_programme_invited' | 'private_or_opportunistic';
   /**
    * Whole-case comment thread — distinct from clinicalIndication (the
    * clinical reason, feeds AI template routing) and from the per-report/
@@ -523,6 +564,24 @@ export interface ProtocolChange {
 }
 export interface Case {
   id: string;
+
+  /** Real, per direct guidance on APAC-QA-01 (external proficiency
+   *  testing — RCPAQAP/CAP-style EQA programs): "the synthetic cases
+   *  are accessioned into the system and resulted. Those results are
+   *  then sent to [the external provider]. Then a response is sent
+   *  back showing the scores. The Lab didn't know what the actual
+   *  result was until it was sent back." Set only on a real,
+   *  synthetic proficiency-testing challenge case, accessioned the
+   *  exact same real way as any real patient case — undefined for
+   *  every real, genuine patient case. PathScribe never stores or
+   *  computes the external provider's own known answer itself; the
+   *  real scoring happens externally, and comes back later as a
+   *  real, separate inbound event
+   *  (CytologyProficiencyTestResultEventPayload.ts) — the same real
+   *  "PathScribe publishes/ingests its own specification" split
+   *  already established for hrHPV results and molecular batch
+   *  results. */
+  proficiencyTestContext?: { provider: string; challengeReferenceId: string };
 
   /** Real, per direct guidance (PS-105): the case's own real, confirmed
    *  abnormal-detection status — set only when a pathologist actually

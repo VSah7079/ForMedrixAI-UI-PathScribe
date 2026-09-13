@@ -87,13 +87,17 @@ export function buildCassetteZplTemplate(fields: CassetteZplFields): string {
     '^CI28',
     '^FO30,30',
     '^BY2',
-    // Real fix vs. the spec's own template: module size 4, then the
-    // real, valid ECC200 quality level (see GS1_RECOMMENDED_ECC_LEVEL's
-    // own comment above) — the spec's own "120" here was not a real,
-    // valid ZPL quality value. Columns/rows left at 0,0 (auto) since a
-    // real accession number/block id's own length genuinely varies
-    // label to label.
-    `^BXN,4,${GS1_RECOMMENDED_ECC_LEVEL},0,0,1`,
+    // Real, direct correction, per real visual verification via
+    // Labelary: 0 for columns/rows is real, valid Zebra spec ("auto"),
+    // confirmed against a real, working example from actual Zebra
+    // hardware — but Labelary's own interpreter rejects an explicit 0
+    // here ("Value 0 is less than minimum value 1 and was ignored").
+    // Omitting the fields (blank, not 0) is a real, working pattern on
+    // both. A real accession number/block id's own length genuinely
+    // varies label to label, which is exactly why these were left to
+    // auto-size in the first place — that reasoning is unchanged,
+    // only the real syntax for expressing "auto" is corrected.
+    `^BXN,4,${GS1_RECOMMENDED_ECC_LEVEL},,,1`,
     // Real, load-bearing fix vs. the spec's own template: ^FH here
     // tells the printer to interpret "_1" (and any other "_NN"
     // sequence) as an escape rather than literal text — without it,
@@ -131,10 +135,21 @@ export interface SlideZplFields {
  *  cassette template's own module size (4 dots) and its ~120-dot-tall
  *  barcode would not fit in a 75-dot-tall label at all. Module size 2
  *  is used here instead — a real, deliberately conservative estimate
- *  for this label size, not something verified against real hardware
- *  (nothing in this environment can rasterize ZPL and measure the
- *  actual printed result) — flag this as the first thing to check
- *  against a real, physical slide printer.
+ *  for this label size.
+ *
+ *  Real, direct fix, per real Labelary verification at this label's
+ *  own real, correct scale (1.0" x 0.25" canvas, 300 dpi print
+ *  density — not Labelary's own default 4"x6"/203dpi, which had
+ *  previously and misleadingly shown this as passing regardless of
+ *  the real, physical fit): ^BY1 flagged a real "increase module
+ *  width" linter warning. Confirmed directly, at the correct scale,
+ *  that ^BY2 clears the warning with the DataMatrix rendering at the
+ *  identical physical size and no visible overflow of the real 1.0"
+ *  x 0.25" bounds — ^BY does not affect a ^BX (DataMatrix) command's
+ *  own module size at all (that's the "2" in ^BXN,2,... below,
+ *  unchanged), so this was a real, free improvement to the barcode's
+ *  general scanning reliability with zero real layout cost, not a
+ *  tradeoff.
  *
  *  Real, deliberate content trim vs. the cassette template: a slide
  *  label this small has no real room for the patient's name or the
@@ -151,10 +166,13 @@ export function buildSlideZplTemplate(fields: SlideZplFields): string {
     '^XA',
     '^CI28',
     '^FO10,8',
-    '^BY1',
+    '^BY2',
     // Real, conservative module size for this label's own tiny real
-    // area — see this function's own doc comment above.
-    `^BXN,2,${GS1_RECOMMENDED_ECC_LEVEL},0,0,1`,
+    // area — see this function's own doc comment above. Real, direct
+    // correction, per real Labelary verification (see
+    // buildCassetteZplTemplate's own identical fix above for the full
+    // account): columns/rows omitted (blank), not 0.
+    `^BXN,2,${GS1_RECOMMENDED_ECC_LEVEL},,,1`,
     `^FH^FD${escapedGs1}^FS`,
     `^FO70,10^A0N,14,14^FD${specimenBlockLevel}^FS`,
     `^FO70,32^A0N,12,12^FD${stain}^FS`,

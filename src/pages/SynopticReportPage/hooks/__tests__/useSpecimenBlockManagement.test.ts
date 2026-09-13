@@ -171,21 +171,121 @@ describe('useSpecimenBlockManagement — handleAdvanceFocusedBlockStatus', () =>
   });
 });
 
-describe('useSpecimenBlockManagement — handleConfirmTriage', () => {
+describe('useSpecimenBlockManagement — handleConfirmTriage / handleOverrideTriage / handleConfirmTriageChecklistItem / triage release gate', () => {
   beforeEach(async () => {
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     vi.mocked(caseRouter.updateCase).mockReset().mockResolvedValue(undefined);
   });
 
-  it('stamps triageConfirmedAt/By on the focused block\'s specimen, attributed to the real signing user', async () => {
+  const withTriage = (overrideReason?: string) => makeTestCase({
+    specimens: [
+      {
+        id: 'SP-1', label: 'A', description: 'Test specimen',
+        blocks: [{ id: 'BLK-1', label: '1', status: 'Pending', stains: [] }],
+        triage: {
+          requiredAt: '2026-09-01T00:00:00.000Z',
+          checklistItems: [{ item: 'Split core into LM/IF/EM portions', confirmed: false }],
+          overrideReason,
+        },
+      },
+    ],
+  } as any);
+
+  it('handleConfirmTriage is a real no-op when the focused specimen has no SpecimenTriage at all — nothing to confirm', async () => {
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
     const { result } = renderHook(() => useSpecimenBlockManagement(baseParams()));
+    await act(async () => { await result.current.handleConfirmTriage(); });
+    expect(caseRouter.updateCase).not.toHaveBeenCalled();
+  });
+
+  it('handleConfirmTriage marks every real checklist item confirmed and stamps completedAt/By, attributed to the real signing user', async () => {
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage() })));
     await act(async () => { await result.current.handleConfirmTriage(); });
 
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     const [, patch] = vi.mocked(caseRouter.updateCase).mock.calls[0];
     const patchedSpecimen = (patch as any).specimens.find((s: any) => s.id === 'SP-1');
-    expect(patchedSpecimen.triageConfirmedBy).toBe('PATH-001');
-    expect(typeof patchedSpecimen.triageConfirmedAt).toBe('string');
+    expect(patchedSpecimen.triage.checklistItems.every((ci: any) => ci.confirmed)).toBe(true);
+    expect(patchedSpecimen.triage.completedBy).toBe('PATH-001');
+    expect(typeof patchedSpecimen.triage.completedAt).toBe('string');
+  });
+
+  it('handleConfirmTriageChecklistItem confirms one real item without touching the others, and only stamps completedAt/By once every item is confirmed', async () => {
+    const caseData = withTriage();
+    (caseData.specimens![0] as any).triage.checklistItems = [
+      { item: 'Split core into LM/IF/EM portions', confirmed: false },
+      { item: 'Confirm laterality on the requisition', confirmed: false },
+    ];
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleConfirmTriageChecklistItem('SP-1', 0, true); });
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    let patch = vi.mocked(caseRouter.updateCase).mock.calls[0][1] as any;
+    let sp = patch.specimens.find((s: any) => s.id === 'SP-1');
+    expect(sp.triage.checklistItems[0].confirmed).toBe(true);
+    expect(sp.triage.checklistItems[1].confirmed).toBe(false);
+    expect(sp.triage.completedAt).toBeUndefined();
+
+    vi.mocked(caseRouter.updateCase).mockClear();
+    const { result: result2 } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: { ...caseData, specimens: patch.specimens } })));
+    await act(async () => { await result2.current.handleConfirmTriageChecklistItem('SP-1', 1, true); });
+    patch = vi.mocked(caseRouter.updateCase).mock.calls[0][1] as any;
+    sp = patch.specimens.find((s: any) => s.id === 'SP-1');
+    expect(sp.triage.checklistItems.every((ci: any) => ci.confirmed)).toBe(true);
+    expect(typeof sp.triage.completedAt).toBe('string');
+  });
+
+  it('handleOverrideTriage requires a real, non-empty reason — a blank reason is a genuine no-op', async () => {
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage() })));
+    await act(async () => { await result.current.handleOverrideTriage('SP-1', '   '); });
+    expect(caseRouter.updateCase).not.toHaveBeenCalled();
+  });
+
+  it('handleOverrideTriage records the real reason and stamps completedAt/By, even with the checklist still incomplete', async () => {
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage() })));
+    await act(async () => { await result.current.handleOverrideTriage('SP-1', 'Urgent STAT case — supervisor override.'); });
+
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    const [, patch] = vi.mocked(caseRouter.updateCase).mock.calls[0];
+    const sp = (patch as any).specimens.find((s: any) => s.id === 'SP-1');
+    expect(sp.triage.overrideReason).toBe('Urgent STAT case — supervisor override.');
+    expect(sp.triage.checklistItems[0].confirmed).toBe(false); // never silently marks the checklist itself confirmed
+    expect(typeof sp.triage.completedAt).toBe('string');
+  });
+
+  describe('handleReleaseGrossingBlocks — real triage gate', () => {
+    it('blocks release and shows a real, clear error when triage is required and genuinely incomplete', async () => {
+      const showToast = vi.fn();
+      const { caseRouter } = await import('@/services/cases/CaseRouter');
+      const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage(), showToast })));
+      await act(async () => { await result.current.handleReleaseGrossingBlocks('SP-1', ['BLK-1']); });
+      expect(showToast).toHaveBeenCalledWith('Cannot release blocks: Specimen triage is incomplete.');
+      expect(caseRouter.updateCase).not.toHaveBeenCalled();
+    });
+
+    it('releases normally once an override reason is recorded, even with the checklist still unconfirmed', async () => {
+      const { caseRouter } = await import('@/services/cases/CaseRouter');
+      const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage('Urgent — supervisor override.') })));
+      await act(async () => { await result.current.handleReleaseGrossingBlocks('SP-1', ['BLK-1']); });
+      expect(caseRouter.updateCase).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases normally once every checklist item is genuinely confirmed', async () => {
+      const caseData = withTriage();
+      (caseData.specimens![0] as any).triage.checklistItems[0].confirmed = true;
+      const { caseRouter } = await import('@/services/cases/CaseRouter');
+      const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData })));
+      await act(async () => { await result.current.handleReleaseGrossingBlocks('SP-1', ['BLK-1']); });
+      expect(caseRouter.updateCase).toHaveBeenCalledTimes(1);
+    });
+
+    it('a specimen with no SpecimenTriage at all (protocol never required it) releases exactly as before — never gated', async () => {
+      const { caseRouter } = await import('@/services/cases/CaseRouter');
+      const { result } = renderHook(() => useSpecimenBlockManagement(baseParams()));
+      await act(async () => { await result.current.handleReleaseGrossingBlocks('SP-1', ['BLK-1']); });
+      expect(caseRouter.updateCase).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

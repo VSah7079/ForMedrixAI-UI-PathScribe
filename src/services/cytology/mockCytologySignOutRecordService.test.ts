@@ -18,7 +18,7 @@ const REPORT_CONTENT: CytologyReportContent = {
   specimenAdequacy: ['Satisfactory for evaluation.'],
   primaryInterpretation: 'Negative for Intraepithelial Lesion or Malignancy (NILM).',
   additionalInterpretations: [], recommendations: [],
-  signedBy: { name: 'Dr. Second', isPathologist: true }, signedAt: '2026-09-03T10:00:00.000Z',
+  requiresPathologistReview: true, signedBy: { name: 'Dr. Second', isPathologist: true }, signedAt: '2026-09-03T10:00:00.000Z',
 };
 
 const draft = () => ({

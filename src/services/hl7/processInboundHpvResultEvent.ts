@@ -21,6 +21,7 @@
 
 import { caseRouter } from '../cases/CaseRouter';
 import { ConcurrencyConflictError } from '../cases/ConcurrencyConflictError';
+import { mockMolecularOrderOutboundQueueService } from '../molecularOrders/mockMolecularOrderOutboundQueueService';
 import type { HpvResultEventPayload } from '@/types/events/HpvResultEventPayload';
 
 export interface ProcessInboundHpvResultEventResult {
@@ -106,6 +107,29 @@ export async function processInboundHpvResultEvent(payload: HpvResultEventPayloa
   }
 
   processedMessageIds.add(payload.messageId);
+
+  // Real, per the Protocol-Driven Workflow Infrastructure story's Part
+  // 2b reflex trigger — closes the documented gap in st-hpv-reflex's
+  // own description (services/stains/mockStainTypeService.ts): a
+  // specimen whose protocol used the standalone st-hpv-highrisk-screen
+  // assay (not the bundled st-hpv-reflex entry, which already implies
+  // reflex) has no other real mechanism to ever order genotyping on a
+  // positive result. Fire-and-forget, same real posture as every other
+  // outbound dispatch in this app — a real queueing failure here must
+  // never turn an otherwise-successful result ingestion into a failed
+  // one.
+  if (payload.hrHpvResult === 'Positive' && payload.assayStainTypeId === 'st-hpv-highrisk-screen') {
+    mockMolecularOrderOutboundQueueService.enqueue({
+      caseId: caseData.id,
+      eventType: 'order.molecular',
+      payload: {
+        accessionNumber: payload.accessionNumber, specimenLetter: payload.specimenLetter,
+        assayCode: 'st-hpv-genotyping', orderReason: 'hpv_reflex_genotyping',
+        priority: caseData.order?.priority ?? 'Routine', reflexFromMessageId: payload.messageId,
+      },
+    }).catch(console.error);
+  }
+
   return { messageId: payload.messageId, outcome: 'applied', caseId: caseData.id, specimenId: targetSpecimen.id };
 }
 

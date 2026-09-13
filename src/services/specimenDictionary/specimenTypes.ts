@@ -167,4 +167,30 @@ export interface SpecimenEntry {
    * never reflex to cytology from the same specimen.
    */
   isSelfCollected?: boolean;
+  /**
+   * Real, per direct guidance's own Specimen Auto-Categorization spec
+   * ("category, reporting system... and organSite are linked directly
+   * to the Specimen Definition / Order Master"). Meaningful only for
+   * a real, non-GYN cytology entry (isGynCytology falsy/undefined) —
+   * a real GYN entry has no real organ site distinction to make.
+   * Dictionary-level, matching isGynCytology's own established
+   * posture: this distinction lives at the real order-code/specimen-
+   * definition level, not inferred from free-text at read time. Drives
+   * the real Non-GYN Organ/Site Quick-Filter Chips
+   * (CytologyWorklistPage.tsx).
+   */
+  organSite?: 'THYROID' | 'LUNG_EBUS' | 'BODY_FLUID' | 'URINE' | 'SALIVARY_GLAND' | 'BREAST' | 'GI_PANCREATIC' | 'OTHER_NGYN';
+  /**
+   * Real, per direct guidance's own Accessioning Inheritance spec
+   * ("Default Framework: Bethesda Thyroid System"). References one of
+   * this app's own real, existing CAP/RCPath Non-GYN cytology
+   * templates (data/templates/Cytology/,
+   * cytologySynopticTemplateRegistry.ts) by its own real template id
+   * — never a separate, redundant "reporting system" enum requiring
+   * its own mapping back to a template. Meaningful only for a real
+   * non-GYN entry; undefined means no real default has been
+   * configured yet, so the real Synoptic drawer's own template picker
+   * still requires a genuine, manual selection rather than guessing.
+   */
+  defaultSynopticTemplateId?: string;
 }

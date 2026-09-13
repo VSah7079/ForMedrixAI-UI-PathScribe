@@ -24,6 +24,53 @@ export interface RequisitionLabelData {
   printedAt: string;
 }
 
+// ── Requisition sticker sheet — Phase 5 real, direct correction ────
+// Real, per direct follow-up + supplied research: "Requisition Labels
+// should never be a Full page... standard thermal label printers...
+// is much more standard and practical." Real, direct research
+// supplied afterward showed this isn't "one label at a different
+// size" — a real requisition sheet carries SEVERAL, genuinely
+// different sticker families, each peeled off for a different real
+// physical destination: a main tracking sticker (full demographics +
+// accession barcode, for LIS intake scanning) plus smaller, real
+// peel-off stickers for paper logs/transport bags, specimen tubes, and
+// cassettes/slides. Real, honest design decision: at requisition-print
+// time, specimens/cassettes/blocks don't exist as specific, real
+// records yet (collection/grossing haven't happened) — every sticker
+// on this sheet carries the one real identifier that IS already known,
+// the accession barcode, rather than fabricating a specimen letter or
+// cassette id that hasn't been assigned yet. A lab tech applies each
+// real, physical sticker to its real destination as that destination
+// comes into being (a tube at draw time, a cassette at grossing).
+
+export type RequisitionStickerZoneKind = 'log_in' | 'specimen' | 'cassette_slide';
+
+/** Real, per the given research's own table — the real, first-listed
+ *  dimension for each real sticker family; a lab with its own,
+ *  different real label stock can override via its own configured
+ *  preset (real, separate, later work — this is the honest default). */
+export const REQUISITION_STICKER_ZONE_DIMENSIONS: Record<RequisitionStickerZoneKind, { widthMm: number; heightMm: number }> = {
+  log_in: { widthMm: 38.1, heightMm: 12.7 }, // 1.5" × 0.5"
+  specimen: { widthMm: 50.8, heightMm: 19.05 }, // 2.0" × 0.75"
+  cassette_slide: { widthMm: 22.2, heightMm: 22.2 }, // 0.875" × 0.875"
+};
+
+export interface RequisitionStickerSheetData extends RequisitionLabelData {
+  /** Real, configurable count of each real, distinct sticker family to
+   *  print on this one real sheet — a real lab's own workflow decides
+   *  how many of each it actually needs; this data type doesn't guess
+   *  a universal number. */
+  logInStickerCount: number;
+  specimenStickerCount: number;
+  cassetteSlideStickerCount: number;
+}
+
+export const DEFAULT_REQUISITION_STICKER_COUNTS: Pick<RequisitionStickerSheetData, 'logInStickerCount' | 'specimenStickerCount' | 'cassetteSlideStickerCount'> = {
+  logInStickerCount: 4,
+  specimenStickerCount: 2,
+  cassetteSlideStickerCount: 4,
+};
+
 export interface ContainerLabelData extends RequisitionLabelData {
   /** e.g. "A" — Specimen.label */
   specimenLabel: string;
@@ -271,4 +318,58 @@ export function matrixBlockIdentifier(fullAccession: string, matrixBlockLabel: s
  *  is built on cassetteIdentifier(). */
 export function matrixSlideIdentifier(fullAccession: string, matrixBlockLabel: string, level: string): string {
   return `${matrixBlockIdentifier(fullAccession, matrixBlockLabel)}-${level}`;
+}
+
+// ── Molecular Testing Execution Module — Phase 4 ────────────────────
+// Real, per direct follow-up: "Continue with printing (labels and
+// barcodes). We have mechanisms for this as well." Reuses this app's
+// own established label-printing architecture exactly — same real
+// data-type/barcodePayloadForX/buildXLabelHtml/printX layering as
+// every label kind above, rather than a second, parallel print system
+// for molecular labels specifically.
+//
+// Real, deliberate barcode-payload simplicity, matching
+// barcodePayloadForSecondaryLabel's own established reasoning: the
+// payload is exactly the real, already-generated barcode string
+// (resolveMolecularBarcodes.ts) — SPEC-/RACK-MOLE-/PLT-/LOC-INST-
+// formats are already real, self-describing, unique identifiers; no
+// second prefix or encoding scheme is layered on top.
+
+export interface MolecularSpecimenLabelData {
+  containerBarcode: string; // e.g. SPEC-20260906-00000042
+  accessionNumber: string;
+  aliquotVolumeUl?: number;
+  printedAt: string;
+}
+
+export interface MolecularPlateLabelData {
+  plateBarcode: string; // e.g. PLT-HPV-20260906-012
+  assayName: string;
+  targetInstrumentId: string;
+  printedAt: string;
+}
+
+export interface MolecularRackLabelData {
+  rackBarcode: string; // e.g. RACK-MOLE-00007
+  printedAt: string;
+}
+
+export interface MolecularDeckLocationLabelData {
+  deckLocationLabel: string; // e.g. LOC-INST-PANTHER_02-SLOT_A1
+  targetInstrumentId: string;
+  deckSlot: string;
+  printedAt: string;
+}
+
+export function barcodePayloadForMolecularSpecimen(data: MolecularSpecimenLabelData): string {
+  return data.containerBarcode;
+}
+export function barcodePayloadForMolecularPlate(data: MolecularPlateLabelData): string {
+  return data.plateBarcode;
+}
+export function barcodePayloadForMolecularRack(data: MolecularRackLabelData): string {
+  return data.rackBarcode;
+}
+export function barcodePayloadForMolecularDeckLocation(data: MolecularDeckLocationLabelData): string {
+  return data.deckLocationLabel;
 }

@@ -52,7 +52,11 @@ export interface CytologyAgreementResult {
  *  threshold rather than re-deriving it. */
 export const HIGH_GRADE_RANK_THRESHOLD = 3;
 
-function isUnsatisfactory(categoryIds: string[] | undefined, categories: CytologyCategoryEntry[]): boolean {
+// Real, per direct guidance's own NCSR work: exported so the real
+// registry-dispatch call site can reuse this exact same real "any
+// selected adequacy category is unsatisfactory" check, rather than
+// duplicating the same logic a second, potentially-divergent way.
+export function isUnsatisfactoryAdequacy(categoryIds: string[] | undefined, categories: CytologyCategoryEntry[]): boolean {
   if (!categoryIds || categoryIds.length === 0) return false;
   // Real, per direct UI-review follow-up: Specimen Adequacy is now a
   // real, multi-select field — ANY selected category flagged
@@ -70,7 +74,7 @@ export function classifyCytologyAgreement(
   const byId = new Map(categories.map(c => [c.id, c]));
 
   const adequacyDiscrepancy =
-    isUnsatisfactory(initial.adequacyCategoryIds, categories) !== isUnsatisfactory(followUp.adequacyCategoryIds, categories);
+    isUnsatisfactoryAdequacy(initial.adequacyCategoryIds, categories) !== isUnsatisfactoryAdequacy(followUp.adequacyCategoryIds, categories);
 
   if (initial.primaryInterpretationId === followUp.primaryInterpretationId) {
     return { level: 'exact', adequacyDiscrepancy };

@@ -90,6 +90,34 @@ const LABEL_STYLES = `
   .ps-seclabel-text { flex: 1; min-width: 0; overflow: hidden; }
   .ps-seclabel-id { font-weight: 800; font-size: 6.5pt; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ps-seclabel-note { font-size: 4.5pt; color: #444; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Real, per direct follow-up + supplied research: the real,
+     multi-zone requisition sticker sheet — see
+     RequisitionStickerSheetData's own doc comment (types/labels/
+     LabelData.ts) for the full reasoning. Dashed borders visually
+     signal a real, physical peel/perforation line, matching how this
+     kind of multi-peel label stock actually looks. */
+  .ps-req-sheet {
+    display: flex; flex-direction: column; gap: 3mm; padding: 3mm;
+    break-after: page; page-break-after: always;
+  }
+  .ps-req-sheet:last-child { break-after: auto; page-break-after: auto; }
+  .ps-req-header {
+    display: flex; justify-content: flex-end; align-items: flex-start; gap: 4mm;
+    border-bottom: 1px solid #ccc; padding-bottom: 2mm;
+  }
+  .ps-req-header-text { text-align: right; }
+  .ps-req-header-text .ps-label-accession { font-size: 13pt; }
+  .ps-req-header-text .ps-label-fields { font-size: 8pt; text-align: right; }
+  .ps-req-header-text .ps-label-row { justify-content: flex-end; }
+  .ps-req-zone-title { font-size: 7pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1mm; }
+  .ps-req-sticker-row { display: flex; flex-wrap: wrap; gap: 2mm; }
+  .ps-req-sticker {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px dashed #999; border-radius: 1mm; overflow: hidden; padding: 0.5mm;
+  }
+  .ps-req-sticker-barcode svg { max-width: 100%; max-height: 65%; }
+  .ps-req-sticker-text { font-size: 5pt; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 `;
 
 /**

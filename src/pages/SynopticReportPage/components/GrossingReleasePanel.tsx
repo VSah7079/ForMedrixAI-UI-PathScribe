@@ -12,16 +12,21 @@
 // nothing extra at all, same posture as every other conditional
 // section in MaterialTreePanel.tsx.
 //
-// No business logic here — purely displays already-resolved real
-// data and reports the PA's own choices (remove, override color,
-// release) via callbacks; every real decision (which color, which
-// default count) already happened in hydrateGrossingBlocks.ts before
-// this component ever renders.
+// Real, per the Protocol-Driven Workflow Infrastructure story's Part
+// 2c (per direct instruction): the real, primary UX side of the
+// triage gate — useSpecimenBlockManagement.ts's own
+// handleReleaseGrossingBlocks is the real, enforced backstop, but a
+// tech should never have to click Release and get bounced by an error
+// toast when this panel can simply disable the button and show why,
+// with a fast path to resolve it right here (check off the real
+// checklist, or override with a reason) rather than navigating
+// elsewhere.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React from 'react';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import CassetteColorControl from '../modals/CassetteColorControl';
-import type { HistologyBlock } from '@/types/case/Specimen';
+import type { HistologyBlock, SpecimenTriage } from '@/types/case/Specimen';
 import type { CassetteColorDefinition } from '@/services/cassetteColors/ICassetteColorService';
 
 interface GrossingReleasePanelProps {
@@ -31,19 +36,34 @@ interface GrossingReleasePanelProps {
   onOverrideColor: (blockId: string, colorId: string) => void;
   onRemove: (blockId: string) => void;
   onRelease: (blockIds: string[]) => void;
+  /** Real, additive — per Specimen.triage's own doc comment. Undefined
+   *  for a specimen whose protocol never required triage — this panel
+   *  renders exactly as it always did in that case. */
+  triage?: SpecimenTriage;
+  onConfirmChecklistItem: (itemIndex: number, confirmed: boolean) => void;
+  onOverrideTriage: (reason: string) => void;
 }
 
-const GrossingReleasePanel: React.FC<GrossingReleasePanelProps> = ({ specimenLabel, pendingBlocks, cassetteColors, onOverrideColor, onRemove, onRelease }) => {
+const GrossingReleasePanel: React.FC<GrossingReleasePanelProps> = ({
+  specimenLabel, pendingBlocks, cassetteColors, onOverrideColor, onRemove, onRelease,
+  triage, onConfirmChecklistItem, onOverrideTriage,
+}) => {
+  const { t } = useTranslation();
+  const [overrideReasonInput, setOverrideReasonInput] = useState('');
+
   if (pendingBlocks.length === 0) return null;
+
+  const triageResolved = !triage || !!triage.overrideReason || triage.checklistItems.every(ci => ci.confirmed);
+  const triageBlocking = !triageResolved;
 
   return (
     <div className="ps-grossing-release-panel">
       <div className="ps-grossing-release-panel-title">
-        {pendingBlocks.length} cassette{pendingBlocks.length === 1 ? '' : 's'} resolved — ready to release
+        {t('grossingRelease.cassettesResolved', { count: pendingBlocks.length })}
       </div>
       {pendingBlocks.map(block => (
         <div key={block.id} className="ps-grossing-release-row">
-          <div className="ps-grossing-release-label">Block {specimenLabel}{block.label}</div>
+          <div className="ps-grossing-release-label">{t('grossingRelease.blockLabel', { specimenLabel, blockLabel: block.label })}</div>
           <CassetteColorControl
             colorId={block.cassetteColorId}
             overridden={block.cassetteColorOverridden}
@@ -54,18 +74,69 @@ const GrossingReleasePanel: React.FC<GrossingReleasePanelProps> = ({ specimenLab
             type="button"
             className="ps-grossing-release-remove"
             onClick={() => onRemove(block.id)}
-            title={`Remove Block ${specimenLabel}${block.label} — not physically created`}
+            title={t('grossingRelease.removeBlockTitle', { specimenLabel, blockLabel: block.label })}
           >
             ×
           </button>
         </div>
       ))}
+
+      {triage && (
+        <div className={`ps-grossing-triage-panel${triageBlocking ? ' ps-grossing-triage-panel--blocking' : ''}`}>
+          <div className="ps-grossing-triage-title">
+            {triageResolved ? t('grossingRelease.triageResolved') : t('grossingRelease.triageRequired')}
+          </div>
+          {!triage.overrideReason && (
+            <ul className="ps-grossing-triage-checklist">
+              {triage.checklistItems.map((ci, i) => (
+                <li key={i} className="ps-grossing-triage-checklist-item">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={ci.confirmed}
+                      onChange={e => onConfirmChecklistItem(i, e.target.checked)}
+                    />
+                    {ci.item}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {triage.overrideReason && (
+            <div className="ps-grossing-triage-override-note">
+              {t('grossingRelease.overriddenNote', { reason: triage.overrideReason })}
+            </div>
+          )}
+          {triageBlocking && (
+            <div className="ps-grossing-triage-override-row">
+              <input
+                type="text"
+                className="ps-batch-text-input"
+                placeholder={t('grossingRelease.overrideReasonPlaceholder')}
+                value={overrideReasonInput}
+                onChange={e => setOverrideReasonInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="ps-btn-secondary"
+                disabled={!overrideReasonInput.trim()}
+                onClick={() => { onOverrideTriage(overrideReasonInput.trim()); setOverrideReasonInput(''); }}
+              >
+                {t('grossingRelease.overrideAndRelease')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <button
         type="button"
         className="ps-teal-action-btn ps-teal-action-btn--block"
+        disabled={triageBlocking}
+        title={triageBlocking ? t('grossingRelease.releaseBlockedTitle') : undefined}
         onClick={() => onRelease(pendingBlocks.map(b => b.id))}
       >
-        🖨️ Release &amp; Print All
+        🖨️ {t('grossingRelease.releaseAndPrintAll')}
       </button>
     </div>
   );

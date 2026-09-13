@@ -18,6 +18,7 @@ import { useVoice } from '@/contexts/VoiceProvider';
 import { useFootPedal } from '@/hooks/useFootPedal';
 import { useAudioSegmentRecorder } from '@/hooks/useAudioSegmentRecorder';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import AddSynopticModal       from './components/AddSynopticModal';
 import SpecimenEditModal      from './modals/SpecimenEditModal';
 import CreateBiopsyArrayModal from './modals/CreateBiopsyArrayModal';
@@ -177,6 +178,7 @@ const SynopticReportPage: React.FC = () => {
   const { user: signingUser } = useAuth();
   const { log }   = useAuditLog();
   const navigate   = useNavigate();
+  const { t: tGrossingNav } = useTranslation();
   const location   = useLocation();
   const handleLogout = useLogout();
 
@@ -610,6 +612,8 @@ const SynopticReportPage: React.FC = () => {
     focusedBlockEntry,
     handleAdvanceFocusedBlockStatus,
     handleConfirmTriage,
+    handleOverrideTriage,
+    handleConfirmTriageChecklistItem,
     handleUpdateBlock,
     handleCancelBlock,
     handleCreateSpareSlide,
@@ -3526,6 +3530,24 @@ const SynopticReportPage: React.FC = () => {
       if (!newIcd10BySpecimenId.has(specId)) newIcd10BySpecimenId.set(specId, []);
       newIcd10BySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
     });
+    // Real, per direct research while scoping the RFP-APLIS-2026-GLOBAL
+    // Broader Cancer Registry Exports gap — same real, per-specimen
+    // linkage as ICD10 immediately above, now genuinely applied to
+    // ICD-O too. Real, honest fix for a real, previously-confirmed
+    // gap: an ICD-O-tagged code reaching this function was previously
+    // silently dropped entirely (this filter only ever matched 'ICD'
+    // and 'SNOMED') — see types/case/Specimen.ts's own coding.icdO
+    // doc comment for the fuller account. A case-wide (no specimenId)
+    // ICD-O code is deliberately not supported — a real ICD-O
+    // diagnosis is inherently specimen-specific (per-specimen
+    // histology), unlike the case-wide clinical-indication ICD-10
+    // fallback above.
+    const newIcdOBySpecimenId = new Map<string, { code: string; description: string }[]>();
+    codes.filter(c => c.system === 'ICD-O' && (c as any).specimenId).forEach(c => {
+      const specId = (c as any).specimenId;
+      if (!newIcdOBySpecimenId.has(specId)) newIcdOBySpecimenId.set(specId, []);
+      newIcdOBySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
+    });
     // Real fix, per direct guidance: this previously took EVERY SNOMED
     // code regardless of its own real specimenId and flattened them
     // all into one, undifferentiated case-wide list — the exact same
@@ -3583,7 +3605,12 @@ const SynopticReportPage: React.FC = () => {
       // whole-case flattening the previous version of this function had.
       const hadExistingSnomed = ((sp.coding?.snomed ?? []) as { code: string }[]).length > 0;
       const hasSnomedChange = newSnomedBySpecimenId.has(sp.id) || hadExistingSnomed;
-      if (!newCptBySpecimenId.has(sp.id) && !hasIcd10Change && !hasSnomedChange && !((sp.coding?.cpt ?? []) as string[]).length) return sp;
+      // Real, per this function's own new ICD-O handling immediately
+      // above — same real "in the modal's own resolved set, OR
+      // previously had entries that are now entirely gone" check.
+      const hadExistingIcdO = ((sp.coding?.icdO ?? []) as { code: string }[]).length > 0;
+      const hasIcdOChange = newIcdOBySpecimenId.has(sp.id) || hadExistingIcdO;
+      if (!newCptBySpecimenId.has(sp.id) && !hasIcd10Change && !hasSnomedChange && !hasIcdOChange && !((sp.coding?.cpt ?? []) as string[]).length) return sp;
       const oldList = [...((sp.coding?.cpt ?? []) as string[])];
       const newList = [...(newCptBySpecimenId.get(sp.id) ?? [])];
       const remaining = [...oldList];
@@ -3606,6 +3633,7 @@ const SynopticReportPage: React.FC = () => {
           // real assignment it had.
           icd10: hasIcd10Change ? newIcd10BySpecimenId.get(sp.id) : sp.coding?.icd10,
           snomed: hasSnomedChange ? newSnomedBySpecimenId.get(sp.id) : sp.coding?.snomed,
+          icdO: hasIcdOChange ? newIcdOBySpecimenId.get(sp.id) : sp.coding?.icdO,
         },
       };
     });
@@ -4248,6 +4276,13 @@ const SynopticReportPage: React.FC = () => {
                 <LeftReportPanel caseData={caseData} highlightText={highlightText ?? undefined} rawHighlightText={rawHighlightText} onMatchResolved={found => setHighlightNotFound(!found)} />
               </div>
               <div className={`ps-syn-tab-panel${leftTab === 'material' ? ' ps-syn-tab-panel--visible-block' : ''}`}>
+                <button
+                  type="button"
+                  className="ps-btn-secondary ps-grossing-screen-nav-btn"
+                  onClick={() => navigate(`/case/${caseData.id}/grossing`)}
+                >
+                  {tGrossingNav('grossingScreen.openGrossingScreen')}
+                </button>
                 <MaterialTreePanel
                   caseData={caseData}
                   activeSpecimenId={activeSpecimenId}
@@ -4277,6 +4312,8 @@ const SynopticReportPage: React.FC = () => {
                   onAddBlock={handleAddBlock}
                   onUpdateBlock={handleUpdateBlock}
                   onReleaseGrossingBlocks={handleReleaseGrossingBlocks}
+                  onConfirmTriageChecklistItem={handleConfirmTriageChecklistItem}
+                  onOverrideTriage={handleOverrideTriage}
                   onRemovePendingBlock={handleRemovePendingBlock}
                   onAddDecant={handleAddDecant}
                   onAssignBaseCode={(_specimenId, specimenIndex) => {
@@ -4897,6 +4934,8 @@ const SynopticReportPage: React.FC = () => {
           onCancelBlock={handleCancelBlock}
           onCreateSpareSlide={handleCreateSpareSlide}
           onOrderRestain={handleOrderRestain}
+          currentUserId={signingUser?.id ?? 'unknown'}
+          currentUserName={signingUser?.name ?? 'Unknown User'}
           onClose={() => { setShowBlockEditor(false); setFocusedDecantId(null); }}
           initialFocusBlockId={focusedDecantId ? undefined : focusedBlockEntry?.block.id}
           initialFocusDecantId={focusedDecantId ?? undefined}

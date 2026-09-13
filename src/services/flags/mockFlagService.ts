@@ -65,6 +65,22 @@ const SEED_FLAGS: Flag[] = [
     meta: { panelVersion: '2.1' },
   },
   {
+    // Real, per direct guidance's own correction: this only fires when
+    // the case was genuinely accessioned without a real reasonForStudy
+    // on file (AccessionPage.tsx's own real "Cytology — Clinical
+    // History & Accessioning Detail" section) — not unconditionally on
+    // every real CSMS dispatch. Without that real, structured
+    // OBR-31/reasonCode-backed data, the A-vs-H action-code
+    // determination isn't confidently known, and PathScribe has no
+    // real eligibility/suspension data source at all (no HL7 QBP/RSP-
+    // style query integration with CSMS's own master screening
+    // record) — so a human in the Cytology QA group verifies both
+    // before the recall action is treated as final.
+    id: 'f36', tagClass: 'ADMINISTRATIVE', name: 'CSMS Eligibility Verification Needed', lisCode: 'CSMSELIG',
+    description: 'This case was dispatched to the UK CSMS registry without a real, confirmed Reason for Study on file — the A-vs-H action code was not confidently determinable, and PathScribe has no real eligibility/suspension data source either. Verify the reason for study and recall eligibility against CSMS\'s own master record before finalizing the recall action.',
+    level: 'Case', severity: 3, status: 'Active', autoCreated: true,
+  },
+  {
     id: 'f27', tagClass: 'COMPUTATIONAL', name: 'Flow Cytometry', lisCode: 'FLOW',
     description: 'Flow cytometry immunophenotyping',
     level: 'Specimen', severity: 2, status: 'Active',
@@ -90,6 +106,21 @@ const SEED_FLAGS: Flag[] = [
 
 const load    = ()             => storageGet<Flag[]>('pathscribe_flags_v2', SEED_FLAGS);
 const persist = (data: Flag[]) => storageSet('pathscribe_flags_v2', data);
+
+// Real, per direct guidance's own established discipline: this file
+// never had a real SEED_VERSION guard at all — without one, the new
+// 'f36' (CSMS Eligibility Verification Needed) flag definition added
+// here would never actually appear for anyone whose localStorage
+// already has 'pathscribe_flags_v2' cached from a prior session,
+// since storageGet's own default only applies when that key is
+// genuinely absent. Added proactively, matching this module's own
+// established pattern from every other real mock service.
+const SEED_VERSION = '1';
+const SEED_VERSION_KEY = 'pathscribe_flags_seed_version';
+if (storageGet<string | null>(SEED_VERSION_KEY, null) !== SEED_VERSION) {
+  storageSet('pathscribe_flags_v2', SEED_FLAGS);
+  storageSet(SEED_VERSION_KEY, SEED_VERSION);
+}
 
 let MOCK_FLAGS: Flag[] = load();
 

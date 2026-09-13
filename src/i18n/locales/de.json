@@ -1,0 +1,555 @@
+{
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "loading": "Wird geladen…",
+    "yes": "Ja",
+    "no": "Nein",
+    "search": "Suchen",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "required": "Erforderlich",
+    "optional": "Optional",
+    "signOut": "Abmelden",
+    "showInactive": "Inaktive anzeigen",
+    "deactivate": "Deaktivieren",
+    "reactivate": "Reaktivieren",
+    "select": "Auswählen"
+  },
+  "nav": {
+    "home": "Startseite",
+    "worklist": "Arbeitsliste",
+    "search": "Suche",
+    "accession": "Accession",
+    "batchManagement": "Chargenverwaltung",
+    "configuration": "Konfiguration",
+    "audit": "Prüfprotokoll",
+    "qualityAssurance": "Qualitätssicherung"
+  },
+  "login": {
+    "title": "Bei PathScribe anmelden",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "signIn": "Anmelden",
+    "signingIn": "Anmeldung läuft…",
+    "invalidCredentials": "Ungültige E-Mail oder ungültiges Passwort."
+  },
+  "language": {
+    "label": "Sprache",
+    "en": "English",
+    "fr": "Français",
+    "de": "Deutsch",
+    "nl": "Nederlands",
+    "ko": "한국어"
+  },
+  "batchManagement": {
+    "pageTitle": "Chargenverwaltung",
+    "pageSubtitle": "Verfolgen Sie Gruppen von Kassetten und Objektträgern durch die Verarbeitungsschritte (Entkalkung / Sonderbehandlung, Verarbeitung, Einbettung, Mikrotomie, Färbung, Endkontrolle) mittels Behälter-Barcodes — lückenlose Rückverfolgbarkeit durch Scannen, Abgleich und QS-Abweichungsprotokollierung.",
+    "nodes": {
+      "Decal / Special Processing": "Entkalkung / Sonderbehandlung",
+      "Processing": "Verarbeitung",
+      "Embedding": "Einbettung",
+      "Microtomy / Sectioning": "Mikrotomie / Schneiden",
+      "Staining": "Färbung",
+      "Checkout": "Endkontrolle",
+      "External Referral": "Externe Weiterleitung",
+      "Cytology Processing": "Zytologie-Verarbeitung",
+      "Cytology Staining": "Zytologie-Färbung",
+      "Cytology Imaging": "Zytologie-Bildgebung"
+    },
+    "nodeTileLabel": {
+      "Decal / Special Processing": "Entkalkung",
+      "Processing": "Verarbeitung",
+      "Embedding": "Einbettung",
+      "Microtomy / Sectioning": "Mikrotomie",
+      "Staining": "Färbung",
+      "Checkout": "Kontrolle",
+      "External Referral": "Weiterleitung",
+      "Cytology Processing": "Zyto-Verarbeitung",
+      "Cytology Staining": "Zyto-Färbung",
+      "Cytology Imaging": "Zyto-Bildgebung"
+    },
+    "status": {
+      "active": "Aktiv",
+      "reconciling": "Abgleich",
+      "complete": "Abgeschlossen",
+      "aborted": "Abgebrochen"
+    },
+    "filterTileTitle": "Filtern nach: {{node}}",
+    "filterTileTitleActive": "Anzeige: {{node}} — Klicken zum Zurücksetzen",
+    "disposalTile": "Entsorgung",
+    "disposalTitle": "Entsorgungswarteschlange — Elemente, die derzeit zur Entsorgung berechtigt sind",
+    "pendingLoadTile": "Ausstehend",
+    "pendingLoadTitle": "Ausstehende Chargenbeladung — gedruckte Elemente, die noch in keine Charge eingescannt wurden",
+    "engraverMonitorTile": "Gravurmonitor",
+    "engraverMonitorTitle": "Gravurmonitor — Status der Gravurgeräte auf hoher Ebene, in Echtzeit, von der Cassette Engine",
+    "lookupPlaceholder": "Haupt-Chargenbarcode scannen oder eingeben…",
+    "newContainer": "Neuer Behälter",
+    "loading": "Chargen werden geladen…",
+    "activeSectionLabel": "Aktiv & im Abgleich ({{count}})",
+    "closedSectionLabel": "Abgeschlossen & abgebrochen ({{count}})",
+    "emptyActive": "Keine aktiven Chargen. Erstellen Sie eine, um zu beginnen.",
+    "itemCount_one": "{{count}} Element",
+    "itemCount_other": "{{count}} Elemente",
+    "rackCheckedOutError": "Gestell „{{value}}“ ist bereits einer anderen aktiven Charge zugewiesen.",
+    "notFoundError": "Keine Charge oder kein registrierter Behälter für „{{value}}“ gefunden."
+  },
+  "newContainerModal": {
+    "title": "Neuer Behälter",
+    "containerType": "Behältertyp",
+    "targetWorkstation": "Ziel-Arbeitsstation",
+    "noStation": "— Keine Station —",
+    "processingNode": "Verarbeitungsschritt",
+    "autoSetFromStation": "↳ Übernommen aus der Stufe von {{station}}.",
+    "stationMismatchWarning": "⚠ {{station}} ist normalerweise eine „{{node}}“-Station — bitte prüfen, ob das beabsichtigt ist.",
+    "protocolLabel": "Protokoll / Laufparameter",
+    "protocolPlaceholder": "z. B. Standard-H&E-Übernachtlauf",
+    "priority": "Priorität",
+    "routine": "Routine",
+    "stat": "STAT",
+    "solutionType": "Lösungstyp",
+    "targetDuration": "Zieldauer / Alarm-Timer",
+    "hours": "Std",
+    "minutes": "Min",
+    "warningAlertAt": "Warnhinweis bei {{duration}} — {{minutesBefore}} Minuten vor dem Ziel.",
+    "referenceLabDestination": "Ziel-Referenzlabor",
+    "selectReferenceLab": "— Referenzlabor auswählen —",
+    "noReferenceLabConfigured": "Derzeit ist keine Einrichtung mit der Rolle „Referenzlabor“ konfiguriert — fügen Sie zuerst eine in den Einrichtungseinstellungen hinzu.",
+    "testPanelRequested": "Angeforderter Test / Panel (optional)",
+    "testPanelPlaceholder": "z. B. Foundation Medicine CDx NGS-Panel",
+    "stainProtocol": "Färbeprotokoll",
+    "selectStainProtocol": "— Färbeprotokoll auswählen —",
+    "containerIdentifierMode": "Behälter-Identifikationsmodus",
+    "disposableLabelTitle": "Das System erstellt ein neues, einmaliges, zeitgestempeltes Etikett",
+    "disposableLabel": "Einweg-Etikett",
+    "reusableRackTitle": "Ein vorhandenes, lasergraviertes, wiederverwendbares Gestell verwenden — kein neues Etikett wird gedruckt",
+    "reusableRack": "Wiederverwendbares Gestell",
+    "rackId": "Gestell-ID",
+    "rackIdPlaceholder": "Scannen oder eingeben, z. B. {{example}}",
+    "generating": "Wird erstellt…",
+    "generateAndPrint": "Erstellen & drucken",
+    "startSession": "Sitzung starten",
+    "sessionStarted": "Sitzung gestartet",
+    "containerCreated": "Behälter erstellt",
+    "rackCheckedOutNoPrint": "Gestell {{barcode}} ist dieser Charge nun zugewiesen — kein neues Etikett zu drucken.",
+    "printInstructions": "Drucken Sie diesen Haupt-Chargenbarcode und bringen Sie ihn am physischen Behälter an.",
+    "print": "Drucken",
+    "continueScanItems": "Weiter — Elemente scannen"
+  },
+  "grossingRelease": {
+    "cassettesResolved_one": "{{count}} Kassette aufgelöst — bereit zur Freigabe",
+    "cassettesResolved_other": "{{count}} Kassetten aufgelöst — bereit zur Freigabe",
+    "blockLabel": "Block {{specimenLabel}}{{blockLabel}}",
+    "removeBlockTitle": "Block {{specimenLabel}}{{blockLabel}} entfernen — physisch nicht erstellt",
+    "triageResolved": "Triage bestätigt",
+    "triageRequired": "Triage vor Freigabe erforderlich",
+    "overriddenNote": "Triage überschrieben: {{reason}}",
+    "overrideReasonPlaceholder": "Grund für das Überschreiben der Triage…",
+    "overrideAndRelease": "Überschreiben & Freigeben",
+    "releaseBlockedTitle": "Freigabe nicht möglich — Triage ist unvollständig. Bestätigen Sie die Checkliste oder geben Sie einen Überschreibungsgrund an.",
+    "releaseAndPrintAll": "Alle freigeben & drucken"
+  },
+  "pendingTriageTile": {
+    "title_one": "Ausstehende Zuschnitt-Triage ({{count}})",
+    "title_other": "Ausstehende Zuschnitt-Triage ({{count}})",
+    "badge": "Triage",
+    "specimenLabel": "Probe {{specimenLabel}}",
+    "progress": "{{confirmed}} von {{total}} Checklistenpunkten bestätigt"
+  },
+  "grossingScreen": {
+    "caseNotFound": "Fall nicht gefunden.",
+    "backToCase": "← Zurück zum Fall",
+    "pageTitle": "Zuschnitt — {{accession}}",
+    "specimenHeader": "Probe {{label}} — {{description}}",
+    "protocolVersion": "Protokoll: {{name}} (v{{version}})",
+    "protocolModified": "Protokoll geändert",
+    "noProtocol": "Kein Protokoll zugewiesen",
+    "col": {
+      "blockId": "Block-ID",
+      "pieceCount": "Stückzahl",
+      "stains": "Färbungen",
+      "status": "Status",
+      "actions": "Aktionen",
+      "slideId": "Objektträger-ID",
+      "stain": "Färbung",
+      "imagerBatch": "Bildgebungs-Charge",
+      "fovCount": "FOV-Anzahl"
+    },
+    "userAdded": "Manuell hinzugefügt",
+    "autoGenerated": "Automatisch erstellt",
+    "removeStainTitle": "Färbung entfernen",
+    "selectStain": "— Färbung auswählen —",
+    "addStain": "Färbung hinzufügen",
+    "removeBlockedTitle": "Entfernen nicht möglich — Block ist bereits „{{status}}“",
+    "removeBlock": "Block entfernen",
+    "notYetImaged": "Noch nicht abgebildet",
+    "addBlock": "Block hinzufügen ({{pathwayName}})",
+    "auditPanelTitle_one": "Audit-Protokoll ({{count}} Änderung)",
+    "auditPanelTitle_other": "Audit-Protokoll ({{count}} Änderungen)",
+    "noOverrides": "Keine Änderungen erfasst.",
+    "auditEntry": "Block {{blockLabel}} — {{field}} geändert von „{{originalValue}}“ zu „{{newValue}}“ durch {{actor}} am {{timestamp}}",
+    "auditField": {
+      "pieceCount": "Stückzahl",
+      "stainAdded": "Färbung hinzugefügt",
+      "stainRemoved": "Färbung entfernt"
+    },
+    "confirmRemoveStainTitle": "Protokoll-Standardfärbung entfernen?",
+    "confirmRemoveStainBody": "Diese Färbung ist ein Standard des zugewiesenen Protokolls. Das Entfernen wird als Änderung protokolliert.",
+    "confirmRemove": "Entfernen",
+    "concurrencyConflict": "Dieser Fall wurde an anderer Stelle aktualisiert. Laden Sie neu, um die neueste Version zu sehen.",
+    "reload": "Neu laden",
+    "openGrossingScreen": "🔬 Zuschnitt-Bildschirm öffnen"
+  },
+  "orSuiteDashboard": {
+    "bindDisplayTitle": "Dieses Display zuordnen",
+    "bindDisplayDescription": "Wählen Sie aus, welches OP-Saal-Terminal dieser Monitor darstellt. Diese Zuordnung ist dauerhaft — sie übersteht Neustarts.",
+    "cancelDismiss": "Abbrechen",
+    "confirmAndDismiss": "Bestätigen & abschließen",
+    "confirmDismissalTitle": "Abschluss bestätigen",
+    "continue": "Weiter",
+    "dismissCase": "Fall abschließen",
+    "dismissFailedGeneric": "Fall konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
+    "dismissing": "Wird abgeschlossen…",
+    "enterPinDismiss": "Geben Sie Ihre 4-stellige PIN ein, um diesen Fall abzuschließen.",
+    "enterPinVerbal": "Geben Sie Ihre 4-stellige PIN ein, um diesen mündlichen Bericht zu protokollieren.",
+    "inProgress": "In Bearbeitung",
+    "loadingTerminal": "Terminal wird geladen…",
+    "logVerbalReport": "Mündlichen Bericht protokollieren",
+    "logging": "Wird protokolliert…",
+    "mrn": "Patienten-ID:",
+    "multiSuiteOverview": "Mehrsaal-Übersicht",
+    "noActiveRequests": "Derzeit keine aktiven Schnellschnitt-Anfragen.",
+    "noTerminalsConfigured": "Noch keine Terminals konfiguriert — fügen Sie eines unter Systemkonfiguration hinzu.",
+    "noteOptional": "Notiz (optional)",
+    "orRoom": "OP-Saal:",
+    "orSuiteTerminal": "OP-Saal-Terminal",
+    "patient": "Patient:",
+    "pinInvalidRole": "Diese PIN gehört nicht zum OP-Personal.",
+    "pinNotRecognized": "PIN nicht erkannt.",
+    "preliminaryDiagnosis": "Vorläufige Diagnose:",
+    "preliminaryLabel": "VORLÄUFIG: {{diagnosis}}",
+    "readbackConfirmedLabel": "Rückmeldung des Ergebnisses mit dem Operateur bestätigt",
+    "room": "Raum {{room}}",
+    "rowMeta": "Probe {{specimenLabel}} · Chirurg: {{surgeon}} · Pathologe: {{pathologist}}",
+    "selectTerminal": "— Terminal auswählen —",
+    "surgeonName": "Name des Chirurgen",
+    "verbalReportBy": "Mündlicher Bericht — {{staffName}}",
+    "verifyIdentity": "Identität bestätigen",
+    "startDemo": "Demo starten",
+    "stopDemo": "Demo beenden",
+    "demoModeActive": "Demo-Modus — keine echten Patientendaten"
+  },
+  "molecularOrderQueue": {
+    "pageTitle": "Warteschlange für molekulare Aufträge",
+    "pageSubtitle": "Ausgehende molekulare Test- und Geräteaufträge — automatisch bei der Aufnahme ausgelöst, oder durch einen HPV-Reflex-Genotypisierungs-Trigger bei einem positiven eigenständigen Screening.",
+    "demoPanelTitle": "Demo: HPV-Auftrag & Reflex-Workflow",
+    "demoPanelDescription": "Arbeitet mit dem echten Demo-Fall {{accession}}, Probe A — bereits mit einem ausstehenden HPV-Co-Test konfiguriert. Stellen Sie den Testauftrag in die Warteschlange und simulieren Sie dann den eingehenden Laborbefund.",
+    "assayLabel": "Verwendeter Test",
+    "assayStandalone": "st-hpv-highrisk-screen (eigenständig)",
+    "assayBundled": "st-hpv-reflex (gebündelt)",
+    "queueOrderBtn": "HPV-Co-Test-Auftrag einreihen",
+    "resultLabel": "Simuliertes Ergebnis",
+    "resultPositive": "Positiv",
+    "resultNegative": "Negativ",
+    "simulateResultBtn": "Eingehenden HPV-Befund simulieren",
+    "demoOrderQueued": "Auftrag eingereiht.",
+    "resultApplied": "Ergebnis übernommen.",
+    "resultAppliedWithReflex": "Ergebnis übernommen — Genotypisierungs-Reflexauftrag unten ausgelöst.",
+    "resultOutcome": "Ergebnis: {{outcome}}",
+    "noEntries": "Noch keine Aufträge in der Warteschlange.",
+    "col": {
+      "type": "Typ",
+      "accession": "Fallnummer",
+      "assay": "Test",
+      "reason": "Grund",
+      "status": "Status",
+      "queuedAt": "Eingereiht am"
+    },
+    "typeMolecular": "Molekular",
+    "typeInstrument": "Gerät",
+    "reasonReflex": "HPV-Reflex-Genotypisierung",
+    "reason": {
+      "protocol_configured": "Protokollkonfiguriert (Aufnahme)",
+      "hpv_reflex_genotyping": "HPV-Reflex-Genotypisierung"
+    },
+    "status": {
+      "QUEUED": "Eingereiht",
+      "SENT": "Gesendet",
+      "FAILED": "Fehlgeschlagen"
+    }
+  },
+  "wsiViewerLaunch": {
+    "selectVendorTitle": "WSI-Viewer auswählen",
+    "launchTitle": "Dieses Präparat im konfigurierten WSI-Viewer öffnen",
+    "launchLabel": "Im Viewer öffnen",
+    "blockedError": "Popup blockiert — bitte Popups für diese Website zulassen und erneut versuchen"
+  },
+  "vendorIntegrations": {
+    "category": {
+      "dp_ai": "Digitale Pathologie / KI",
+      "wsi_viewers": "WSI-Viewer",
+      "image_management": "Bildmanagementsysteme",
+      "gross_imaging": "Grob-/Makrobildgebung & Telepathologie"
+    }
+  },
+  "imsVendorDictionary": {
+    "title": "Bildmanagementsysteme",
+    "description": "Reiner Referenzspeicher für Bilder/PDFs — PathScribe speichert niemals binäre Bild- oder PDF-Daten direkt; jede Zuordnung verweist auf ein hier konfiguriertes, echtes externes System — sei es ein Unternehmens-VNA/PACS/DAM oder der eigene lokale Dateiserver eines kleineren Standorts.",
+    "addSystemBtn": "+ System hinzufügen",
+    "addTitle": "Bildmanagementsystem hinzufügen",
+    "editTitle": "Bildmanagementsystem bearbeiten",
+    "nameLabel": "Name",
+    "deploymentLabel": "Bereitstellungsmodell",
+    "authLabel": "Authentifizierungsmethode",
+    "baseUrlLabel": "Basis-URL",
+    "baseUrlPlaceholder": "https://vna.ihrlabor.org oder eine interne Dateiserver-Adresse",
+    "tokenWarning": "Niemals ein Autorisierungstoken in diese URL einfügen — ein kurzlebiges Token wird bei jeder Anfrage neu aufgelöst, niemals hier gespeichert.",
+    "noBaseUrl": "Noch keine Basis-URL konfiguriert",
+    "emptyRow": "Keine Bildmanagementsysteme vorhanden.",
+    "deployment": {
+      "enterprise_ims": "Unternehmens-IMS (VNA / PACS / DAM)",
+      "on_prem_file_server": "Lokaler Dateiserver"
+    },
+    "auth": {
+      "none": "Keine",
+      "signed_url": "Signierte URL",
+      "oauth2_bearer": "OAuth-2.0-Bearer-Token",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "grossImagingVendorDictionary": {
+    "title": "Grob-/Makrobildgebung & Telepathologie",
+    "description": "Bildgebungs- und Telepathologiesysteme direkt am Zuschneidetisch — Annotation, Maßmessung und Live-Streaming für intraoperative oder externe Zweitmeinungen. Genuin verschieden von einem WSI-Viewer oder einem passiven Bildspeicher.",
+    "addVendorBtn": "+ Anbieter hinzufügen",
+    "addTitle": "Grobbildgebungsanbieter hinzufügen",
+    "editTitle": "Grobbildgebungsanbieter bearbeiten",
+    "nameLabel": "Anbieter-/Produktname",
+    "authLabel": "Authentifizierungsmethode",
+    "baseUrlLabel": "Basis-URL",
+    "baseUrlPlaceholder": "https://gross-imaging.ihrlabor.org",
+    "telepathologyCheckbox": "Unterstützt Live-Telepathologie-Streaming",
+    "telepathologyCapable": "Telepathologiefähig",
+    "staticOnly": "Nur statische Aufnahme",
+    "emptyRow": "Keine Grobbildgebungsanbieter vorhanden.",
+    "auth": {
+      "none": "Keine",
+      "signed_url": "Signierte URL",
+      "oauth2_bearer": "OAuth-2.0-Bearer-Token",
+      "mtls": "Mutual TLS (mTLS)"
+    }
+  },
+  "cytologyQcRules": {
+    "title": "Zytologie-QS-Zuweisungsregeln",
+    "description": "Konfigurieren Sie die automatisierten Regeln, die zytologische Fälle für die Qualitätskontroll-Zweitbegutachtung stichprobenartig auswählen, zuweisen und weiterleiten.",
+    "addRuleBtn": "+ Regel hinzufügen",
+    "addTitle": "QS-Regel hinzufügen",
+    "editTitle": "QS-Regel bearbeiten",
+    "duplicateBtn": "Duplizieren",
+    "emptyRow": "Keine QS-Regeln vorhanden.",
+    "nameLabel": "Regelname",
+    "descriptionLabel": "Beschreibung",
+    "priorityLabel": "Auswertungspriorität (höhere wird zuerst ausgewertet)",
+    "slaHoursLabel": "SLA (Stunden)",
+    "tierLabel": "Prioritätsstufe der Zweitbegutachtung",
+    "priorityInline": "Priorität {{priority}}",
+    "commaListPlaceholder": "Durch Kommas getrennte Werte",
+    "jurisdictionsHint": "Nichts auswählen, um diese Regel in allen Rechtsräumen anzuwenden.",
+    "facilityIdsLabel": "IDs der durchführenden Einrichtungen",
+    "eligibleReviewerRolesLabel": "Berechtigte Gutachterrollen",
+    "highRiskFlagsLabel": "Hochrisiko-Kennzeichen",
+    "bethesdaLabel": "Bethesda-Klassifikationen",
+    "snomedLabel": "SNOMED-Konzeptcodes",
+    "resultIsNegativeLabel": "Ergebnisfilter",
+    "section": {
+      "basics": "Grundlagen",
+      "samplingLogic": "Stichprobenlogik",
+      "location": "Standort & Rechtsraum",
+      "provider": "Leistungserbringer",
+      "specimen": "Probe",
+      "clinicalDiagnostic": "Klinisches Risiko & diagnostischer Bereich"
+    },
+    "sampling": {
+      "percentage": "Prozentsatz",
+      "interval": "Intervall (jeder N-te Fall)",
+      "fixedVolume": "Feste Menge (die ersten N Fälle)",
+      "ratePercentPlaceholder": "Rate %",
+      "everyNthPlaceholder": "Jeder N-te Fall",
+      "firstNPlaceholder": "Erste N Fälle"
+    },
+    "tier": {
+      "high_escalation": "Priorität 1 — Hohe Eskalation",
+      "targeted_high_consequence": "Priorität 2 — Gezielt, hohe Tragweite",
+      "routine_random": "Priorität 3 — Routinemäßig zufällig"
+    },
+    "role": {
+      "pathologist": "Pathologe",
+      "cytotechnologist": "Zytotechnologe"
+    },
+    "onboarding": {
+      "new_hire": "Neueinstellung",
+      "probationary": "Probezeit"
+    },
+    "specimenCategory": {
+      "gyn_pap": "GYN-Pap",
+      "non_gyn_fluid": "Nicht-GYN-Flüssigkeit",
+      "fna": "Feinnadelaspiration (FNA)"
+    },
+    "adequacy": {
+      "satisfactory": "Ausreichend",
+      "unsatisfactory": "Unzureichend",
+      "limited": "Eingeschränkt"
+    },
+    "resultFilter": {
+      "any": "Jedes Ergebnis",
+      "negative": "Nur negativ",
+      "nonNegative": "Nur nicht-negativ"
+    }
+  },
+  "cytologyQcQueue": {
+    "pageTitle": "Zytologie-QS-Zweitbegutachtungswarteschlange",
+    "tab": {
+      "all": "Alle Einträge",
+      "escalations_discrepancies": "Eskalationen & Diskrepanzen",
+      "routine_random": "Routine & Zufällig"
+    },
+    "assignToMeBtn": "Mir zuweisen",
+    "recordConcurrenceBtn": "Übereinstimmung erfassen",
+    "recordDiscrepancyBtn": "Diskrepanz erfassen",
+    "assignedToOther": "Einem anderen Gutachter zugewiesen",
+    "emptyRow": "Keine Fälle in dieser Warteschlange.",
+    "slaStatus": {
+      "on_time": "Im Zeitplan",
+      "approaching": "SLA nähert sich",
+      "breached": "SLA überschritten"
+    },
+    "discrepancyModalTitle": "Diskrepanz erfassen",
+    "primaryCodeLabel": "Primärer Diagnosecode",
+    "secondaryCodeLabel": "Sekundärer Diagnosecode",
+    "severityLabel": "Schweregrad",
+    "severity": {
+      "major": "Schwerwiegend",
+      "minor": "Geringfügig"
+    },
+    "commentaryLabel": "Kommentar des Gutachters",
+    "submitDiscrepancyBtn": "Diskrepanz übermitteln"
+  },
+  "cytologyScreening": {
+    "requestReviewBtn": "Gutachten anf.",
+    "openEmrBtn": "EMR öffnen",
+    "teamBtn": "Team",
+    "delegateBtn": "Delegieren",
+    "flagsBtn": "Kennzeichen",
+    "codesBtn": "Codes",
+    "requestPeerReviewBtn": "Peer-Review anfordern",
+    "patientHistory": {
+      "title": "Zyto-/Histo-Vorgeschichte des Patienten",
+      "subtitle": "(frühere Fälle dieses Patienten)",
+      "priorPapSection": "Frühere Abstriche",
+      "priorBiopsySection": "Frühere chirurgische Biopsien",
+      "noFinalDx": "keine Enddiagnose erfasst",
+      "viewCase": "Fall ansehen"
+    },
+    "materialBtn": "Material",
+    "materialDrawer": {
+      "specimenLabel": "Probe",
+      "noDecants": "Kein Dekantat für diese Probe erfasst.",
+      "decantType": {
+        "residual_fluid": "Restflüssigkeit",
+        "cell_block": "Zellblock"
+      },
+      "addResidualFluidBtn": "Restflüssigkeit hinzufügen",
+      "addCellBlockBtn": "Zellblock hinzufügen"
+    },
+    "synopticBtn": "Synoptisch",
+    "synopticDrawer": {
+      "title": "Synoptische Berichterstattung",
+      "previewBanner": "Benutzerdefinierte Vorlagen-Engine • Strukturierte Dateneingabe",
+      "selectTemplate": "Synoptische Vorlage auswählen",
+      "validationError": "Bitte füllen Sie alle erforderlichen synoptischen Felder aus.",
+      "saveBtn": "Synoptik speichern",
+      "unvalidatedTermsTitle": "Nicht validierte klinische Begriffe",
+      "unvalidatedTermsExplanation": "Dieser Bericht enthält klinische Begriffe in ihrer kanonischen (englischen) Form, da für Ihre Sprache noch keine klinisch validierte Übersetzung vorliegt. Prüfen Sie diese Begriffe sorgfältig, bevor Sie diesen Bericht freigeben.",
+      "acknowledgmentLabel": "Ich habe die oben genannten nicht validierten Begriffe geprüft und bestätige ihre klinische Richtigkeit für diesen Bericht.",
+      "acknowledgmentRequiredError": "Sie müssen die oben genannten nicht validierten Begriffe bestätigen, bevor Sie speichern.",
+      "generatedNarrativeTitle": "Generierter Bericht (Entwurf — vor Verwendung prüfen)",
+      "insertIntoNotesBtn": "In Notizen einfügen",
+      "narrative": {
+        "procedure": "Verfahren: {value}.",
+        "site": "Lokalisation: {value}.",
+        "thyroid": {
+          "noduleSize": "Zielgröße des Knotens: {value} cm.",
+          "follicularGroupCount": "Anzahl follikulärer Gruppen: {value}.",
+          "bethesdaCategory": "Bethesda-Diagnosekategorie: {value}.",
+          "colloid": "Kolloid: {value}."
+        },
+        "numberOfPasses": "Anzahl der Passagen: {value}.",
+        "rosePerformed": "Die Schnellbeurteilung vor Ort (ROSE) wurde {value}.",
+        "specimenIs": "Die Probe ist {value}.",
+        "reasonUnsatisfactory": "Grund für die unzureichende Beurteilung: {value}.",
+        "cellularity": "Zellularität: {value}.",
+        "architecturalPattern": "Architekturmuster: {value}.",
+        "nuclearFeatures": "Kernmerkmale: {value}.",
+        "background": "Hintergrund: {value}.",
+        "molecularTesting": "Molekulare Testung: {value}.",
+        "molecularPlatform": "Molekulare Plattform: {value}.",
+        "cellBlockIhc": "Immunhistochemie am Zellblock: {value}.",
+        "radiologicCorrelation": "Radiologische Korrelation: {value}."
+      },
+      "unvalidatedSegmentTooltip": "Nicht validierte Übersetzung — in kanonischer/englischer Form angezeigt. Lexikonbegriff: {key}"
+    },
+    "printBtn": "Drucken",
+    "fiveYearLookback": {
+      "title": "5-Jahres-Rückblick",
+      "subtitle": "(CAP-vorgeschrieben — frühere negative Ergebnisse im Rückblickzeitraum)",
+      "viewSlide": "Fall ansehen"
+    },
+    "roseBtn": "ROSE",
+    "roseDrawer": {
+      "priorEvaluations": "Frühere ROSE-Bewertungen",
+      "recordNew": "Neue Bewertung erfassen",
+      "location": {
+        "radiology": "Radiologie",
+        "clinic": "Klinik",
+        "operating_room": "Operationssaal",
+        "other": "Sonstige"
+      },
+      "locationLabel": "Ort",
+      "passLabel": "Durchgang {{n}}",
+      "adequacy": {
+        "adequate": "Ausreichend",
+        "inadequate": "Unzureichend",
+        "indeterminate": "Unbestimmt"
+      },
+      "impressionPlaceholder": "Vorläufiger Eindruck (z. B. gutartig, vereinbar mit Kolloidknoten)",
+      "addPassBtn": "Durchgang hinzufügen",
+      "saveBtn": "Bewertung speichern"
+    }
+  },
+  "cytologyWorklist": {
+    "breadcrumbLabel": "Zytologie-Arbeitsbereich",
+    "domain": {
+      "gyn": "GYN-Zytologie",
+      "nonGyn": "Nicht-GYN/FNA-Warteschlange"
+    },
+    "qaComplianceSectionLabel": "QS & Compliance",
+    "organSite": {
+      "all": "Alle Lokalisationen",
+      "THYROID": "Schilddrüse",
+      "LUNG_EBUS": "Lunge/EBUS",
+      "BODY_FLUID": "Körperflüssigkeiten/Spülungen",
+      "URINE": "Urin/Paris-System",
+      "SALIVARY_GLAND": "Speicheldrüse",
+      "BREAST": "Brust",
+      "GI_PANCREATIC": "GI/Pankreas",
+      "OTHER_NGYN": "Sonstige"
+    }
+  }
+}

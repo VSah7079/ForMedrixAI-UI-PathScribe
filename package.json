@@ -45,12 +45,16 @@
     "firebase": "^12.11.0",
     "firebase-admin": "^10.3.0",
     "html2canvas": "^1.4.1",
+    "i18next": "^26.4.2",
+    "i18next-browser-languagedetector": "^8.2.1",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.564.0",
+    "pdf-lib": "^1.17.1",
     "qz-tray": "^2.2.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-i18next": "^17.0.13",
     "react-router-dom": "^6.21.0",
     "react-toastify": "^11.0.5",
     "recharts": "^3.8.1",
@@ -76,10 +80,16 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "happy-dom": "^15.11.7",
+    "msw": "^2.15.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.12",
     "typescript": "^5.2.2",
     "vite": "^8.0.11",
     "vitest": "^4.1.10"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

@@ -101,6 +101,10 @@ interface MaterialTreePanelProps {
    *  Wired directly to useSpecimenBlockManagement.ts's own
    *  handleReleaseGrossingBlocks/handleRemovePendingBlock. */
   onReleaseGrossingBlocks: (specimenId: string, blockIds: string[]) => void;
+  /** Real, additive — per the Protocol-Driven Workflow Infrastructure
+   *  story's Part 2c. Passed straight through to GrossingReleasePanel. */
+  onConfirmTriageChecklistItem: (specimenId: string, itemIndex: number, confirmed: boolean) => void;
+  onOverrideTriage: (specimenId: string, reason: string) => void;
   onRemovePendingBlock: (specimenId: string, blockId: string) => void;
   onAddDecant: (specimenId: string, decantType: 'residual_fluid' | 'cell_block') => void;
   /** Real fix: opens the real AddCodeModal, pre-targeted at this
@@ -271,7 +275,7 @@ const SlideChip: React.FC<{ level: string; stainName: string; status: string; on
   );
 };
 
-const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeSpecimenId, highlightedStainId, onOpenBlockEditor, onOpenMatrixBlockEditor, onAddSpecimen, onAddBlock, onUpdateBlock, onReleaseGrossingBlocks, onRemovePendingBlock, onAddDecant, onAssignBaseCode, onCreateBiopsyArray, onEditBiopsyArray, pendingCassetteVerification, isOrchestrationMode }) => {
+const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeSpecimenId, highlightedStainId, onOpenBlockEditor, onOpenMatrixBlockEditor, onAddSpecimen, onAddBlock, onUpdateBlock, onReleaseGrossingBlocks, onConfirmTriageChecklistItem, onOverrideTriage, onRemovePendingBlock, onAddDecant, onAssignBaseCode, onCreateBiopsyArray, onEditBiopsyArray, pendingCassetteVerification, isOrchestrationMode }) => {
   const [showTrackingHistory, setShowTrackingHistory] = useState(false);
   // Real fix, per direct follow-up: "the highlighting in the Material
   // tree isn't working - or its too subtle." Confirmed both were real:
@@ -779,6 +783,9 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
               onOverrideColor={(blockId, colorId) => onUpdateBlock(sp.id, blockId, { cassetteColorId: colorId, cassetteColorOverridden: true })}
               onRemove={blockId => onRemovePendingBlock(sp.id, blockId)}
               onRelease={blockIds => onReleaseGrossingBlocks(sp.id, blockIds)}
+              triage={sp.triage}
+              onConfirmChecklistItem={(itemIndex, confirmed) => onConfirmTriageChecklistItem(sp.id, itemIndex, confirmed)}
+              onOverrideTriage={reason => onOverrideTriage(sp.id, reason)}
             />
 
             {/* Only offered when this specimen isn't already on the

@@ -115,7 +115,21 @@ export const LABEL_SIZE_PRESETS: LabelSizePreset[] = [
 ];
 
 export const DEFAULT_CONTAINER_LABEL_PRESET_ID = 'clsi_standard_specimen';
-export const DEFAULT_REQUISITION_LABEL_PRESET_ID = 'requisition_full_page_letter';
+/** Real, direct correction, per direct follow-up: "Requisition Labels
+ *  should never be a Full page, using standard thermal label printers
+ *  (like Zebra or Brady at 2×1 inch or 4×6 inch multi-peel sheets) is
+ *  much more standard and practical than a full-page layout." The
+ *  real, standard thermal size — this preset (`requisition_pouch`,
+ *  4.0″×6.0″) already existed in LABEL_SIZE_PRESETS above, alongside
+ *  `requisition_sticker_small` (4.0″×2.0″) — but `printRequisitionLabel`
+ *  (utils/labels/printRequisitionAndContainerLabels.ts) never actually
+ *  read either; it hardcoded the full-page preset unconditionally, the
+ *  same "built but never wired" pattern already caught and corrected
+ *  several other times in this project. Both real, still-available
+ *  full-page presets remain in LABEL_SIZE_PRESETS for a lab that
+ *  genuinely wants one — this constant only changes the honest
+ *  default. */
+export const DEFAULT_REQUISITION_LABEL_PRESET_ID = 'requisition_pouch';
 
 export function getLabelSizePreset(id: string): LabelSizePreset | undefined {
   return LABEL_SIZE_PRESETS.find(p => p.id === id);

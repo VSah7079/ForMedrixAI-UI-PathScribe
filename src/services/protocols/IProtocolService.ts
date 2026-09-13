@@ -57,6 +57,25 @@ export interface ProtocolPathway {
    *  free-text reasoning as fixativeType. */
   processingFormat: string;
   tasks: PathwayTask[];
+  /** Real, additive — per the Protocol-Driven Workflow Infrastructure
+   *  story. How many blocks (materialKind: 'block') or decants
+   *  (materialKind: 'decant') generateDefaultMaterial.ts should
+   *  instantiate for this pathway at accession. Undefined behaves
+   *  exactly as today — one block/decant per pathway — so no existing
+   *  protocol needs this field to keep working unchanged. */
+  defaultCount?: number;
+  /** Real, additive — pre-populates HistologyBlock.pieceCount on each
+   *  block this pathway generates, so the Grossing Screen shows an
+   *  expected piece count instead of blank. Undefined leaves
+   *  pieceCount unset, same as today. Only meaningful for
+   *  materialKind: 'block' pathways. */
+  defaultPieceCount?: number;
+  /** Real, additive — restricts the Grossing Screen's "Add Stain"
+   *  dropdown (per-block) to this real subset of the Stain Dictionary
+   *  (StainType.id), so a tech can't add an arbitrary stain outside
+   *  what this pathway's protocol actually allows. Undefined means no
+   *  restriction — every StainType remains selectable, same as today. */
+  allowedAdditionalStainTypeIds?: string[];
 }
 
 export interface PathwayTask {
@@ -73,6 +92,15 @@ export interface PathwayTask {
    *  array with no other signal); made explicit so a genuinely-held
    *  step is never confused with a step someone just forgot to fill in. */
   isHold?: boolean;
+  /** Real, additive — per the Protocol-Driven Workflow Infrastructure
+   *  story's outbound molecular order queue (services/molecularOrders/
+   *  IMolecularOrderOutboundQueueService.ts). When true, this task's
+   *  assay (from stainTypeIds) automatically fires an 'order.molecular'
+   *  outbound queue entry at accession — e.g. the HPV co-test firing
+   *  automatically for a ThinPrep specimen whose protocol has
+   *  st-hpv-reflex configured on this task. Undefined/false: no
+   *  outbound order fires for this task, same as today. */
+  sendOutboundOrder?: boolean;
 }
 
 export interface ProtocolHistoryEntry {

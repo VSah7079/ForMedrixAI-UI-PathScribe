@@ -117,4 +117,74 @@ describe('mockCytologyCategoryService — real, standard Bethesda System seed da
     expect(bscc.data.every(e => e.nomenclatureSystem === 'bscc_rcpath')).toBe(true);
     expect(bscc.data.find(e => e.id === 'cyto-squam-ascus')).toBeUndefined();
   });
+
+  it('real, per direct guidance: SFCC is not a separate system — getByNomenclatureSystem(\'sfcc\') returns Bethesda\'s own entries with real, researched French text substituted, never a second, duplicated entry set', async () => {
+    const sfcc = await mockCytologyCategoryService.getByNomenclatureSystem('sfcc');
+    if (!sfcc.ok) throw new Error('setup failed');
+    expect(sfcc.data.length).toBeGreaterThan(0);
+    expect(sfcc.data.every(e => e.nomenclatureSystem === 'bethesda')).toBe(true);
+    // Real, direct verification: the real ids are Bethesda's own ids —
+    // this is genuinely the same 46 records, not a parallel set.
+    const ascus = sfcc.data.find(e => e.id === 'cyto-squam-ascus');
+    expect(ascus).toBeDefined();
+    expect(ascus?.label).toBe('Atypies des cellules malpighiennes de signification indéterminée');
+    expect(ascus?.description).toBe('Atypies des cellules malpighiennes de signification indéterminée (ASC-US).');
+    // Real, honest field still says 'bethesda' — this is a real,
+    // computed view, not a genuinely separate stored record.
+    expect(ascus?.nomenclatureSystem).toBe('bethesda');
+
+    const bethesdaAscus = (await mockCytologyCategoryService.getByNomenclatureSystem('bethesda'));
+    if (!bethesdaAscus.ok) throw new Error('setup failed');
+    // Real, direct verification: the real, canonical English record is
+    // never mutated by reading the French view.
+    expect(bethesdaAscus.data.find(e => e.id === 'cyto-squam-ascus')?.label).toBe('Atypical Squamous Cells of Undetermined Significance');
+  });
+
+  it('real, per direct guidance: SFCC is Bethesda\u2019s own real entries with French text substituted, never a separate, duplicated set', async () => {
+    const sfcc = await mockCytologyCategoryService.getByNomenclatureSystem('sfcc');
+    if (!sfcc.ok) throw new Error('setup failed');
+    const bethesda = await mockCytologyCategoryService.getByNomenclatureSystem('bethesda');
+    if (!bethesda.ok) throw new Error('setup failed');
+
+    // Real, same 46 real records, same real ids — a genuinely separate
+    // system would not share every single id with Bethesda.
+    expect(sfcc.data.length).toBe(bethesda.data.length);
+    expect(sfcc.data.map(e => e.id).sort()).toEqual(bethesda.data.map(e => e.id).sort());
+
+    // Real, direct verification of the actual French substitution —
+    // ASC-US's own real, researched French clinical term, confirmed
+    // directly against ANAES/HAS's own official 2001 Bethesda
+    // terminology summary, not a generic or invented translation.
+    const ascusFr = sfcc.data.find(e => e.id === 'cyto-squam-ascus');
+    expect(ascusFr?.label).toBe('Atypies des cellules malpighiennes de signification indéterminée');
+    expect(ascusFr?.abbreviation).toBe('ASC-US');
+
+    // Real, diagnosticRank/requiresPathologistReview/etc. are
+    // identical to the real Bethesda record — SFCC changes only the
+    // display text, never the real clinical calibration underneath.
+    const ascusEn = bethesda.data.find(e => e.id === 'cyto-squam-ascus');
+    expect(ascusFr?.diagnosticRank).toBe(ascusEn?.diagnosticRank);
+    expect(ascusFr?.requiresPathologistReview).toBe(ascusEn?.requiresPathologistReview);
+  });
+
+  it('the real Münchner Nomenklatur III (München IIIb) dictionary is correctly isolated and calibrated to its own real rank scale', async () => {
+    const mn3 = await mockCytologyCategoryService.getByNomenclatureSystem('munchen_iiib');
+    if (!mn3.ok) throw new Error('setup failed');
+    expect(mn3.data.length).toBeGreaterThan(0);
+    expect(mn3.data.every(e => e.nomenclatureSystem === 'munchen_iiib')).toBe(true);
+    expect(mn3.data.find(e => e.id === 'cyto-squam-ascus')).toBeUndefined();
+
+    // Real, researched risk ordering: Group III (ambiguous, cannot
+    // exclude high-grade) genuinely ranks ABOVE the confirmed,
+    // lower-grade IIID1 — not the naive Bethesda-style assumption that
+    // an ambiguous call always ranks below a confirmed low-grade one.
+    const iiid1 = mn3.data.find(e => e.id === 'mn3-group-iiid1');
+    const iiip = mn3.data.find(e => e.id === 'mn3-group-iiip');
+    expect(iiid1?.diagnosticRank).toBeLessThan(iiip?.diagnosticRank ?? 0);
+
+    // Real, correct alignment with the shared HIGH_GRADE_RANK_THRESHOLD
+    // (3, classifyCytologyAgreement.ts) — Group III itself is the
+    // real, correct high-grade boundary here.
+    expect(iiip?.diagnosticRank).toBe(3);
+  });
 });

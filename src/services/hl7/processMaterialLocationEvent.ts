@@ -30,11 +30,26 @@
 // write the result via caseRouter.updateCase() (still what the Dev
 // Tools "Sim Material Location" button calls), and log the audit
 // entry — identical behavior to before this refactor.
+//
+// Real, per direct guidance's own confirmed concern about
+// payload.location's own free-text drift/typo risk: this file now
+// ALSO calls the real Asset Location Dictionary's own
+// findOrCreateByName() as a parallel, fire-and-forget side effect —
+// never blocking, never changing, the real mutation/write path above,
+// which stays exactly as free-text-tolerant as it always was (still
+// the right call for a real, externally-reported location this app
+// doesn't control the vocabulary of). What this adds: every real
+// incoming location string now also gets matched against — or, on no
+// exact match, creates a new real, Unverified entry in — a real,
+// governed reference list an admin can actually review over time,
+// directly answering "could the engine... create a build event to
+// add an entry" with yes, exactly here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { caseRouter } from '../cases/CaseRouter';
 import { ConcurrencyConflictError } from '../cases/ConcurrencyConflictError';
 import { mockAuditService } from '../auditlog/mockAuditService';
+import { mockAssetLocationDictionaryService } from '../assetLocation/mockAssetLocationDictionaryService';
 import { applyMaterialLocation } from './materialLocationMutation';
 import type { MaterialLocationEventPayload } from '@/types/events/MaterialLocationEventPayload';
 
@@ -129,6 +144,15 @@ export async function processMaterialLocationEvent(payload: MaterialLocationEven
     caseId: caseData.id,
     confidence: null,
   }).catch(() => {});
+
+  // Real, per direct guidance's own confirmed concern — parallel,
+  // fire-and-forget: a real Asset Location Dictionary lookup/auto-
+  // create failing or being slow never blocks this event's own real
+  // outcome, which has already been decided and returned below.
+  mockAssetLocationDictionaryService.findOrCreateByName(
+    payload.location,
+    `No exact match for location "${payload.location}" reported by source system ${payload.sourceSystem} on case ${caseData.id}.`,
+  ).catch(() => {});
 
   return { messageId: payload.messageId, outcome: 'applied', caseId: caseData.id, targetDescription: result.targetDescription };
 }

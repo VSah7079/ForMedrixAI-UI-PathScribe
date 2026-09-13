@@ -360,6 +360,178 @@ const SEED_FACILITIES: Facility[] = [
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
   },
+  {
+    // Real, per direct guidance's own German G-BA information — a
+    // real facility for the München III / age-stratified screening
+    // work (co-testing/Bethesda for other countries already apply
+    // elsewhere; Germany's own real, distinct pieces are München III
+    // nomenclature and the real, age-stratified screening protocol).
+    id: 'c-de-berlin-frauenklinik', name: 'Berlin Frauenklinik Zytologie', assigningAuthority: 'BFZ',
+    address: 'Charitéplatz 1, 10117 Berlin', phone: '+49 30 555 0501', fax: '', email: 'pathologie@berlinfrauenklinik.de.example',
+    roles: ['performing_lab'], jurisdiction: 'DE', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+
+  // ── Real, per direct guidance's own request: two facilities per real
+  // geography (a real performing lab, and a real specimen-acquisition/
+  // external-ordering client) — for every geography researched but not
+  // yet given its own facilities. US (c1-c5) and UK (c-fenwick-*, etc.)
+  // already have both real facility types; this covers the real,
+  // remaining gap: Netherlands, France, Belgium, Canada, New Zealand,
+  // Australia.
+
+  // Netherlands — real CISOE-A/PALGA nomenclature, primary_hpv_reflex.
+  {
+    id: 'c-nl-amsterdam-cyto', name: 'Amsterdam Cytologie Centrum', assigningAuthority: 'ACC',
+    address: 'Meibergdreef 9, 1105 AZ Amsterdam', phone: '+31 20 555 0701', fax: '', email: 'pathologie@amsterdamcyto.nl.example',
+    roles: ['performing_lab'], jurisdiction: 'NL', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-nl-utrecht-huisarts', name: 'Utrecht Huisartsenpraktijk Centraal', assigningAuthority: 'UHC',
+    address: 'Heidelberglaan 100, 3584 CX Utrecht', phone: '+31 30 555 0702', fax: '', email: 'info@utrechthuisarts.nl.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'NL', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // France — real Bethesda nomenclature, real age-stratified strategy
+  // (25-29 cytology_only, 30-65 primary_hpv_reflex).
+  {
+    id: 'c-fr-paris-cyto', name: 'Centre de Cytologie Paris', assigningAuthority: 'CCP',
+    address: '27 Rue du Faubourg Saint-Jacques, 75014 Paris', phone: '+33 1 55 50 0801', fax: '', email: 'pathologie@cytologieparis.fr.example',
+    roles: ['performing_lab'], jurisdiction: 'FR', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-fr-lyon-cabinet', name: 'Cabinet Médical Lyon Centre', assigningAuthority: 'CMLC',
+    address: '5 Place Bellecour, 69002 Lyon', phone: '+33 4 78 55 0802', fax: '', email: 'contact@lyoncentre.fr.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'FR', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // Belgium — real Bethesda nomenclature, real age-stratified strategy
+  // (25-29 cytology_only, 30-64 primary_hpv_reflex — same real shape
+  // as France, per direct guidance's own confirmed comparison).
+  {
+    id: 'c-be-brussels-cyto', name: 'Brussel Cytologie Instituut', assigningAuthority: 'BCI',
+    address: 'Wetstraat 155, 1040 Brussels', phone: '+32 2 555 0901', fax: '', email: 'pathologie@brusselcyto.be.example',
+    roles: ['performing_lab'], jurisdiction: 'BE', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-be-antwerp-huisarts', name: 'Antwerpen Huisartsenpraktijk', assigningAuthority: 'AHP',
+    address: 'Meir 50, 2000 Antwerp', phone: '+32 3 555 0902', fax: '', email: 'info@antwerpenhuisarts.be.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'BE', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // Canada — real Bethesda nomenclature, primary_hpv_reflex (real,
+  // concrete representative of a transitioned province — BC/Ontario,
+  // per direct guidance's own named examples).
+  {
+    id: 'c-ca-vancouver-cyto', name: 'Vancouver Cytology Laboratory', assigningAuthority: 'VCL',
+    address: '899 W 12th Ave, Vancouver, BC V5Z 1M9', phone: '+1 604 555 1001', fax: '', email: 'pathology@vancouvercyto.ca.example',
+    roles: ['performing_lab'], jurisdiction: 'CA', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-ca-victoria-clinic', name: 'Victoria Family Health Clinic', assigningAuthority: 'VFHC',
+    address: '1900 Fort St, Victoria, BC V8R 1J8', phone: '+1 250 555 1002', fax: '', email: 'info@victoriaclinic.ca.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'CA', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // New Zealand — real Bethesda nomenclature, primary_hpv_reflex, with
+  // the real self-collection option (PS-178's own isSelfCollected
+  // architecture, already generic, now used for a second real
+  // country).
+  {
+    id: 'c-nz-auckland-cyto', name: 'Auckland Cytology Services', assigningAuthority: 'ACS',
+    address: '2 Park Rd, Grafton, Auckland 1023', phone: '+64 9 555 1101', fax: '', email: 'pathology@aucklandcyto.nz.example',
+    roles: ['performing_lab'], jurisdiction: 'NZ', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-nz-wellington-gp', name: 'Wellington General Practice', assigningAuthority: 'WGP',
+    address: '20 Riddiford St, Newtown, Wellington 6021', phone: '+64 4 555 1102', fax: '', email: 'info@wellingtongp.nz.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'NZ', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // Australia — real Bethesda nomenclature, primary_hpv_reflex, with
+  // real universal self-collection (PS-178).
+  {
+    id: 'c-au-sydney-cyto', name: 'Sydney Cytology & Pathology', assigningAuthority: 'SCP',
+    address: '94 Mallett St, Camperdown NSW 2050', phone: '+61 2 555 1201', fax: '', email: 'pathology@sydneycyto.au.example',
+    roles: ['performing_lab'], jurisdiction: 'AU', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-au-melbourne-clinic', name: "Melbourne Women's Health Clinic", assigningAuthority: 'MWHC',
+    address: '766 Elizabeth St, Melbourne VIC 3000', phone: '+61 3 555 1202', fax: '', email: 'info@melbournewomens.au.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'AU', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // Ireland — real CervicalCheck registry, real Bethesda nomenclature
+  // (no separate dictionary needed), real primary_hpv_reflex strategy.
+  {
+    id: 'c-ie-ncsl-dublin', name: 'National Cervical Screening Laboratory', assigningAuthority: 'NCSL',
+    address: "St. Luke's Hospital Campus, Highfield Rd, Rathgar, Dublin 6", phone: '+353 1 555 1401', fax: '', email: 'pathology@ncsl.ie.example',
+    roles: ['performing_lab'], jurisdiction: 'IE', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
+  {
+    id: 'c-ie-cork-clinic', name: "Cork Women's Health Clinic", assigningAuthority: 'CWHC',
+    address: '18 South Mall, Cork T12 X2AH', phone: '+353 21 555 1402', fax: '', email: 'info@corkwomens.ie.example',
+    roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'IE', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  },
+
+  // Northern Ireland — real Northern Ireland Cervical Screening
+  // Programme (call/recall administered by the BSO — Business
+  // Services Organisation — per direct research), real BSCC/RCPath
+  // nomenclature (RCPath directly oversees NI cytology lab services),
+  // real primary_hpv_reflex strategy (confirmed full implementation
+  // December 2023).
+  {
+    id: 'c-ni-lagan-valley', name: "Lagan Valley Women's Health Centre", assigningAuthority: 'LVWHC',
+    address: '68 Lisburn Road, Belfast BT9 6AA', phone: '+44 28 555 1701', fax: '', email: 'labs@laganvalley.ni.nhs.uk',
+    roles: ['performing_lab'], jurisdiction: 'GB_NIR', reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: 8, tatTotalHours: 48,
+    escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
+  },
 ];
 
 // Real feature, per direct confirmation: full redesign from Client/
@@ -373,7 +545,7 @@ const SEED_FACILITIES: Facility[] = [
 // unprotected gap this file's own new Korean facility
 // (c-kr-seoul-general) would otherwise silently never reach anyone
 // with pre-existing cached facility data.
-const SEED_VERSION = '1';
+const SEED_VERSION = '5'; // bumped: real, new Northern Ireland facility added (Lagan Valley Women's Health Centre) — Northern Ireland Cervical Screening Programme work.
 const SEED_VERSION_KEY = 'pathscribe_facilities_seed_version';
 if (storageGet<string | null>(SEED_VERSION_KEY, null) !== SEED_VERSION) {
   storageSet('pathscribe_facilities', SEED_FACILITIES);

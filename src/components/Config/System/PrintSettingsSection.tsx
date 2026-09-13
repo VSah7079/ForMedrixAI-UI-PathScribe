@@ -31,7 +31,7 @@
 
 import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
-import { printSettingsService, facilityPrintSettingsService } from '@/services/index';
+import { printSettingsService, facilityPrintSettingsService, printerProfileService } from '@/services/index';
 import type { PrintSettingsConfig } from '@/services/printSettings/IPrintSettingsService';
 import type { FacilityPrintSettings } from '@/services/printSettings/IFacilityPrintSettingsService';
 import { resolveEffectivePrintSettings } from '@/services/printSettings/IFacilityPrintSettingsService';
@@ -40,6 +40,7 @@ import type { LabelBarcodeSymbology } from '@/types/labels/LabelSizePreset';
 import { CONTAINER_TYPES } from '@/services/hardwareContainers/IHardwareContainerRegistryService';
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import type { Facility } from '@/services';
+import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 
 const SYMBOLOGY_LABEL: Record<LabelBarcodeSymbology, string> = {
   code128: 'Code 128 (1D)',
@@ -51,10 +52,12 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
   const [globalConfig, setGlobalConfig] = useState<PrintSettingsConfig | null>(null);
   const [facilityOverride, setFacilityOverride] = useState<FacilityPrintSettings | null>(null);
   const [labs, setLabs] = useState<Facility[]>([]);
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
+  useEffect(() => { printerProfileService.getAll().then(res => { if (res.ok) setPrinterProfiles(res.data); }); }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -221,7 +224,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           Container Label Size
         </div>
         <div className="ps-conf-card-description">
-          Physical label size for specimen container labels. Requisition labels always print full-page regardless of this setting.
+          Physical label size for specimen container labels. Requisition labels use their own, separate size setting below.
         </div>
         <select
           value={effective.containerLabelPresetId}
@@ -233,6 +236,86 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
             <option key={preset.id} value={preset.id}>{preset.name}</option>
           ))}
         </select>
+      </div>
+
+      {/* ── Requisition Label Size ── */}
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          Requisition Label Size
+        </div>
+        <div className="ps-conf-card-description">
+          Physical sheet size for the requisition sticker sheet (tracking header plus log-in, specimen, and cassette/slide peel-off stickers). Defaults to a standard 4″×6″ thermal multi-peel sheet — a full-page size can still be chosen here if your lab genuinely uses one.
+        </div>
+        <select
+          value={effective.requisitionLabelPresetId}
+          onChange={e => update({ requisitionLabelPresetId: e.target.value })}
+          disabled={readOnly}
+          className="ps-input-dark ps-conf-select-wide"
+        >
+          {LABEL_SIZE_PRESETS.map(preset => (
+            <option key={preset.id} value={preset.id}>{preset.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── Container Label Printer Profile ── */}
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          Container Label Printer Profile
+        </div>
+        <div className="ps-conf-card-description">
+          When set to a real printer profile using the QZ Tray bridge, container labels dispatch directly to that thermal printer instead of opening the browser's own print dialog. Leave unset to keep using the browser print dialog.
+        </div>
+        <select
+          value={effective.containerLabelPrinterProfileId ?? ''}
+          onChange={e => update({ containerLabelPrinterProfileId: e.target.value || undefined })}
+          disabled={readOnly}
+          className="ps-input-dark ps-conf-select-wide"
+        >
+          <option value="">— Use browser print dialog —</option>
+          {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
+        </select>
+        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
+      </div>
+
+      {/* ── Molecular Label Printer Profile ── */}
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          Molecular Label Printer Profile
+        </div>
+        <div className="ps-conf-card-description">
+          Same real hardware-bridge choice as above, for the Molecular Testing Execution Module's own plate, rack, specimen, and deck location labels.
+        </div>
+        <select
+          value={effective.molecularLabelPrinterProfileId ?? ''}
+          onChange={e => update({ molecularLabelPrinterProfileId: e.target.value || undefined })}
+          disabled={readOnly}
+          className="ps-input-dark ps-conf-select-wide"
+        >
+          <option value="">— Use browser print dialog —</option>
+          {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
+        </select>
+        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
+      </div>
+
+      {/* ── Requisition Label Printer Profile ── */}
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          Requisition Label Printer Profile
+        </div>
+        <div className="ps-conf-card-description">
+          Same real hardware-bridge choice as above, for the multi-zone requisition sticker sheet (tracking header plus log-in, specimen, and cassette/slide peel-off stickers). Every real sticker's own position is computed from real millimeter geometry, not guessed coordinates.
+        </div>
+        <select
+          value={effective.requisitionLabelPrinterProfileId ?? ''}
+          onChange={e => update({ requisitionLabelPrinterProfileId: e.target.value || undefined })}
+          disabled={readOnly}
+          className="ps-input-dark ps-conf-select-wide"
+        >
+          <option value="">— Use browser print dialog —</option>
+          {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
+        </select>
+        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
       </div>
 
       {/* ── Container Barcode Symbology ── */}

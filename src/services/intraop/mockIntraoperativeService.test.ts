@@ -161,6 +161,101 @@ describe('Real seed data — preparations[] matches the real, existing milestone
   });
 });
 
+describe('seedOrBoardDemoData / advanceDemoSpecimen — real, per direct request: sales demo data for the OR Suite Live Board', () => {
+  it('seeds four real demo sessions at the given location, spanning normal/warning/overdue/completed states', async () => {
+    const res = await mockIntraoperativeService.seedOrBoardDemoData('loc-demo', 'fac-demo', 'DEMO');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data).toHaveLength(4);
+    expect(res.data.every(e => e.locationId === 'loc-demo')).toBe(true);
+    expect(res.data[3].specimens[0].frozenSectionDiagnosis).toBeTruthy();
+  });
+
+  it('re-seeding removes the previous demo run\'s own sessions rather than piling up duplicates', async () => {
+    await mockIntraoperativeService.seedOrBoardDemoData('loc-demo', 'fac-demo', 'DEMO');
+    await mockIntraoperativeService.seedOrBoardDemoData('loc-demo', 'fac-demo', 'DEMO');
+    const all = await mockIntraoperativeService.getAll();
+    expect(all.ok).toBe(true);
+    if (all.ok) expect(all.data.filter(e => e.id.startsWith('demo-orboard-'))).toHaveLength(4);
+  });
+
+  it('advances a fresh demo specimen through each real milestone in the correct order, then to a rendered diagnosis', async () => {
+    const seeded = await mockIntraoperativeService.seedOrBoardDemoData('loc-demo', 'fac-demo', 'DEMO');
+    if (!seeded.ok) return;
+    const { id: sessionId, specimens } = seeded.data[0]; // the "normal", no-milestones-yet demo case
+    const specimenId = specimens[0].id;
+
+    const step1 = await mockIntraoperativeService.advanceDemoSpecimen(sessionId, specimenId);
+    expect(step1.ok && step1.data.advanced).toBe(true);
+    if (step1.ok) expect(step1.data.entry.specimens[0].milestones.map(m => m.milestone)).toEqual(['gross_logged']);
+
+    const step2 = await mockIntraoperativeService.advanceDemoSpecimen(sessionId, specimenId);
+    if (step2.ok) expect(step2.data.entry.specimens[0].milestones.map(m => m.milestone)).toEqual(['gross_logged', 'touch_prep_performed']);
+
+    const step3 = await mockIntraoperativeService.advanceDemoSpecimen(sessionId, specimenId);
+    if (step3.ok) expect(step3.data.entry.specimens[0].milestones.map(m => m.milestone)).toEqual(['gross_logged', 'touch_prep_performed', 'frozen_section_cut']);
+
+    const step4 = await mockIntraoperativeService.advanceDemoSpecimen(sessionId, specimenId);
+    expect(step4.ok && step4.data.advanced).toBe(true);
+    if (step4.ok) expect(step4.data.entry.specimens[0].frozenSectionDiagnosis).toBeTruthy();
+  });
+
+  it('is a real, honest no-op once a specimen already has a rendered diagnosis — never loops back to the start', async () => {
+    const seeded = await mockIntraoperativeService.seedOrBoardDemoData('loc-demo', 'fac-demo', 'DEMO');
+    if (!seeded.ok) return;
+    const alreadyCompleted = seeded.data[3]; // the pre-seeded, already-completed demo case
+    const res = await mockIntraoperativeService.advanceDemoSpecimen(alreadyCompleted.id, alreadyCompleted.specimens[0].id);
+    expect(res.ok && res.data.advanced).toBe(false);
+  });
+});
+
+describe('addDigitalAsset — real, per direct follow-up on the image/PDF architecture scoping\'s own item 3', () => {
+  it('appends a real, already-resolved DigitalAsset to a specimen\'s own real list', async () => {
+    await mockIntraoperativeService.setFrozenSectionDiagnosis('intraop-001', 'spec-001-a', 'placeholder to ensure session exists');
+    const asset = { id: 'asset-1', kind: 'gross_photo' as const, url: 'https://gross-imaging.example.com/photo.jpg', capturedAt: new Date().toISOString(), capturedBy: 'tech-1' };
+    const res = await mockIntraoperativeService.addDigitalAsset('intraop-001', 'spec-001-a', asset);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const specimen = res.data.specimens.find(s => s.id === 'spec-001-a');
+      expect(specimen?.digitalAssets).toHaveLength(1);
+      expect(specimen?.digitalAssets?.[0].url).toBe('https://gross-imaging.example.com/photo.jpg');
+    }
+  });
+
+  it('a real, non-existent specimen returns an honest error, never a fabricated one', async () => {
+    const asset = { id: 'asset-1', kind: 'gross_photo' as const, url: 'https://example.com/x.jpg', capturedAt: new Date().toISOString() };
+    const res = await mockIntraoperativeService.addDigitalAsset('intraop-001', 'does-not-exist', asset);
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe('dismissFromBoard — real, per the OR Suite Live Board\'s own dismissal workflow spec', () => {
+  it('refuses honestly when the surgeon read-back checkbox was not genuinely checked', async () => {
+    await mockIntraoperativeService.setFrozenSectionDiagnosis('intraop-001', 'spec-001-a', 'Negative for tumor.');
+    const res = await mockIntraoperativeService.dismissFromBoard('intraop-001', 'spec-001-a', 'u1', 'Nurse Jenkins', false);
+    expect(res.ok).toBe(false);
+    if ('error' in res) expect(res.error).toContain('read-back');
+  });
+
+  it('refuses honestly when no frozen diagnosis has actually been rendered yet', async () => {
+    const res = await mockIntraoperativeService.dismissFromBoard('intraop-001', 'spec-001-a', 'u1', 'Nurse Jenkins', true);
+    expect(res.ok).toBe(false);
+    if ('error' in res) expect(res.error).toContain('no frozen diagnosis');
+  });
+
+  it('dismisses a real, diagnosis-rendered specimen once genuinely confirmed, recording who and when', async () => {
+    await mockIntraoperativeService.setFrozenSectionDiagnosis('intraop-001', 'spec-001-a', 'Negative for tumor.');
+    const res = await mockIntraoperativeService.dismissFromBoard('intraop-001', 'spec-001-a', 'u1', 'Nurse Jenkins', true);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const specimen = res.data.specimens.find(s => s.id === 'spec-001-a');
+      expect(specimen?.dismissedByUserName).toBe('Nurse Jenkins');
+      expect(specimen?.surgeonReadbackConfirmed).toBe(true);
+      expect(typeof specimen?.dismissedFromBoardAt).toBe('string');
+    }
+  });
+});
+
 describe('merge() — real, per direct guidance\u2019s own follow-up: closes the confirmed gap where a real verbalReportLog was previously lost on merge', () => {
   it('a real, existing verbalReportLog (intraop-001) is migrated into a real, permanent CriticalResultNotification on the target case', async () => {
     const { mockCriticalResultNotificationService } = await import('../clinical/mockCriticalResultNotificationService');

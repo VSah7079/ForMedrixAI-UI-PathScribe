@@ -16,7 +16,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CytologySignOutRecord } from '@/types/cytology/CytologySignOutRecord';
+import type { CisoeAScore } from '@/types/cytology/CisoeAScore';
 import { generateCytologyReportPdf } from './generateCytologyReportPdf';
+
+// Real, per direct guidance: "It might be easier to implant different
+// outbound payload types based on geography." Real, generic,
+// discriminated-union extension slot — not a parallel, duplicate
+// payload builder per country, and not a payload shape unique to
+// every geography by default. Most real nomenclature systems
+// (Bethesda, BSCC/RCPath, Münchner Nomenklatur III) already map
+// cleanly onto the universal narrative above with no data loss — they
+// get no real extension at all. This slot exists specifically for a
+// real nomenclature whose own native data genuinely doesn't fit that
+// universal shape — CISOE-A's independent, multi-axis score is the
+// first, real example; the type stays open (`|` more variants) for
+// any future geography that turns out to have the same real need,
+// without ever forcing an empty/placeholder extension onto everyone
+// else.
+export interface CisoeAOruExtension {
+  type: 'cisoe_a';
+  score: CisoeAScore;
+}
+
+export type CytologyOruR01GeographyExtension = CisoeAOruExtension;
 
 export interface CytologyOruR01Payload {
   messageId: string;
@@ -47,6 +69,15 @@ export interface CytologyOruR01Payload {
    *  genuinely simpler cytology renderer (generateCytologyReportPdf.ts),
    *  not the external, synoptic-shaped render_report Cloud Function. */
   reportPdfBase64: string;
+  /** Real, optional — present only when the underlying review carries
+   *  real, native data a receiving system in that specific geography
+   *  needs beyond the universal narrative above (see
+   *  CytologyOruR01GeographyExtension). Undefined for every other
+   *  real nomenclature system, which this universal narrative already
+   *  represents completely. Still real, structured JSON only — which
+   *  real OBX segment or FHIR extension this becomes on the wire is
+   *  the real interface engine's own job, never PathScribe's. */
+  geographyExtension?: CytologyOruR01GeographyExtension;
 }
 
 export function buildCytologyOruR01Payload(signOutRecord: CytologySignOutRecord): CytologyOruR01Payload {
@@ -72,5 +103,6 @@ export function buildCytologyOruR01Payload(signOutRecord: CytologySignOutRecord)
       recommendations: content.recommendations.length ? content.recommendations.join('; ') : undefined,
     },
     reportPdfBase64,
+    geographyExtension: content.cisoeAScore ? { type: 'cisoe_a', score: content.cisoeAScore } : undefined,
   };
 }

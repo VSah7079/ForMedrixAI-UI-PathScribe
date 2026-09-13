@@ -13,14 +13,11 @@
 //   6. Adjunctive Testing & Integrated Results
 //   7. Educational Notes, Comments, & Sign-Off
 //
-// Real, honest scoping: three real, standard §1 sub-items have no
-// data source anywhere in this app yet — hormonal status, prior
-// abnormal-Pap/HPV/procedure history, and IUD/contraception use (the
-// same, already-deferred clinical-history-dictionary scope). Rather
-// than carry three permanently-undefined fields implying that capture
-// is imminent, they're genuinely omitted from this type — noted here,
-// once, as a real gap, not silently dropped. Every other real,
-// standard field below has a genuine, current data source.
+// Real, per direct guidance's own follow-up: the three real, standard
+// §1 sub-items once noted as a real, honest gap here — hormonal
+// status, prior abnormal-Pap/HPV/procedure history, IUD/contraception
+// use — now have a genuine data source (Patient.ts), captured at real
+// accessioning alongside lastMenstrualPeriod. All three below.
 //
 // Real, standard §7 sign-off requirement: "Name and signature/
 // electronic sign-off of the reviewing Cytotechnologist (if screened
@@ -32,6 +29,9 @@
 // captured separately here — never collapsed into one "signed by."
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { CisoeAScore } from './CisoeAScore';
+import type { ImageAssociation } from '@/types/imageAssociation/ImageAssociation';
+
 export interface CytologyReportContent {
   // ── 1. Administrative & Patient Identifiers ─────────────────────────────
   patientName: string;
@@ -42,6 +42,9 @@ export interface CytologyReportContent {
   specimenCollectedAt?: string;
   specimenReceivedAt?: string;
   lastMenstrualPeriod?: string;
+  hormonalStatus?: 'premenopausal' | 'perimenopausal' | 'postmenopausal' | 'pregnant';
+  priorAbnormalPapHpvHistory?: string;
+  iudOrContraceptionUse?: string;
 
   // ── 2. Specimen Type ─────────────────────────────────────────────────────
   /** Real, per the specimen's own real dictionary entry — covers both
@@ -59,6 +62,21 @@ export interface CytologyReportContent {
   // ── 5. Interpretation / Diagnostic Result ────────────────────────────────
   primaryInterpretation: string;
   additionalInterpretations: string[];
+  /** Real, per direct guidance: only ever populated for a real CISOE-A
+   *  (PALGA/Netherlands) review — the raw, native 6-component matrix,
+   *  captured here at real sign-out time alongside the Bethesda-
+   *  translated `primaryInterpretation` above (never instead of it),
+   *  since every existing resolver still reads the translated field.
+   *  Snapshot posture matches this whole type's own real "always
+   *  written, never edited" rule: if the underlying review is later
+   *  changed, this sign-out's own real, historical score never moves. */
+  cisoeAScore?: CisoeAScore;
+  /** Real, per direct guidance's own UK CSMS registry work: a robust,
+   *  explicit signal for deriving a real registry action code, rather
+   *  than fragile string-matching on `primaryInterpretation`'s own
+   *  display text. Mirrors the underlying review's own real field
+   *  directly. */
+  requiresPathologistReview: boolean;
 
   // ── 6. Adjunctive Testing & Integrated Results ───────────────────────────
   hpvResult?: string;
@@ -77,4 +95,12 @@ export interface CytologyReportContent {
    *  responsibility to populate correctly). */
   signedBy: { name: string; isPathologist: boolean };
   signedAt: string;
+  /** Real, per direct follow-up on the image/PDF architecture
+   *  scoping's own item 5 — real images and PDF attachments to embed
+   *  into the generated report (e.g. a gross photo, a referral
+   *  consult PDF). Each entry's own `imageUrl` is a real,
+   *  already-resolved reference (services/imageAssociation/) — this
+   *  type never carries the binary payload itself, same reference-
+   *  only posture as everywhere else in this app. */
+  imageAssociations?: ImageAssociation[];
 }

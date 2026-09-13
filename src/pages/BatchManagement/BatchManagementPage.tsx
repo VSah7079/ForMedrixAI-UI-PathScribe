@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -26,9 +27,6 @@ import { BATCH_PROCESSING_NODES } from '@/services/batches/IBatchService';
 import NewContainerModal from './NewContainerModal';
 import BatchDetailView from './BatchDetailView';
 
-const STATUS_LABEL: Record<Batch['status'], string> = {
-  active: 'Active', reconciling: 'Reconciling', complete: 'Complete', aborted: 'Aborted',
-};
 const STATUS_COLOR: Record<Batch['status'], string> = {
   active: '#38bdf8', reconciling: '#f59e0b', complete: '#34d399', aborted: '#f87171',
 };
@@ -41,28 +39,23 @@ const STATUS_COLOR: Record<Batch['status'], string> = {
  *  text) carries real meaning at a glance. */
 const NODE_COLOR: Record<BatchProcessingNode, string> = {
   'Decal / Special Processing': '#F59E0B', Processing: '#536EEA', Embedding: '#53E2EA',
-  'Microtomy / Sectioning': '#8B5CF6', Staining: '#EC4899', Checkout: '#10B981',
+  'Microtomy / Sectioning': '#8B5CF6', Staining: '#EC4899', Checkout: '#10B981', 'External Referral': '#F43F5E',
+  // Real, additive — per the Protocol-Driven Workflow Infrastructure
+  // story's Part 2a. Three genuinely distinct hues from every node
+  // above, same real "the tile itself carries meaning at a glance"
+  // reasoning.
+  'Cytology Processing': '#0EA5E9', 'Cytology Staining': '#D946EF', 'Cytology Imaging': '#84CC16',
 };
-/** Compact display label for the tile itself — ps-wl-filter-tile's own
- *  real width/ellipsis constraints (min-width: 80px) suit Worklist's
- *  own short labels; "Microtomy / Sectioning" is the real, exact,
- *  consistent value stored and matched everywhere else (batches,
- *  ScanStation.workflowStage), this is purely a tile-display
- *  shortening, not a second, competing value. */
-const NODE_TILE_LABEL: Record<BatchProcessingNode, string> = {
-  'Decal / Special Processing': 'Decal / Special', Processing: 'Processing', Embedding: 'Embedding',
-  'Microtomy / Sectioning': 'Microtomy', Staining: 'Staining', Checkout: 'Checkout',
-};
-
 function formatTimestamp(iso: string): string {
   try { return new Date(iso).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' }); }
   catch { return iso; }
 }
 
 const BatchManagementPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Batch Management', '/batch-management'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('batchManagement.pageTitle'), '/batch-management'); }, [pushCrumb, t]);
   const { user } = useAuth();
   const { stationId } = useCurrentScanStation();
 
@@ -116,11 +109,11 @@ const BatchManagementPage: React.FC = () => {
     }
     playScanErrorTone();
     if ('ok' in rackRes && rackRes.ok) {
-      toast.error(`Rack "${value}" is already checked out to another active batch.`);
+      toast.error(t('batchManagement.rackCheckedOutError', { value }));
     } else {
-      toast.error(`No batch or registered container found for "${value}".`);
+      toast.error(t('batchManagement.notFoundError', { value }));
     }
-  }, []);
+  }, [t]);
 
   // Real feature, per the spec's own "Master Barcode Lookup: Scanning a
   // master batch barcode on any workstation displays its active
@@ -172,11 +165,9 @@ const BatchManagementPage: React.FC = () => {
       <div className="ps-batch-scroll">
         <div className="ps-batch-inner">
           <div className="ps-batch-page-header">
-            <h1 className="ps-batch-page-title">📦 Batch Management</h1>
+            <h1 className="ps-batch-page-title">📦 {t('batchManagement.pageTitle')}</h1>
             <p className="ps-batch-page-subtitle">
-              Track groups of cassettes and slides through processing nodes (Decal / Special Processing, Processing,
-              Embedding, Microtomy, Staining, Checkout) via container barcodes — chain-of-custody scanning,
-              reconciliation, and QA discrepancy logging.
+              {t('batchManagement.pageSubtitle')}
             </p>
           </div>
 
@@ -198,7 +189,7 @@ const BatchManagementPage: React.FC = () => {
                 <button
                   key={node}
                   className="ps-wl-filter-tile"
-                  title={isActive ? `Showing: ${node} — click to reset` : `Filter by: ${node}`}
+                  title={isActive ? t('batchManagement.filterTileTitleActive', { node: t(`batchManagement.nodes.${node}`) }) : t('batchManagement.filterTileTitle', { node: t(`batchManagement.nodes.${node}`) })}
                   onClick={() => setStageFilter(isActive ? null : node)}
                   style={{
                     '--tile-bg': isActive ? `${color}2e` : `${color}0d`,
@@ -207,7 +198,7 @@ const BatchManagementPage: React.FC = () => {
                   } as React.CSSProperties}
                 >
                   <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? color : '#8899aa' } as React.CSSProperties}>
-                    {NODE_TILE_LABEL[node]}
+                    {t(`batchManagement.nodeTileLabel.${node}`)}
                   </div>
                   <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': color } as React.CSSProperties}>
                     {count}
@@ -229,14 +220,14 @@ const BatchManagementPage: React.FC = () => {
                 (see IBatchService.ts's own header for why). */}
             <button
               className="ps-wl-filter-tile"
-              title="Disposal Queue — items that qualify for disposal right now"
+              title={t('batchManagement.disposalTitle')}
               onClick={() => navigate('/batch-management/disposal')}
               style={{
                 '--tile-bg': '#DC26260d', '--tile-border': '#DC26262e', '--tile-shadow': 'none',
               } as React.CSSProperties}
             >
               <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
-                Disposal
+                {t('batchManagement.disposalTile')}
               </div>
               <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#DC2626' } as React.CSSProperties}>
                 🗑️
@@ -258,14 +249,14 @@ const BatchManagementPage: React.FC = () => {
                 to populate one tile's own number. */}
             <button
               className="ps-wl-filter-tile"
-              title="Pending Batch Load — printed items not yet scanned into any batch"
+              title={t('batchManagement.pendingLoadTitle')}
               onClick={() => navigate('/batch-management/pending-load')}
               style={{
                 '--tile-bg': '#EAB3080d', '--tile-border': '#EAB3082e', '--tile-shadow': 'none',
               } as React.CSSProperties}
             >
               <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
-                Pending Load
+                {t('batchManagement.pendingLoadTile')}
               </div>
               <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#EAB308' } as React.CSSProperties}>
                 📥
@@ -281,14 +272,14 @@ const BatchManagementPage: React.FC = () => {
                 pattern as Disposal/Pending Load above. */}
             <button
               className="ps-wl-filter-tile"
-              title="Engraver Monitor — real, high-level engraver device status from the Cassette Engine"
+              title={t('batchManagement.engraverMonitorTitle')}
               onClick={() => navigate('/batch-management/engraver-monitor')}
               style={{
                 '--tile-bg': '#38bdf80d', '--tile-border': '#38bdf82e', '--tile-shadow': 'none',
               } as React.CSSProperties}
             >
               <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
-                Engraver Monitor
+                {t('batchManagement.engraverMonitorTile')}
               </div>
               <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#38bdf8' } as React.CSSProperties}>
                 🖨️
@@ -304,33 +295,33 @@ const BatchManagementPage: React.FC = () => {
               ref={lookupRef}
               className="ps-batch-lookup-input"
               type="text"
-              placeholder="Scan or enter a master batch barcode…"
+              placeholder={t('batchManagement.lookupPlaceholder')}
               value={lookupValue}
               onChange={e => setLookupValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleLookup(lookupValue); }}
             />
-            <button className="ps-btn-primary" onClick={() => setShowCreate(true)}>🖨️ New Container</button>
+            <button className="ps-btn-primary" onClick={() => setShowCreate(true)}>🖨️ {t('batchManagement.newContainer')}</button>
           </div>
 
           {loading ? (
-            <div className="ps-batch-empty">Loading batches…</div>
+            <div className="ps-batch-empty">{t('batchManagement.loading')}</div>
           ) : (
             <>
-              <div className="ps-batch-section-label">Active &amp; Reconciling ({activeBatches.length})</div>
+              <div className="ps-batch-section-label">{t('batchManagement.activeSectionLabel', { count: activeBatches.length })}</div>
               {activeBatches.length === 0 ? (
-                <div className="ps-batch-empty">No active batches. Create one to get started.</div>
+                <div className="ps-batch-empty">{t('batchManagement.emptyActive')}</div>
               ) : (
                 <div className="ps-batch-list">
                   {activeBatches.map(b => (
                     <div key={b.id} className="ps-batch-row" onClick={() => setSelectedBatchId(b.id)}>
                       <span className="ps-batch-row-status" style={{ background: `${STATUS_COLOR[b.status]}22`, color: STATUS_COLOR[b.status] }}>
-                        {STATUS_LABEL[b.status]}
+                        {t(`batchManagement.status.${b.status}`)}
                       </span>
                       <span className="ps-batch-row-barcode">{b.masterBarcode}</span>
-                      <span className="ps-batch-row-node">{b.processingNode}</span>
+                      <span className="ps-batch-row-node">{t(`batchManagement.nodes.${b.processingNode}`)}</span>
                       <span className="ps-batch-row-protocol">{b.protocol}</span>
-                      {b.priority === 'STAT' && <span className="ps-batch-row-stat">STAT</span>}
-                      <span className="ps-batch-row-count">{b.items.length} item{b.items.length !== 1 ? 's' : ''}</span>
+                      {b.priority === 'STAT' && <span className="ps-batch-row-stat">{t('newContainerModal.stat')}</span>}
+                      <span className="ps-batch-row-count">{t('batchManagement.itemCount', { count: b.items.length })}</span>
                       <span className="ps-batch-row-time">{formatTimestamp(b.createdAt)}</span>
                     </div>
                   ))}
@@ -339,17 +330,17 @@ const BatchManagementPage: React.FC = () => {
 
               {closedBatches.length > 0 && (
                 <>
-                  <div className="ps-batch-section-label">Complete &amp; Aborted ({closedBatches.length})</div>
+                  <div className="ps-batch-section-label">{t('batchManagement.closedSectionLabel', { count: closedBatches.length })}</div>
                   <div className="ps-batch-list">
                     {closedBatches.map(b => (
                       <div key={b.id} className="ps-batch-row ps-batch-row--closed" onClick={() => setSelectedBatchId(b.id)}>
                         <span className="ps-batch-row-status" style={{ background: `${STATUS_COLOR[b.status]}22`, color: STATUS_COLOR[b.status] }}>
-                          {STATUS_LABEL[b.status]}
+                          {t(`batchManagement.status.${b.status}`)}
                         </span>
                         <span className="ps-batch-row-barcode">{b.masterBarcode}</span>
-                        <span className="ps-batch-row-node">{b.processingNode}</span>
+                        <span className="ps-batch-row-node">{t(`batchManagement.nodes.${b.processingNode}`)}</span>
                         <span className="ps-batch-row-protocol">{b.protocol}</span>
-                        <span className="ps-batch-row-count">{b.items.length} item{b.items.length !== 1 ? 's' : ''}</span>
+                        <span className="ps-batch-row-count">{t('batchManagement.itemCount', { count: b.items.length })}</span>
                         <span className="ps-batch-row-time">{formatTimestamp(b.completedAt ?? b.abortedAt ?? b.createdAt)}</span>
                       </div>
                     ))}

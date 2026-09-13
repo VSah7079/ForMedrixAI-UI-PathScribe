@@ -699,6 +699,25 @@ invented per screen.
   the form edits that facility's own record, with a "Revert to System
   Default" action. See `services/printSettings/README.md` for the full
   account of the new `FacilityPrintSettings` type/service.
+- **`LabelDesignerPage.tsx`** (registered here as the `'label_designer'`
+  tab, real component actually lives at
+  `pages/LabelDesignerPage/LabelDesignerPage.tsx`) — real, per direct
+  follow-up (PS-245/251/252): a real, drag-and-drop layout designer
+  spanning nine real label types. **Real, direct correction:** first
+  built as its own real, standalone home-page tile/route
+  (`/label-designer`); per direct follow-up ("Label Designer isn't a
+  tile, its a tab in configuration"), moved here instead — the
+  standalone route and home-page tile were both removed, this Config
+  tab is now the one real, intended access point. See
+  `services/labelDesigner/README.md` for the full architectural
+  account (Enterprise/facility hierarchy, per-group lockdown policy,
+  real field catalogs). **Real, honest, flagged gap, not yet fixed:**
+  this component's own styling uses inline `style={{...}}` throughout
+  (matching the convention this session's own molecular pages used),
+  not this folder's own established "no inline CSS, named classes
+  only" convention (see `PrintSettingsSection.tsx`'s own header) — a
+  real inconsistency, found while adding this entry, not yet
+  reconciled.
 - **`index.tsx`** (this folder's own router/shell) — **Real addition
   (Workstation & Hardware redesign), per direct guidance:** a single
   facility selector (`workstationFacilityId`/`workstationLabs` state),

@@ -41,6 +41,7 @@ import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Location } from '@/services/locations/ILocationService';
 import { shouldRestrictToMobileWorkflow, setDesktopViewOverride, isConstrainedMobileDevice } from '@/utils/deviceDetection';
 import BarcodeScanner from '@/components/BarcodeScanner/BarcodeScanner';
+import CameraCaptureControl from '@/components/GrossingHardware/CameraCaptureControl';
 import { formatDateLong } from '@/utils/formatDate';
 import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { useVoice } from '@/contexts/VoiceProvider';
@@ -618,9 +619,11 @@ const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen
 
 // ─── Milestone action controls — per specimen, not per session ────────────────
 const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen; onLogged: () => void; voiceEligible: boolean }> = ({ sessionId, specimen, onLogged, voiceEligible }) => {
+  const { user } = useAuth();
   const [quickGrossDraft, setQuickGrossDraft] = useState('');
   const [showSkipMenu, setShowSkipMenu] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const { startDictation, phase, dictationTarget } = useVoice();
   const [grossFocused, setGrossFocused] = useState(false);
 
@@ -685,6 +688,31 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
           Log Quick Gross
         </button>
         <p className="ps-intraop-gate-note">Required before Touch Prep or Frozen Section can be logged — no override. Focus this field and press the mic to dictate.</p>
+
+        {/* Real, per direct follow-up on the image/PDF architecture
+            scoping's own item 3 — confirmed directly no real gross/
+            frozen-section photo capture existed anywhere in this
+            workflow before this. Available at this stage
+            specifically since this is the real moment the specimen
+            is actually being examined/grossed. */}
+        <div className="ps-intraop-photo-row">
+          <button type="button" className="ps-conf-btn-row" onClick={() => setShowCamera(true)}>📷 Capture Gross Photo</button>
+          {(specimen.digitalAssets ?? []).map(a => (
+            <img key={a.id} src={a.url} alt="Gross specimen" className="ps-intraop-photo-thumb" />
+          ))}
+        </div>
+        {showCamera && (
+          <CameraCaptureControl
+            kind="gross_photo"
+            capturedBy={user?.name}
+            onClose={() => setShowCamera(false)}
+            onCapture={async asset => {
+              setShowCamera(false);
+              await intraoperativeService.addDigitalAsset(sessionId, specimen.id, asset);
+              onLogged();
+            }}
+          />
+        )}
       </div>
     );
   }

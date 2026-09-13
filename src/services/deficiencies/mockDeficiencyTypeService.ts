@@ -14,6 +14,19 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   { id: 'def-label-mismatch', name: 'Label Mismatch', description: 'Container/slide label does not match the requisition.', status: 'Active', level: 'specimen' },
   { id: 'def-container-damaged', name: 'Container Damaged', description: 'Specimen container arrived broken, leaking, or otherwise compromised.', status: 'Active', level: 'specimen' },
   { id: 'def-insufficient-volume', name: 'Insufficient Volume', description: 'Fluid/tissue quantity received is inadequate for the ordered testing.', status: 'Active', level: 'specimen' },
+  // Real, per this module's own established CAPA-design decision:
+  // "NO auto-CAPA. AI discordance should raise a SpecimenDeficiency...
+  // Human decides — Contain, Escalate to CAPA, or leave." 'both' since
+  // AiScreeningResult.specimenId is optional — a real discordance can
+  // be case-level or specimen-level depending on how the real vendor
+  // product itself operates.
+  { id: 'def-ai-discordance', name: 'AI Screening Discordance', description: 'A pathologist/cytotechnologist recorded disagreement with a computational-pathology AI screening result.', status: 'Active', level: 'both' },
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+  // Laboratory Sensor & Cold-Chain Integration gap — 'both' since a
+  // real excursion can affect a whole batch's own real specimens
+  // (case-level) or one, specifically identified specimen depending
+  // on how a real QA reviewer chooses to raise it.
+  { id: 'def-cold-chain-excursion', name: 'Cold-Chain Excursion', description: 'A real, monitored transport container or storage unit reported a temperature reading outside its own defined safe range.', status: 'Active', level: 'both' },
   // Real, per direct follow-up: "if I was to create a CAPA I might
   // want to capture the information" - a DLQ dispatch failure
   // (OutboundChargeQueueEntry, status FAILED) that's systemic or

@@ -70,6 +70,19 @@ specific to this page.
   reviewed in depth this session beyond confirming it's real, wired-up,
   and not dead code.
 
+- **`PendingGrossingTriageTile.tsx`** — **New (Sep 2026)**, Protocol-
+  Driven Workflow Infrastructure story Part 2c: "cases with pending
+  triage show a distinct indicator so they don't sit silently." A
+  deliberately separate tile from `AmendedAddendaTriageTile.tsx` above
+  — that one's own "triage" is an editorial amendment/addendum review
+  queue; this one is a genuinely different real concept, a bench-tech
+  grossing checklist gate (`Specimen.triage`, `types/case/Specimen.ts`,
+  gated by `useSpecimenBlockManagement.ts`'s own
+  `handleReleaseGrossingBlocks`). Takes `WorklistPage.tsx`'s own
+  already-loaded `realCases` as a prop and filters client-side
+  (`isTriagePending`, exported and unit-tested) rather than issuing a
+  second, redundant fetch.
+
 - **`ResourcesModal.tsx`** (45 lines) — the shared quick-links modal
   (protocols/references/internal systems), opened via the global
   `PATHSCRIBE_PAGE_OPEN_RESOURCES` window event — see

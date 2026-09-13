@@ -42,7 +42,8 @@ export type FacilityRole =
   | 'internal_submitting_location'
   | 'internal_ordering_client'
   | 'external_ordering_client'
-  | 'specimen_acquisition';
+  | 'specimen_acquisition'
+  | 'reference_lab';
 
 export const FACILITY_ROLE_LABELS: Record<FacilityRole, string> = {
   performing_lab: 'Performing Lab',
@@ -60,6 +61,15 @@ export const FACILITY_ROLE_LABELS: Record<FacilityRole, string> = {
    *  pathology-specific name than a general "Patient Care" label,
    *  per direct feedback. */
   specimen_acquisition: 'Specimen Acquisition',
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+   *  Laboratory Specimen Referral gap — genuinely the inverse
+   *  direction from every ordering-client role above: this facility
+   *  is somewhere OUR lab sends specimens TO for outsourced,
+   *  specialized testing (molecular, NGS, reference IHC), never
+   *  somewhere that sends orders to us. Reuses the same one-record,
+   *  multiple-roles Facility architecture rather than a new,
+   *  parallel "external lab" entity. */
+  reference_lab: 'Reference Lab (Outbound Referral Destination)',
 };
 
 // Real, new: per direct request, further defines what each real role
@@ -78,6 +88,7 @@ export const FACILITY_ROLE_TOOLTIPS: Record<FacilityRole, string> = {
   internal_ordering_client: 'A location within your own network that originates real orders and is billed internally. Governs pediatric access and TAT/escalation settings.',
   external_ordering_client: 'An outside hospital, clinic, or practice that orders services from you and is billed externally. The default for a newly added facility. Governs pediatric access and TAT/escalation settings.',
   specimen_acquisition: "Where a real specimen is actually collected from a patient. Reveals the Place of Service Code field — POS reflects the specimen's own setting, never the performing lab's location, per CMS guidance.",
+  reference_lab: 'Somewhere your lab sends specimens TO for outsourced, specialized testing (e.g. molecular, NGS, reference IHC) — the reverse direction from an ordering-client role. Makes this facility selectable as a destination when creating an outbound referral batch.',
 };
 
 export interface FacilityReportingPreferences {

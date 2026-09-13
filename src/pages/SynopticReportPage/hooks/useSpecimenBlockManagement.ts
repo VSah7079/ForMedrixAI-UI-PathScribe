@@ -436,11 +436,31 @@ export function useSpecimenBlockManagement({
     }
   }, [caseData, focusedBlockEntry, markDirty, knownVersionRef, setCaseData, setConcurrencyConflict]);
 
+  // Real, per the Protocol-Driven Workflow Infrastructure story's Part
+  // 2c — migrated from the old, simple triageConfirmedAt/By stamp
+  // (Specimen.ts's own doc comment on the field this superseded) to
+  // the new, real SpecimenTriage record. The voice command's own real
+  // "confirm triage" convenience is preserved exactly: one action
+  // still confirms the whole specimen's triage at once — it just now
+  // does so by marking every real checklistItems entry confirmed
+  // (rather than a single flat stamp), which is what actually
+  // satisfies handleReleaseGrossingBlocks's own real gate below. A
+  // real no-op (returns early) when the focused specimen has no
+  // SpecimenTriage at all — nothing to confirm.
   const handleConfirmTriage = useCallback(async () => {
     if (!caseData?.id || !focusedBlockEntry) return;
+    const specimen = (caseData.specimens ?? []).find((sp: Specimen) => sp.id === focusedBlockEntry.specimenId);
+    if (!specimen?.triage) return;
+    const nowIso = new Date().toISOString();
     const patchedSpecimens = (caseData.specimens ?? []).map((sp: Specimen) =>
-      sp.id !== focusedBlockEntry.specimenId ? sp : {
-        ...sp, triageConfirmedAt: new Date().toISOString(), triageConfirmedBy: signingUser?.id ?? 'unknown',
+      sp.id !== focusedBlockEntry.specimenId || !sp.triage ? sp : {
+        ...sp,
+        triage: {
+          ...sp.triage,
+          checklistItems: sp.triage.checklistItems.map(ci => ({ ...ci, confirmed: true })),
+          completedAt: nowIso,
+          completedBy: signingUser?.id ?? 'unknown',
+        },
       }
     );
     try {
@@ -453,6 +473,67 @@ export function useSpecimenBlockManagement({
       console.error('[Grossing] Failed to confirm triage:', e);
     }
   }, [caseData, focusedBlockEntry, signingUser, markDirty, knownVersionRef, setCaseData, setConcurrencyConflict]);
+
+  // Real, per the Protocol-Driven Workflow Infrastructure story's Part
+  // 2c override workflow (per direct instruction: "ensure the
+  // overrideReason field is fast and seamless to fill out... so techs
+  // aren't completely stonewalled during edge cases or urgent
+  // processing"). A real, required, non-empty reason — never a silent
+  // bypass. Sets completedAt/completedBy alongside overrideReason
+  // (same real "resolved, one way or another" shape the normal
+  // checklist-completion path already produces), so a caller checking
+  // "is triage resolved" never needs to check two different fields.
+  const handleOverrideTriage = useCallback(async (specimenId: string, reason: string) => {
+    if (!caseData?.id || !reason.trim()) return;
+    const nowIso = new Date().toISOString();
+    const patchedSpecimens = (caseData.specimens ?? []).map((sp: Specimen) =>
+      sp.id !== specimenId || !sp.triage ? sp : {
+        ...sp,
+        triage: { ...sp.triage, overrideReason: reason.trim(), completedAt: nowIso, completedBy: signingUser?.id ?? 'unknown' },
+      }
+    );
+    try {
+      await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens }, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, specimens: patchedSpecimens } as typeof prev) : prev);
+      markDirty('Triage override');
+    } catch (e) {
+      if (handleConcurrencyConflict(e, setConcurrencyConflict)) return;
+      console.error('[Grossing] Failed to override triage:', e);
+    }
+  }, [caseData, signingUser, markDirty, knownVersionRef, setCaseData, setConcurrencyConflict]);
+
+  // Real, per the Protocol-Driven Workflow Infrastructure story's Part
+  // 2c — one real, checkable line item (per direct instruction: "each
+  // item checkable individually"). Distinct from handleConfirmTriage
+  // above (confirms every item at once, for the voice command) — this
+  // is the real, granular Grossing Screen checklist UI's own action.
+  const handleConfirmTriageChecklistItem = useCallback(async (specimenId: string, itemIndex: number, confirmed: boolean) => {
+    if (!caseData?.id) return;
+    const patchedSpecimens = (caseData.specimens ?? []).map((sp: Specimen) => {
+      if (sp.id !== specimenId || !sp.triage) return sp;
+      const checklistItems = sp.triage.checklistItems.map((ci, i) => i === itemIndex ? { ...ci, confirmed } : ci);
+      const allConfirmed = checklistItems.every(ci => ci.confirmed);
+      return {
+        ...sp,
+        triage: {
+          ...sp.triage,
+          checklistItems,
+          completedAt: allConfirmed ? new Date().toISOString() : undefined,
+          completedBy: allConfirmed ? (signingUser?.id ?? 'unknown') : undefined,
+        },
+      };
+    });
+    try {
+      await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens }, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, specimens: patchedSpecimens } as typeof prev) : prev);
+      markDirty('Triage checklist');
+    } catch (e) {
+      if (handleConcurrencyConflict(e, setConcurrencyConflict)) return;
+      console.error('[Grossing] Failed to update triage checklist item:', e);
+    }
+  }, [caseData, signingUser, markDirty, knownVersionRef, setCaseData, setConcurrencyConflict]);
 
   // ── Generic block update — the manual Block/Stain editor ────────────────────
   // Distinct from handleAdvanceFocusedBlockStatus above, which only ever
@@ -1010,6 +1091,18 @@ export function useSpecimenBlockManagement({
     const specimens = caseData.specimens ?? [];
     const sp = specimens.find((s: Specimen) => s.id === specimenId);
     if (!sp) return;
+    // Real, per the Protocol-Driven Workflow Infrastructure story's
+    // Part 2c explicit guardrail (per direct instruction): a specimen
+    // with a real, still-open SpecimenTriage record — not every
+    // checklist item confirmed, and no override reason recorded —
+    // never releases. Real, hard stop server-side, not just a
+    // disabled button (GrossingReleasePanel.tsx's own disabled state
+    // is the primary UX; this is the real, enforced backstop that
+    // can't be bypassed by calling this function directly).
+    if (sp.triage && !sp.triage.overrideReason && !sp.triage.checklistItems.every(ci => ci.confirmed)) {
+      showToast('Cannot release blocks: Specimen triage is incomplete.');
+      return;
+    }
     const blockIdSet = new Set(blockIds);
     const blocksToRelease = (sp.blocks ?? []).filter(b => blockIdSet.has(b.id) && b.status === 'Pending');
     if (blocksToRelease.length === 0) return;
@@ -1666,6 +1759,8 @@ export function useSpecimenBlockManagement({
     focusedBlockEntry,
     handleAdvanceFocusedBlockStatus,
     handleConfirmTriage,
+    handleOverrideTriage,
+    handleConfirmTriageChecklistItem,
     handleUpdateBlock,
     handleCancelBlock,
     handleCreateSpareSlide,

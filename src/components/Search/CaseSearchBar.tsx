@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import '@/pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { mockOnDemandCaseFetchService } from '@/services/cases/mockOnDemandCaseFetchService';
 import { useEnabledIdentifierFormats } from '../../hooks/useEnabledIdentifierFormats';
 import { useAuditLog } from '../Audit/useAuditLog';
 import type { IdentifierFormat } from '../../types/systemConfig';
@@ -236,6 +237,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
   const [caseNumber, setCaseNumber] = useState('');
   const [scanFlash,  setScanFlash]  = useState(false);
   const [searching,  setSearching]  = useState(false);
+  const [fetchingFromLis, setFetchingFromLis] = useState<string | null>(null);
   const [hits,       setHits]       = useState<CaseHit[]>([]);
   const [notFound,   setNotFound]   = useState(false);
   const inputRef    = useRef<HTMLInputElement>(null);
@@ -266,6 +268,26 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
     setSearching(false);
 
     if (results.length === 0) {
+      // Real, per direct guidance's own full "On-Demand Fetch &
+      // Fallback" design — Step 3/4: a real local cache miss falls
+      // back to a real, live LIS fetch (Option A, REST/FHIR),
+      // before ever telling the pathologist the case doesn't exist
+      // at all.
+      setFetchingFromLis(q);
+      const fetchResult = await mockOnDemandCaseFetchService.fetchCaseByAccession(q);
+      setFetchingFromLis(null);
+
+      if (fetchResult.ok && fetchResult.data.outcome === 'found') {
+        // Real, per Step 4.2 — "Cache the case into PathScribe's
+        // local storage and active worklist so subsequent opens
+        // during that session are instant."
+        await caseRouter.createCase(fetchResult.data.caseData);
+        log('case_fetched_on_demand_from_lis', { query: q, caseId: fetchResult.data.caseData.id });
+        navigate(`/case/${fetchResult.data.caseData.id}/synoptic`);
+        setCaseNumber('');
+        return;
+      }
+
       setNotFound(true);
       setTimeout(() => setNotFound(false), 3000);
       log('case_search_no_results', { query: q });
@@ -411,6 +433,17 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       {notFound && (
         <div className="ps-search-not-found">
           No case found for &ldquo;{caseNumber}&rdquo;
+        </div>
+      )}
+
+      {/* Real, per direct guidance's own Step 3 — explicit loading
+          feedback during the on-demand LIS fetch, distinct from the
+          ordinary local-search spinner above, so the pathologist
+          knows a slower, real network call is in progress, not an
+          unresponsive app. */}
+      {fetchingFromLis && (
+        <div className="ps-search-fetching-lis">
+          Fetching Accession {fetchingFromLis} from LIS…
         </div>
       )}
 

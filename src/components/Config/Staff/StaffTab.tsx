@@ -25,6 +25,14 @@ export interface StaffUser {
   voiceProfile?: string | null;
   canViewPediatric?: boolean;
   canViewOrchestration?: boolean;
+  /** Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
+   *  Intraoperative/Frozen Section Dashboard's own Quick Auth flow.
+   *  NOTE: this file declares its own, local StaffUser instead of
+   *  importing the real one from services/users/IUserService.ts —
+   *  confirmed directly this is a real, pre-existing duplication
+   *  (not introduced here); this field has to be kept in sync by
+   *  hand across both until that's consolidated. */
+  quickAuthPin?: string;
 }
 
 function initials(u: StaffUser) {
@@ -86,6 +94,11 @@ type Draft = {
   email: string; roles: string[]; npi: string; gmcNumber: string; license: string;
   phone: string; signatureUrl: string; active: boolean;
   voiceProfile: string; canViewPediatric: boolean; canViewOrchestration: boolean;
+  /** Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
+   *  Intraoperative/Frozen Section Dashboard's own Quick Auth flow —
+   *  only meaningful for a real 'Or Staff' user; see
+   *  resolveStaffByQuickAuthPin.ts for how this is actually used. */
+  quickAuthPin: string;
   /** Real fix, per direct confirmation: replaces the old free-text
    *  "Department" field — redundant with the real Subspecialties
    *  dictionary, which already existed (StaffTab.tsx already loaded
@@ -103,7 +116,7 @@ const emptyDraft: Draft = {
   firstName: '', middleName: '', lastName: '', credentials: '', email: '',
   roles: [], npi: '', gmcNumber: '', license: '', phone: '',
   signatureUrl: '', active: true, voiceProfile: '', canViewPediatric: false,
-  canViewOrchestration: false, subspecialtyIds: [],
+  canViewOrchestration: false, subspecialtyIds: [], quickAuthPin: '',
 };
 
 interface StaffModalProps {
@@ -127,6 +140,7 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
       canViewPediatric: user.canViewPediatric ?? false,
       canViewOrchestration: (user as any).canViewOrchestration ?? false,
       subspecialtyIds: subspecialties.filter(s => s.userIds.includes(user.id)).map(s => s.id),
+      quickAuthPin: user.quickAuthPin || '',
     } : emptyDraft
   );
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
@@ -305,6 +319,22 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
             </label>
           </div>
 
+          {/* Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
+              Intraoperative/Frozen Section Dashboard's own Quick Auth
+              flow — only meaningful for a real 'Or Staff' user, since
+              lab staff keep using the existing, real login. */}
+          {draft.roles.includes('Or Staff') && (
+            <div style={{ marginTop: 16 }}>
+              <label className="ps-label" htmlFor="staff-quick-auth-pin">Quick Auth PIN (4 digits)</label>
+              <input id="staff-quick-auth-pin" className="ps-conf-input" maxLength={4} inputMode="numeric"
+                value={draft.quickAuthPin} onChange={e => setDraft(d => ({ ...d, quickAuthPin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                placeholder="e.g. 4471" />
+              <p className="ps-conf-section-subtitle" style={{ marginTop: 4 }}>
+                Used to attribute a quick action (verbal report, alert acknowledgement) on the Intraoperative Dashboard to this person.
+              </p>
+            </div>
+          )}
+
           {/* Row 7b: Orchestration Access — reuses the ps-st-peds-* classes
               (a generic access-toggle-row style, not pediatric-specific
               despite the name) rather than introducing new CSS rules. */}
@@ -405,6 +435,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
       signatureUrl: draft.signatureUrl,
       status: (draft.active ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
       voiceProfile: draft.voiceProfile === '' ? undefined : (draft.voiceProfile as VoiceProfileId),
+      quickAuthPin: draft.quickAuthPin === '' ? undefined : draft.quickAuthPin,
     };
     let savedUserId: string | undefined;
     if (modal?.mode === 'add') {

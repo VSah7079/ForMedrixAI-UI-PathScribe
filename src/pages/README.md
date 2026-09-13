@@ -8,7 +8,13 @@ Top-level route pages.
 |---|---|
 | [AccessionPage/](./AccessionPage/README.md) | Case accessioning form + order lookup/intraop-merge/deficiency modals |
 | [BatchManagement/](./BatchManagement/README.md) | Cassette/slide chain-of-custody + the disposal/pending-load/retention-hold computed queues |
+| [GrossingScreenPage/](./GrossingScreenPage/README.md) | **NEW (Sep 2026)** — Protocol-Driven Workflow Infrastructure story Part 3: the grossing tech's own dedicated workflow surface (`/case/:caseId/grossing`), separate from the pathologist's `SynopticReportPage/` |
+| [LabelDesignerPage/](./LabelDesignerPage/README.md) | Real, drag-and-drop label layout designer, registered as a Config > System tab, not a standalone route |
+| [MockInterfaceEnginePage/](./MockInterfaceEnginePage/README.md) | Dev-only control panel for the mock PS-239 backend endpoint (`/dev/mock-interface-engine`, not linked from any real navigation) |
 | [modals/](./modals/README.md) | Top-level page modals that don't belong to any single page's own folder |
+| [MolecularBatchManagement/](./MolecularBatchManagement/README.md) | Real, read-only molecular QC-run/cytology-specimen association view (external, HL7-sourced) — now the Workcenter's own "QC & Specimen Association" tab |
+| [MolecularBatchPage/](./MolecularBatchPage/README.md) | Plate builder + extraction racks + control rules for the Full Molecular Testing Execution Module |
+| [MolecularWorkcenterPage/](./MolecularWorkcenterPage/README.md) | Real, single `/molecular` entry point (tabs: Worklist & Plate Builder / Active Runs & Batches / History & Archive / QC & Specimen Association), replacing two former, separate tiles |
 | [ReportPreview/](./ReportPreview/README.md) | Orchestration mode's template-driven report preview renderer |
 | [Synoptic/](./Synoptic/README.md) | Shared types/hooks extracted from `SynopticReportPage.tsx`, plus Codes/Comments/Delegate/UI subfolders |
 | [SynopticReportPage/](./SynopticReportPage/README.md) | **Central folder** — the core clinical workflow (`/case/:caseId/synoptic`): hooks/components/modals |
@@ -769,3 +775,12 @@ file in every subfolder is actually named in that subfolder's own
 `SynopticReportPage/` (+ its `modals/` and `components/`) were all
 missing entirely before this pass — `SynopticReportPage/hooks/` (+ its
 own `__tests__/`) already had real coverage and needed no work.
+
+**Real, direct correction (September 2026)**: the above "every subfolder"
+claim went stale — `MolecularBatchPage/` (5 real, routed pages for the
+Full Molecular Testing Execution Module, see `services/molecular/README.md`)
+and `LabelDesignerPage/` (the real, drag-and-drop label designer, see
+`services/labelDesigner/README.md`) were both added without a
+corresponding update here. Found directly, per a direct question ("have
+we been keeping up with READMEs?"), not caught proactively. Both
+subfolders now have their own real `README.md`, and are named here.

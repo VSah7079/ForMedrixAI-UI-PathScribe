@@ -15,6 +15,14 @@ import type { ServiceResult } from '../types';
 import type { CytologyReviewRecord } from '@/types/cytology/CytologyReviewRecord';
 
 export interface ICytologyReviewRecordService {
+  /** Real, per direct guidance's own QA aggregate-reporting work: a
+   *  real, bulk-fetch method — the three real, standard QA reports
+   *  (resolveCytologyQaReports.ts) need every real review on file to
+   *  pair across specimens, and getBySpecimenId/getByCaseId alone
+   *  can't support that without an awkward, inefficient per-case
+   *  fetch loop. Matches this app's own established pattern
+   *  (qaActivityRecordService.getAll() and others already do this). */
+  getAll(): Promise<ServiceResult<CytologyReviewRecord[]>>;
   getBySpecimenId(specimenId: string): Promise<ServiceResult<CytologyReviewRecord[]>>;
   getByCaseId(caseId: string): Promise<ServiceResult<CytologyReviewRecord[]>>;
   create(record: Omit<CytologyReviewRecord, 'id' | 'recordedAt' | 'updatedAt'>): Promise<ServiceResult<CytologyReviewRecord>>;
@@ -36,7 +44,7 @@ export interface ICytologyReviewRecordService {
     changes: Partial<Pick<CytologyReviewRecord,
       | 'adequacySelections' | 'generalCategorizationId'
       | 'primaryInterpretationId' | 'primaryInterpretationComment' | 'additionalInterpretations' | 'recommendations'
-      | 'requiresPathologistReview' | 'notes'
+      | 'requiresPathologistReview' | 'notes' | 'cisoeAScore' | 'synopticData'
     >>,
   ): Promise<ServiceResult<CytologyReviewRecord>>;
 }

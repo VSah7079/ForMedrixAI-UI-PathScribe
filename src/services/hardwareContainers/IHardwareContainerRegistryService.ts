@@ -76,6 +76,16 @@ export interface HardwareContainer {
    *  spec's own FR-3.2 "disbanding logic." */
   currentBatchId?: string;
   facilityId?: string;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+   *  Laboratory Sensor & Cold-Chain Integration gap — "smart transport
+   *  containers." Most real racks are NOT smart-sensored; this stays
+   *  false/undefined for the vast majority of real containers, never
+   *  assumed true. */
+  isSmartContainer?: boolean;
+  /** The real StorageConditionType (`services/coldChain/`) this
+   *  specific container's own contents must be kept within — only
+   *  meaningful when isSmartContainer is true. */
+  storageConditionTypeId?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -86,7 +96,12 @@ export interface IHardwareContainerRegistryService {
   /** Real lookup for the scan-ingestion flow — matches
    *  case-insensitively against a real, scanned rackId. */
   getByRackId(rackId: string): Promise<ServiceResult<HardwareContainer>>;
-  create(draft: { rackId: string; containerType: ContainerType; facilityId?: string }): Promise<ServiceResult<HardwareContainer>>;
+  create(draft: { rackId: string; containerType: ContainerType; facilityId?: string; isSmartContainer?: boolean; storageConditionTypeId?: string }): Promise<ServiceResult<HardwareContainer>>;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
+   *  Laboratory Sensor & Cold-Chain Integration gap — lets an admin
+   *  retroactively mark an existing rack as smart-sensored and assign
+   *  its real storage condition type, not only at creation time. */
+  update(id: ID, changes: { isSmartContainer?: boolean; storageConditionTypeId?: string }): Promise<ServiceResult<HardwareContainer>>;
   /** The spec's own FR-3.2 "disbanding logic" — real, atomic check-out:
    *  fails honestly if the rack is already InUse (a real, existing
    *  conflict — see the spec's own "preventing duplicate batch

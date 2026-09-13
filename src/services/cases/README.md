@@ -45,6 +45,41 @@ The resident-drafts/attending-countersigns workflow (`CountersignRecord`, `types
 
 **A real, more significant gap found and closed in the same pass, not asked for directly**: `getForCase()` had never actually been called anywhere in this app — confirmed directly, not assumed, before building anything further. That meant `attendingFeedback` (real since this whole countersign workflow was first built) had never been shown to a resident in context, for either the original `countersign()` (accept) path or this session's new `reject()` path — only via `CountersignTurnaroundTab.tsx`, a QA/management dashboard a resident wouldn't naturally open while actively fixing their own returned case. `getForCase()`'s own real contract now matches `'pending'` OR `'returned'`, not just `'pending'` — a new `RevisionFeedbackBanner.tsx` (`pages/SynopticReportPage/components/README.md`) is its first real caller, showing the attending's real feedback the moment the resident opens their returned case.
 
+## On-Demand Case Fetch & Fallback (Sep 2026)
+
+Real, per direct guidance's own full design: a case a pathologist
+scans/types/speaks that isn't in PathScribe's own local cache falls
+back to a real, live LIS fetch — Option A (REST/FHIR API), confirmed
+directly over Option B (a direct read-only DB query — a real customer
+security/access concern beyond PathScribe's own code) and Option C
+(HL7 `QRY^R02`/`QBP^Q21` — a genuinely different, synchronous
+request-response shape than anything else in this app's own
+event-driven HL7 handling).
+
+- **`IOnDemandCaseFetchService.ts` / `mockOnDemandCaseFetchService.ts`**
+  — the real fetch, same real query pattern and TLS gate
+  (`services/patientHistory/resolveIsSecureLisEndpoint.ts`, reused
+  directly) as the patient-history work above. Deliberately a
+  "targeted / lightweight fetch" per direct guidance — essential case
+  metadata and current status only, never this patient's separate,
+  cross-accession history (that's `services/patientHistory/`'s own
+  job).
+- **`resolveLocalCaseAvailability.ts`** — the pure Step 2 decision. A
+  case with a real, pending `LisAmendmentNotice` is treated as a real
+  cache miss even though it's technically still stored locally — the
+  same on-demand fetch path handles a genuinely-never-seen case and a
+  possibly-stale amended one, rather than needing two separate real
+  mechanisms.
+- **Wired into `components/Search/CaseSearchBar.tsx`** — the real
+  navbar scan/type/dictate entry point (confirmed directly, not
+  guessed). A zero-local-results search now falls back to the real
+  fetch before ever telling the pathologist the case doesn't exist,
+  with an explicit "Fetching Accession [ID] from LIS…" loading state
+  distinct from the ordinary local-search spinner. A successful fetch
+  calls the real, existing `caseRouter.createCase()` to cache the
+  case locally, then navigates straight to it — exactly Step 4.2's
+  own "so subsequent opens during that session are instant."
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

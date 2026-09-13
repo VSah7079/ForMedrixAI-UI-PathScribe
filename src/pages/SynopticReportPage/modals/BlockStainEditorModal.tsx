@@ -11,7 +11,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../../../pathscribe.css';
 import { stainTypeService } from '@/services';
+import { WsiViewerLaunchButton } from '../components/WsiViewerLaunchButton';
 import type { StainType } from '@/services/stains/IStainService';
+import type { MaterialComment } from '@/types/case/MaterialComment';
+import CameraCaptureControl from '@/components/GrossingHardware/CameraCaptureControl';
 import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
 import type { MolecularTarget } from '@/types/billing/MolecularBillingRule';
 import type { CasePriority } from '@/services/cases/ICaseService';
@@ -59,10 +62,15 @@ const RESTAIN_REASONS = [
 // ── Real search + multi-select for stains, same pattern as the Protocol ────
 // ── editor's picker — reused rather than reinvented for the same reason: ───
 // ── a live Stain Dictionary can run to hundreds of entries. ─────────────────
-const StainMultiSelect: React.FC<{
+// Real, per direct guidance's own confirmed correction while
+// migrating Cytology's own Material drawer onto the real Decant/
+// StainType system: exported so Cytology's own material view uses
+// this EXACT, real component — never a separate, cytology-specific
+// look-alike that could drift out of sync with this one over time.
+export const StainMultiSelect: React.FC<{
   stainTypes: StainType[];
-  stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[] }[];
-  onChange: (stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[] }[]) => void;
+  stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[]; displayId?: string }[];
+  onChange: (stains: { id: string; stainName: string; status: string; lisRequestStatus?: 'pending' | 'confirmed' | 'rejected'; selectedTargets?: MolecularTarget[]; displayId?: string }[]) => void;
   masterTargets: MolecularTarget[];
   /** Real feature, per direct feedback: "I was trying to Add a
    *  Unstained slide, but did not see it in the drop down list."
@@ -148,6 +156,7 @@ const StainMultiSelect: React.FC<{
               {s.lisRequestStatus === 'rejected' && (
                 <span title="The LIS rejected this request — follow up with histology" style={{ marginLeft: 5, fontSize: 10, color: '#f87171' }}>⚠</span>
               )}
+              <WsiViewerLaunchButton status={s.status} displayId={s.displayId} />
               <button type="button" onClick={() => remove(s.id)} className="ps-protocol-stainselect-chip-remove">×</button>
             </span>
           ))}
@@ -305,6 +314,12 @@ interface Props {
    *  UNSTAINED_LABEL) or creating a genuinely new one; this UI layer
    *  doesn't need to know or decide that. */
   onOrderRestain: (specimenId: string, blockId: string, params: { targetSlideId: string; stainName: string; reason: string }) => void;
+  /** Real, per direct follow-up on comment-field parity across
+   *  material types — needed to stamp a new block/decant comment
+   *  with a real author, same as ReportCommentModal's own
+   *  currentUserId/currentUserName. */
+  currentUserId: string;
+  currentUserName: string;
   onClose: () => void;
   /** Real fix, item #28: which block (if any) the modal should scroll
    *  to as soon as it opens — the actual "navigate to the block that
@@ -367,6 +382,88 @@ const BlockCptSuggestion: React.FC<{
 // ISO 15189:2012 5.8. Two states: an already-cancelled block shows
 // its audit record read-only; an active block shows a dedicated
 // cancel action that requires a reason before it can proceed.
+// Real, per direct follow-up on comment-field parity across material
+// types — a small, real, inline composer, same real posture as
+// CancelBlockControl below (a local, single-purpose control, not a
+// second full modal stacked on top of this one). Deliberately no
+// rich-text editor here (unlike ReportCommentModal's own
+// PathScribeEditor) — per direct follow-up confirming this is the
+// right design, not a scope trim: a block/stain/decant-level note is
+// a short, operational one, genuinely different in kind from a
+// substantial, formatted case/specimen-level note. Produces plain
+// text (MaterialComment), never rendered via dangerouslySetInnerHTML.
+const BlockCommentComposer: React.FC<{ onSubmit: (text: string) => void }> = ({ onSubmit }) => {
+  const [value, setValue] = useState('');
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+      <input
+        type="text"
+        className="ps-conf-select"
+        placeholder="Add a comment…"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && value.trim()) { onSubmit(value.trim()); setValue(''); }
+        }}
+      />
+      <button
+        type="button"
+        className="ps-btn-small"
+        disabled={!value.trim()}
+        onClick={() => { onSubmit(value.trim()); setValue(''); }}
+      >
+        Add
+      </button>
+    </div>
+  );
+};
+
+// Real, per direct follow-up on comment-field parity across material
+// types — same real toggle posture as RestainControl below (a small,
+// per-stain control, not an always-expanded section, since a block
+// card can carry many stain rows). Persists via onUpdateBlock's own
+// generic patch — rebuilds the block's stains array with this one
+// stain's comments updated, since StainOrder lives nested under
+// HistologyBlock.stains, not as its own top-level, directly-
+// patchable record.
+const StainCommentControl: React.FC<{
+  stain: any;
+  currentUserId: string;
+  currentUserName: string;
+  onUpdateStainComments: (nextComments: MaterialComment[]) => void;
+}> = ({ stain, currentUserId, currentUserName, onUpdateStainComments }) => {
+  const [open, setOpen] = useState(false);
+  const count = (stain.comments ?? []).length;
+
+  return (
+    <div style={{ display: 'inline-block', marginLeft: 8 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{ fontSize: 11, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+      >
+        💬{count > 0 ? ` ${count}` : ''}
+      </button>
+      {open && (
+        <div style={{ marginTop: 4 }}>
+          {(stain.comments ?? []).map((c: MaterialComment) => (
+            <div key={c.id} style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2, padding: '3px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
+              <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+              <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+            </div>
+          ))}
+          <BlockCommentComposer
+            onSubmit={text => onUpdateStainComments([...(stain.comments ?? []), {
+              id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              authorId: currentUserId, authorName: currentUserName, text, createdAt: new Date().toISOString(),
+            }])}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CancelBlockControl: React.FC<{
   block: any;
   onCancel: (reason: string) => void;
@@ -540,9 +637,13 @@ const RestainControl: React.FC<{
   );
 };
 
-export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePriority, fullAccession, onUpdateBlock, onUpdateDecant, onPrintDecantContainerLabel, onSendStainOrder, onCancelBlock, onCreateSpareSlide, onOrderRestain, onClose, initialFocusBlockId, initialFocusDecantId }) => {
+export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePriority, fullAccession, onUpdateBlock, onUpdateDecant, onPrintDecantContainerLabel, onSendStainOrder, onCancelBlock, onCreateSpareSlide, onOrderRestain, currentUserId, currentUserName, onClose, initialFocusBlockId, initialFocusDecantId }) => {
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [masterTargets, setMasterTargets] = useState<MolecularTarget[]>([]);
+  // Real, per the RFP-APLIS-2026-GLOBAL Grossing Station Hardware
+  // Integration gap — which block (if any) currently has the real
+  // camera capture overlay open.
+  const [capturingPhotoForBlockId, setCapturingPhotoForBlockId] = useState<string | null>(null);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
     mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(t => t.active)); });
@@ -920,6 +1021,56 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     onChange={e => onUpdateBlock(specimenId, block.id, { pieceDescription: e.target.value || undefined })}
                   />
                 </div>
+                {/* Real, per the RFP-APLIS-2026-GLOBAL Grossing
+                    Station Hardware Integration gap — populates the
+                    real, previously-empty DigitalAsset pipeline (see
+                    CameraCaptureControl.tsx's own header for the full
+                    account). */}
+                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
+                  <label className="ps-conf-label">Block Face Photos</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                    {(block.digitalAssets ?? []).filter((a: any) => a.kind === 'block_face_photo').map((a: any) => (
+                      <img key={a.id} src={a.url} alt="Block face" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 4, border: '1px solid #334155' }} />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="ps-btn-small"
+                    onClick={() => setCapturingPhotoForBlockId(block.id)}
+                  >
+                    📷 Add Photo
+                  </button>
+                </div>
+                {capturingPhotoForBlockId === block.id && (
+                  <CameraCaptureControl
+                    kind="block_face_photo"
+                    capturedBy={currentUserName}
+                    onCapture={asset => {
+                      onUpdateBlock(specimenId, block.id, { digitalAssets: [...(block.digitalAssets ?? []), asset] });
+                      setCapturingPhotoForBlockId(null);
+                    }}
+                    onClose={() => setCapturingPhotoForBlockId(null)}
+                  />
+                )}
+                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
+                  <label className="ps-conf-label">Block Comments</label>
+                  {(block.comments ?? []).map(c => (
+                    <div key={c.id} style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
+                      <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                      <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+                    </div>
+                  ))}
+                  {block.status !== 'Cancelled' && (
+                    <BlockCommentComposer
+                      onSubmit={text => onUpdateBlock(specimenId, block.id, {
+                        comments: [...(block.comments ?? []), {
+                          id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                          authorId: currentUserId, authorName: currentUserName, text, createdAt: new Date().toISOString(),
+                        }],
+                      })}
+                    />
+                  )}
+                </div>
                 {/* Real feature, per direct follow-up: "the lab will
                     receive outside blocks or cytology fluids with
                     existing ids that we need to map to the pathscribe
@@ -993,6 +1144,14 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                           onOrderRestain={(stainName, reason) => onOrderRestain(specimenId, block.id, {
                             targetSlideId: s.id,
                             stainName, reason,
+                          })}
+                        />
+                        <StainCommentControl
+                          stain={s}
+                          currentUserId={currentUserId}
+                          currentUserName={currentUserName}
+                          onUpdateStainComments={nextComments => onUpdateBlock(specimenId, block.id, {
+                            stains: (block.stains ?? []).map((st: any) => st.id === s.id ? { ...st, comments: nextComments } : st),
                           })}
                         />
                       </div>
@@ -1087,6 +1246,30 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       colors={cassetteColors}
                       onChange={newColorId => onUpdateDecant(specimenId, decant.id, { cassetteColorId: newColorId, cassetteColorOverridden: true })}
                     />
+
+                    {/* Real, per direct follow-up on comment-field
+                        parity across material types — same real
+                        pattern as the block comments section above,
+                        reusing onUpdateDecant's own generic patch
+                        callback. See Decant.comments's own doc
+                        comment (types/case/Material.ts). */}
+                    <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
+                      <label className="ps-conf-label">Decant Comments</label>
+                      {(decant.comments ?? []).map(c => (
+                        <div key={c.id} style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
+                          <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                          <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+                        </div>
+                      ))}
+                      <BlockCommentComposer
+                        onSubmit={text => onUpdateDecant(specimenId, decant.id, {
+                          comments: [...(decant.comments ?? []), {
+                            id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            authorId: currentUserId, authorName: currentUserName, text, createdAt: new Date().toISOString(),
+                          }],
+                        })}
+                      />
+                    </div>
 
                     {/* Real feature, per direct follow-up: "proceed
                         with the decant container label." Same real,

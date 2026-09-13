@@ -79,6 +79,8 @@ export type ActionId =
   | 'case.releaseHold' | 'case.archive' | 'case.delete' | 'case.viewPediatric'
   // ── Accession (only when the Accession page is active) ─────────────────────
   | 'accession.importOrder' | 'accession.caseComment'
+  | 'accession.clinicalHistoryCategory1' | 'accession.clinicalHistoryCategory2' | 'accession.clinicalHistoryCategory3'
+  | 'accession.clinicalHistoryCategory4' | 'accession.clinicalHistoryCategory5' | 'accession.clinicalHistoryCategory6'
   // ── Grossing (reachable from the same Synoptic Report page/context as
   // regular reporting work — grossing isn't a separate page, so these
   // share the SYNOPTIC category rather than needing their own
@@ -320,6 +322,18 @@ export const ACTION_GROUPS: ActionGroup[] = [
     actions: [
       { id: 'accession.importOrder',  label: 'Import From Order',     internalKey: 'F24+PS034' },
       { id: 'accession.caseComment',  label: 'Add Case Comment',      internalKey: 'F24+PS035' },
+      // Real, per the uploaded "Structured Clinical History Dictionary
+      // & Accessioning Integration" spec's own User Story 4,
+      // Acceptance Criteria 1 ("Alt+1 through Alt+6 jump directly to
+      // categories 1-6 in the history panel") — six new, genuinely new
+      // keys, continuing the same F24 block this file's own comment
+      // above already establishes.
+      { id: 'accession.clinicalHistoryCategory1', label: 'Clinical History — Jump to Category 1 (SCR)',       internalKey: 'F24+PS044' },
+      { id: 'accession.clinicalHistoryCategory2', label: 'Clinical History — Jump to Category 2 (SYM)',       internalKey: 'F24+PS045' },
+      { id: 'accession.clinicalHistoryCategory3', label: 'Clinical History — Jump to Category 3 (RAD_LAB)',   internalKey: 'F24+PS046' },
+      { id: 'accession.clinicalHistoryCategory4', label: 'Clinical History — Jump to Category 4 (PRIOR_PATH)', internalKey: 'F24+PS047' },
+      { id: 'accession.clinicalHistoryCategory5', label: 'Clinical History — Jump to Category 5 (MAL_STAGE)', internalKey: 'F24+PS048' },
+      { id: 'accession.clinicalHistoryCategory6', label: 'Clinical History — Jump to Category 6 (HIGH_RISK)', internalKey: 'F24+PS049' },
     ],
   },
 
@@ -561,6 +575,15 @@ export const VOICE_CONTEXT = {
   CONTRIBUTION:  'CONTRIBUTION',
   INTRAOP:       'INTRAOP',
   AUDIT:         'AUDIT',
+  /** Real, per direct guidance's own confirmed voice-wiring request
+   *  for the Cytology Material/Synoptic drawers — a genuinely
+   *  separate context from Surgical's own SYNOPTIC above. Eligibility
+   *  is scoped by exact category match (mockActionRegistryService.ts's
+   *  own getEligibleActions/findActionByTrigger), so a shared context
+   *  would make Surgical's own "open synoptic"-style triggers and
+   *  Cytology's own simultaneously eligible on the wrong page — a
+   *  genuine collision risk, not just a naming preference. */
+  CYTOLOGY:      'CYTOLOGY',
 } as const;
 
 export type VoiceContextName = typeof VOICE_CONTEXT[keyof typeof VOICE_CONTEXT];
@@ -847,4 +870,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'case.viewPediatric': false,
   },
   Physician: {},
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+  // Intraoperative/Frozen Section Dashboard — same real, empty
+  // permission set as Physician above: OR staff are directory-only,
+  // real people this app needs to be able to look up and attribute a
+  // quick action to (badge tap/PIN), never a real, general-app login.
+  'Or Staff': {},
 };

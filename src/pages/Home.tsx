@@ -72,6 +72,8 @@ export default function Home() {
     { title: 'Audit', description: 'Review System Activities, Audit Trail, and Quality Assurance', route: '/audit', color: '#D55E00', image: '/logs.webp' },
     { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/quality-assurance', color: '#E69F00', image: '/deficiencies.webp' },
     { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#38BDF8', image: '/worklist.webp' },
+    { title: 'Molecular Order Queue', description: 'Outbound molecular assay and instrument orders, including HPV reflex genotyping', route: '/molecular-order-queue', color: '#7F77DD', image: '/worklist.webp' },
+    { title: 'Cytology QC Peer Review Queue', description: 'Unified QC assignment queue for pathologist peer review — escalations, discrepancies, and routine random sampling', route: '/cytology-qc-queue', color: '#5B8DEF', image: '/worklist.webp' },
 
     // ⭐ New tile
     {
@@ -108,11 +110,31 @@ export default function Home() {
     // full, pairwise verification against all 9 others. Worth a real
     // pass before considering this tile's color final.
     {
-      title: 'Cytology',
-      description: 'Your assigned cases and pool worklist for GYN cytology screening',
+      title: 'Cytology Workspace',
+      description: 'Primary screening hub for GYN Paps, Non-GYN triage, cell block tracking, and mandatory QC',
       route: '/cytology-worklist',
       color: '#009E73',
       image: '/cytology.webp'
+    },
+    // ⭐ Real, direct correction (Sep 2026), per direct follow-up
+    // ("I'm not sure it makes sense to have Molecular Testing and
+    // Molecular Batch Management as separate tiles"): the two former,
+    // separate tiles ('Molecular Testing' → /molecular-batch,
+    // 'Molecular Batch Management' → /molecular-batch-management,
+    // removed above) are now one real, single tile, opening into
+    // MolecularWorkcenterPage.tsx's own real, tab-based
+    // sub-navigation (Worklist & Plate Builder / Active Runs &
+    // Batches / History & Archive / QC & Specimen Association) —
+    // confirmed directly (services/molecular/README.md) that the two
+    // former pages are genuinely related real, downstream pipelines
+    // off the same real molecular-instrument-run lifecycle, not an
+    // arbitrary merge.
+    {
+      title: 'Molecular',
+      description: 'Batch and plate management, active runs, and QC/specimen association for molecular diagnostics (HPV, CT/NG, respiratory PCR)',
+      route: '/molecular',
+      color: '#7C3AED',
+      image: '/batch_management.webp'
     }
   ];
 

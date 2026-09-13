@@ -46,6 +46,15 @@ export interface PrintSettingsConfig {
    *  keeping one shared setting avoids two, silently-driftable presets
    *  for the same real kind of physical label. */
   containerLabelPresetId: string;
+  /** Real, direct correction, per direct follow-up: "Requisition
+   *  Labels should never be a Full page... standard thermal label
+   *  printers... is much more standard and practical." Configurable
+   *  the same way containerLabelPresetId is — a lab that genuinely
+   *  wants a full-page requisition can still choose one of the real,
+   *  available full-page presets; the honest default
+   *  (DEFAULT_REQUISITION_LABEL_PRESET_ID) is now a real, standard
+   *  thermal size instead. */
+  requisitionLabelPresetId: string;
   /** Real feature, per direct follow-up: "Admin Config screen for
    *  Container Label Management: barcode symbology (DataMatrix/QR)...
    *  prefix-convention editing." Applied to Batch Management's own
@@ -78,6 +87,36 @@ export interface PrintSettingsConfig {
    *  refuses to print with a real, clear error when this is unset,
    *  rather than encoding an empty/fabricated GTIN. */
   gs1Gtin: string;
+  /** Real, per direct follow-up ("should we update the req and
+   *  container labels as well?"): which real PrinterProfile
+   *  (services/printerProfiles/) container labels dispatch through —
+   *  same real link as ScanStation.cassetteSlidePrinterProfileId, at
+   *  the global/system level since container labels aren't printed
+   *  from one specific physical station the way cassette/slide labels
+   *  are. Undefined by default — a genuinely real, honest "not yet
+   *  configured" state, not a guessed default; printContainerLabel
+   *  falls back to the real, working window.print() path when unset,
+   *  never silently failing. Deliberately does NOT cover requisition
+   *  labels — those print on the real, existing
+   *  requisition_full_page_letter preset (a true, full letter-size
+   *  page), a genuine physical mismatch for a thermal ZPL bridge sized
+   *  for small labels, not full pages; requisition labels stay on
+   *  window.print() (the real, correct mechanism for that size)
+   *  regardless of this setting. */
+  containerLabelPrinterProfileId?: string;
+  /** Real, per the same direct follow-up, now that requisition labels
+   *  default to a real thermal size (see
+   *  DEFAULT_REQUISITION_LABEL_PRESET_ID's own corrected doc comment)
+   *  rather than a full page — the same real hardware-bridge
+   *  eligibility containerLabelPrinterProfileId already has, kept as
+   *  its own, separate setting since a lab may genuinely want a
+   *  different physical printer for requisition labels than for
+   *  ordinary specimen containers. */
+  requisitionLabelPrinterProfileId?: string;
+  /** Real, per the same direct follow-up, for the Molecular Testing
+   *  Execution Module's own labels (specimen/plate/rack/deck location)
+   *  — same real reasoning as containerLabelPrinterProfileId above. */
+  molecularLabelPrinterProfileId?: string;
 }
 
 export const DEFAULT_PRINT_SETTINGS_CONFIG: PrintSettingsConfig = {
@@ -85,6 +124,7 @@ export const DEFAULT_PRINT_SETTINGS_CONFIG: PrintSettingsConfig = {
   enforceOnDemandGuardrails: false,
   requireScanVerificationBeforeNextBlock: false,
   containerLabelPresetId: 'clsi_standard_specimen',
+  requisitionLabelPresetId: 'requisition_pouch',
   containerBarcodeSymbology: 'code128',
   disposableBarcodePrefix: 'CONT',
   rackBarcodePrefix: 'RACK',

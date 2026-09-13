@@ -4,10 +4,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { getCase, updateCase } = vi.hoisted(() => ({ getCase: vi.fn(), updateCase: vi.fn() }));
 vi.mock('@/services/cases/CaseRouter', () => ({ caseRouter: { getCase, updateCase } }));
 
+const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn() }));
+vi.mock('../molecularOrders/mockMolecularOrderOutboundQueueService', () => ({ mockMolecularOrderOutboundQueueService: { enqueue } }));
+
 import { processInboundHpvResultEvent, _resetProcessedHpvMessageIdsForTests } from './processInboundHpvResultEvent';
 import type { HpvResultEventPayload } from '@/types/events/HpvResultEventPayload';
 
-const CASE = { id: 'S26-5001-CYT-001', specimens: [{ id: 'S26-5001-SP-1', label: 'A', cytologyScreening: {} }] };
+const CASE = { id: 'S26-5001-CYT-001', specimens: [{ id: 'S26-5001-SP-1', label: 'A', cytologyScreening: {} }], order: { priority: 'Routine' } };
 
 const payload = (over: Partial<HpvResultEventPayload> = {}): HpvResultEventPayload => ({
   messageId: 'msg-1', timestamp: '2026-09-04T00:00:00.000Z', organisationId: 'org-1',
@@ -19,8 +22,10 @@ describe('processInboundHpvResultEvent — real, "ingest our own specification" 
   beforeEach(() => {
     getCase.mockReset();
     updateCase.mockReset();
+    enqueue.mockReset();
     getCase.mockResolvedValue(CASE);
     updateCase.mockResolvedValue(undefined);
+    enqueue.mockResolvedValue({ ok: true, data: {} });
     _resetProcessedHpvMessageIdsForTests();
   });
 
@@ -79,5 +84,34 @@ describe('processInboundHpvResultEvent — real, "ingest our own specification" 
     const result = await processInboundHpvResultEvent(payload({ specimenLetter: 'Z' }));
     expect(result.outcome).toBe('specimen-not-found');
     expect(updateCase).not.toHaveBeenCalled();
+  });
+
+  describe('Part 2b reflex trigger — closes the documented st-hpv-reflex gap', () => {
+    it('a Positive result from the standalone st-hpv-highrisk-screen assay enqueues a real genotyping reflex order', async () => {
+      await processInboundHpvResultEvent(payload({ hrHpvResult: 'Positive', abnormalFlag: 'A', assayStainTypeId: 'st-hpv-highrisk-screen' }));
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      const [entry] = enqueue.mock.calls[0];
+      expect(entry.caseId).toBe('S26-5001-CYT-001');
+      expect(entry.eventType).toBe('order.molecular');
+      expect(entry.payload).toMatchObject({
+        accessionNumber: 'S26-5001-CYT-001', specimenLetter: 'A', assayCode: 'st-hpv-genotyping',
+        orderReason: 'hpv_reflex_genotyping', priority: 'Routine', reflexFromMessageId: 'msg-1',
+      });
+    });
+
+    it('a Positive result from the bundled st-hpv-reflex assay does NOT fire the standalone reflex trigger — that assay already implies reflex on its own', async () => {
+      await processInboundHpvResultEvent(payload({ hrHpvResult: 'Positive', abnormalFlag: 'A', assayStainTypeId: 'st-hpv-reflex' }));
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a Negative result never fires the reflex trigger, even from the standalone screen assay', async () => {
+      await processInboundHpvResultEvent(payload({ hrHpvResult: 'Negative', abnormalFlag: 'N', assayStainTypeId: 'st-hpv-highrisk-screen' }));
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a real event with no assayStainTypeId at all (existing sending systems, pre-Part-2b) never fires the reflex trigger', async () => {
+      await processInboundHpvResultEvent(payload({ hrHpvResult: 'Positive', abnormalFlag: 'A' }));
+      expect(enqueue).not.toHaveBeenCalled();
+    });
   });
 });

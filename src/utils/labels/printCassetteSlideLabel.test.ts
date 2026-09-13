@@ -55,7 +55,7 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
       const [printerId, zpl] = (printZplViaQzTray as any).mock.calls[0];
       expect(printerId).toBe('ZEBRA-TEST');
       expect(zpl).toContain('^XA');
-      expect(zpl).toContain('^BXN,4,200,0,0,1'); // real, corrected ECC200 value
+      expect(zpl).toContain('^BXN,4,200,,,1'); // real, corrected ECC200 value; columns/rows blank (auto), not 0 — see zplTemplates.ts's own real Labelary-verified fix
     });
 
     it('a real qz_tray dispatch failure is reported, not swallowed', async () => {
@@ -108,7 +108,7 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
       const result = await printSlideLabel(slideInput, basePrinter, '00850000000000');
       expect(result.ok).toBe(true);
       const [, zpl] = (printZplViaQzTray as any).mock.calls[0];
-      expect(zpl).toContain('^BXN,2,200,0,0,1'); // the slide template's own, smaller module size
+      expect(zpl).toContain('^BXN,2,200,,,1'); // the slide template's own, smaller module size; columns/rows blank (auto), not 0
     });
 
     it('real, honest gap acknowledged directly: direct_interface_engine has no real slide payload shape yet — refuses rather than forcing the cassette shape', async () => {

@@ -1,491 +1,554 @@
 {
-  "id": "lymph_node_fna_cytology",
-  "name": "Lymph Node FNA — General Reporting Categories",
-  "source": "PathScribe",
-  "version": "1.0.0",
-  "category": "CYTOLOGY_NONGYN",
-  "standard": "No single universally-adopted tiered system exists for lymph node FNA, unlike Bethesda/Milan/Paris/Papanicolaou for other non-GYN sites. Categories below reflect general reporting practice and are not a cited named standard — flagged honestly rather than presented as one.",
-  "sections": [
-    {
-      "id": "specimen",
-      "title": "Specimen",
-      "fields": [
+    "id": "lymph_node_fna_cytology",
+    "name": "Lymph Node FNA — General Reporting Categories",
+    "source": "PathScribe",
+    "version": "1.0.0",
+    "category": "CYTOLOGY_NONGYN",
+    "standard": "No single universally-adopted tiered system exists for lymph node FNA, unlike Bethesda/Milan/Paris/Papanicolaou for other non-GYN sites. Categories below reflect general reporting practice and are not a cited named standard — flagged honestly rather than presented as one.",
+    "sections": [
         {
-          "id": "procedure",
-          "label": "Procedure",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "us_guided_fna",
-              "label": "Ultrasound-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ct_guided_fna",
-              "label": "CT-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "eus_fna",
-              "label": "EUS-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "palpation_fna",
-              "label": "Palpation-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "specimen",
+            "title": "Specimen",
+            "fields": [
+                {
+                    "id": "procedure",
+                    "label": "Procedure",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "us_guided_fna",
+                            "label": "Ultrasound-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Ultrasound-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "ct_guided_fna",
+                            "label": "CT-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "CT-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "eus_fna",
+                            "label": "EUS-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "EUS-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "palpation_fna",
+                            "label": "Palpation-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Palpation-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Procedure: {value}."
+                },
+                {
+                    "id": "site",
+                    "label": "Site",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "cervical",
+                            "label": "Cervical",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cervical"
+                        },
+                        {
+                            "id": "axillary",
+                            "label": "Axillary",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "axillary"
+                        },
+                        {
+                            "id": "inguinal",
+                            "label": "Inguinal",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "inguinal"
+                        },
+                        {
+                            "id": "mediastinal",
+                            "label": "Mediastinal / hilar",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "mediastinal/hilar"
+                        },
+                        {
+                            "id": "retroperitoneal",
+                            "label": "Retroperitoneal / abdominal",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "retroperitoneal/abdominal"
+                        },
+                        {
+                            "id": "supraclavicular",
+                            "label": "Supraclavicular",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "supraclavicular"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Site: {value}."
+                },
+                {
+                    "id": "clinical_indication",
+                    "label": "Clinical Indication",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "new_lymphadenopathy",
+                            "label": "New/unexplained lymphadenopathy",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "new/unexplained lymphadenopathy"
+                        },
+                        {
+                            "id": "known_malignancy_staging",
+                            "label": "Staging — known primary malignancy",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "staging of a known primary malignancy"
+                        },
+                        {
+                            "id": "lymphoma_surveillance",
+                            "label": "Lymphoma surveillance / recurrence workup",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "lymphoma surveillance/recurrence workup"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Clinical indication: {value}."
+                },
+                {
+                    "id": "rose_performed",
+                    "label": "Rapid On-Site Evaluation (ROSE) Performed",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — particularly relevant here, to trigger real-time flow cytometry collection",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "performed"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "not performed"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Rapid on-site evaluation (ROSE) was {value}."
+                }
+            ]
         },
         {
-          "id": "site",
-          "label": "Site",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "cervical",
-              "label": "Cervical",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "axillary",
-              "label": "Axillary",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "inguinal",
-              "label": "Inguinal",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "mediastinal",
-              "label": "Mediastinal / hilar",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "retroperitoneal",
-              "label": "Retroperitoneal / abdominal",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "supraclavicular",
-              "label": "Supraclavicular",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "adequacy",
+            "title": "Specimen Adequacy",
+            "fields": [
+                {
+                    "id": "adequacy_status",
+                    "label": "Adequacy",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "satisfactory",
+                            "label": "Satisfactory for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "satisfactory for evaluation"
+                        },
+                        {
+                            "id": "nondiagnostic",
+                            "label": "Nondiagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nondiagnostic"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "The specimen is {value}."
+                },
+                {
+                    "id": "nondiagnostic_reason",
+                    "label": "Reason for Nondiagnostic (if applicable)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "low_cellularity",
+                            "label": "Insufficient lymphoid cellularity",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "insufficient lymphoid cellularity"
+                        },
+                        {
+                            "id": "obscuring_blood",
+                            "label": "Obscuring blood",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "obscuring blood"
+                        },
+                        {
+                            "id": "necrotic_debris_only",
+                            "label": "Necrotic debris only, non-diagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "necrotic debris only"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Reason for nondiagnostic assessment: {value}."
+                }
+            ]
         },
         {
-          "id": "clinical_indication",
-          "label": "Clinical Indication",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "new_lymphadenopathy",
-              "label": "New/unexplained lymphadenopathy",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "known_malignancy_staging",
-              "label": "Staging — known primary malignancy",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "lymphoma_surveillance",
-              "label": "Lymphoma surveillance / recurrence workup",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "diagnostic_category",
+            "title": "Diagnostic Category",
+            "fields": [
+                {
+                    "id": "diagnostic_category",
+                    "label": "Category",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "reactive_benign",
+                            "label": "Reactive / Benign",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "reactive/benign",
+                            "lexiconTermKey": "lymphnode.category.reactive_benign"
+                        },
+                        {
+                            "id": "atypical",
+                            "label": "Atypical, favor reactive",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "atypical, favor reactive",
+                            "lexiconTermKey": "lymphnode.category.atypical"
+                        },
+                        {
+                            "id": "suspicious_lymphoma",
+                            "label": "Suspicious for lymphoma",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "suspicious for lymphoma",
+                            "lexiconTermKey": "lymphnode.category.suspicious_lymphoma"
+                        },
+                        {
+                            "id": "positive_lymphoma",
+                            "label": "Positive for lymphoma",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "positive for lymphoma",
+                            "lexiconTermKey": "lymphnode.category.positive_lymphoma"
+                        },
+                        {
+                            "id": "positive_metastatic",
+                            "label": "Positive for metastatic carcinoma / other malignancy",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "positive for metastatic carcinoma/other malignancy",
+                            "lexiconTermKey": "lymphnode.category.positive_metastatic"
+                        },
+                        {
+                            "id": "granulomatous",
+                            "label": "Granulomatous inflammation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "granulomatous inflammation",
+                            "lexiconTermKey": "lymphnode.category.granulomatous"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Category: {value}.",
+                    "clinicalTier": "tier_1_diagnostic_category"
+                }
+            ]
         },
         {
-          "id": "rose_performed",
-          "label": "Rapid On-Site Evaluation (ROSE) Performed",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — particularly relevant here, to trigger real-time flow cytometry collection",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "cytologic_findings",
+            "title": "Cytologic Findings",
+            "fields": [
+                {
+                    "id": "cellularity",
+                    "label": "Cellularity",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "scant",
+                            "label": "Scant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "scant"
+                        },
+                        {
+                            "id": "low",
+                            "label": "Low",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "low"
+                        },
+                        {
+                            "id": "moderate",
+                            "label": "Moderate",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "moderate"
+                        },
+                        {
+                            "id": "high",
+                            "label": "High",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "high"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cellularity: {value}."
+                },
+                {
+                    "id": "lymphoid_population",
+                    "label": "Lymphoid Population (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "polymorphous",
+                            "label": "Polymorphous — mixed small and large lymphocytes, tingible body macrophages",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "polymorphous, with mixed small and large lymphocytes and tingible body macrophages"
+                        },
+                        {
+                            "id": "monomorphic",
+                            "label": "Monomorphic population",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "monomorphic population"
+                        },
+                        {
+                            "id": "large_atypical_cells",
+                            "label": "Large atypical lymphoid cells present",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "large atypical lymphoid cells present"
+                        },
+                        {
+                            "id": "plasma_cells",
+                            "label": "Increased plasma cells",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "increased plasma cells"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Lymphoid population: {value}."
+                },
+                {
+                    "id": "non_lymphoid_elements",
+                    "label": "Non-Lymphoid Elements (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "epithelial_cells",
+                            "label": "Epithelial cell clusters — favor metastasis",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "epithelial cell clusters, favoring metastasis"
+                        },
+                        {
+                            "id": "granulomas",
+                            "label": "Non-necrotizing granulomas",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "non-necrotizing granulomas"
+                        },
+                        {
+                            "id": "necrosis",
+                            "label": "Necrosis",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "necrosis"
+                        },
+                        {
+                            "id": "none",
+                            "label": "None identified",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "none identified"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Non-lymphoid elements: {value}."
+                }
+            ]
+        },
+        {
+            "id": "ancillary_studies",
+            "title": "Ancillary Studies",
+            "fields": [
+                {
+                    "id": "flow_cytometry_ordered",
+                    "label": "Flow Cytometry Ordered",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — the primary ancillary tool for lymph node FNA; ideally collected at the time of aspiration if lymphoma is clinically suspected",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        },
+                        {
+                            "id": "pending",
+                            "label": "Pending",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered, results pending"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Flow cytometry: {value}."
+                },
+                {
+                    "id": "flow_cytometry_result",
+                    "label": "Flow Cytometry Result (if resulted)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                },
+                {
+                    "id": "cell_block_ihc",
+                    "label": "Cell Block Immunohistochemistry Performed",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes — see comment",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "performed, see comment"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cell block immunohistochemistry: {value}."
+                }
+            ]
+        },
+        {
+            "id": "comments",
+            "title": "Comment / Correlation",
+            "fields": [
+                {
+                    "id": "clinical_correlation",
+                    "label": "Clinical / Radiologic Correlation",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                },
+                {
+                    "id": "comment",
+                    "label": "Additional Comment",
+                    "type": "longtext",
+                    "required": false,
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "adequacy",
-      "title": "Specimen Adequacy",
-      "fields": [
-        {
-          "id": "adequacy_status",
-          "label": "Adequacy",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "satisfactory",
-              "label": "Satisfactory for evaluation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "nondiagnostic",
-              "label": "Nondiagnostic",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nondiagnostic_reason",
-          "label": "Reason for Nondiagnostic (if applicable)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "low_cellularity",
-              "label": "Insufficient lymphoid cellularity",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "obscuring_blood",
-              "label": "Obscuring blood",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "necrotic_debris_only",
-              "label": "Necrotic debris only, non-diagnostic",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "diagnostic_category",
-      "title": "Diagnostic Category",
-      "fields": [
-        {
-          "id": "diagnostic_category",
-          "label": "Category",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "reactive_benign",
-              "label": "Reactive / Benign",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "atypical",
-              "label": "Atypical, favor reactive",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "suspicious_lymphoma",
-              "label": "Suspicious for lymphoma",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "positive_lymphoma",
-              "label": "Positive for lymphoma",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "positive_metastatic",
-              "label": "Positive for metastatic carcinoma / other malignancy",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "granulomatous",
-              "label": "Granulomatous inflammation",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "cytologic_findings",
-      "title": "Cytologic Findings",
-      "fields": [
-        {
-          "id": "cellularity",
-          "label": "Cellularity",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "scant",
-              "label": "Scant",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "low",
-              "label": "Low",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "moderate",
-              "label": "Moderate",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "high",
-              "label": "High",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "lymphoid_population",
-          "label": "Lymphoid Population (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "polymorphous",
-              "label": "Polymorphous — mixed small and large lymphocytes, tingible body macrophages",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "monomorphic",
-              "label": "Monomorphic population",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "large_atypical_cells",
-              "label": "Large atypical lymphoid cells present",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "plasma_cells",
-              "label": "Increased plasma cells",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "non_lymphoid_elements",
-          "label": "Non-Lymphoid Elements (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "epithelial_cells",
-              "label": "Epithelial cell clusters — favor metastasis",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "granulomas",
-              "label": "Non-necrotizing granulomas",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "necrosis",
-              "label": "Necrosis",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "none",
-              "label": "None identified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ancillary_studies",
-      "title": "Ancillary Studies",
-      "fields": [
-        {
-          "id": "flow_cytometry_ordered",
-          "label": "Flow Cytometry Ordered",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — the primary ancillary tool for lymph node FNA; ideally collected at the time of aspiration if lymphoma is clinically suspected",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pending",
-              "label": "Pending",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "flow_cytometry_result",
-          "label": "Flow Cytometry Result (if resulted)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "cell_block_ihc",
-          "label": "Cell Block Immunohistochemistry Performed",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes — see comment",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "comments",
-      "title": "Comment / Correlation",
-      "fields": [
-        {
-          "id": "clinical_correlation",
-          "label": "Clinical / Radiologic Correlation",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "comment",
-          "label": "Additional Comment",
-          "type": "longtext",
-          "required": false,
-          "snomed": "",
-          "icd": ""
-        }
-      ]
+    ],
+    "applicability": {
+        "specimenSites": [
+            "Lymph Node"
+        ],
+        "specimenTypes": [
+            "FNA"
+        ],
+        "note": "Fine-needle aspiration of a lymph node for lymphadenopathy workup or malignancy staging"
     }
-  ],
-  "applicability": {
-    "specimenSites": [
-      "Lymph Node"
-    ],
-    "specimenTypes": [
-      "FNA"
-    ],
-    "note": "Fine-needle aspiration of a lymph node for lymphadenopathy workup or malignancy staging"
-  }
 }

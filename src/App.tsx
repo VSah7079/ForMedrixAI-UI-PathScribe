@@ -31,6 +31,7 @@ import { synopticLoader } from "./loaders/synopticLoader";
 
 //EMR Access
 import MockEMRPage from './pages/MockEMRPage';
+import MockWsiViewerPage from './pages/MockWsiViewerPage';
 
 // ── Lazy-loaded pages ─────────────────────────────────────────────────────────
 const Home = lazy(() => import("./pages/Home"));
@@ -40,12 +41,20 @@ const AccessionPage = lazy(() => import("./pages/AccessionPage/AccessionPage"));
 const WorklistPage = lazy(() => import("./pages/WorklistPage/WorklistPage"));
 const CytologyWorklistPage = lazy(() => import("./pages/CytologyWorklistPage/CytologyWorklistPage"));
 const CytologyScreeningPage = lazy(() => import("./pages/CytologyWorklistPage/CytologyScreeningPage"));
+const MolecularWorkcenterPage = lazy(() => import("./pages/MolecularWorkcenterPage/MolecularWorkcenterPage"));
+const MolecularPlateBuilderPage = lazy(() => import("./pages/MolecularBatchPage/MolecularPlateBuilderPage"));
+const MolecularRackWorklistPage = lazy(() => import("./pages/MolecularBatchPage/MolecularRackWorklistPage"));
+const MolecularRackLoadingPage = lazy(() => import("./pages/MolecularBatchPage/MolecularRackLoadingPage"));
+const MolecularControlRulesPage = lazy(() => import("./pages/MolecularBatchPage/MolecularControlRulesPage"));
+const MockInterfaceEnginePage = lazy(() => import("./pages/MockInterfaceEnginePage/MockInterfaceEnginePage"));
 const QualityAssurancePage = lazy(() => import("./pages/QualityAssurancePage"));
 const BatchManagementPage = lazy(() => import("./pages/BatchManagement/BatchManagementPage"));
 const DisposalQueuePage = lazy(() => import("./pages/BatchManagement/DisposalQueuePage"));
 const PendingBatchQueuePage = lazy(() => import("./pages/BatchManagement/PendingBatchQueuePage"));
 const EngraverMonitorPage = lazy(() => import("./pages/BatchManagement/EngraverMonitorPage"));
 const IntraopQueuePage = lazy(() => import("./pages/IntraopQueuePage"));
+const OrSuiteDashboardPage = lazy(() => import("./pages/OrSuiteDashboardPage"));
+const MigrationJobsPage = lazy(() => import("./pages/MigrationJobsPage"));
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"));
 const ConfigurationPage = lazy(() => import("./pages/ConfigurationPage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
@@ -56,6 +65,13 @@ const ContributionDashboardPage = lazy(() =>
 const SynopticReportPage = lazy(() =>
   import("./pages/SynopticReportPage/SynopticReportPage")
 );
+const GrossingScreenPage = lazy(() =>
+  import("./pages/GrossingScreenPage/GrossingScreenPage")
+);
+const MolecularOrderQueuePage = lazy(() =>
+  import("./pages/MolecularOrderQueuePage/MolecularOrderQueuePage")
+);
+const CytologyQcQueuePage = lazy(() => import("./pages/CytologyQcQueuePage"));
 const FullReportPage = lazy(() => import("./pages/FullReportPage"));
 
 const SynopticEditor = lazy(() =>
@@ -119,6 +135,18 @@ const App: React.FC = () => (
                       {/* Public route — shown when not authenticated */}
                       <Route path="/login" element={<LoginPage />} />
 
+                      {/* Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
+                          Intraoperative/Frozen Section Dashboard — deliberately
+                          public/unauthenticated. This is a Location-First "Station
+                          Identity" terminal (a wall-mounted OR display), not a
+                          lab-staff login; it must stay up and keep its live timers
+                          running without ever hitting this app's own normal session
+                          timeout. Individual attribution for a real action (a
+                          verbal report, an alert acknowledgement) happens via its
+                          own, separate quick-auth PIN flow inside the page itself,
+                          never via this app's normal, authenticated login. */}
+                      <Route path="/or-suite-dashboard" element={<OrSuiteDashboardPage />} />
+
                       {/* Protected Routes — ScannerProvider only active when authenticated */}
                       <Route element={<ProtectedRoute />}>
                         <Route element={<MobileRestrictedRoute />}>
@@ -128,12 +156,21 @@ const App: React.FC = () => (
                           <Route path="/worklist" element={<WorklistPage />} />
                           <Route path="/cytology-worklist" element={<CytologyWorklistPage />} />
                           <Route path="/cytology-worklist/:caseId" element={<CytologyScreeningPage />} />
+                          <Route path="/molecular" element={<MolecularWorkcenterPage />} />
+                          <Route path="/molecular-batch/:batchId" element={<MolecularPlateBuilderPage />} />
+                          <Route path="/molecular-rack" element={<MolecularRackWorklistPage />} />
+                          <Route path="/molecular-rack/:rackId" element={<MolecularRackLoadingPage />} />
+                          <Route path="/molecular-control-rules" element={<MolecularControlRulesPage />} />
+                          <Route path="/dev/mock-interface-engine" element={<MockInterfaceEnginePage />} />
                           <Route path="/quality-assurance" element={<QualityAssurancePage />} />
                           <Route path="/batch-management" element={<BatchManagementPage />} />
                           <Route path="/batch-management/disposal" element={<DisposalQueuePage />} />
                           <Route path="/batch-management/pending-load" element={<PendingBatchQueuePage />} />
                           <Route path="/batch-management/engraver-monitor" element={<EngraverMonitorPage />} />
                           <Route path="/intraop-queue" element={<IntraopQueuePage />} />
+                          <Route path="/molecular-order-queue" element={<MolecularOrderQueuePage />} />
+                          <Route path="/cytology-qc-queue" element={<CytologyQcQueuePage />} />
+                          <Route path="/migration-jobs" element={<MigrationJobsPage />} />
                           <Route path="/search" element={<SearchPage />} />
                           <Route path="/audit" element={<AuditLogPage />} />
                           <Route
@@ -151,6 +188,11 @@ const App: React.FC = () => (
                           <Route
                             path="/case/:caseId/synoptic"
                             element={<SynopticReportPage />}
+                            loader={synopticLoader}
+                          />
+                          <Route
+                            path="/case/:caseId/grossing"
+                            element={<GrossingScreenPage />}
                             loader={synopticLoader}
                           />
                           <Route
@@ -194,6 +236,10 @@ const App: React.FC = () => (
                         <Route
                           path="/mock-emr"
                           element={<MockEMRPage />}
+                        />
+                        <Route
+                          path="/wsi-viewer"
+                          element={<MockWsiViewerPage />}
                         />
                         </Route>
                       </Route>

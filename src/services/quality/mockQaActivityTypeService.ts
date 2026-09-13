@@ -48,6 +48,12 @@ const STORAGE_KEY = 'qa_activity_types';
 export const FROZEN_FINAL_ACTIVITY_TYPE_ID = 'qa-activity-frozen-final';
 export const ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID = 'qa-activity-abnormal-finding-confirmation';
 export const GYN_CYTOLOGY_SECONDARY_SCREENING_ACTIVITY_TYPE_ID = 'qa-activity-gyn-cytology-secondary-screening';
+// Real, per direct follow-up wiring the real recording UI for CYT-QA-04's
+// own candidate detection (PS-218) into this already-existing, already-
+// seeded activity type — exported the same way every other real
+// activity type id above already is, rather than a second, informal
+// string literal repeated at each real call site.
+export const CYTO_HISTO_CORRELATION_ACTIVITY_TYPE_ID = 'qa-activity-cyto-histo';
 
 /** Real, deliberate translation of the old ReconciliationRecord's own
  *  fixed frozenCategory/finalCategory/frozenDx/finalDx properties into

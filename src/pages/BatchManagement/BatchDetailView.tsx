@@ -14,6 +14,8 @@ import { toast } from 'react-toastify';
 import { batchService } from '@/services';
 import { playScanBeep, playScanErrorTone } from '@/utils/playScanBeep';
 import { getDecalTimerState, formatDecalDuration } from '@/services/batches/DecalBatch';
+import { mockReferralTrackingService } from '@/services/referral/mockReferralTrackingService';
+import type { ReferralTracking } from '@/services/referral/IReferralTrackingService';
 import type { ScanEvent } from '@/contexts/ScannerProvider';
 import type { Batch, BatchItem } from '@/services/batches/IBatchService';
 
@@ -53,6 +55,17 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
   const [overrideReason, setOverrideReason] = useState('');
   const [movingItemId, setMovingItemId] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Inter-
+  // Laboratory Specimen Referral gap — fetched fresh per batch, since
+  // a real referral's own status can change after this view is
+  // already open (a result can arrive while a tech is looking at it).
+  const [referralTracking, setReferralTracking] = useState<ReferralTracking | null>(null);
+  useEffect(() => {
+    if (batch.processingNode !== 'External Referral') { setReferralTracking(null); return; }
+    mockReferralTrackingService.getByBatchId(batch.id).then(res => {
+      if (res.ok) setReferralTracking(res.data);
+    });
+  }, [batch.id, batch.processingNode, batch.status]);
   // Real feature, per direct, detailed specification: "Target
   // Duration / Alert Timer... Warning alert at 3h 45m." A real, live
   // countdown — this state has no meaning of its own beyond forcing a
@@ -248,6 +261,7 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
               <div className="ps-batch-detail-meta">
                 {batch.containerType && <>{batch.containerType} · </>}{batch.processingNode} · {batch.protocol}
                 {batch.solutionType && <> · {batch.solutionType}</>}
+                {batch.referralTestRequested && <> · {batch.referralTestRequested}</>}
                 {batch.priority === 'STAT' && <span className="ps-batch-row-stat" style={{ marginLeft: 8 }}>STAT</span>}
                 {batch.identifierMode === 'semi_permanent' && (
                   <span className="ps-batch-rack-badge" style={{ marginLeft: 8 }}>
@@ -279,6 +293,56 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
               </div>
             );
           })()}
+
+          {/* Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+              Inter-Laboratory Specimen Referral gap — "Real-time
+              transit status updates" and the real, received result,
+              once one has come back. Only shown for a real referral
+              batch that's actually been dispatched (a still-'active'/
+              'reconciling' referral batch has no tracking record yet). */}
+          {batch.processingNode === 'External Referral' && referralTracking && (
+            <div className="ps-batch-decal-timer">
+              <span className="ps-batch-decal-timer-icon">
+                {referralTracking.transitStatus === 'result_received' ? '✅' : '🚚'}
+              </span>
+              <span className="ps-batch-decal-timer-text">
+                {referralTracking.transitStatus === 'dispatched' && 'Dispatched to reference lab — awaiting transit update.'}
+                {referralTracking.transitStatus === 'in_transit' && 'In transit to reference lab.'}
+                {referralTracking.transitStatus === 'delivered' && 'Delivered to reference lab — awaiting result.'}
+                {referralTracking.transitStatus === 'result_received' && (
+                  referralTracking.resultType === 'pdf_attachment'
+                    ? <>Result received (PDF): <a href={referralTracking.pdfAttachmentUrl} target="_blank" rel="noreferrer">view report</a></>
+                    : <>Result received: {referralTracking.discreteResult}</>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+              Reference Laboratory Sensor & Cold-Chain Integration gap
+              — a real, visible alert for the workflow hold that's
+              already blocking completion server-side, not just a
+              silent, invisible gate. */}
+          {batch.coldChainExcursion && !batch.coldChainExcursion.acknowledgedAt && (
+            <div className="ps-batch-decal-timer ps-batch-decal-timer--overdue">
+              <span className="ps-batch-decal-timer-icon">🥶</span>
+              <span className="ps-batch-decal-timer-text">
+                Cold-chain excursion detected: {batch.coldChainExcursion.temperatureCelsius}°C at {batch.coldChainExcursion.detectedAt}. Batch completion is blocked until acknowledged.
+              </span>
+              <button
+                className="ps-btn-small"
+                style={{ marginLeft: 12 }}
+                onClick={async () => {
+                  const note = window.prompt('Acknowledgement note (required):');
+                  if (!note || !note.trim()) return;
+                  const res = await batchService.acknowledgeColdChainExcursion(batch.id, userId, userName, note);
+                  if (res.ok) onBatchUpdated(res.data);
+                }}
+              >
+                Acknowledge
+              </button>
+            </div>
+          )}
 
           {flash && (
             <div className={`ps-batch-flash ps-batch-flash--${flash.kind}`}>{flash.text}</div>

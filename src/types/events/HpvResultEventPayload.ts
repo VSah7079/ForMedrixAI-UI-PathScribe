@@ -45,6 +45,17 @@ export interface HpvResultEventPayload {
 
   // 4. The actual real molecular result being reported.
   hrHpvResult: 'Positive' | 'Negative' | 'Invalid';
+  /** Real, additive — per the Protocol-Driven Workflow Infrastructure
+   *  story's Part 2b reflex trigger. The real assay the sending
+   *  molecular platform actually ran (StainType.id — e.g.
+   *  'st-hpv-highrisk-screen' or the bundled 'st-hpv-reflex'), exactly
+   *  the way a real HL7 OBR-4 universal service ID would report it.
+   *  Optional and additive: undefined for a sending system (or an
+   *  existing test fixture) that doesn't report it — the reflex
+   *  trigger below simply never fires without it, same real
+   *  "additive field, nothing breaks without it" posture as every
+   *  other field added by this story. */
+  assayStainTypeId?: string;
   /** Real, per direct correction: the real molecular platform's own
    *  standard HL7 OBX-8 abnormal flag, as its interface actually
    *  sends it — not derived/guessed here from hrHpvResult, since a

@@ -230,3 +230,5 @@ Real, honest scope note carried over from the queue entries this touches: `'SENT
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*
+
+**New, real consumer (Sep 2026)**: `services/migration/processLegacyRecordImport.ts` (RFP-APLIS-2026-GLOBAL Historical Data Migration Engine) calls `resolveOrCreatePatient()` directly for real MPI dedup during legacy import — a genuine ambiguous match found during migration lands in the exact same `listPendingReview()`/`PatientMatchReviewSection.tsx` queue a live accession's own ambiguous match would, confirmed directly before building on top of it. No changes made to this folder itself; noted here since it's a genuinely new real caller.
