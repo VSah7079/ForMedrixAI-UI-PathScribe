@@ -22,7 +22,11 @@ export interface CytologyOutboundResultQueueEntry {
   caseId: string;
   /** The real CytologySignOutRecord this result represents. */
   signOutRecordId: string;
-  resultState: 'FINAL';
+  /** Real, per direct follow-up ("Cytology has no amendment mechanism
+   *  at all... work this"), then corrected ("Cytology cases can have
+   *  addendums") — mirrors buildCytologyOruR01Payload.ts's own real
+   *  resultState union exactly. */
+  resultState: 'FINAL' | 'CORRECTED' | 'ADDENDUM';
   organisationId: string;
   status: 'QUEUED' | 'SENT' | 'FAILED';
   queuedAt: string;

@@ -32,13 +32,14 @@ function makeCaseId(): string {
   return `S26-PENDING-BATCH-TEST-${counter}`;
 }
 
-async function seedCaseWithBlock(blockStatus: string) {
+async function seedCaseWithBlock(blockStatus: string, originHospitalId?: string) {
   const id = makeCaseId();
   const fullAccession = id;
   await caseRouter.createCase({
     id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     status: 'in-progress', accession: { fullAccession }, participants: [], synopticReports: [],
     order: { priority: 'Routine' },
+    originHospitalId: originHospitalId ?? 'c-fenwick-general',
     specimens: [{
       id: `${id}-SP-A`, label: 'A', description: 'Test specimen',
       blocks: [{ id: `${id}-BLK-1`, label: '1', status: blockStatus, stains: [] }],
@@ -50,13 +51,13 @@ async function seedCaseWithBlock(blockStatus: string) {
 describe('computePendingBatchQueue — real, computed "printed but not yet physically loaded" queue', () => {
   it('includes a real, freshly-printed (Grossed) block that has never been scanned into any batch', async () => {
     const { caseId } = await seedCaseWithBlock('Grossed');
-    const queue = await computePendingBatchQueue();
+    const queue = await computePendingBatchQueue(undefined);
     expect(queue.find(i => i.caseId === caseId)).toBeDefined();
   });
 
   it('excludes a real, still-Pending placeholder block — nothing has been physically printed for it yet', async () => {
     const { caseId } = await seedCaseWithBlock('Pending');
-    const queue = await computePendingBatchQueue();
+    const queue = await computePendingBatchQueue(undefined);
     expect(queue.find(i => i.caseId === caseId)).toBeUndefined();
   });
 
@@ -74,13 +75,31 @@ describe('computePendingBatchQueue — real, computed "printed but not yet physi
     const addResult = await mockBatchService.addItemByScan(created.data.id, cassetteId, 'TEST-USER', 'Test User');
     expect(addResult.outcome).toBe('added');
 
-    const queue = await computePendingBatchQueue();
+    const queue = await computePendingBatchQueue(undefined);
     expect(queue.find(i => i.caseId === caseId)).toBeUndefined();
   });
 
   it('a real, cancelled block is never included — nothing physically exists to load', async () => {
     const { caseId } = await seedCaseWithBlock('Cancelled');
-    const queue = await computePendingBatchQueue();
+    const queue = await computePendingBatchQueue(undefined);
     expect(queue.find(i => i.caseId === caseId)).toBeUndefined();
+  });
+
+  it('with a real facilityId given, only that real performing facility\u2019s own cases are included \u2014 per PS-289', async () => {
+    const { caseId: sameFacilityCaseId } = await seedCaseWithBlock('Grossed', 'c-fenwick-general');
+    const { caseId: otherFacilityCaseId } = await seedCaseWithBlock('Grossed', 'c-some-other-site');
+
+    const scoped = await computePendingBatchQueue('c-fenwick-general');
+    expect(scoped.find(i => i.caseId === sameFacilityCaseId)).toBeDefined();
+    expect(scoped.find(i => i.caseId === otherFacilityCaseId)).toBeUndefined();
+  });
+
+  it('with facilityId undefined, cases from every real facility are included \u2014 the same, real unscoped behavior this function always had', async () => {
+    const { caseId: caseA } = await seedCaseWithBlock('Grossed', 'c-fenwick-general');
+    const { caseId: caseB } = await seedCaseWithBlock('Grossed', 'c-some-other-site');
+
+    const unscoped = await computePendingBatchQueue(undefined);
+    expect(unscoped.find(i => i.caseId === caseA)).toBeDefined();
+    expect(unscoped.find(i => i.caseId === caseB)).toBeDefined();
   });
 });

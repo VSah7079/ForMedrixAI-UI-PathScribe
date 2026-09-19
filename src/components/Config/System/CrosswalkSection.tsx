@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import '../../../pathscribe.css';
 import { orderIntakeService, facilityService, specimenDictionaryService, interfaceExceptionService } from '@/services';
 import type { SpecimenCodeCrosswalkEntry } from '@/services/orderIntake/IOrderIntakeService';
@@ -115,23 +115,19 @@ const CrosswalkSection: React.FC = () => {
       Facility: resolveFacilityName(e.clientId), ExternalCode: e.externalCode, ResolvesTo: entryName(e.dictionaryEntryId),
       Source: e.createdBy === 'system' ? 'Auto-learned' : 'Admin-confirmed',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Specimen Code Map');
-    XLSX.writeFile(wb, 'SpecimenCodeCrosswalk.xlsx');
+    downloadCsv('SpecimenCodeCrosswalk.csv', toCsv(rows));
   };
 
-  const handleXwalkFileUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const handleXwalkFileUpload = async (file: File) => {
+    if (!isCsvFile(file)) {
+      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows: any[] = parseCsv(text);
 
-      const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
-      const preview: XwalkImportRow[] = rows.map(row => {
+    const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
+    const preview: XwalkImportRow[] = rows.map(row => {
         const facilityName = get(row, 'Facility', 'Client', 'facility', 'client');
         const externalCode = get(row, 'ExternalCode', 'External Code', 'externalCode');
         const specimenName = get(row, 'ResolvesTo', 'Resolves To', 'SpecimenType', 'Specimen Type', 'resolvesTo');
@@ -152,11 +148,9 @@ const CrosswalkSection: React.FC = () => {
           externalCode, dictionaryEntryId: matchedEntry?.id ?? '', entryName: specimenName,
           existingId: existing?.id, error: rowError,
         };
-      }).filter(r => r.externalCode || r.clientName);
+    }).filter(r => r.externalCode || r.clientName);
 
-      setXwalkImportPreview(preview);
-    };
-    reader.readAsBinaryString(file);
+    setXwalkImportPreview(preview);
   };
 
   const handleApplyXwalkImport = async () => {
@@ -196,7 +190,7 @@ const CrosswalkSection: React.FC = () => {
         </div>
         <button className="ps-conf-btn-secondary" onClick={handleDownloadCrosswalk}>Export</button>
         <button className="ps-conf-btn-secondary" onClick={() => xwalkImportFileInputRef.current?.click()}>Import Spreadsheet</button>
-        <input ref={xwalkImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleXwalkFileUpload(e.target.files[0]); e.target.value = ''; }} />
+        <input ref={xwalkImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handleXwalkFileUpload(e.target.files[0]); e.target.value = ''; }} />
         <button className="ps-conf-btn-primary" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
       </div>
 

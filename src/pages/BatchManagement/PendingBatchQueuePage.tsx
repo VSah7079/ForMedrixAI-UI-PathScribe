@@ -14,17 +14,20 @@
 // yet loaded anywhere?" — so a tech knows what to go pick up and scan
 // in, without deciding here which specific batch it belongs to.
 //
-// Real, honest scope note carried over directly from
-// computePendingBatchQueue.ts's own header: this queue is NOT
-// facility-scoped (a freshly printed cassette has no real
-// locationHistory yet), so — unlike DisposalQueuePage.tsx — there's
-// no real stationId/facilityId resolution here at all; a lab with
-// multiple physical sites sees one, unscoped list.
+// Real, per PS-289's own direct request to close this gap: this page
+// now resolves stationId -> facilityId the same real way
+// DisposalQueuePage.tsx already does, and passes it through to
+// computePendingBatchQueue.ts — see that file's own header for why
+// Case.facilityId, not scan-derived locationHistory, is the correct
+// signal for these specific, never-yet-scanned items.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import { useCurrentScanStation } from '@/hooks/useCurrentScanStation';
+import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
+import { facilityService } from '@/services';
 import { computePendingBatchQueue } from '@/services/batches/computePendingBatchQueue';
 import type { PendingBatchQueueItem } from '@/services/batches/computePendingBatchQueue';
 
@@ -36,6 +39,9 @@ const PendingBatchQueuePage: React.FC = () => {
   const { pushCrumb } = useBreadcrumb();
   useEffect(() => { pushCrumb('Pending Batch Load', '/batch-management/pending-load'); }, [pushCrumb]);
 
+  const { stationId } = useCurrentScanStation();
+  const [facilityId, setFacilityId] = useState<string | undefined>(undefined);
+  const [facilityName, setFacilityName] = useState<string | null>(null);
   const [queue, setQueue] = useState<PendingBatchQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   // Real feature, per direct follow-up: "could use a search, either
@@ -50,12 +56,25 @@ const PendingBatchQueuePage: React.FC = () => {
   // list, not opening one specific item.
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Real, station -> facility resolution — same real ScanStation
+  // record DisposalQueuePage.tsx already resolves this same way.
+  useEffect(() => {
+    if (!stationId) { setFacilityId(undefined); setFacilityName(null); return; }
+    mockScanStationService.getById(stationId).then(res => {
+      if (!res.ok) return;
+      setFacilityId(res.data.facilityId);
+      facilityService.getById(res.data.facilityId).then(fRes => {
+        if ('ok' in fRes && fRes.ok) setFacilityName(fRes.data.name);
+      });
+    });
+  }, [stationId]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
-    const items = await computePendingBatchQueue();
+    const items = await computePendingBatchQueue(facilityId);
     setQueue(items);
     setLoading(false);
-  }, []);
+  }, [facilityId]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -96,6 +115,11 @@ const PendingBatchQueuePage: React.FC = () => {
               real case's own material against every real, active batch's own manifest. To load one, open or create
               the real batch it belongs in from Batch Management, then scan it there — this page is for finding what
               still needs picking up, not for loading it directly.
+            </p>
+            <p className="ps-batch-page-subtitle">
+              {facilityId
+                ? <>Scoped to <strong>{facilityName ?? facilityId}</strong>, per the active scan station.</>
+                : <>No scan station set — showing every facility's own pending items. Set a station for a facility-scoped queue.</>}
             </p>
           </div>
 

@@ -100,7 +100,9 @@
     "itemCount_one": "{{count}} item",
     "itemCount_other": "{{count}} items",
     "rackCheckedOutError": "Rack \"{{value}}\" is already checked out to another active batch.",
-    "notFoundError": "No batch or registered container found for \"{{value}}\"."
+    "notFoundError": "No batch or registered container found for \"{{value}}\".",
+    "disposalReportTile": "Waste Tracking Report",
+    "disposalReportTitle": "Waste Tracking Report — a filterable, exportable log of everything already disposed, for CAP/CLIA/ISO 15189 audits"
   },
   "newContainerModal": {
     "title": "New Container",
@@ -551,5 +553,585 @@
       "GI_PANCREATIC": "GI/Pancreatic",
       "OTHER_NGYN": "Other"
     }
+  },
+  "autopsyIntake": {
+    "title": "Autopsy Intake — Temporary Accession",
+    "subtitle": "A body can be received and refrigerated immediately, even before full legal authorization is on file. Complete what is known now; the rest can follow.",
+    "validationError": "Please complete the required fields before submitting.",
+    "selectPlaceholder": "Select...",
+    "jurisdictionLabel": "Jurisdiction",
+    "caseAuthorityLabel": "Case Authority",
+    "caseAuthority": {
+      "medicolegal_forensic": "Medicolegal / Forensic",
+      "hospital_consented": "Hospital-Consented"
+    },
+    "forensicSectionTitle": "Forensic Authorization",
+    "forensicSectionSubtitle": "An urgent, verbal order is enough to receive the body now. Written authorization is required before gross examination can begin.",
+    "authorityTypeLabel": "Authority Type",
+    "authorityTypePlaceholder": "e.g. Coroner, Medical Examiner, Procurator Fiscal",
+    "authorityNameLabel": "Authority Name",
+    "authorityNamePlaceholder": "Optional",
+    "verbalOrderAtLabel": "Verbal Order Received At",
+    "verbalOrderFromLabel": "Verbal Order Received From",
+    "verbalOrderFromPlaceholder": "e.g. On-call Deputy Coroner",
+    "hospitalSectionTitle": "Hospital Consent",
+    "hospitalSectionSubtitle": "The body can be received while the family decides. Record the point of contact if already known.",
+    "relativeNameLabel": "Consenting Relative Name",
+    "relativeNamePlaceholder": "Optional, if already known",
+    "relativeRelationshipLabel": "Relationship",
+    "relativeRelationshipPlaceholder": "e.g. spouse, adult child, parent",
+    "accessionStatus": {
+      "temporary": "Temporary Accession",
+      "fully_authorized": "Fully Authorized"
+    },
+    "grossExamPendingNote": "Gross examination cannot begin until full authorization is on file.",
+    "submitBtn": "Receive Body"
+  },
+  "autopsyAuthCompletion": {
+    "title": "Complete Authorization",
+    "subtitle": "Enter the written authorization once it arrives. Gross examination remains gated until this is on file.",
+    "onFileSectionTitle": "Already on File",
+    "verbalOrderOnFile": "Verbal order received from {{authority}} at {{at}}.",
+    "writtenOrderSectionTitle": "Written Order",
+    "orderReferenceLabel": "Order Reference",
+    "orderReferencePlaceholder": "e.g. Coroner Order / Form 6 reference number",
+    "orderDateLabel": "Order Date",
+    "relativeOnFile": "Point of contact on file: {{name}} ({{relationship}}).",
+    "consentGrantSectionTitle": "Consent Grant",
+    "consentGivenAtLabel": "Consent Given At",
+    "consentScopeLabel": "Consent Scope",
+    "consentScopePlaceholder": "e.g. full, no organ retention (comma-separated)",
+    "validationError": "Please complete the required fields before submitting.",
+    "willUnblockNote": "Submitting will allow gross examination to proceed.",
+    "submitBtn": "Save Authorization",
+    "unknownValue": "unknown"
+  },
+  "autopsyBodyRelease": {
+    "title": "Release Body",
+    "subtitle": "Record where the body is being released to. This becomes part of the specimen’s own permanent location history.",
+    "releasedToLabel": "Released To",
+    "releasedToPlaceholder": "e.g. Smith Family Funeral Home",
+    "releasedByLabel": "Released By",
+    "releasedByPlaceholder": "e.g. Tech: M. Davis",
+    "validationError": "Please complete both fields before submitting.",
+    "submitBtn": "Confirm Release",
+    "submittingBtn": "Releasing…",
+    "genericError": "Something went wrong. Please try again."
+  },
+  "disposalReport": {
+    "pageTitle": "Waste Tracking Report",
+    "pageSubtitle": "A real, computed report of every specimen, block, slide, decant, and matrix block/slide that has genuinely been disposed — filterable by facility, material type, and disposal date, and exportable for regulatory audit.",
+    "stats": {
+      "total": "Total Disposed"
+    },
+    "materialType": {
+      "block": "Tissue Block",
+      "slide": "Slide",
+      "wet_tissue": "Wet Tissue"
+    },
+    "filters": {
+      "facilityLabel": "Filter by facility",
+      "allFacilities": "All Facilities",
+      "materialTypeLabel": "Filter by material type",
+      "allMaterialTypes": "All Material Types",
+      "dateFromLabel": "From date",
+      "dateTo": "to",
+      "dateToLabel": "To date"
+    },
+    "columns": {
+      "disposedAt": "Disposed",
+      "materialType": "Type",
+      "itemId": "Item ID",
+      "caseAccession": "Case",
+      "specimen": "Specimen",
+      "disposedBy": "Disposed By",
+      "location": "Location"
+    },
+    "export": {
+      "button": "Export",
+      "disposedAt": "Disposed At",
+      "materialType": "Material Type",
+      "itemId": "Item ID",
+      "caseAccession": "Case Accession",
+      "specimen": "Specimen",
+      "disposedBy": "Disposed By",
+      "location": "Location"
+    },
+    "loading": "Computing the real, current report…",
+    "empty": "Nothing has been disposed yet matching these filters.",
+    "unknownLocation": "Unknown"
+  },
+  "home": {
+    "addOnOrderTile": {
+      "title": "Add-On Orders",
+      "description": "Place pathologist-initiated add-on orders — recuts, special stains, IHC, and molecular — with real-time tracking"
+    },
+    "pathologyWorkspaceTile": {
+      "title": "Pathology Workspace",
+      "description": "Cytology screening, molecular diagnostics, microtomy, embedding, and slide distribution workstations"
+    },
+    "qualityComplianceTile": {
+      "title": "Quality & Compliance",
+      "description": "System activity logs and audit trail, and the quality assurance working queue — deficiencies, reconciliation, and CAPA management"
+    }
+  },
+  "qualityComplianceHub": {
+    "pageTitle": "Quality & Compliance",
+    "pageSubtitle": "System logs and audit trail, and the quality assurance working queue — deficiencies, intraoperative linkage, discordance & reconciliation, and CAPA management",
+    "backToHome": "← Back to Home",
+    "auditTile": {
+      "title": "Audit",
+      "description": "System activity logs, error and interface exception logs, and financial audit trail"
+    },
+    "qualityAssuranceTile": {
+      "title": "Quality Assurance",
+      "description": "Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting"
+    }
+  },
+  "pathologyWorkspace": {
+    "pageTitle": "Pathology Workspace",
+    "pageSubtitle": "Cytology screening, molecular diagnostics, and the microtomy, embedding, and slide distribution workstations",
+    "backToHome": "← Back to Home",
+    "cytologyTile": {
+      "title": "Cytology Workspace",
+      "description": "Primary screening hub for GYN Paps, Non-GYN triage, cell block tracking, and mandatory QC"
+    },
+    "microtomyTile": {
+      "title": "Microtomy Workspace",
+      "description": "Real-time on-demand or batch slide label printing, stain management, and cytology/decant prep at the microtome bench"
+    },
+    "embeddingTile": {
+      "title": "Embedding Workspace",
+      "description": "Cassette scan/verify, piece-count confirmation, mold selection, and discrepancy flagging at the embedding bench"
+    },
+    "slideDistributionTile": {
+      "title": "Slide Distribution Workspace",
+      "description": "Continuous-scan checkout to pathologists or ingestion into a digital scanner, with split-destination warnings and exception handling"
+    },
+    "molecularTile": {
+      "title": "Molecular Workspace",
+      "description": "Batch and plate management, active runs, and QC/specimen association for molecular diagnostics (HPV, CT/NG, respiratory PCR)"
+    }
+  },
+  "microtomyWorkstation": {
+    "pageTitle": "Microtomy Workstation",
+    "scanPrompt": "Scan a block or decant/fluid container barcode to begin",
+    "scanPlaceholder": "Scan or type a barcode…",
+    "scanSubmit": "Go",
+    "context": {
+      "accession": "Accession:",
+      "patient": "Patient:",
+      "dob": "DOB:",
+      "specimenBlock": "Specimen/Block:",
+      "specimenType": "Type:",
+      "scanNext": "Scan next block/decant →",
+      "title": "Block Summary",
+      "flag": {
+        "tinyTissue": "Tiny Tissue",
+        "fragile": "Fragile",
+        "requiresDecal": "Decal Required"
+      },
+      "status": "Status: ",
+      "pieceCount": "Piece count: ",
+      "tissueDescription": "Tissue: ",
+      "blockComments": "Block comments",
+      "priorHistory": "Prior Slide History",
+      "noHistory": "No slides printed yet for this block."
+    },
+    "slideGrid": {
+      "title": "Slide Grid",
+      "slideComments": "Slide comments",
+      "col": {
+        "level": "Level",
+        "stain": "Stain",
+        "status": "Print Status",
+        "actions": "Actions"
+      },
+      "control": "Control",
+      "commentOnLabelTitle": "This slide's comment prints on the physical label",
+      "onLabel": "On Label",
+      "reprintedCount": "Reprinted {{count}}×",
+      "print": "Print",
+      "reprintReasonPrompt": "Reason…",
+      "reprint": "Reprint",
+      "addLevelTitle": "Cut another level of this exact same stain",
+      "addLevel": "+ Level",
+      "searchStains": "Search stains…",
+      "selectStain": "Select a stain…",
+      "duplicateCount": "×",
+      "levelDepth": "µm",
+      "pairControl": "Pair with control slide"
+    },
+    "printStatus": {
+      "Pending": "Pending",
+      "Printing": "Printing…",
+      "Printed": "Printed",
+      "Failed": "Failed",
+      "Canceled": "Canceled"
+    },
+    "hardware": {
+      "printMode": "Print Mode",
+      "onDemand": "On-Demand",
+      "batch": "Batch",
+      "nextUnprinted": "Next unprinted slide:",
+      "printNext": "Print/Etch Next",
+      "allPrinted": "Every slide on this block has been printed.",
+      "selectedCount": "{{count}} slide(s) selected",
+      "printBatch": "Print Batch",
+      "deviceStatus": "Device Status",
+      "noPrinter": "No printer configured",
+      "status": {
+        "ready": "Ready",
+        "error": "Print Error",
+        "offline": "Offline"
+      },
+      "labelPreview": "Label Preview",
+      "noPreview": "Select or print a slide to preview its label.",
+      "noStation": "No scan station selected for this device — set one from the NavBar station indicator.",
+      "notConfigured": "This station isn't configured for real slide-label printing.",
+      "profileMissing": "The configured printer profile no longer exists."
+    },
+    "cytology": {
+      "title": "Specimen Fluid / Decant Panel",
+      "volume": "Total Volume (mL)",
+      "appearance": "Appearance",
+      "appearanceOption": {
+        "Clear": "Clear",
+        "Bloody": "Bloody",
+        "Turbid": "Turbid"
+      },
+      "yield": "Decant Yield / Pellet Size",
+      "yieldOption": {
+        "Low": "Low",
+        "Moderate": "Moderate",
+        "High": "High"
+      },
+      "suggestionIntro": "Suggested preparation:",
+      "prepMethod": {
+        "ThinPrepLiquidBased": "ThinPrep (Liquid-Based)",
+        "DirectSmearAirDried": "Direct Smear (Air-Dried)",
+        "DirectSmearFixed": "Direct Smear (Fixed)",
+        "Cytospin": "Cytospin",
+        "CellBlock": "Cell Block"
+      },
+      "acceptSuggestion": "Accept suggestion"
+    },
+    "comments": {
+      "empty": "No comments yet.",
+      "placeholder": "Add a comment…",
+      "printOnLabel": "Print this comment on the physical label",
+      "add": "Add Comment"
+    },
+    "removeReason": {
+      "title": "Reason required",
+      "body": "This slide has already printed — select a reason to cancel it.",
+      "select": "Select a reason…"
+    },
+    "batchProgress": {
+      "title": "Batch Print Progress",
+      "status": {
+        "pending": "Pending",
+        "printing": "Printing…",
+        "printed": "Printed",
+        "failed": "Failed"
+      },
+      "inProgress": "Printing…"
+    }
+  },
+  "embeddingStation": {
+    "pageTitle": "Embedding Station",
+    "scanPrompt": "Scan a cassette barcode to begin",
+    "scanPlaceholder": "Scan or type a barcode…",
+    "scanSubmit": "Go",
+    "context": {
+      "accession": "Accession:",
+      "patient": "Patient:",
+      "dob": "DOB:",
+      "specimenBlock": "Specimen/Block:",
+      "specimenType": "Type:",
+      "scanNext": "Scan next cassette →",
+      "title": "Block Summary",
+      "flag": {
+        "tinyTissue": "Tiny Tissue",
+        "fragile": "Fragile",
+        "requiresDecal": "Decal Required"
+      },
+      "derivedBadge": {
+        "biopsy": "Biopsy",
+        "needleCore": "Needle Core"
+      },
+      "status": "Status: ",
+      "tissueDescription": "Tissue: ",
+      "blockComments": "Block comments"
+    },
+    "pieceCount": {
+      "title": "Piece Count Verification",
+      "expected": "Expected (from grossing): ",
+      "confirm": "Confirm",
+      "observed": "Observed at embedding: "
+    },
+    "discrepancy": {
+      "title": "Discrepancy Reporting",
+      "reason": {
+        "missingTissue": "Missing Tissue/Empty Cassette",
+        "extraTissue": "Extra Tissue Found",
+        "unopenedCassette": "Unopened Cassette/Unprocessed Tissue",
+        "damagedCassette": "Damaged Cassette/Broken Hinge"
+      },
+      "lastFlagged": "Last flagged: {{reason}} (by {{by}})"
+    },
+    "mold": {
+      "title": "Base Mold Size"
+    },
+    "orientation": {
+      "title": "Orientation Instructions",
+      "placeholder": "Free-text orientation notes…"
+    },
+    "splitBlock": {
+      "title": "Multi-Cassette / Split-Block",
+      "none": "No other ungrouped blocks on this specimen to group with.",
+      "pickPrompt": "Select the other cassette(s) this specimen's tissue was split across:",
+      "group": "Group as split cassettes",
+      "pending": "Split across {{labels}} — not every cassette is embedded yet.",
+      "allEmbedded": "Split across {{labels}} — all cassettes embedded."
+    },
+    "specimenSummary": {
+      "title": "Specimen Blocks",
+      "current": "current"
+    },
+    "hardware": {
+      "deviceStatus": "Device Status",
+      "noPrinter": "No printer configured",
+      "status": {
+        "ready": "Ready",
+        "error": "Print Error",
+        "offline": "Offline"
+      },
+      "reprint": "Cassette Reprint",
+      "reprintCassette": "Reprint Cassette",
+      "reprintCount": "Reprinted {{count}}×, last reason: ",
+      "reprintFailed": "Reprint failed — see the message above.",
+      "labelPreview": "Label Preview",
+      "noStation": "No scan station selected for this device — set one from the NavBar station indicator.",
+      "notConfigured": "This station isn't configured for real cassette-label printing.",
+      "profileMissing": "The configured printer profile no longer exists."
+    },
+    "reprintReason": {
+      "title": "Reason required",
+      "body": "Reprinting a cassette label requires a reason, for compliance auditing.",
+      "select": "Select a reason…"
+    },
+    "comments": {
+      "empty": "No comments yet.",
+      "placeholder": "Add a comment…",
+      "add": "Add Comment"
+    }
+  },
+  "slideDistribution": {
+    "pageTitle": "Slide Distribution Station",
+    "scanPrompt": "Scan a slide or block/cassette barcode — the queue grows continuously",
+    "scanPlaceholder": "Scan or type a barcode…",
+    "scanSubmit": "Go",
+    "context": {
+      "queueCount": "Slides in Queue:",
+      "mode": "Destination Mode:",
+      "carrierOrScanner": "Carrier / Scanner:",
+      "tech": "Tech:"
+    },
+    "queue": {
+      "title": "Work Queue",
+      "count": "{{count}}",
+      "empty": "No slides scanned yet.",
+      "remove": "Remove from queue",
+      "unrouted": "Not yet routed",
+      "unassigned": "Unassigned",
+      "pool": "Subspecialty pool"
+    },
+    "slots": {
+      "title": "Batch Progress",
+      "empty": "Nothing queued yet — scan a slide to begin."
+    },
+    "activeSlide": {
+      "title": "Active Slide",
+      "slide": "Slide:",
+      "status": "Status:",
+      "none": "Select a slide from the queue or the grid above.",
+      "reprintLabel": "Trigger Replacement Label",
+      "reprintFailed": "Reprint failed — see the message above.",
+      "history": "Chain of Custody"
+    },
+    "destination": {
+      "title": "Destination & Assignment",
+      "physical": "Physical Checkout",
+      "digital": "Digital Scanner",
+      "searchPlaceholder": "Search pathologists or pools…",
+      "slideFolderId": "Slide Folder ID",
+      "trayNumber": "Tray Number",
+      "courierBagId": "Courier Transit Bag",
+      "confirmPhysical": "Confirm Physical Routing",
+      "scannerInstrument": "Scanner Instrument",
+      "rackId": "Rack ID",
+      "slotPosition": "Slot Position",
+      "confirmDigital": "Confirm Scanner Routing",
+      "assignFailed": "Could not save this routing — see the message above.",
+      "selectFirst": "Select a slide from the queue first."
+    },
+    "exceptions": {
+      "title": "Scan Exception Log",
+      "scanLogTitle": "Unresolved Scans",
+      "resolve": "Resolve",
+      "reason": {
+        "unreadableBarcode": "Unreadable Barcode",
+        "unassignedAccession": "Unassigned Accession",
+        "missingGlass": "Missing Glass",
+        "other": "Other"
+      }
+    }
+  },
+  "addOnOrder": {
+    "pageTitle": "Add-On Order Builder",
+    "search": {
+      "placeholder": "Search or scan an accession number…",
+      "open": "Open Case"
+    },
+    "context": {
+      "caseStatus": "Case Status",
+      "primaryPathologist": "Primary Pathologist",
+      "noPerformingLab": "No performing lab could be resolved for this case — routing will show all matching stations, not scoped to one lab."
+    },
+    "blockContext": {
+      "title": "Block & Tissue Context",
+      "empty": "This case has no specimens.",
+      "specimen": "Specimen {{label}} {{description}}",
+      "noBlocks": "No blocks on this specimen.",
+      "exhausted": "Exhausted",
+      "lost": "Lost",
+      "damaged": "Damaged",
+      "cancelled": "Cancelled",
+      "levelsCut": "{{count}} level(s) already cut",
+      "tinyTissue": "Tiny Tissue",
+      "fragile": "Fragile"
+    },
+    "builder": {
+      "title": "Add-On Order Builder",
+      "kind": {
+        "recut": "Recut / Deep Level",
+        "special_stain": "Special Stain",
+        "ihc": "IHC",
+        "molecular": "Molecular / Send-Out"
+      },
+      "panelPicker": "IHC Panel",
+      "searchStain": "Search stains…",
+      "noStains": "No matching stains.",
+      "levelDepth": "Level Depth (µm)",
+      "controlPairing": "Control Pairing",
+      "controlMode": {
+        "none": "No Control",
+        "on_slide": "On-Slide Control",
+        "separate_slide": "Separate Control Slide"
+      },
+      "addToCart": "Add to Cart"
+    },
+    "summary": {
+      "title": "Order Summary & Routing",
+      "blocksSelected": "{{count}} block(s) selected",
+      "emptyCart": "No order lines added yet.",
+      "microns": "{{count}} µm levels",
+      "routesTo": "Routes to: {{stations}}",
+      "routesToQueueOnly": "No matching station configured for this lab yet — order still routes to the queue.",
+      "remove": "Remove",
+      "noPerformingLab": "This case's performing lab could not be resolved — orders will still be created, without a lab-scoped station match.",
+      "priority": "Priority",
+      "slideMedia": "Slide Media & Charge",
+      "cuttingInstructions": "Microtome Bench Instructions",
+      "sendOutLab": "Reference / Send-Out Lab",
+      "selectLab": "Select a reference lab…",
+      "submit": "Submit Add-On Order",
+      "submitted": "Order submitted."
+    },
+    "priority": {
+      "STAT_Urgent": "STAT / Urgent",
+      "Routine_Sign_Out": "Routine Sign-Out",
+      "Research_Protocol": "Research / Protocol"
+    },
+    "slideMedia": {
+      "Standard_Charged": "Standard Charged",
+      "Uncharged": "Uncharged",
+      "Plus_Glass": "Plus Glass"
+    },
+    "tracking": {
+      "title": "Order Tracking",
+      "count": "{{count}}",
+      "empty": "No add-on orders placed yet on this case.",
+      "stage": {
+        "Requested": "Requested",
+        "BlockRetrieved": "Block Retrieved",
+        "CutPendingStain": "Cut / Pending Stain",
+        "StainedQC": "Stained / QC",
+        "CheckedOutScanned": "Checked Out / Scanned",
+        "Exception": "Exception",
+        "Cancelled": "Cancelled"
+      },
+      "orderedBy": "Ordered by {{name}}",
+      "markRetrieved": "Mark Block Retrieved",
+      "exceptionNote": "Optional note…",
+      "confirmFlag": "Flag Exception",
+      "cancelFlag": "Cancel",
+      "flagException": "Flag Exception",
+      "flaggedBy": "Flagged by {{name}}",
+      "responseNote": "Response note…",
+      "approveDestructive": "Approve Destructive Cutting",
+      "modify": "Modify & Resubmit",
+      "cancelOrder": "Cancel Order"
+    }
+  },
+  "facilityOpsDashboard": {
+    "bindDisplayTitle": "Bind This Display",
+    "bindDisplayDescription": "Select the Display Profile this wall unit should show.",
+    "selectProfile": "— select display profile —",
+    "noProfilesConfigured": "No display profiles are configured yet. Add one under Config → System → Display Profiles.",
+    "loadingProfile": "Loading display profile…",
+    "loadingData": "Loading dashboard data…",
+    "offlineStaleBadge": "Offline / Stale Data",
+    "lastUpdated": "Updated {{time}}",
+    "confirmTokenTitle": "Confirm Device Token",
+    "confirmTokenDescription": "Enter the device token recorded for \"{{name}}\" to finish binding this display.",
+    "confirmTokenPlaceholder": "Enter device token",
+    "confirmTokenError": "That token doesn't match what's on file for this display. Check with your admin and try again.",
+    "confirmTokenNote": "This confirms you have the token an admin recorded for this display — it does not verify real physical hardware.",
+    "queueEmpty": "Nothing in queue right now.",
+    "statPill": "STAT",
+    "overdueBy": "Overdue {{duration}}",
+    "ageLabel": "{{duration}} ago",
+    "views": {
+      "grossingIntake": "Grossing & Intake",
+      "embeddingMicrotomy": "Embedding & Microtomy",
+      "stainingIhc": "Staining & IHC",
+      "sendoutReference": "Send-Out & Reference Laboratory",
+      "diagnosticSignout": "Diagnostic Sign-Out / Scanner"
+    }
+  },
+  "displayProfiles": {
+    "sectionTitle": "Display Profiles (Facility Ops Dashboards)",
+    "sectionSubtitle": "Real, data-only registry for the five Facility Ops Dashboard wall displays — each profile binds a physical display to one performing lab and one or more department views. No physical hardware binding is verified or enforced; deviceToken is informational only.",
+    "addButton": "+ Add Display Profile",
+    "launchDashboardButton": "🖥️ Open Facility Ops Dashboard",
+    "addTitle": "Add Display Profile",
+    "editTitle": "Edit Display Profile",
+    "nameLabel": "Display Name",
+    "namePlaceholder": "e.g. Histology Bench 3 — Wall Display",
+    "facilityLabel": "Performing Lab",
+    "selectFacility": "— select facility —",
+    "assignedViewsLabel": "Assigned Dashboard View(s)",
+    "carouselIntervalLabel": "Carousel Interval (seconds)",
+    "carouselIntervalPlaceholder": "e.g. 20",
+    "deviceTokenLabel": "Device Token / MAC / IP (optional)",
+    "deviceTokenPlaceholder": "e.g. AA:BB:CC:DD:EE:FF",
+    "deviceTokenNote": "Informational only — recorded for your own asset bookkeeping. Never validated against real hardware.",
+    "showInactive": "Show inactive",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "emptyRow": "No Display Profiles on file."
   }
 }

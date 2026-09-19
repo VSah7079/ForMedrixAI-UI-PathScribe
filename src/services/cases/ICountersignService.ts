@@ -21,6 +21,10 @@ export interface ICountersignService {
     residentId: string;
     residentName: string;
     releasedAnswersSnapshot: Record<string, Record<string, string | string[]>>;
+    /** Real, per direct follow-up — set only by Autopsy's own PAD/FAD
+     *  signing flow (signAutopsyReport.ts). See CountersignRecord's
+     *  own doc comment for the full, real reasoning. */
+    autopsyReportTier?: 'PAD' | 'FAD';
   }): Promise<ServiceResult<CountersignRecord>>;
   /** Called when the attending actually finalizes a case that was
    *  pending countersign — computes the real delta against the

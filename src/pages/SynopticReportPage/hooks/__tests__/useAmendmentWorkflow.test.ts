@@ -17,11 +17,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAmendmentWorkflow } from '../useAmendmentWorkflow';
+import { publishReportReleasedEvent } from '@/services/reports/publishReportReleasedEvent';
+import { resolveFinalDiagnosisText } from '@/services/reportTemplates/resolveFinalDiagnosisText';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';
 
 vi.mock('@/services/cases/CaseRouter', () => ({
   caseRouter: { updateCase: vi.fn().mockResolvedValue(undefined) },
+}));
+vi.mock('@/services/reports/publishReportReleasedEvent', () => ({
+  publishReportReleasedEvent: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('@/services/reportTemplates/resolveFinalDiagnosisText', () => ({
+  resolveFinalDiagnosisText: vi.fn(),
 }));
 vi.mock('@/services/auditlog/mockAuditService', () => ({
   mockAuditService: { logEvent: vi.fn().mockResolvedValue(undefined) },
@@ -101,11 +109,12 @@ describe('useAmendmentWorkflow — releasePendingAmendmentOrAddendum', () => {
     expect(released).toBeUndefined();
   });
 
-  it('releases a pending addendum, updates lastRevisionType, and sends to LIS as new_instance when there is no concurrent amendment', async () => {
+  it('releases a pending addendum, updates lastRevisionType, and sends to LIS as new_instance when there is no concurrent amendment (CoPilot/assist mode)', async () => {
     const { amendmentService } = await import('@/services');
     vi.mocked(amendmentService.release).mockResolvedValueOnce({ ok: true, data: { type: 'addendum' } } as any);
     const sendSynopticReportToLis = vi.fn().mockResolvedValue({ ok: true });
     const caseData = makeTestCase({
+      reportingMode: 'assist' as any,
       synopticReports: [{ instanceId: 'SR-1', pendingAddendumId: 'amend-1', templateName: 'T1', answers: {} }] as any,
     });
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, sendSynopticReportToLis })));
@@ -113,11 +122,13 @@ describe('useAmendmentWorkflow — releasePendingAmendmentOrAddendum', () => {
     await act(async () => { await result.current.releasePendingAmendmentOrAddendum(); });
 
     expect(sendSynopticReportToLis).toHaveBeenCalledWith(expect.objectContaining({ kind: 'new_instance' }));
+    expect(publishReportReleasedEvent).not.toHaveBeenCalled();
   });
 
-  it('sends corrected_with_addition instead, when another instance has a concurrent pending amendment', async () => {
+  it('sends corrected_with_addition instead, when another instance has a concurrent pending amendment (CoPilot/assist mode)', async () => {
     const sendSynopticReportToLis = vi.fn().mockResolvedValue({ ok: true });
     const caseData = makeTestCase({
+      reportingMode: 'assist' as any,
       synopticReports: [
         { instanceId: 'SR-1', pendingAddendumId: 'amend-1', templateName: 'T1', answers: {} },
         { instanceId: 'SR-2', pendingAmendmentId: 'amend-2', answers: {} },
@@ -130,10 +141,11 @@ describe('useAmendmentWorkflow — releasePendingAmendmentOrAddendum', () => {
     expect(sendSynopticReportToLis).toHaveBeenCalledWith(expect.objectContaining({ kind: 'corrected_with_addition' }));
   });
 
-  it('releases a pending amendment, sets case status back to finalized, sends to LIS as corrected, and returns the released amendment id', async () => {
+  it('releases a pending amendment, sets case status back to finalized, sends to LIS as corrected, and returns the released amendment id (CoPilot/assist mode)', async () => {
     const sendSynopticReportToLis = vi.fn().mockResolvedValue({ ok: true });
     const setCaseData = vi.fn();
     const caseData = makeTestCase({
+      reportingMode: 'assist' as any,
       synopticReports: [{ instanceId: 'SR-1', pendingAmendmentId: 'amend-1', answers: {} }] as any,
     });
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, sendSynopticReportToLis, setCaseData })));
@@ -145,6 +157,40 @@ describe('useAmendmentWorkflow — releasePendingAmendmentOrAddendum', () => {
     const updater = setCaseData.mock.calls[0][0];
     const patch = updater(caseData);
     expect(patch.status).toBe('finalized');
+  });
+
+  it('a real, orchestration-mode addendum release publishes a real ADDENDUM event through publishReportReleasedEvent instead \u2014 never sendSynopticReportToLis, per direct follow-up ("wire that in")', async () => {
+    const { amendmentService } = await import('@/services');
+    vi.mocked(amendmentService.release).mockResolvedValueOnce({ ok: true, data: { type: 'addendum' } } as any);
+    const sendSynopticReportToLis = vi.fn().mockResolvedValue({ ok: true });
+    const caseData = makeTestCase({
+      reportingMode: 'orchestration' as any,
+      synopticReports: [{ instanceId: 'SR-1', pendingAddendumId: 'amend-1', templateName: 'T1', answers: {} }] as any,
+    });
+    const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, sendSynopticReportToLis })));
+
+    await act(async () => { await result.current.releasePendingAmendmentOrAddendum(); });
+
+    expect(publishReportReleasedEvent).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: caseData.id, instanceId: 'SR-1', reportType: 'ADDENDUM',
+    }));
+    expect(sendSynopticReportToLis).not.toHaveBeenCalled();
+  });
+
+  it('a real, orchestration-mode correction release publishes a real CORRECTED event through publishReportReleasedEvent instead \u2014 never sendSynopticReportToLis', async () => {
+    const sendSynopticReportToLis = vi.fn().mockResolvedValue({ ok: true });
+    const caseData = makeTestCase({
+      reportingMode: 'orchestration' as any,
+      synopticReports: [{ instanceId: 'SR-1', pendingAmendmentId: 'amend-1', answers: {} }] as any,
+    });
+    const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, sendSynopticReportToLis })));
+
+    await act(async () => { await result.current.releasePendingAmendmentOrAddendum(); });
+
+    expect(publishReportReleasedEvent).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: caseData.id, instanceId: 'SR-1', reportType: 'CORRECTED',
+    }));
+    expect(sendSynopticReportToLis).not.toHaveBeenCalled();
   });
 
   it('creates a CoPilot version record with the real PDF snapshot when reportingMode is assist', async () => {
@@ -488,6 +534,51 @@ describe('useAmendmentWorkflow — handleAmendmentSubmit', () => {
 
       expect(log).toHaveBeenCalledWith('amendment_released', expect.objectContaining({
         type: 'addendum', reportInstanceId: 'SR-1', specimenId: 'sp-A',
+      }));
+    });
+
+    it('a real correction release audits the real, verbatim before/after Final Diagnosis text \u2014 resolved through the real, designated-field resolver, never instance.comment', async () => {
+      const { amendmentService } = await import('@/services');
+      vi.mocked(amendmentService.release).mockResolvedValueOnce({
+        ok: true, data: { type: 'correction', originalReportSnapshot: { answers: { specimens: [{ diagnosis: 'Benign fibroadenoma.' }] } } },
+      } as any);
+      vi.mocked(resolveFinalDiagnosisText).mockReset();
+      vi.mocked(resolveFinalDiagnosisText)
+        .mockResolvedValueOnce('Benign fibroadenoma.')
+        .mockResolvedValueOnce('Invasive ductal carcinoma.');
+      const log = vi.fn();
+      const caseData = makeTestCase({
+        synopticReports: [{ instanceId: 'SR-1', templateId: 'tmpl-1', pendingAmendmentId: 'amend-1', answers: { specimens: [{ diagnosis: 'Invasive ductal carcinoma.' }] } }] as any,
+      });
+      const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, log })));
+
+      await act(async () => { await result.current.releasePendingAmendmentOrAddendum(); });
+
+      expect(log).toHaveBeenCalledWith('amendment_released', expect.objectContaining({
+        previouslyReportedAs: 'Benign fibroadenoma.',
+        correctedTo: 'Invasive ductal carcinoma.',
+      }));
+    });
+
+    it('the real, verbatim previouslyReportedAs value is also forwarded to publishReportReleasedEvent for the outbound CORRECTED dispatch', async () => {
+      const { amendmentService } = await import('@/services');
+      vi.mocked(amendmentService.release).mockResolvedValueOnce({
+        ok: true, data: { type: 'correction', originalReportSnapshot: { answers: { specimens: [{ diagnosis: 'Benign fibroadenoma.' }] } } },
+      } as any);
+      vi.mocked(resolveFinalDiagnosisText).mockReset();
+      vi.mocked(resolveFinalDiagnosisText)
+        .mockResolvedValueOnce('Benign fibroadenoma.')
+        .mockResolvedValueOnce('Invasive ductal carcinoma.');
+      const caseData = makeTestCase({
+        reportingMode: 'orchestration' as any,
+        synopticReports: [{ instanceId: 'SR-1', templateId: 'tmpl-1', pendingAmendmentId: 'amend-1', answers: { specimens: [{ diagnosis: 'Invasive ductal carcinoma.' }] } }] as any,
+      });
+      const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData })));
+
+      await act(async () => { await result.current.releasePendingAmendmentOrAddendum(); });
+
+      expect(publishReportReleasedEvent).toHaveBeenCalledWith(expect.objectContaining({
+        previouslyReportedAs: 'Benign fibroadenoma.',
       }));
     });
   });

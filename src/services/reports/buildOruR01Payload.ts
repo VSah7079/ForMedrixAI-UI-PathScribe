@@ -25,7 +25,7 @@
 import { caseRouter } from '../cases/CaseRouter';
 import { getTemplate } from '../templates/templateService';
 import { resolveAnswers, type ResolvedAnswer } from '@/orchestrator/contextBuilder';
-import { stripHtml } from '@/services/narrativeSignals/deidentification';
+import { resolveFinalDiagnosisText } from '../reportTemplates/resolveFinalDiagnosisText';
 import type { SynopticReportInstance } from '@/types/case/Case';
 import type { OruResultState } from '@/types/case/OutboundResultQueueEntry';
 
@@ -53,6 +53,40 @@ export interface OruR01Payload {
     grossDescription?: string;
     microscopicDescription?: string;
     diagnosisComment?: string;
+    /** Real, per direct follow-up ("Release as Preliminary" — the
+     *  manual trigger PS-292 landed on as the primary, ~80%-of-cases
+     *  path) — Case.diagnostic.preliminaryImpression (types/case/
+     *  Case.ts), populated only for a genuine PRELIMINARY dispatch;
+     *  stays undefined for FINAL/CORRECTED/ADDENDUM, matching every
+     *  other field in this object's own "genuinely absent, not
+     *  empty-string" convention. */
+    preliminaryImpression?: string;
+    /** Real, per direct follow-up ("wire in Autopsy") — populated
+     *  only when caseData.autopsy exists, from the real, relevant
+     *  AutopsyReportSnapshot's own frozenPayload.sections (PAD's own
+     *  snapshot for a PRELIMINARY dispatch, FAD's for FINAL —
+     *  signAutopsyReport.ts's own real, already-established shape:
+     *  {scope, jurisdiction, sections: [{id, label, text}]}, itself
+     *  a real snapshot of Case.orchSections at signing time). Kept
+     *  as its own, dedicated field rather than force-mapped onto
+     *  grossDescription/microscopicDescription above — an autopsy
+     *  report's own real section labels are variable, not the fixed
+     *  gross/microscopic/diagnosis set Surg Path's own template
+     *  system uses. */
+    autopsySections?: { label: string; text: string }[];
+    /** Real, per direct correction ("the system shouldn't be
+     *  constructing anything... the previous text for the Final
+     *  Diagnosis is the previously reported as") — the prior,
+     *  pre-amendment instance.comment, verbatim, never diffed or
+     *  reworded. Sourced from the real AmendmentRecord's own
+     *  originalReportSnapshot (captured at the moment the amendment
+     *  was started, before any editing happened) by this function's
+     *  own caller — buildOruR01Payload itself has no way to know a
+     *  "before" state on its own, since it only ever reads the
+     *  current, live case. Only ever meaningful for a real CORRECTED
+     *  dispatch; an ADDENDUM adds supplemental content rather than
+     *  replacing prior text, so this stays undefined there. */
+    previouslyReportedAs?: string;
   };
   /** Real, per direct guidance ("we could define an interface
    *  template that operates as a plain text interface, that
@@ -138,7 +172,13 @@ export async function buildOruR01Payload(
   instanceId: string,
   resultState: OruResultState,
   generatePdf?: () => Promise<{ pdfBase64?: string; generationError?: string }>,
-  generateNarrativeText?: () => Promise<{ text?: string; generationError?: string }>
+  generateNarrativeText?: () => Promise<{ text?: string; generationError?: string }>,
+  /** Real, per direct correction — see this function's own return
+   *  type's doc comment on narrative.previouslyReportedAs for the
+   *  full, real reasoning. The caller's own responsibility to supply
+   *  the real, prior instance.comment verbatim; this function never
+   *  fetches or constructs it itself. */
+  previouslyReportedAs?: string,
 ): Promise<OruR01Payload | null> {
   const caseData = await caseRouter.getCase(caseId);
   if (!caseData) return null;
@@ -154,9 +194,16 @@ export async function buildOruR01Payload(
   // This part stays genuinely reliable regardless of the
   // reportNarrativeText gap below — CE/CWE consumption needs
   // accurate field-level data, not template assembly.
+  // Real, per direct follow-up ("Release as Preliminary"): a
+  // Preliminary dispatch has no finalized instance at all yet by
+  // definition — that's the whole point of releasing one. Includes
+  // every real instance on the case for that result state instead,
+  // since sharing partial, in-progress answers is exactly what a
+  // Preliminary dispatch is for; FINAL/CORRECTED/ADDENDUM keep the
+  // original, strict finalized-only filter unchanged.
   const structuredDiagnosisAnswers = await Promise.all(
     instances
-      .filter((i: SynopticReportInstance) => i.status === 'finalized')
+      .filter((i: SynopticReportInstance) => resultState === 'PRELIMINARY' ? true : i.status === 'finalized')
       .map(async (i: SynopticReportInstance) => {
         const detail = await getTemplate(i.templateId);
         const resolved = resolveAnswers(i.answers ?? {}, detail?.template ?? null);
@@ -187,12 +234,32 @@ export async function buildOruR01Payload(
       clinicalHistory: caseData.order?.clinicalIndication || undefined,
       grossDescription: caseData.diagnostic?.grossDescription || undefined,
       microscopicDescription: caseData.diagnostic?.microscopicDescription || undefined,
-      // Real, per direct follow-up ("what about Diagnosis Comment") —
-      // SynopticReportInstance.comment is real, stored HTML; run
-      // through the real, existing stripHtml() (never
-      // deidentifyText() — that redacts PHI, which a real outbound
-      // clinical result must never do).
-      diagnosisComment: instance.comment ? stripHtml(instance.comment) : undefined,
+      // Real, per direct correction ("a text field on the report
+      // should be declared as the final diagnosis") — instance.comment
+      // has no real, dedicated editing UI at all (confirmed directly)
+      // and can't be trusted to hold the real diagnosis. Resolves
+      // whichever field a real template author explicitly designated
+      // instead — genuinely absent (undefined) rather than a guessed
+      // value when no field was designated.
+      diagnosisComment: await resolveFinalDiagnosisText(instance.templateId, instance.answers ?? {}),
+      preliminaryImpression: resultState === 'PRELIMINARY' ? (caseData.diagnostic?.preliminaryImpression || undefined) : undefined,
+      // Real, per this file's own header comment above: only present
+      // when caseData.autopsy genuinely exists, and only from the
+      // real snapshot matching this dispatch's own resultState — a
+      // PRELIMINARY dispatch reads PAD's own real, frozen sections;
+      // FINAL (and CORRECTED/ADDENDUM, which reuse FAD's own real,
+      // signed content) reads FAD's. Never both, and never a
+      // fallback to whichever snapshot happens to exist — a
+      // PRELIMINARY dispatch for a case that hasn't had its PAD
+      // signed yet genuinely has no real sections to report.
+      autopsySections: (() => {
+        const autopsy = (caseData as any)?.autopsy;
+        if (!autopsy) return undefined;
+        const snapshot = resultState === 'PRELIMINARY' ? autopsy.padSnapshot : autopsy.fadSnapshot;
+        const sections = snapshot?.frozenPayload?.sections;
+        return Array.isArray(sections) ? sections.map((s: any) => ({ label: s.label, text: s.text })) : undefined;
+      })(),
+      previouslyReportedAs: resultState === 'CORRECTED' ? (previouslyReportedAs || undefined) : undefined,
     },
     reportNarrativeText: narrativeResult?.text,
     structuredDiagnosisAnswers,

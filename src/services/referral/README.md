@@ -49,6 +49,10 @@ click. Fire-and-forget: a referral-side failure never blocks the
 batch's own, already-successful completion, the same real posture
 the existing rack-release call in that same function already takes.
 
+## Real, new consumer (PS-288, Sep 2026)
+
+`services/facilityOpsDashboard/computeSendOutReferenceSummary.ts` reads `getAll()` and joins each real `ReferralTracking` record back to its own `Batch.id` for the Send-Out & Reference Laboratory department dashboard's real transit-status counts (dispatched/in-transit/delivered/results-received). Read-only; nothing in this folder's own files changed.
+
 ## Real, honest scope boundary
 
 Same "PathScribe builds structured JSON; a real interface engine

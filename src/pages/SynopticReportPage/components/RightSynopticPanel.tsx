@@ -12,6 +12,8 @@ import type {
 } from '@/components/Config/Protocols/SynopticEditor';
 import type { TemplateDetail } from '@/services/templates/templateService';
 import { getTemplateCached, listTemplatesCached } from '@/services/templates/templateService';
+import { filterAutopsyTemplateToActiveSections } from '@/services/autopsy/filterAutopsyTemplateToActiveSections';
+import { calculateAutopsyBodyMassIndex } from '@/services/autopsy/calculateAutopsyBodyMassIndex';
 import { generateAiSuggestionsForReport, saveReportSuggestions, recordAiFeedback } from '@/services/cases/mockCaseService';
 import { resolveEmbeddedCodesForAnswer, appendEmbeddedCodesToSpecimen } from '../resolveEmbeddedCoding';
 import { aiBehaviorService } from '@/services';
@@ -244,7 +246,19 @@ const FieldRow: React.FC<FieldRowProps> = ({
         <textarea rows={3} value={strVal} onChange={e => onChange(field.id, e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
       )}
       {field.type === 'numeric' && (
-        <input type="number" value={strVal} onChange={e => onChange(field.id, e.target.value)} style={{ ...inputStyle, width: '50%' }} />
+        <input
+          type="number"
+          value={strVal}
+          onChange={e => onChange(field.id, e.target.value)}
+          // Real, per direct follow-up: "it all needs to be wired" —
+          // now auto-computed by setAnswer's own real BMI wiring
+          // above, matching the spec's own "[Auto-Calculated]" label
+          // (Q1.1) \u2014 read-only so a real user can't enter a value
+          // that would just get silently overwritten the next time
+          // weight or height changes.
+          disabled={field.id === 'body_mass_index'}
+          style={{ ...inputStyle, width: '50%' }}
+        />
       )}
       {field.type === 'dropdown' && (
         <select value={strVal} onChange={e => onChange(field.id, e.target.value)} style={inputStyle} aria-label={field.label}>
@@ -955,8 +969,18 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
         }
 
         if (templateId) {
-          const detail = await getTemplateCached(templateId);
+          const rawDetail = await getTemplateCached(templateId);
           if (cancelled) return;
+          // Real, per direct guidance's own confirmed organ-driven
+          // section visibility — filters the loaded template's own
+          // sections down to only those active for this case's real
+          // specimens. Scoped internally to category === 'AUTOPSY'
+          // only; every other real template passes through this call
+          // completely unaffected. Never mutates the shared template
+          // cache getTemplateCached() itself returns.
+          const detail = rawDetail
+            ? { ...rawDetail, template: filterAutopsyTemplateToActiveSections(rawDetail.template, caseData.specimens ?? []) }
+            : rawDetail;
 
           const suggestions: Record<string, AiSuggestion> = (activeInst as any)?.aiSuggestions ?? {};
           updateAiSuggestions(suggestions);
@@ -1064,6 +1088,26 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
   const setAnswer = useCallback((fieldId: string, value: string | string[]) => {
     setAnswers(prev => {
       const next = { ...prev, [fieldId]: value };
+      // Real, per direct follow-up: "it all needs to be wired" —
+      // calculateAutopsyBodyMassIndex.ts had no real rendering-layer
+      // wiring at all, despite the Autopsy Grossing Synoptic's own
+      // spec explicitly calling for it ("Body Mass Index: [Auto-
+      // Calculated kg/m\u00b2]"). Scoped naturally to only the Autopsy
+      // template's own field ids \u2014 setAnswer is genuinely shared
+      // across every real template, so this only ever does anything
+      // when body_weight_kg/body_length_cm are actually present,
+      // which no other real template's own fields happen to be
+      // named. Recomputed on every real change to either input,
+      // including recomputing to undefined (cleared) if either
+      // input becomes blank/invalid \u2014 never leaves a stale BMI
+      // behind a since-changed weight or height.
+      if (fieldId === 'body_weight_kg' || fieldId === 'body_length_cm') {
+        const weightKg = parseFloat(String(next.body_weight_kg ?? ''));
+        const heightCm = parseFloat(String(next.body_length_cm ?? ''));
+        const bmi = calculateAutopsyBodyMassIndex(weightKg, heightCm);
+        if (bmi !== undefined) next.body_mass_index = bmi.toFixed(1);
+        else delete next.body_mass_index;
+      }
       templateDetail?.template.sections.forEach((sec: EditorSection) => {
         if (!isVisible(sec.visibleWhen, next)) sec.fields.forEach((f: EditorField) => delete next[f.id]);
         else sec.fields.forEach((f: EditorField) => { if (!isVisible(f.visibleWhen, next)) delete next[f.id]; });
@@ -1170,7 +1214,15 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       templates={availableTemplates}
       specimenDescriptions={(caseData?.specimens ?? []).map(s => s.description ?? '')}
       onSelect={async id => {
-      const detail = await getTemplateCached(id);
+      const rawDetail = await getTemplateCached(id);
+      // Real, same organ-driven section-visibility filter as the
+      // main load effect above — this is the manual "pick a new
+      // template" path (Add Synoptic), which needs the identical
+      // treatment so a freshly-assigned Autopsy template also opens
+      // pre-filtered to the case's real specimens, not every section.
+      const detail = rawDetail
+        ? { ...rawDetail, template: filterAutopsyTemplateToActiveSections(rawDetail.template, caseData.specimens ?? []) }
+        : rawDetail;
       // Real fix, per direct report: "it has the attached synoptic
       // report attached to the specimen, why is it not displaying the
       // template?" Traced precisely — this previously wrote to

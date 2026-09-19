@@ -39,7 +39,8 @@ import type { SigningUser, SetConcurrencyConflict } from './sharedHookTypes';
 import { handleConcurrencyConflict } from './sharedHookTypes';
 import { useCassetteScanVerification } from './useCassetteScanVerification';
 import { printSettingsService, specimenDeficiencyService, auditService as mockAuditService } from '@/services/index';
-import type { PrintSettingsConfig } from '@/services/printSettings/IPrintSettingsService';
+import type { PrintSettingsConfig, CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
+import { DEFAULT_CASSETTE_LABEL_LAYOUT } from '@/services/printSettings/IPrintSettingsService';
 import { dispatchCassetteLabel, dispatchMatrixCassetteLabel } from '@/utils/labels/dispatchCassetteLabel';
 import { getAllCassetteLabelRequests } from '@/utils/labels/getAllCassetteLabelRequests';
 import { cassetteIdentifier, slideIdentifier, decantIdentifier, matrixBlockIdentifier } from '@/types/labels/LabelData';
@@ -207,7 +208,7 @@ export function useSpecimenBlockManagement({
    *  shared helper. */
   const attemptPrintedLabel = useCallback(async (
     kind: 'cassette' | 'slide',
-    build: (printer: PrinterProfile, gtin: string) => Promise<{ ok: boolean; message?: string }>,
+    build: (printer: PrinterProfile, gtin: string, cassetteLabelLayout: CassetteLabelLayoutConfig) => Promise<{ ok: boolean; message?: string }>,
   ) => {
     if (!effectiveStationId) return;
     const stationRes = await mockScanStationService.getById(effectiveStationId);
@@ -219,13 +220,27 @@ export function useSpecimenBlockManagement({
     }
     const settingsRes = await printSettingsService.get();
     const gtin = settingsRes.ok ? settingsRes.data.gs1Gtin : '';
-    const result = await build(printerRes.data, gtin);
+    // Real, per direct follow-up ("allow the admin to enter/edit the
+    // parameters in order for them to ensure safety") — fetched here
+    // alongside gtin, the same real, established pattern, rather than
+    // printCassetteLabel reaching for its own config independently.
+    const cassetteLabelLayout = settingsRes.ok ? settingsRes.data.cassetteLabelLayout : DEFAULT_CASSETTE_LABEL_LAYOUT;
+    const result = await build(printerRes.data, gtin, cassetteLabelLayout);
     if (!result.ok) showToast(`Printed ${kind} label failed: ${result.message ?? 'unknown error'}`);
   }, [effectiveStationId, showToast]);
 
   const printCassetteForBlock = useCallback((specimenLabel: string, blockLabel: string) => {
     if (!caseData) return;
     const cassetteId = cassetteIdentifier(caseData.accession.fullAccession, specimenLabel, blockLabel);
+    // Real, per direct follow-up flagging a real, confirmed gap: this
+    // block's own real tissueDescription (editable via
+    // BlockStainEditorModal.tsx) never actually reached the printed
+    // label before now — looked up here rather than widening this
+    // function's own real parameter list, since caseData already
+    // carries everything needed.
+    const block = (caseData.specimens ?? [])
+      .find(s => s.label === specimenLabel)?.blocks
+      ?.find(b => b.label === blockLabel);
     dispatchCassetteLabel({
       fullAccession: caseData.accession.fullAccession,
       specimenLabel,
@@ -235,11 +250,12 @@ export function useSpecimenBlockManagement({
     // Real, purely additive — see attemptPrintedLabel's own doc
     // comment. Never affects the dispatchCassetteLabel engrave-stub
     // call above.
-    attemptPrintedLabel('cassette', async (printer, gtin) => {
+    attemptPrintedLabel('cassette', async (printer, gtin, cassetteLabelLayout) => {
       const result = await printCassetteLabel({
         fullAccession: caseData.accession.fullAccession, specimenLabel, blockLabel, cassetteId,
         patientName: `${caseData.patient.givenNames} ${caseData.patient.familyNames}`.trim(),
-      }, printer, gtin);
+        tissueDescription: block?.tissueDescription,
+      }, printer, gtin, cassetteLabelLayout);
       // Real, deliberate cast — see attemptPrintedLabel's own doc
       // comment on why this project's own tsconfig.json requires it.
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
@@ -272,11 +288,11 @@ export function useSpecimenBlockManagement({
     // encodes the accession + this cassette's own real, shared id
     // (matrix or ordinary makes no difference there) — the joined
     // specimen labels below only affect the human-readable text line.
-    attemptPrintedLabel('cassette', async (printer, gtin) => {
+    attemptPrintedLabel('cassette', async (printer, gtin, cassetteLabelLayout) => {
       const result = await printCassetteLabel({
         fullAccession, specimenLabel: specimenLabels.join(','), blockLabel: matrixBlock.label, cassetteId,
         patientName: `${caseData.patient.givenNames} ${caseData.patient.familyNames}`.trim(),
-      }, printer, gtin);
+      }, printer, gtin, cassetteLabelLayout);
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }).catch(console.error);
     registerPendingVerification({ cassetteId, blockLabel: matrixBlock.label, specimenLabel: '' });
@@ -328,15 +344,15 @@ export function useSpecimenBlockManagement({
     // already had this wired; batch printing hadn't.
     const patientName = `${caseData.patient.givenNames} ${caseData.patient.familyNames}`.trim();
     Promise.all([
-      ...ordinary.map(r => attemptPrintedLabel('cassette', async (printer, gtin) => {
-        const result = await printCassetteLabel({ ...r, patientName }, printer, gtin);
+      ...ordinary.map(r => attemptPrintedLabel('cassette', async (printer, gtin, cassetteLabelLayout) => {
+        const result = await printCassetteLabel({ ...r, patientName }, printer, gtin, cassetteLabelLayout);
         return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
       })),
-      ...matrix.map(r => attemptPrintedLabel('cassette', async (printer, gtin) => {
+      ...matrix.map(r => attemptPrintedLabel('cassette', async (printer, gtin, cassetteLabelLayout) => {
         const result = await printCassetteLabel({
           fullAccession: r.fullAccession, specimenLabel: r.specimenLabels.join(','), blockLabel: r.matrixBlockLabel,
           cassetteId: r.cassetteId, patientName,
-        }, printer, gtin);
+        }, printer, gtin, cassetteLabelLayout);
         return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
       })),
     ]).catch(console.error);
@@ -362,7 +378,7 @@ export function useSpecimenBlockManagement({
     // Real, purely additive — see attemptPrintedLabel's own doc
     // comment. Never affects the dispatchSlideLabel engrave-stub call
     // above.
-    attemptPrintedLabel('slide', async (printer, gtin) => {
+    attemptPrintedLabel('slide', async (printer, gtin, _cassetteLabelLayout) => {
       const result = await printSlideLabel({
         fullAccession: caseData.accession.fullAccession, specimenLabel, blockLabel, level, stainName, slideId,
       }, printer, gtin);
@@ -386,7 +402,7 @@ export function useSpecimenBlockManagement({
     // Real, purely additive — same real gap-fix as
     // handleBatchPrintCassettes immediately above; see that function's
     // own comment.
-    Promise.all(requests.map(r => attemptPrintedLabel('slide', async (printer, gtin) => {
+    Promise.all(requests.map(r => attemptPrintedLabel('slide', async (printer, gtin, _cassetteLabelLayout) => {
       const result = await printSlideLabel(r, printer, gtin);
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }))).catch(console.error);

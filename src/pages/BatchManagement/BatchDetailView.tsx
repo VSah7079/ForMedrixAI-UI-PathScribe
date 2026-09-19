@@ -11,13 +11,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { batchService } from '@/services';
+import { batchService, stainTypeService, reagentLotService } from '@/services';
 import { playScanBeep, playScanErrorTone } from '@/utils/playScanBeep';
 import { getDecalTimerState, formatDecalDuration } from '@/services/batches/DecalBatch';
 import { mockReferralTrackingService } from '@/services/referral/mockReferralTrackingService';
 import type { ReferralTracking } from '@/services/referral/IReferralTrackingService';
 import type { ScanEvent } from '@/contexts/ScannerProvider';
 import type { Batch, BatchItem } from '@/services/batches/IBatchService';
+import type { StainType } from '@/services/stains/IStainService';
+import type { ReagentLot } from '@/services/reagentLots/IReagentLotService';
 
 interface Props {
   batch: Batch;
@@ -66,6 +68,17 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
       if (res.ok) setReferralTracking(res.data);
     });
   }, [batch.id, batch.processingNode, batch.status]);
+
+  // Real, per direct request — resolves batch.cytologyStainTypeId and
+  // batch.stainingReagentLotIds to real, human-readable names rather
+  // than showing a bare, opaque id. Fetched once; both dictionaries
+  // are small, admin-managed lookups, not per-batch data.
+  const [stainTypes, setStainTypes] = useState<StainType[]>([]);
+  const [reagentLots, setReagentLots] = useState<ReagentLot[]>([]);
+  useEffect(() => {
+    stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
+    reagentLotService.getAll().then(res => { if (res.ok) setReagentLots(res.data); });
+  }, []);
   // Real feature, per direct, detailed specification: "Target
   // Duration / Alert Timer... Warning alert at 3h 45m." A real, live
   // countdown — this state has no meaning of its own beyond forcing a
@@ -274,6 +287,45 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
               {STATUS_LABEL[batch.status]}
             </span>
           </div>
+
+          {/* Real, per direct request — a real, pre-existing gap fixed
+              here: neither cytologyInstrumentStatus nor
+              stainingInstrumentStatus was displayed anywhere in this
+              app before this. Both real instrument-status fields
+              share one display, since they're the same real kind of
+              information on different real nodes. 'Run Failed' gets
+              its own, distinct real styling — a real instrument
+              failure is not the same as an in-progress or completed
+              run, and shouldn't read the same at a glance. */}
+          {(batch.cytologyInstrumentStatus || batch.stainingInstrumentStatus) && (() => {
+            const status = batch.cytologyInstrumentStatus ?? batch.stainingInstrumentStatus!;
+            const isFailure = status === 'Run Failed';
+            return (
+              <div className={`ps-batch-decal-timer ${isFailure ? 'ps-batch-decal-timer--overdue' : ''}`}>
+                <span className="ps-batch-decal-timer-icon">{isFailure ? '⚠️' : '🔬'}</span>
+                <span className="ps-batch-decal-timer-text">Instrument reports: {status}</span>
+              </div>
+            );
+          })()}
+
+          {/* Real, per direct request — resolves the real reagent
+              lots actually used for this Staining run, by real name,
+              never a bare id. */}
+          {batch.processingNode === 'Staining' && batch.stainingReagentLotIds && batch.stainingReagentLotIds.length > 0 && (
+            <div className="ps-batch-reagent-lot-summary">
+              <span className="ps-batch-field-label" style={{ marginTop: 0 }}>Reagent / Solution Lots Used</span>
+              <div>
+                {batch.stainingReagentLotIds.map(lotId => {
+                  const lot = reagentLots.find(l => l.id === lotId);
+                  if (!lot) return <div key={lotId}>{lotId}</div>;
+                  const label = lot.stainTypeId
+                    ? (stainTypes.find(s => s.id === lot.stainTypeId)?.name ?? lot.stainTypeId)
+                    : (lot.routineComponentType ?? '\u2014');
+                  return <div key={lotId}>{label} \u2014 {lot.lotNumber}</div>;
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Real feature, per direct, detailed specification: "Target
               Duration / Alert Timer... Warning alert at 3h 45m." Only

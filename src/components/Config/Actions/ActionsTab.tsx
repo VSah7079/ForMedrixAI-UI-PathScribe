@@ -2,6 +2,13 @@ import React, { useState, useRef } from 'react';
 import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
 import { SystemAction } from '../../../services/actionRegistry/IActionRegistryService';
 import { toTitleCase } from '../../../utils/formatLabel';
+import { WORKSTATION_DISCIPLINES, FUNCTIONAL_AREAS_BY_DISCIPLINE } from '../../../services/workstationGroups/IWorkstationGroupService';
+
+// Real, per PS-289's own comment thread — every real, populated
+// functional area across every real discipline, flattened for this
+// one multi-select. No current overlap between disciplines' own real
+// area names (confirmed directly), so a flat list stays unambiguous.
+const ALL_FUNCTIONAL_AREAS = WORKSTATION_DISCIPLINES.flatMap(d => FUNCTIONAL_AREAS_BY_DISCIPLINE[d]);
 
 export const ActionsTab: React.FC = () => {
   const [actions, setActions] = useState<SystemAction[]>(mockActionRegistryService.getActions());
@@ -12,6 +19,7 @@ export const ActionsTab: React.FC = () => {
   const [editingAction, setEditingAction] = useState<SystemAction | null>(null);
   const [tempShortcut, setTempShortcut] = useState('');
   const [tempTriggers, setTempTriggers] = useState('');
+  const [tempStationProfiles, setTempStationProfiles] = useState<string[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [shortcutError, setShortcutError] = useState('');
   const [shortcutSuggestion, setShortcutSuggestion] = useState('');
@@ -20,6 +28,7 @@ export const ActionsTab: React.FC = () => {
     setEditingAction(action);
     setTempShortcut(action.shortcut);
     setTempTriggers(action.voiceTriggers.join(', '));
+    setTempStationProfiles(action.stationProfiles ?? []);
     setShortcutError('');
     setShortcutSuggestion('');
     setIsRecording(false);
@@ -80,7 +89,8 @@ export const ActionsTab: React.FC = () => {
     const triggers = tempTriggers.split(',').map(t => t.trim()).filter(t => t !== "");
     await mockActionRegistryService.updateAction(editingAction.id, { 
       shortcut: tempShortcut, 
-      voiceTriggers: triggers 
+      voiceTriggers: triggers,
+      stationProfiles: tempStationProfiles.length > 0 ? tempStationProfiles : undefined,
     });
     setActions([...mockActionRegistryService.getActions()]);
     setEditingAction(null);
@@ -384,6 +394,24 @@ export const ActionsTab: React.FC = () => {
             <div style={{ marginBottom: '32px' }}>
               <label style={{ display: 'block', color: 'var(--ps-conf-text-2)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>Voice Triggers (Comma Separated)</label>
               <textarea value={tempTriggers} onChange={(e) => setTempTriggers(e.target.value)} style={{ width: '100%', background: 'var(--ps-conf-surface)', border: '1px solid #334155', color: '#fff', padding: '12px', borderRadius: '6px', height: '100px', resize: 'none', outline: 'none' }} />
+            </div>
+            <div style={{ marginBottom: '32px' }}>
+              <label style={{ display: 'block', color: 'var(--ps-conf-text-2)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>Station Profiles</label>
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>
+                Scopes this action to the selected functional areas — eligible whenever a technician has a matching station selected, alongside its existing category.
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', maxHeight: 140, overflowY: 'auto', border: '1px solid #334155', borderRadius: 6, padding: 10 }}>
+                {ALL_FUNCTIONAL_AREAS.map(area => {
+                  const checked = tempStationProfiles.includes(area);
+                  return (
+                    <label key={area} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ps-conf-text-2)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={checked}
+                        onChange={() => setTempStationProfiles(prev => checked ? prev.filter(a => a !== area) : [...prev, area])} />
+                      {area}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditingAction(null)} className="fm-btn-cancel">Cancel</button>

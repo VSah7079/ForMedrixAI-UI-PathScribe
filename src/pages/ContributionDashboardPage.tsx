@@ -27,7 +27,7 @@ import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService'
 import { specimenDictionaryService } from '@/services';
 import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@components/Config/System/TATConfigSection';
 import type { TatEntryForResolution } from '@components/Contribution/qualityCalculations';
-import * as XLSX from 'xlsx';
+import { toCsv, downloadCsv } from '../utils/csv';
 import type { SpecimenDeficiency, DeficiencyType } from '../services/deficiencies/IDeficiencyService';
 
 
@@ -531,10 +531,7 @@ const ContributionDashboardPage: React.FC = () => {
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Case Reference');
-    XLSX.writeFile(wb, `trainee-case-reference-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    downloadCsv(`trainee-case-reference-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows));
   };
 
   // ── Active Intraop Sessions — real, previously nothing on this

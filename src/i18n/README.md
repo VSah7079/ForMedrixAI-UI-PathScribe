@@ -210,6 +210,150 @@ substantial pieces of work, not attempted here — see
 `src/MULTILANG_VOICE_COMMANDS_PLAN.md` for the full, considered
 scoping plan for closing the voice-command half of this gap.
 
+## Third real conversion: Waste Tracking Report (Stain QC Module §2.5, Sep 2026)
+
+Per the standing rule above — a brand-new page (`DisposalReportPage.tsx`,
+`pages/BatchManagement/`), so it was written with `useTranslation()`/`t()`
+from the start rather than converted after the fact. New `disposalReport.*`
+namespace across all five locale files (page title/subtitle, stat labels,
+material-type labels, filter labels, table columns, export-sheet column
+headers, loading/empty states), plus two additive keys under the existing
+`batchManagement.*` namespace (`disposalReportTile`/`disposalReportTitle`)
+for the new nav tile on `BatchManagementPage.tsx` — that page was already
+fully converted (the "Second real conversion" entry above), so only the two
+new keys were added, not a re-conversion.
+
+## Fourth real conversion: Microtomy Workstation (PS-284, Sep 2026)
+
+Per the standing rule above — a brand-new page (`MicrotomyWorkstationPage.tsx`
+and its five components, `pages/MicrotomyWorkstationPage/`), so it was written
+with `useTranslation()`/`t()` from the start rather than converted after the
+fact. New `microtomyWorkstation.*` namespace across all five locale files
+(scan prompt, block-summary context panel, alert-flag badges, slide grid
+columns/actions, print status, hardware/print controls, label preview,
+cytology/decant panel, comment drawer, remove/reprint reason prompts, batch
+progress modal).
+
+Also a genuinely new case: `Home.tsx` had **zero** i18n before this change —
+first time this file needed touching. Per rule #2 (convert only what you
+touch, not the whole file in one pass), only the new tile's two strings
+(`home.microtomyTile.title`/`.description`) were converted, using
+`useTranslation()` added fresh to that file; the other 13 existing tiles on
+that page remain hardcoded English, same precedent as `GrossingScreenPage.tsx`'s
+nav button living inside the not-yet-fully-converted `SynopticReportPage.tsx`.
+
+Verified programmatically (not by eye): all five locale files parse as valid
+JSON and have identical key sets after this change — 95 leaf keys under
+`microtomyWorkstation.*`/`home.microtomyTile.*` combined, matched exactly
+across en/fr/de/nl/ko, and 627 leaf keys total across each entire locale
+file, also matched exactly.
+
+## Fifth real conversion: Embedding Station (PS-285, Sep 2026)
+
+Same real situation as the Microtomy Workstation conversion above: a
+brand-new page (`EmbeddingStationPage.tsx` and its four components,
+`pages/EmbeddingStationPage/`), written with `useTranslation()`/`t()` from
+the start. New `embeddingStation.*` namespace across all five locale files
+(scan prompt, block-summary context panel with toggleable + read-only
+derived alert badges, piece-count verification, discrepancy reporting,
+mold-size/orientation controls, split-block tracking, specimen block
+summary, hardware/reprint controls, reprint-reason prompt, comment drawer).
+
+Also touched `Home.tsx` again — only the new tile's two strings
+(`home.embeddingTile.title`/`.description`) were converted, same
+"convert only what you touch" precedent as the Microtomy tile before it;
+the rest of that file (14 tiles now hardcoded English, one already
+converted) is untouched.
+
+Verified programmatically (not by eye): all five locale files parse as
+valid JSON and have identical key sets after this change — 61 leaf keys
+under `embeddingStation.*`/`home.embeddingTile.*` combined, matched
+exactly across en/fr/de/nl/ko, and 688 leaf keys total across each entire
+locale file, also matched exactly.
+
+## Sixth real conversion: Slide Distribution Station (PS-286, Sep 2026)
+
+Same real situation again: a brand-new page (`SlideDistributionStationPage.tsx`
+and its three components, `pages/SlideDistributionStationPage/`), written
+with `useTranslation()`/`t()` from the start. New `slideDistribution.*`
+namespace across all five locale files (continuous-scan prompt, header/
+context bar, work queue with real `Case.order.priority` badges, batch-
+progress slot grid, active-slide detail + chain-of-custody history,
+destination toggle + pathologist/subspecialty quick-picker + physical/
+scanner fields, scan exception log with one-touch reasons).
+
+Also touched `Home.tsx` again — only the new tile's two strings
+(`home.slideDistributionTile.title`/`.description`) were converted, same
+"convert only what you touch" precedent as the two tiles before it.
+
+Verified programmatically (not by eye): all five locale files parse as
+valid JSON and have identical key sets after this change — 47 leaf keys
+under `slideDistribution.*`/`home.slideDistributionTile.*` combined,
+matched exactly across en/fr/de/nl/ko, and 735 leaf keys total across
+each entire locale file, also matched exactly.
+
+## Seventh real conversion: Add-On Order Page (PS-287, Sep 2026)
+
+Same real situation again: a brand-new page (`AddOnOrderPage.tsx` and its
+four components, `pages/AddOnOrderPage/`), written with
+`useTranslation()`/`t()` from the start. New `addOnOrder.*` namespace
+across all five locale files — search/open-case landing, context bar,
+block-context panel (status badges, levels-cut counts, tiny-tissue/
+fragile flags), the Quick-Add Order Matrix (recut/special-stain/IHC/
+molecular kind toggle, IHC panel picker, control-pairing mode), the
+Order Summary & Routing panel (cart, priority, slide media, cutting
+instructions, send-out lab picker), and the Order Tracking dashboard
+(five tracking stages plus Exception/Cancelled, and the full flag/
+approve/modify/cancel exception-response flow).
+
+Also touched `Home.tsx` again — only the new tile's two strings
+(`home.addOnOrderTile.title`/`.description`) were converted, same
+"convert only what you touch" precedent as every tile before it.
+
+Verified programmatically (not by eye): all five locale files parse as
+valid JSON and have identical key sets after this change — 75 leaf keys
+under `addOnOrder.*`/`home.addOnOrderTile.*` combined, matched exactly
+across en/fr/de/nl/ko, and 810 leaf keys total across each entire
+locale file, also matched exactly.
+
+## Eighth real conversion: Facility Ops Dashboard (PS-288, Sep 2026)
+
+Same real situation again: a brand-new page
+(`FacilityOpsDashboardPage.tsx` + `components/DashboardSummaryView.tsx`,
+`pages/FacilityOpsDashboard/`) and a brand-new admin Config section
+(`DisplayProfilesSection.tsx`), both written with
+`useTranslation()`/`t()` from the start — new `facilityOpsDashboard.*`
+namespace (bind-display setup screen, offline/stale badge, queue/age/
+overdue formatting, the five real dashboard view titles) and new
+`displayProfiles.*` namespace (the Display Profile registry's own
+add/edit modal and list).
+
+Also touched `Home.tsx` again for its own new tile
+(`home.facilityOpsDashboardTile.title`/`.description`) — same
+"convert only what you touch" precedent as every tile before it.
+
+Verified programmatically (not by eye): all five locale files parse as
+valid JSON and have identical key sets after this change — 39 new leaf
+keys added, 849 leaf keys total across each entire locale file, matched
+exactly across en/fr/de/nl/ko.
+
+## Ninth real conversion: Facility Ops Dashboard device-token confirmation (PS-288 follow-up, Sep 2026)
+
+Direct follow-up closing a real, disclosed gap in the Facility Ops
+Dashboard's own device registry (see
+`services/facilityOpsDashboard/README.md`'s own account): the new
+device-token confirmation step in `FacilityOpsDashboardPage.tsx`'s
+`ProfileSetup` (`confirmTokenTitle`/`confirmTokenDescription`/
+`confirmTokenPlaceholder`/`confirmTokenError`/`confirmTokenNote`) adds
+5 new leaf keys to the existing `facilityOpsDashboard.*` namespace,
+built with `useTranslation()`/`t()` from the start like the rest of
+that namespace.
+
+Verified programmatically: all five locale files parse as valid JSON
+and have identical key sets after this change — 5 new leaf keys added,
+854 leaf keys total across each entire locale file, matched exactly
+across en/fr/de/nl/ko.
+
 ---
 *When this framework's own contents change meaningfully (a new
 locale, a structural change to config.ts), update THIS file.*

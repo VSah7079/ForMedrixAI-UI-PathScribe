@@ -10,13 +10,17 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
-import { protocolService, stainTypeService, departmentService } from '../../../services';
+import { protocolService, stainTypeService, departmentService, fixativeDictionaryService, processingFormatDictionaryService } from '../../../services';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
 import type { Department } from '../../../services/departments/IDepartmentService';
-import type { Protocol, ProtocolPathway, PathwayTask, StainType } from '../../../services';
+import type { Protocol, ProtocolPathway, PathwayTask, StainType, FixativeDictionaryEntry, ProcessingFormatDictionaryEntry } from '../../../services';
+import { isPathwayCountValid } from '../../../services/protocols/resolvePathwayCountValidation';
+import { findDuplicate } from '../../../utils/validateUnique';
+import { getActivePerformingLabs } from '../../../utils/performingLabs';
+import type { Facility } from '../../../services/facilities/IFacilityService';
 
 type Draft = Omit<Protocol, 'id' | 'version' | 'updatedBy' | 'updatedAt'>;
 
@@ -24,13 +28,19 @@ const emptyTask = (stepOrder: number): PathwayTask => ({
   id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
   stepOrder, action: '', stainTypeIds: [], isHold: false,
 });
-const emptyPathway = (defaultMaterialKind: ProtocolPathway['materialKind'] = 'block'): ProtocolPathway => ({
+const emptyPathway = (
+  defaultMaterialKind: ProtocolPathway['materialKind'] = 'block',
+  defaultFixative = '10% Neutral Buffered Formalin',
+  defaultProcessingFormat = 'Standard',
+): ProtocolPathway => ({
   id: `track-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-  pathwayName: '', materialKind: defaultMaterialKind, fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false,
-  processingFormat: 'Standard', tasks: [emptyTask(1)],
+  pathwayName: '', materialKind: defaultMaterialKind, fixativeType: defaultFixative, requiresDecal: false,
+  processingFormat: defaultProcessingFormat, tasks: [emptyTask(1)],
 });
-const emptyDraft = (): Draft => ({
-  name: '', description: '', requiresTriage: false, triageChecklist: [], pathways: [emptyPathway()], active: true,
+const emptyDraft = (defaultFixative?: string, defaultProcessingFormat?: string): Draft => ({
+  name: '', description: '', requiresTriage: false, triageChecklist: [],
+  pathways: [emptyPathway('block', defaultFixative, defaultProcessingFormat)], active: true,
+  performingLabFacilityId: undefined,
 });
 
 // ── Spreadsheet import/export — one row per Step ────────────────────────────
@@ -58,6 +68,17 @@ interface ProtocolRow {
   'Fixative': string;
   'Processing Format': string;
   'Requires Decal': string;
+  /** Real, per direct follow-up: "update the spreadsheet to include
+   *  the new fields" — round-trips as a blank string when unset,
+   *  same real convention as every other optional numeric column
+   *  here (Slide Count). See ProtocolPathway.defaultCount's own doc
+   *  comment (IProtocolService.ts) for what this actually drives. */
+  'Default Block/Decant Count': number | string;
+  /** Same real convention as above — see
+   *  ProtocolPathway.defaultPieceCount's own doc comment. Blank for
+   *  a decant track, same as the admin UI itself (disabled there,
+   *  not just blank on export). */
+  'Default Piece Count': number | string;
   'Step Order': number;
   'Step Action': string;
   'Slide Count': number | string;
@@ -82,6 +103,8 @@ function protocolsToRows(protocols: Protocol[], stainTypes: StainType[]): Protoc
           'Fixative': pw.fixativeType,
           'Processing Format': pw.processingFormat,
           'Requires Decal': pw.requiresDecal ? 'Yes' : 'No',
+          'Default Block/Decant Count': pw.defaultCount ?? '',
+          'Default Piece Count': pw.defaultPieceCount ?? '',
           'Step Order': t.stepOrder,
           'Step Action': t.action,
           'Slide Count': t.slideCount ?? '',
@@ -94,13 +117,27 @@ function protocolsToRows(protocols: Protocol[], stainTypes: StainType[]): Protoc
   return rows;
 }
 
-interface ParsedProtocolsResult {
+export interface ParsedProtocolsResult {
   drafts: Draft[];
   unmatchedStainNames: Set<string>;
+  /** Real, per direct follow-up: "update the spreadsheet to include
+   *  the new fields" — surfaced this real gap along the way:
+   *  handleApplyProtocolImport calls protocolService.update/add
+   *  directly on imported drafts, entirely bypassing the editor
+   *  modal's own canSave validation. An invalid value from a
+   *  hand-edited or stale spreadsheet (negative count, a piece count
+   *  on a decant track) would otherwise persist silently through
+   *  import even though the same value is correctly blocked when
+   *  entered by hand. Sanitized here (dropped back to undefined,
+   *  never left invalid) with each drop named here for display,
+   *  same real "surface it, don't silently succeed" reasoning as
+   *  unmatchedStainNames above. */
+  invalidPathwayCounts: Set<string>;
 }
 
-function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsResult {
+export function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsResult {
   const unmatchedStainNames = new Set<string>();
+  const invalidPathwayCounts = new Set<string>();
   const stainIdByName = new Map(stainTypes.map(s => [s.name.trim().toLowerCase(), s.id]));
 
   // Preserves first-seen order for both protocols and tracks within
@@ -131,7 +168,7 @@ function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsR
 
     if (!protocol._tracksByName.has(trackName)) {
       protocol._trackOrder.push(trackName);
-      protocol._tracksByName.set(trackName, {
+      const newTrack: ProtocolPathway = {
         id: `track-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         pathwayName: trackName,
         // Real, honest default — a real import row missing this new
@@ -142,8 +179,42 @@ function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsR
         fixativeType: String(row['Fixative'] ?? '').trim(),
         requiresDecal: String(row['Requires Decal'] ?? '').trim().toLowerCase() === 'yes',
         processingFormat: String(row['Processing Format'] ?? '').trim(),
+        // Real, same honest fallback as materialKind above — an
+        // older export or a hand-edited sheet with neither column at
+        // all leaves both undefined, same as emptyPathway() itself
+        // and every protocol that predates this UI. Deliberately
+        // checked against '' / undefined, not a bare truthy check —
+        // a cell literally containing 0 must still parse as the
+        // number 0 (so the real validation below can actually catch
+        // and warn about it), not get silently treated the same as
+        // an empty cell the way a truthy check would.
+        defaultCount: (row['Default Block/Decant Count'] !== '' && row['Default Block/Decant Count'] !== undefined)
+          ? Number(row['Default Block/Decant Count']) : undefined,
+        defaultPieceCount: (row['Default Piece Count'] !== '' && row['Default Piece Count'] !== undefined)
+          ? Number(row['Default Piece Count']) : undefined,
         tasks: [],
-      });
+      };
+      // Real, per this function's own ParsedProtocolsResult doc
+      // comment — the same validation the editor modal's canSave
+      // applies, run here too, so an invalid spreadsheet value never
+      // silently persists through a path canSave never gets a
+      // chance to gate.
+      if (!isPathwayCountValid(newTrack)) {
+        if (newTrack.defaultCount !== undefined && !(Number.isInteger(newTrack.defaultCount) && newTrack.defaultCount > 0)) {
+          invalidPathwayCounts.add(`${protocolName} \u2014 ${trackName}: Default Block/Decant Count "${newTrack.defaultCount}" (must be a positive whole number)`);
+          newTrack.defaultCount = undefined;
+        }
+        if (newTrack.defaultPieceCount !== undefined
+          && (!(Number.isInteger(newTrack.defaultPieceCount) && newTrack.defaultPieceCount > 0) || newTrack.materialKind === 'decant')) {
+          invalidPathwayCounts.add(
+            newTrack.materialKind === 'decant'
+              ? `${protocolName} \u2014 ${trackName}: Default Piece Count is only valid for a Block track, not Decant`
+              : `${protocolName} \u2014 ${trackName}: Default Piece Count "${newTrack.defaultPieceCount}" (must be a positive whole number)`
+          );
+          newTrack.defaultPieceCount = undefined;
+        }
+      }
+      protocol._tracksByName.set(trackName, newTrack);
     }
     const track = protocol._tracksByName.get(trackName)!;
 
@@ -159,7 +230,8 @@ function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsR
       stepOrder: Number(row['Step Order']) || track.tasks.length + 1,
       action: String(row['Step Action'] ?? '').trim(),
       stainTypeIds,
-      slideCount: row['Slide Count'] ? Number(row['Slide Count']) : undefined,
+      slideCount: (row['Slide Count'] !== '' && row['Slide Count'] !== undefined)
+        ? Number(row['Slide Count']) : undefined,
       isHold: String(row['Hold'] ?? '').trim().toLowerCase() === 'yes',
     });
   });
@@ -170,7 +242,7 @@ function rowsToProtocols(rows: any[], stainTypes: StainType[]): ParsedProtocolsR
     return { ...rest, pathways: _trackOrder.map(t => _tracksByName.get(t)!) };
   });
 
-  return { drafts, unmatchedStainNames };
+  return { drafts, unmatchedStainNames, invalidPathwayCounts };
 }
 
 
@@ -249,7 +321,18 @@ interface EditorModalProps {
   mode: 'add' | 'edit';
   entry?: Protocol;
   stainTypes: StainType[];
+  fixatives: FixativeDictionaryEntry[];
+  processingFormats: ProcessingFormatDictionaryEntry[];
   usage: SpecimenEntry[];
+  /** Real, direct follow-up (PS-73): the full current list, for the
+   *  same-name uniqueness check below — same shape every other
+   *  dictionary's editor modal already takes (see
+   *  PhysiciansSection.tsx, StainDictionarySection.tsx). */
+  existingEntries: Protocol[];
+  /** Real, direct follow-up (PS-75): active performing labs, for the
+   *  Performing Lab picker below — same list ProtocolDictionarySection
+   *  itself already loads for its own filter/column. */
+  labs: Facility[];
   /** Real feature, per direct follow-up's own Hybrid Model — see
    *  ProtocolDictionarySection's own computation for the full
    *  reasoning. Purely a UI default for a NEW track's own
@@ -261,13 +344,36 @@ interface EditorModalProps {
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usage, defaultsToDecant, onSave, onRestore, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, fixatives, processingFormats, usage, existingEntries, labs, defaultsToDecant, onSave, onRestore, onClose }) => {
+  // Real, per direct correction — resolves the real, live catalog's
+  // own isDefault entry, never a string baked into this component.
+  // Undefined (catalog not yet loaded, or no entry marked default)
+  // falls back to emptyPathway()'s own hardcoded default, same
+  // real safety net every pathway had before this catalog existed.
+  const defaultFixativeName = fixatives.find(f => f.isDefault)?.name;
+  const defaultProcessingFormatName = processingFormats.find(p => p.isDefault)?.name;
   const [draft, setDraft] = useState<Draft>(entry ? {
     name: entry.name, description: entry.description ?? '', requiresTriage: entry.requiresTriage,
     triageChecklist: entry.triageChecklist ?? [], pathways: entry.pathways, active: entry.active,
-  } : emptyDraft());
+    performingLabFacilityId: entry.performingLabFacilityId,
+  } : emptyDraft(defaultFixativeName, defaultProcessingFormatName));
   const [newChecklistItem, setNewChecklistItem] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  // Real, direct follow-up (PS-73): Protocol Dictionary already had
+  // Duplicate (handleClone, ProtocolDictionarySection's own component)
+  // but no uniqueness check backing it up — an admin could save the
+  // clone (or any edit) under a name that collides with an existing
+  // protocol with nothing catching it. Real, confirmed uses of Protocol
+  // name as a de facto key elsewhere: this same file's own spreadsheet
+  // round-trip (handleApplyProtocolImport, matches import rows to
+  // existing protocols by name.toLowerCase() because the spreadsheet
+  // never carries the internal id) and validateUnique.ts's own header
+  // comment, which already named this exact dictionary as one of the
+  // real, confirmed uses this shared helper serves. Same
+  // case-insensitive, id-excluded-on-edit comparison every other
+  // dictionary's editor already uses (see StainDictionarySection.tsx,
+  // PhysiciansSection.tsx).
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const set = <K extends keyof Draft>(field: K, value: Draft[K]) => setDraft(prev => ({ ...prev, [field]: value }));
 
@@ -275,7 +381,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
     set('pathways', draft.pathways.map((p, i) => i === idx ? { ...p, ...changes } : p));
   };
   const removePathway = (idx: number) => set('pathways', draft.pathways.filter((_, i) => i !== idx));
-  const addPathway = () => set('pathways', [...draft.pathways, emptyPathway(defaultsToDecant ? 'decant' : 'block')]);
+  const addPathway = () => set('pathways', [...draft.pathways, emptyPathway(defaultsToDecant ? 'decant' : 'block', defaultFixativeName, defaultProcessingFormatName)]);
 
   const updateTask = (pathwayIdx: number, taskIdx: number, changes: Partial<PathwayTask>) => {
     const pathway = draft.pathways[pathwayIdx];
@@ -300,7 +406,28 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
     set('triageChecklist', (draft.triageChecklist ?? []).filter((_, i) => i !== idx));
   };
 
-  const canSave = draft.name.trim().length > 0 && draft.pathways.length > 0 && draft.pathways.every(p => p.pathwayName.trim());
+  // Real, per direct follow-up: "schema validation" \u2014 extracted
+  // to resolvePathwayCountValidation.ts (services/protocols/) as its
+  // own pure, tested function rather than inline here. A real,
+  // positive integer when set (undefined/blank stays valid, same as
+  // every other optional field here); defaultPieceCount additionally
+  // can't be set on a decant track, since it's only meaningful for
+  // materialKind: 'block' (IProtocolService.ts's own doc comment).
+  const canSave = draft.name.trim().length > 0 && draft.pathways.length > 0
+    && draft.pathways.every(p => p.pathwayName.trim())
+    && draft.pathways.every(isPathwayCountValid);
+
+  const handleSave = () => {
+    // Real, direct follow-up (PS-75): scoped by performingLabFacilityId +
+    // name together, same compound-key shape as ContainerTypesSection.tsx/
+    // CrosswalkSection.tsx — "Medical Renal Protocol" can exist once
+    // globally and once more per lab without colliding, but never twice
+    // within the same scope.
+    const collision = findDuplicate(existingEntries, { performingLabFacilityId: draft.performingLabFacilityId, name: draft.name.trim() }, ['performingLabFacilityId', 'name'], mode === 'edit' ? entry?.id : undefined);
+    if (collision) { setNameError(`A protocol named "${collision.name}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`); return; }
+    setNameError(null);
+    onSave(draft);
+  };
 
   return (
     <div className="ps-ms-overlay">
@@ -348,7 +475,17 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
 
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Medical Renal Protocol" />
+              <input className="ps-conf-input" value={draft.name} onChange={e => { set('name', e.target.value); if (nameError) setNameError(null); }} placeholder="e.g. Medical Renal Protocol" />
+              {nameError && <div className="ps-body-modal-error">{nameError}</div>}
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="protocol-performing-lab">Performing Lab</label>
+              <select id="protocol-performing-lab" className="ps-conf-select"
+                value={draft.performingLabFacilityId ?? ''}
+                onChange={e => { set('performingLabFacilityId', e.target.value || undefined); if (nameError) setNameError(null); }}>
+                <option value="">— All Labs (available to everyone) —</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
             </div>
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">Status</label>
@@ -422,18 +559,55 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
                     <div className="ps-conf-form-field">
                       <label className="ps-conf-label">Material Kind</label>
                       <select className="ps-conf-select" value={pathway.materialKind}
-                        onChange={e => updatePathway(pIdx, { materialKind: e.target.value as ProtocolPathway['materialKind'] })}>
+                        onChange={e => {
+                          const materialKind = e.target.value as ProtocolPathway['materialKind'];
+                          // Real, defensive pairing with the
+                          // validation above: switching to decant
+                          // while a real defaultPieceCount value was
+                          // already entered would otherwise leave the
+                          // admin stuck — the field becomes disabled
+                          // (so it can't be cleared by hand) while
+                          // canSave still fails on it. Cleared here
+                          // instead, at the one real moment that
+                          // makes it stale.
+                          updatePathway(pIdx, materialKind === 'decant' ? { materialKind, defaultPieceCount: undefined } : { materialKind });
+                        }}>
                         <option value="block">Block (solid tissue, cassette)</option>
                         <option value="decant">Decant (fluid / cytology)</option>
                       </select>
                     </div>
                     <div className="ps-conf-form-field">
                       <label className="ps-conf-label">Fixative</label>
-                      <input className="ps-conf-input" value={pathway.fixativeType} onChange={e => updatePathway(pIdx, { fixativeType: e.target.value })} />
+                      <select className="ps-conf-input" value={pathway.fixativeType} onChange={e => updatePathway(pIdx, { fixativeType: e.target.value })}>
+                        {/* Real, per direct correction ("why is processingFormat
+                            free text when they are all known commodities?" /
+                            "fixativeType has the same underlying problem") \u2014
+                            a real, closed, catalog-backed picker replacing the
+                            old free-text input. An existing pathway's own,
+                            already-saved value is always included as an option
+                            even if it doesn't match any real, active catalog
+                            entry (e.g. a legacy value predating this catalog) \u2014
+                            never silently replaced or blanked out on open. */}
+                        {!fixatives.some(f => f.name === pathway.fixativeType) && pathway.fixativeType && (
+                          <option value={pathway.fixativeType}>{pathway.fixativeType} (not in dictionary)</option>
+                        )}
+                        {fixatives.map(f => (
+                          <option key={f.id} value={f.name}>
+                            {f.name}{f.requiresWarningLabel ? ' \u26a0\ufe0f' : ''}{f.regulatoryStatus && f.regulatoryStatus !== 'Active' ? ` (${f.regulatoryStatus})` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="ps-conf-form-field">
                       <label className="ps-conf-label">Processing Format</label>
-                      <input className="ps-conf-input" value={pathway.processingFormat} onChange={e => updatePathway(pIdx, { processingFormat: e.target.value })} />
+                      <select className="ps-conf-input" value={pathway.processingFormat} onChange={e => updatePathway(pIdx, { processingFormat: e.target.value })}>
+                        {!processingFormats.some(p => p.name === pathway.processingFormat) && pathway.processingFormat && (
+                          <option value={pathway.processingFormat}>{pathway.processingFormat} (not in dictionary)</option>
+                        )}
+                        {processingFormats.map(p => (
+                          <option key={p.id} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="ps-conf-form-field ps-protocol-decal-field">
                       <label className="ps-conf-label">Requires Decal</label>
@@ -443,6 +617,43 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
                           <div className="ps-conf-toggle-thumb" />
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Real, per direct follow-up: "both fields need to
+                      be wired into the form state, schema validation,
+                      and rendering logic" — defaultCount and
+                      defaultPieceCount (IProtocolService.ts) already
+                      drove real accession-time generation
+                      (generateDefaultMaterial.ts), but had no admin
+                      UI at all until now — a real, pre-existing gap
+                      the Autopsy Cardiac Sectioning protocol's own
+                      defaultCount: 4 first exposed, since every prior
+                      protocol left both fields unset. Undefined
+                      (blank) keeps producing exactly one block/decant
+                      per pathway, same as before this UI existed. */}
+                  <div className="ps-conf-form-row">
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">
+                        {pathway.materialKind === 'decant' ? 'Default Decant Count' : 'Default Block Count'}
+                      </label>
+                      <input className="ps-conf-input" type="number" min="1" value={pathway.defaultCount ?? ''}
+                        placeholder="1 (default)"
+                        onChange={e => updatePathway(pIdx, { defaultCount: e.target.value ? Number(e.target.value) : undefined })} />
+                    </div>
+                    {/* Only meaningful for materialKind: 'block' — see
+                        that field's own doc comment
+                        (IProtocolService.ts). Disabled, not hidden,
+                        for a decant track, so switching Material Kind
+                        back to Block doesn't silently lose whatever
+                        value was already entered. */}
+                    <div className="ps-conf-form-field">
+                      <label className="ps-conf-label">Default Piece Count</label>
+                      <input className="ps-conf-input" type="number" min="1"
+                        disabled={pathway.materialKind === 'decant'}
+                        value={pathway.defaultPieceCount ?? ''}
+                        placeholder={pathway.materialKind === 'decant' ? 'Block-only' : 'Unset'}
+                        onChange={e => updatePathway(pIdx, { defaultPieceCount: e.target.value ? Number(e.target.value) : undefined })} />
                     </div>
                   </div>
 
@@ -488,7 +699,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={() => onSave(draft)} disabled={!canSave}>
+          <button className="ps-ms-btn-apply" onClick={handleSave} disabled={!canSave}>
             {mode === 'add' ? 'Add Protocol' : 'Save Changes'}
           </button>
         </div>
@@ -502,6 +713,13 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, usag
 const ProtocolDictionarySection: React.FC = () => {
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
+  // Real, per direct correction ("why is processingFormat free text
+  // when they are all known commodities?" / "fixativeType has the
+  // same underlying problem") — same real fetch pattern as
+  // stainTypes above, never a second, competing way of loading
+  // reference data into this component.
+  const [fixatives, setFixatives] = useState<FixativeDictionaryEntry[]>([]);
+  const [processingFormats, setProcessingFormats] = useState<ProcessingFormatDictionaryEntry[]>([]);
   // protocolsToRows/rowsToProtocols (above) were fully built — the whole
   // point of flattening one row per Step was to make both directions of
   // this conversion straightforward — but never actually wired to a
@@ -510,27 +728,23 @@ const ProtocolDictionarySection: React.FC = () => {
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<Draft[] | null>(null);
   const [importUnmatchedStains, setImportUnmatchedStains] = useState<Set<string>>(new Set());
+  const [importInvalidPathwayCounts, setImportInvalidPathwayCounts] = useState<Set<string>>(new Set());
 
   const handleDownloadProtocols = () => {
-    const ws = XLSX.utils.json_to_sheet(protocolsToRows(protocols, stainTypes));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Protocols');
-    XLSX.writeFile(wb, 'ProtocolDictionary.xlsx');
+    downloadCsv('ProtocolDictionary.csv', toCsv(protocolsToRows(protocols, stainTypes)));
   };
 
-  const handleProtocolFileUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      const { drafts, unmatchedStainNames } = rowsToProtocols(rows, stainTypes);
-      setImportPreview(drafts);
-      setImportUnmatchedStains(unmatchedStainNames);
-    };
-    reader.readAsBinaryString(file);
+  const handleProtocolFileUpload = async (file: File) => {
+    if (!isCsvFile(file)) {
+      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows = parseCsv(text);
+    const { drafts, unmatchedStainNames, invalidPathwayCounts } = rowsToProtocols(rows, stainTypes);
+    setImportPreview(drafts);
+    setImportUnmatchedStains(unmatchedStainNames);
+    setImportInvalidPathwayCounts(invalidPathwayCounts);
   };
 
   const handleApplyProtocolImport = () => {
@@ -540,15 +754,33 @@ const ProtocolDictionarySection: React.FC = () => {
     // is added. No id-based matching, since the spreadsheet round-trip
     // never carries the internal id — only ever the human-readable name.
     Promise.all(importPreview.map(draft => {
-      const existing = protocols.find(p => p.name.toLowerCase() === draft.name.toLowerCase());
+      // Real, direct follow-up (PS-75): the spreadsheet has no
+      // Performing Lab column, so every imported draft is global
+      // (performingLabFacilityId undefined) — matching must be scoped
+      // the same way, or a re-import could silently overwrite a
+      // lab-specific protocol that happens to share a name with a
+      // global one, instead of adding a new global entry alongside it.
+      const existing = protocols.find(p => !p.performingLabFacilityId && p.name.toLowerCase() === draft.name.toLowerCase());
       return existing ? protocolService.update(existing.id, draft) : protocolService.add(draft);
     })).then(() => {
       setImportPreview(null);
       setImportUnmatchedStains(new Set());
+      setImportInvalidPathwayCounts(new Set());
       loadAll();
     });
   };
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: Protocol } | null>(null);
+  // Real, direct follow-up (PS-75): same "Performing Lab is going to be
+  // a fixture" scoping every other dictionary already has
+  // (utils/performingLabs.ts). Loaded once here, passed down to the
+  // modal (its own Performing Lab picker) and used for the list's own
+  // lab filter/column below.
+  const [labs, setLabs] = useState<Facility[]>([]);
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
+  const [labFilter, setLabFilter] = useState<'All' | 'Global' | string>('All');
+  const filteredProtocols = protocols.filter(p => labFilter === 'All'
+    || (labFilter === 'Global' ? !p.performingLabFacilityId : p.performingLabFacilityId === labFilter));
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'All Labs';
   const { dictionary } = useSpecimenDictionary();
   // Real feature, per direct follow-up's own Hybrid Model: "Sensible
   // UI fallback: Department provides defaults... the
@@ -571,6 +803,8 @@ const ProtocolDictionarySection: React.FC = () => {
   useEffect(() => {
     loadAll();
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
+    fixativeDictionaryService.getAll().then(res => { if (res.ok) setFixatives(res.data.filter(f => f.active)); });
+    processingFormatDictionaryService.getAll().then(res => { if (res.ok) setProcessingFormats(res.data.filter(p => p.active)); });
   }, []);
 
   // Usage indicator — which specimen types actually reference each
@@ -621,7 +855,7 @@ const ProtocolDictionarySection: React.FC = () => {
         <div className="ps-specdict-header-actions">
           <button className="ps-conf-btn-secondary" onClick={handleDownloadProtocols}>Export</button>
           <button className="ps-conf-btn-secondary" onClick={() => importFileInputRef.current?.click()}>Import Spreadsheet</button>
-          <input ref={importFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleProtocolFileUpload(e.target.files[0]); e.target.value = ''; }} />
+          <input ref={importFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handleProtocolFileUpload(e.target.files[0]); e.target.value = ''; }} />
           <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Protocol</button>
         </div>
       </div>
@@ -634,8 +868,27 @@ const ProtocolDictionarySection: React.FC = () => {
               <> {importUnmatchedStains.size} stain name{importUnmatchedStains.size === 1 ? '' : 's'} didn't match the Diagnostic Catalog and were skipped: {[...importUnmatchedStains].join(', ')}.</>
             )}
           </p>
+          {importInvalidPathwayCounts.size > 0 && (
+            <p>
+              {importInvalidPathwayCounts.size} default count{importInvalidPathwayCounts.size === 1 ? '' : 's'} were invalid and left blank rather than imported: {[...importInvalidPathwayCounts].join('; ')}.
+            </p>
+          )}
           <button className="ps-conf-btn-primary" onClick={handleApplyProtocolImport}>Apply Import</button>
-          <button className="ps-conf-btn-row" onClick={() => { setImportPreview(null); setImportUnmatchedStains(new Set()); }}>Cancel</button>
+          <button className="ps-conf-btn-row" onClick={() => { setImportPreview(null); setImportUnmatchedStains(new Set()); setImportInvalidPathwayCounts(new Set()); }}>Cancel</button>
+        </div>
+      )}
+
+      {/* Real, direct follow-up (PS-75) — same lab-filter convention as
+          ContainerTypesSection.tsx, only shown once real facilities are
+          scoped as performing labs so an unconfigured lab list doesn't
+          render a pointless single-option dropdown. */}
+      {labs.length > 0 && (
+        <div className="ps-conf-form-row">
+          <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
+            <option value="All">All Labs</option>
+            <option value="Global">Global only (no lab set)</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
         </div>
       )}
 
@@ -643,15 +896,16 @@ const ProtocolDictionarySection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
-              <tr>{['Name', 'Tracks', 'Used By', 'Requires Triage', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+              <tr>{['Name', 'Performing Lab', 'Tracks', 'Used By', 'Requires Triage', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {protocols.map(p => (
+              {filteredProtocols.map(p => (
                 <tr key={p.id} className="ps-conf-tr">
                   <td className="ps-conf-td">
                     <div className="ps-conf-identity-name" data-phi="name">{p.name}</div>
                     {p.description && <div className="ps-specreq-meta">{p.description}</div>}
                   </td>
+                  <td className="ps-conf-td">{labName(p.performingLabFacilityId)}</td>
                   <td className="ps-conf-td">{p.pathways.map(pw => `${pw.pathwayName}${pw.materialKind === 'decant' ? ' (Decant)' : ''}`).join(', ')}</td>
                   <td className="ps-conf-td">{usageFor(p.id).length || '—'}</td>
                   <td className="ps-conf-td">{p.requiresTriage ? 'Yes' : 'No'}</td>
@@ -667,14 +921,14 @@ const ProtocolDictionarySection: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {protocols.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={6}>No protocols yet.</td></tr>}
+              {filteredProtocols.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={7}>{protocols.length === 0 ? 'No protocols yet.' : 'No protocols match this filter.'}</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
       {modal && (
-        <EditorModal mode={modal.mode} entry={modal.entry} stainTypes={stainTypes} usage={modal.entry ? usageFor(modal.entry.id) : []}
+        <EditorModal mode={modal.mode} entry={modal.entry} stainTypes={stainTypes} fixatives={fixatives} processingFormats={processingFormats} usage={modal.entry ? usageFor(modal.entry.id) : []} existingEntries={protocols} labs={labs}
           defaultsToDecant={!!modal.entry && usageFor(modal.entry.id).some(e => !!e.departmentId && fluidDepartmentIds.has(e.departmentId))}
           onSave={handleSave} onRestore={handleRestore} onClose={() => setModal(null)} />
       )}

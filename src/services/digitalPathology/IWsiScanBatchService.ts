@@ -37,6 +37,19 @@ import type { ServiceResult, ID } from '../types';
 
 export type WsiScanBatchStatus = 'loaded' | 'scanning' | 'completed' | 'failed' | 'unloaded';
 export type WsiSlideScanStatus = 'pending' | 'scanning' | 'completed' | 'failed';
+/** Real, per direct guidance's own confirmed Surgical Pathology vs.
+ *  Cytology DP technical breakdown: surgical pathology's own flat,
+ *  2-to-5-micron tissue sections are scanned at a single fixed focal
+ *  plane; cytology's own non-flat, 3D fluid suspensions/smears
+ *  genuinely require either full Z-stack capture across multiple
+ *  focal depths, or dynamic focus fusion compositing one stitched
+ *  image from them. Real, per direct correction: PathScribe never
+ *  talks to the scanner instrument itself — this is data the real
+ *  interface engine reports in its own inbound event
+ *  (WsiScanStatusUpdateEventPayload.ts), exactly as the instrument's
+ *  own real acquisition actually ran, never something PathScribe
+ *  infers or defaults. */
+export type WsiAcquisitionMode = 'single_plane' | 'z_stack' | 'focus_fusion';
 
 export interface WsiScanSlide {
   slidePosition: string;
@@ -44,7 +57,42 @@ export interface WsiScanSlide {
   specimenId: string;
   scanStatus: WsiSlideScanStatus;
   scanCompletedAt?: string;
+  /** Real, per direct guidance's own confirmed Digital Readiness
+   *  spec: the real, external instrument's own failure reason
+   *  (scanStatus 'failed' \u2014 a genuine hardware/scan-mechanics
+   *  failure), OR the real IMS's own automated post-scan image
+   *  quality finding (qcPassed false, below \u2014 the scan itself
+   *  mechanically succeeded, but the resulting image failed an
+   *  automated quality check, e.g. "Out-of-focus", "Tissue-clipping
+   *  detected"). One shared field for both, since from PathScribe's
+   *  own real perspective they're the same kind of information: the
+   *  real, external source system's own stated reason a slide isn't
+   *  ready, exactly as it reports it \u2014 never PathScribe's own
+   *  guess either way. */
   failureReason?: string;
+  /** Real, per direct guidance's own confirmed Digital Readiness
+   *  spec: whether the real IMS's own automated post-scan image
+   *  quality check passed \u2014 genuinely distinct from scanStatus.
+   *  A slide can be scanStatus 'completed' (the scan itself
+   *  mechanically succeeded) with qcPassed false (the resulting
+   *  image still failed an automated quality gate). Undefined until
+   *  the real interface engine's own inbound event actually reports
+   *  a result \u2014 QC runs after scanning completes, so this stays
+   *  unset while scanStatus is still 'pending'/'scanning', and is
+   *  never defaulted to true just because a slide finished scanning. */
+  qcPassed?: boolean;
+  /** Real, undefined for a real surgical pathology slide (single
+   *  focal plane is the only real mode that modality's own hardware
+   *  uses — see this type's own header comment) — only ever set when
+   *  the real interface engine's own inbound event actually reports
+   *  it, which in practice means a real cytology slide. */
+  acquisitionMode?: WsiAcquisitionMode;
+  /** Real, only meaningful when acquisitionMode is 'z_stack' — how
+   *  many real focal layers the instrument actually captured (per
+   *  direct guidance's own confirmed range: "5 to 15+ focal layers").
+   *  Undefined for 'single_plane'/'focus_fusion' or when the real
+   *  interface engine's own event doesn't report a count. */
+  focalPlaneCount?: number;
 }
 
 export interface WsiScanBatch {
@@ -79,5 +127,5 @@ export interface IWsiScanBatchService {
   /** Real, per this file's own header — applies an already-translated
    *  inbound status update to one real slide within one real batch;
    *  never called from manual UI entry. */
-  updateSlideStatus(batchId: ID, slidePosition: string, update: Pick<WsiScanSlide, 'scanStatus' | 'scanCompletedAt' | 'failureReason'>): Promise<ServiceResult<WsiScanBatch>>;
+  updateSlideStatus(batchId: ID, slidePosition: string, update: Pick<WsiScanSlide, 'scanStatus' | 'scanCompletedAt' | 'failureReason' | 'qcPassed' | 'acquisitionMode' | 'focalPlaneCount'>): Promise<ServiceResult<WsiScanBatch>>;
 }

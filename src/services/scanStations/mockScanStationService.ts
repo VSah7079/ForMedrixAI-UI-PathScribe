@@ -28,6 +28,7 @@
 import { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type { ScanStation, IScanStationService } from './IScanStationService';
+import { mockWorkstationGroupService } from '../workstationGroups/mockWorkstationGroupService';
 
 const SEED_STATIONS: ScanStation[] = [
   // Real, deliberate example: this station is configured to print real
@@ -93,6 +94,17 @@ export const mockScanStationService: IScanStationService = {
     const idx = all.findIndex(s => s.id === id);
     if (idx === -1) return { ok: false, error: `No scan station found for id '${id}'.` };
     const updated: ScanStation = { ...all[idx], ...changes, updatedAt: new Date().toISOString() };
+    // Real, per PS-289's own comment thread — a station's own real
+    // physical facilityId must match the facility its assigned
+    // WorkstationGroup is scoped to; enforced here, at the actual
+    // assignment point, not merely documented on the field itself.
+    if (changes.workstationGroupId) {
+      const groupRes = await mockWorkstationGroupService.getById(changes.workstationGroupId);
+      if (!groupRes.ok) return { ok: false, error: `Workstation group '${changes.workstationGroupId}' not found.` };
+      if (groupRes.data.performingLabFacilityId !== updated.facilityId) {
+        return { ok: false, error: `Station '${updated.name}' is at facility '${updated.facilityId}', but group '${groupRes.data.name}' is scoped to facility '${groupRes.data.performingLabFacilityId}' — a station can only join a group at its own real facility.` };
+      }
+    }
     const next = [...all];
     next[idx] = updated;
     save(next);

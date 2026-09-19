@@ -100,7 +100,9 @@
     "itemCount_one": "항목 {{count}}개",
     "itemCount_other": "항목 {{count}}개",
     "rackCheckedOutError": "럭 \"{{value}}\"은(는) 이미 다른 진행 중인 배치에 할당되어 있습니다.",
-    "notFoundError": "\"{{value}}\"에 해당하는 배치 또는 등록된 용기를 찾을 수 없습니다."
+    "notFoundError": "\"{{value}}\"에 해당하는 배치 또는 등록된 용기를 찾을 수 없습니다.",
+    "disposalReportTile": "폐기물 추적 보고서",
+    "disposalReportTitle": "폐기물 추적 보고서 — CAP/CLIA/ISO 15189 감사를 위해 이미 폐기된 모든 항목을 필터링 및 내보내기 가능한 기록"
   },
   "newContainerModal": {
     "title": "새 용기",
@@ -551,5 +553,585 @@
       "GI_PANCREATIC": "위장관/취장",
       "OTHER_NGYN": "기타"
     }
+  },
+  "autopsyIntake": {
+    "title": "부검 접수 — 임시 접수",
+    "subtitle": "완전한 법적 승인이 접수되기 전에도 시신을 즉시 인수하여 냉장할 수 있습니다. 지금 알고 있는 내용을 입력하면 나머지는 나중에 추가할 수 있습니다.",
+    "validationError": "제출하기 전에 필수 항목을 완성해 주십시오.",
+    "selectPlaceholder": "선택...",
+    "jurisdictionLabel": "관할 구역",
+    "caseAuthorityLabel": "사건 권한",
+    "caseAuthority": {
+      "medicolegal_forensic": "법의학 / 사법",
+      "hospital_consented": "병원 동의"
+    },
+    "forensicSectionTitle": "사법 승인",
+    "forensicSectionSubtitle": "긴급한 구두 명령만으로도 지금 시신을 인수하기에 충분합니다. 부검을 시작하기 전에는 서면 승인이 필요합니다.",
+    "authorityTypeLabel": "권한 기관 유형",
+    "authorityTypePlaceholder": "예: 검시관, 법의관",
+    "authorityNameLabel": "권한 기관명",
+    "authorityNamePlaceholder": "선택 사항",
+    "verbalOrderAtLabel": "구두 명령 수령 시간",
+    "verbalOrderFromLabel": "구두 명령 수령처",
+    "verbalOrderFromPlaceholder": "예: 당직 검사",
+    "hospitalSectionTitle": "병원 동의",
+    "hospitalSectionSubtitle": "가족이 결정하는 동안 시신을 인수할 수 있습니다. 이미 알려진 경우 연락처를 기록하십시오.",
+    "relativeNameLabel": "동의한 친족 이름",
+    "relativeNamePlaceholder": "이미 알려진 경우 선택 입력",
+    "relativeRelationshipLabel": "관계",
+    "relativeRelationshipPlaceholder": "예: 배우자, 성인 자녀, 부모",
+    "accessionStatus": {
+      "temporary": "임시 접수",
+      "fully_authorized": "완전 승인됨"
+    },
+    "grossExamPendingNote": "완전한 승인이 접수될 때까지 부검을 시작할 수 없습니다.",
+    "submitBtn": "시신 접수"
+  },
+  "autopsyAuthCompletion": {
+    "title": "승인 완료",
+    "subtitle": "서면 승인이 도착하면 입력하십시오. 이것이 접수될 때까지 부검은 차단됩니다.",
+    "onFileSectionTitle": "기록된 내용",
+    "verbalOrderOnFile": "{{authority}}으로부터 {{at}}에 구두 명령을 수령함.",
+    "writtenOrderSectionTitle": "서면 명령",
+    "orderReferenceLabel": "명령 참조 번호",
+    "orderReferencePlaceholder": "예: 검시관 명령서 참조 번호",
+    "orderDateLabel": "명령 날짜",
+    "relativeOnFile": "기록된 연락처: {{name}} ({{relationship}}).",
+    "consentGrantSectionTitle": "동의 승인",
+    "consentGivenAtLabel": "동의 시간",
+    "consentScopeLabel": "동의 범위",
+    "consentScopePlaceholder": "예: 전체, 장기 적출 제외 (쉬표로 구분)",
+    "validationError": "제출하기 전에 필수 항목을 완성해 주십시오.",
+    "willUnblockNote": "제출하면 부검을 진행할 수 있게 됩니다.",
+    "submitBtn": "승인 저장",
+    "unknownValue": "알 수 없음"
+  },
+  "autopsyBodyRelease": {
+    "title": "시신 인도",
+    "subtitle": "시신이 인도되는 곳을 기록합니다. 이는 검체의 영구 위치 기록의 일부가 됩니다.",
+    "releasedToLabel": "인도 대상",
+    "releasedToPlaceholder": "예: 스미스 장례식장",
+    "releasedByLabel": "인도자",
+    "releasedByPlaceholder": "예: 기술자 M. Davis",
+    "validationError": "제출하기 전에 두 필드를 모두 입력해 주십시오.",
+    "submitBtn": "인도 확인",
+    "submittingBtn": "인도 중…",
+    "genericError": "문제가 발생했습니다. 다시 시도해 주십시오."
+  },
+  "disposalReport": {
+    "pageTitle": "폐기물 추적 보고서",
+    "pageSubtitle": "실제로 폐기된 모든 검체, 블록, 슬라이드, 디캔트 및 매트릭스 블록/슬라이드에 대한 실시간 계산 보고서 — 시설, 재료 유형, 폐기 날짜별로 필터링할 수 있으며 규제 감사를 위해 내보낼 수 있습니다.",
+    "stats": {
+      "total": "총 폐기 수"
+    },
+    "materialType": {
+      "block": "조직 블록",
+      "slide": "슬라이드",
+      "wet_tissue": "습윤 조직"
+    },
+    "filters": {
+      "facilityLabel": "시설별 필터링",
+      "allFacilities": "모든 시설",
+      "materialTypeLabel": "재료 유형별 필터링",
+      "allMaterialTypes": "모든 재료 유형",
+      "dateFromLabel": "시작일",
+      "dateTo": "~",
+      "dateToLabel": "종료일"
+    },
+    "columns": {
+      "disposedAt": "폐기일",
+      "materialType": "유형",
+      "itemId": "항목 ID",
+      "caseAccession": "케이스",
+      "specimen": "검체",
+      "disposedBy": "폐기자",
+      "location": "위치"
+    },
+    "export": {
+      "button": "내보내기",
+      "disposedAt": "폐기 일시",
+      "materialType": "재료 유형",
+      "itemId": "항목 ID",
+      "caseAccession": "케이스 번호",
+      "specimen": "검체",
+      "disposedBy": "폐기자",
+      "location": "위치"
+    },
+    "loading": "보고서를 계산하는 중…",
+    "empty": "이 필터와 일치하는 폐기된 항목이 아직 없습니다.",
+    "unknownLocation": "알 수 없음"
+  },
+  "home": {
+    "addOnOrderTile": {
+      "title": "추가 오더",
+      "description": "병리의가 직접 요청하는 추가 오더(재절단, 특수염색, IHC, 분자병리)를 실시간 추적과 함께 처리"
+    },
+    "pathologyWorkspaceTile": {
+      "title": "병리 워크스페이스",
+      "description": "세포검사 스크리닝, 분자진단, 박절, 포매, 슬라이드 배포 작업대"
+    },
+    "qualityComplianceTile": {
+      "title": "품질 및 준수",
+      "description": "시스템 활동 로그 및 감사 추적, 품질보증 작업 대기열 — 미비사항, 조정, CAPA 관리"
+    }
+  },
+  "qualityComplianceHub": {
+    "pageTitle": "품질 및 준수",
+    "pageSubtitle": "시스템 로그 및 감사 추적, 품질보증 작업 대기열 — 미비사항, 수술중 연계, 불일치 및 조정, CAPA 관리",
+    "backToHome": "← 홈으로 돌아가기",
+    "auditTile": {
+      "title": "감사",
+      "description": "시스템 활동 로그, 오류 및 인터페이스 예외 로그, 재무 감사 추적"
+    },
+    "qualityAssuranceTile": {
+      "title": "품질보증",
+      "description": "미비사항, 수술중 연계, 불일치 및 조정 보고"
+    }
+  },
+  "pathologyWorkspace": {
+    "pageTitle": "병리 워크스페이스",
+    "pageSubtitle": "세포검사 스크리닝, 분자진단, 박절, 포매, 슬라이드 배포 작업대",
+    "backToHome": "← 홈으로 돌아가기",
+    "cytologyTile": {
+      "title": "세포검사 워크스페이스",
+      "description": "GYN 도말, Non-GYN 분류, 세포블록 추적 및 필수 QC를 위한 주요 스크리닝 허브"
+    },
+    "microtomyTile": {
+      "title": "박절 워크스페이스",
+      "description": "박절기 작업대에서의 실시간 온디맨드 또는 배치 슬라이드 라벨 인쇄, 염색 관리, 세포검사/침전물 준비"
+    },
+    "embeddingTile": {
+      "title": "포매 워크스페이스",
+      "description": "포매 작업대에서의 카세트 스캔/확인, 조직 조각 수 확인, 몰드 선택 및 불일치 표시"
+    },
+    "slideDistributionTile": {
+      "title": "슬라이드 배포 워크스페이스",
+      "description": "병리의에게 연속 스캔 체크아웃 또는 디지털 스캐너로의 입고, 분할 목적지 경고 및 예외 처리 포함"
+    },
+    "molecularTile": {
+      "title": "분자 워크스페이스",
+      "description": "HPV, CT/NG, 호흡기 PCR 등 분자진단을 위한 배치 및 플레이트 관리, 활성 런, QC/검체 연계"
+    }
+  },
+  "microtomyWorkstation": {
+    "pageTitle": "박절 작업대",
+    "scanPrompt": "블록 또는 침전물/체액 용기 바코드를 스캔하여 시작하십시오",
+    "scanPlaceholder": "바코드를 스캔하거나 입력하십시오…",
+    "scanSubmit": "이동",
+    "context": {
+      "accession": "접수번호:",
+      "patient": "환자:",
+      "dob": "생년월일:",
+      "specimenBlock": "검체/블록:",
+      "specimenType": "유형:",
+      "scanNext": "다음 블록/침전물 스캔 →",
+      "title": "블록 요약",
+      "flag": {
+        "tinyTissue": "미세 조직",
+        "fragile": "취약함",
+        "requiresDecal": "탈회 필요"
+      },
+      "status": "상태: ",
+      "pieceCount": "조각 수: ",
+      "tissueDescription": "조직: ",
+      "blockComments": "블록 코멘트",
+      "priorHistory": "이전 슬라이드 기록",
+      "noHistory": "이 블록에 대해 인쇄된 슬라이드가 아직 없습니다."
+    },
+    "slideGrid": {
+      "title": "슬라이드 그리드",
+      "slideComments": "슬라이드 코멘트",
+      "col": {
+        "level": "레벨",
+        "stain": "염색",
+        "status": "인쇄 상태",
+        "actions": "작업"
+      },
+      "control": "대조군",
+      "commentOnLabelTitle": "이 슬라이드의 코멘트가 실제 라벨에 인쇄됩니다",
+      "onLabel": "라벨에 표시",
+      "reprintedCount": "{{count}}회 재인쇄됨",
+      "print": "인쇄",
+      "reprintReasonPrompt": "사유…",
+      "reprint": "재인쇄",
+      "addLevelTitle": "동일한 염색의 다른 레벨을 절단합니다",
+      "addLevel": "+ 레벨",
+      "searchStains": "염색 검색…",
+      "selectStain": "염색 선택…",
+      "duplicateCount": "×",
+      "levelDepth": "µm",
+      "pairControl": "대조군 슬라이드와 짝짓기"
+    },
+    "printStatus": {
+      "Pending": "대기 중",
+      "Printing": "인쇄 중…",
+      "Printed": "인쇄됨",
+      "Failed": "실패",
+      "Canceled": "취소됨"
+    },
+    "hardware": {
+      "printMode": "인쇄 모드",
+      "onDemand": "온디맨드",
+      "batch": "배치",
+      "nextUnprinted": "다음 미인쇄 슬라이드:",
+      "printNext": "다음 항목 인쇄/각인",
+      "allPrinted": "이 블록의 모든 슬라이드가 인쇄되었습니다.",
+      "selectedCount": "{{count}}개 슬라이드 선택됨",
+      "printBatch": "배치 인쇄",
+      "deviceStatus": "장치 상태",
+      "noPrinter": "구성된 프린터가 없습니다",
+      "status": {
+        "ready": "준비됨",
+        "error": "인쇄 오류",
+        "offline": "오프라인"
+      },
+      "labelPreview": "라벨 미리보기",
+      "noPreview": "슬라이드를 선택하거나 인쇄하여 라벨을 미리 봅니다.",
+      "noStation": "이 장치에 스캔 스테이션이 선택되지 않았습니다 — 내비게이션 바의 스테이션 표시기에서 설정하십시오.",
+      "notConfigured": "이 스테이션은 실제 슬라이드 라벨 인쇄용으로 구성되지 않았습니다.",
+      "profileMissing": "구성된 프린터 프로필이 더 이상 존재하지 않습니다."
+    },
+    "cytology": {
+      "title": "검체 체액 / 침전물 패널",
+      "volume": "총 용량 (mL)",
+      "appearance": "외관",
+      "appearanceOption": {
+        "Clear": "투명",
+        "Bloody": "혈성",
+        "Turbid": "혼탁"
+      },
+      "yield": "침전물 수율 / 펠릿 크기",
+      "yieldOption": {
+        "Low": "낮음",
+        "Moderate": "보통",
+        "High": "높음"
+      },
+      "suggestionIntro": "권장 준비 방법:",
+      "prepMethod": {
+        "ThinPrepLiquidBased": "씬프렙 (액상 기반)",
+        "DirectSmearAirDried": "직접 도말 (공기 건조)",
+        "DirectSmearFixed": "직접 도말 (고정됨)",
+        "Cytospin": "세포원심분리",
+        "CellBlock": "세포 블록"
+      },
+      "acceptSuggestion": "제안 수락"
+    },
+    "comments": {
+      "empty": "아직 코멘트가 없습니다.",
+      "placeholder": "코멘트 추가…",
+      "printOnLabel": "이 코멘트를 실제 라벨에 인쇄",
+      "add": "코멘트 추가"
+    },
+    "removeReason": {
+      "title": "사유 필요",
+      "body": "이 슬라이드는 이미 인쇄되었습니다 — 취소 사유를 선택하십시오.",
+      "select": "사유 선택…"
+    },
+    "batchProgress": {
+      "title": "배치 인쇄 진행 상황",
+      "status": {
+        "pending": "대기 중",
+        "printing": "인쇄 중…",
+        "printed": "인쇄됨",
+        "failed": "실패"
+      },
+      "inProgress": "인쇄 중…"
+    }
+  },
+  "embeddingStation": {
+    "pageTitle": "포매 작업대",
+    "scanPrompt": "시작하려면 카세트 바코드를 스캔하세요",
+    "scanPlaceholder": "바코드를 스캔하거나 입력하세요…",
+    "scanSubmit": "이동",
+    "context": {
+      "accession": "접수번호:",
+      "patient": "환자:",
+      "dob": "생년월일:",
+      "specimenBlock": "검체/블록:",
+      "specimenType": "유형:",
+      "scanNext": "다음 카세트 스캔 →",
+      "title": "블록 요약",
+      "flag": {
+        "tinyTissue": "미세 조직",
+        "fragile": "취약함",
+        "requiresDecal": "탈회 필요"
+      },
+      "derivedBadge": {
+        "biopsy": "생검",
+        "needleCore": "바늘 생검"
+      },
+      "status": "상태: ",
+      "tissueDescription": "조직: ",
+      "blockComments": "블록 코멘트"
+    },
+    "pieceCount": {
+      "title": "조직 조각 수 확인",
+      "expected": "예상(육안 검사 기준): ",
+      "confirm": "확인",
+      "observed": "포매 시 관찰됨: "
+    },
+    "discrepancy": {
+      "title": "불일치 보고",
+      "reason": {
+        "missingTissue": "조직 누락/빈 카세트",
+        "extraTissue": "추가 조직 발견",
+        "unopenedCassette": "미개봉 카세트/미처리 조직",
+        "damagedCassette": "손상된 카세트/경첩 파손"
+      },
+      "lastFlagged": "마지막 보고: {{reason}} ({{by}})"
+    },
+    "mold": {
+      "title": "기본 몰드 크기"
+    },
+    "orientation": {
+      "title": "방향 지시사항",
+      "placeholder": "자유 텍스트 방향 메모…"
+    },
+    "splitBlock": {
+      "title": "다중 카세트 / 분할 블록",
+      "none": "이 검체에 그룹화할 다른 미그룹 블록이 없습니다.",
+      "pickPrompt": "이 검체의 조직이 분할된 다른 카세트를 선택하세요:",
+      "group": "분할 카세트로 그룹화",
+      "pending": "{{labels}}에 분할됨 — 아직 모든 카세트가 포매되지 않았습니다.",
+      "allEmbedded": "{{labels}}에 분할됨 — 모든 카세트가 포매되었습니다."
+    },
+    "specimenSummary": {
+      "title": "검체 블록",
+      "current": "현재"
+    },
+    "hardware": {
+      "deviceStatus": "장치 상태",
+      "noPrinter": "구성된 프린터 없음",
+      "status": {
+        "ready": "준비됨",
+        "error": "인쇄 오류",
+        "offline": "오프라인"
+      },
+      "reprint": "카세트 재인쇄",
+      "reprintCassette": "카세트 재인쇄",
+      "reprintCount": "{{count}}회 재인쇄됨, 마지막 사유: ",
+      "reprintFailed": "재인쇄 실패 — 위 메시지를 확인하세요.",
+      "labelPreview": "라벨 미리보기",
+      "noStation": "이 장치에 선택된 스캔 스테이션이 없습니다 — 내비게이션 바의 스테이션 표시기에서 설정하세요.",
+      "notConfigured": "이 스테이션은 실제 카세트 라벨 인쇄용으로 구성되어 있지 않습니다.",
+      "profileMissing": "구성된 프린터 프로필이 더 이상 존재하지 않습니다."
+    },
+    "reprintReason": {
+      "title": "사유 필요",
+      "body": "카세트 라벨을 재인쇄하려면 규정 준수 감사를 위한 사유가 필요합니다.",
+      "select": "사유를 선택하세요…"
+    },
+    "comments": {
+      "empty": "아직 코멘트가 없습니다.",
+      "placeholder": "코멘트 추가…",
+      "add": "코멘트 추가"
+    }
+  },
+  "slideDistribution": {
+    "pageTitle": "슬라이드 배포 작업대",
+    "scanPrompt": "슬라이드 또는 블록/카세트 바코드를 스캔하세요 — 대기열이 계속 늘어납니다",
+    "scanPlaceholder": "바코드를 스캔하거나 입력하세요…",
+    "scanSubmit": "이동",
+    "context": {
+      "queueCount": "대기열 슬라이드 수:",
+      "mode": "목적지 모드:",
+      "carrierOrScanner": "운반함 / 스캐너:",
+      "tech": "담당자:"
+    },
+    "queue": {
+      "title": "작업 대기열",
+      "count": "{{count}}",
+      "empty": "아직 스캔된 슬라이드가 없습니다.",
+      "remove": "대기열에서 제거",
+      "unrouted": "아직 라우팅되지 않음",
+      "unassigned": "미배정",
+      "pool": "세부 전문 분야 풀"
+    },
+    "slots": {
+      "title": "배치 진행 상황",
+      "empty": "아직 대기열이 비어 있습니다 — 시작하려면 슬라이드를 스캔하세요."
+    },
+    "activeSlide": {
+      "title": "활성 슬라이드",
+      "slide": "슬라이드:",
+      "status": "상태:",
+      "none": "위 대기열이나 그리드에서 슬라이드를 선택하세요.",
+      "reprintLabel": "교체 라벨 요청",
+      "reprintFailed": "재인쇄 실패 — 위 메시지를 확인하세요.",
+      "history": "관리 연속성 기록"
+    },
+    "destination": {
+      "title": "목적지 및 배정",
+      "physical": "물리적 체크아웃",
+      "digital": "디지털 스캐너",
+      "searchPlaceholder": "병리의 또는 풀 검색…",
+      "slideFolderId": "슬라이드 폴더 ID",
+      "trayNumber": "트레이 번호",
+      "courierBagId": "운송 백 ID",
+      "confirmPhysical": "물리적 라우팅 확인",
+      "scannerInstrument": "스캐너 장비",
+      "rackId": "랙 ID",
+      "slotPosition": "슬롯 위치",
+      "confirmDigital": "스캐너 라우팅 확인",
+      "assignFailed": "이 라우팅을 저장할 수 없습니다 — 위 메시지를 확인하세요.",
+      "selectFirst": "먼저 대기열에서 슬라이드를 선택하세요."
+    },
+    "exceptions": {
+      "title": "스캔 예외 로그",
+      "scanLogTitle": "미해결 스캔",
+      "resolve": "해결",
+      "reason": {
+        "unreadableBarcode": "읽을 수 없는 바코드",
+        "unassignedAccession": "미배정 접수번호",
+        "missingGlass": "슬라이드 누락",
+        "other": "기타"
+      }
+    }
+  },
+  "addOnOrder": {
+    "pageTitle": "추가 오더 작성",
+    "search": {
+      "placeholder": "접수번호 검색 또는 스캔…",
+      "open": "케이스 열기"
+    },
+    "context": {
+      "caseStatus": "케이스 상태",
+      "primaryPathologist": "주치 병리의",
+      "noPerformingLab": "이 케이스의 수행 검사실을 확인할 수 없습니다 — 라우팅은 특정 검사실로 제한되지 않고 일치하는 모든 스테이션을 표시합니다."
+    },
+    "blockContext": {
+      "title": "블록 및 조직 컨텍스트",
+      "empty": "이 케이스에는 검체가 없습니다.",
+      "specimen": "검체 {{label}} {{description}}",
+      "noBlocks": "이 검체에 블록이 없습니다.",
+      "exhausted": "소진됨",
+      "lost": "분실됨",
+      "damaged": "손상됨",
+      "cancelled": "취소됨",
+      "levelsCut": "이미 절편 {{count}}개 절단됨",
+      "tinyTissue": "미세 조직",
+      "fragile": "취약함"
+    },
+    "builder": {
+      "title": "추가 오더 작성",
+      "kind": {
+        "recut": "재절단 / 심부 절편",
+        "special_stain": "특수염색",
+        "ihc": "면역조직화학(IHC)",
+        "molecular": "분자병리 / 외부 의뢰"
+      },
+      "panelPicker": "IHC 패널",
+      "searchStain": "염색 검색…",
+      "noStains": "일치하는 염색이 없습니다.",
+      "levelDepth": "절편 깊이 (µm)",
+      "controlPairing": "대조군 페어링",
+      "controlMode": {
+        "none": "대조군 없음",
+        "on_slide": "동일 슬라이드 내 대조군",
+        "separate_slide": "별도 대조 슬라이드"
+      },
+      "addToCart": "장바구니에 추가"
+    },
+    "summary": {
+      "title": "오더 요약 및 라우팅",
+      "blocksSelected": "블록 {{count}}개 선택됨",
+      "emptyCart": "아직 추가된 오더 항목이 없습니다.",
+      "microns": "{{count}}µm 절편",
+      "routesTo": "라우팅 대상: {{stations}}",
+      "routesToQueueOnly": "이 검사실에 일치하는 스테이션이 아직 설정되지 않았습니다 — 오더는 대기열로는 라우팅됩니다.",
+      "remove": "제거",
+      "noPerformingLab": "이 케이스의 수행 검사실을 확인할 수 없습니다 — 검사실 기준 스테이션 매칭 없이도 오더는 생성됩니다.",
+      "priority": "우선순위",
+      "slideMedia": "슬라이드 재질 및 코팅",
+      "cuttingInstructions": "박절 작업대 지침",
+      "sendOutLab": "의뢰(외부) 검사실",
+      "selectLab": "의뢰 검사실 선택…",
+      "submit": "추가 오더 제출",
+      "submitted": "오더가 제출되었습니다."
+    },
+    "priority": {
+      "STAT_Urgent": "긴급(STAT)",
+      "Routine_Sign_Out": "일반 판독",
+      "Research_Protocol": "연구 / 프로토콜"
+    },
+    "slideMedia": {
+      "Standard_Charged": "표준 코팅",
+      "Uncharged": "비코팅",
+      "Plus_Glass": "플러스 글라스"
+    },
+    "tracking": {
+      "title": "오더 추적",
+      "count": "{{count}}",
+      "empty": "이 케이스에 대해 아직 추가 오더가 없습니다.",
+      "stage": {
+        "Requested": "요청됨",
+        "BlockRetrieved": "블록 회수됨",
+        "CutPendingStain": "절단됨 / 염색 대기",
+        "StainedQC": "염색됨 / QC",
+        "CheckedOutScanned": "출고됨 / 스캔됨",
+        "Exception": "예외",
+        "Cancelled": "취소됨"
+      },
+      "orderedBy": "오더 요청자: {{name}}",
+      "markRetrieved": "블록 회수 표시",
+      "exceptionNote": "선택적 메모…",
+      "confirmFlag": "예외 표시",
+      "cancelFlag": "취소",
+      "flagException": "예외 표시",
+      "flaggedBy": "표시자: {{name}}",
+      "responseNote": "응답 메모…",
+      "approveDestructive": "파괴적 절단 승인",
+      "modify": "수정 후 재제출",
+      "cancelOrder": "오더 취소"
+    }
+  },
+  "facilityOpsDashboard": {
+    "bindDisplayTitle": "이 디스플레이 연결",
+    "bindDisplayDescription": "이 벽면 장치에 표시할 디스플레이 프로필을 선택하세요.",
+    "selectProfile": "— 디스플레이 프로필 선택 —",
+    "noProfilesConfigured": "아직 구성된 디스플레이 프로필이 없습니다. 설정 → 시스템 → 디스플레이 프로필에서 추가하세요.",
+    "loadingProfile": "디스플레이 프로필 로드 중…",
+    "loadingData": "대시보드 데이터 로드 중…",
+    "offlineStaleBadge": "오프라인 / 오래된 데이터",
+    "lastUpdated": "{{time}}에 업데이트됨",
+    "confirmTokenTitle": "장치 토큰 확인",
+    "confirmTokenDescription": "이 디스플레이(\"{{name}}\") 연결을 완료하려면 등록된 장치 토큰을 입력하세요.",
+    "confirmTokenPlaceholder": "장치 토큰 입력",
+    "confirmTokenError": "입력한 토큰이 이 디스플레이에 등록된 토큰과 일치하지 않습니다. 관리자에게 확인 후 다시 시도하세요.",
+    "confirmTokenNote": "이는 관리자가 이 디스플레이에 기록한 토큰을 알고 있음을 확인하는 것이며, 실제 물리적 하드웨어를 검증하지는 않습니다.",
+    "queueEmpty": "현재 대기열이 비어 있습니다.",
+    "statPill": "STAT",
+    "overdueBy": "{{duration}} 초과",
+    "ageLabel": "{{duration}} 전",
+    "views": {
+      "grossingIntake": "그로싱 및 접수",
+      "embeddingMicrotomy": "포매 및 마이크로톰",
+      "stainingIhc": "염색 및 IHC",
+      "sendoutReference": "송부 및 참조검사실",
+      "diagnosticSignout": "진단 판독 / 스캐너"
+    }
+  },
+  "displayProfiles": {
+    "sectionTitle": "디스플레이 프로필(시설 운영 대시보드)",
+    "sectionSubtitle": "시설 운영 대시보드의 다섯 개 벽면 디스플레이를 위한 실제 데이터 전용 레지스트리입니다 — 각 프로필은 물리적 디스플레이를 하나의 수행 검사실과 하나 이상의 부서 뷰에 연결합니다. 실제 하드웨어 연결은 검증되거나 강제되지 않으며, 장치 토큰은 정보 제공 목적으로만 사용됩니다.",
+    "addButton": "+ 디스플레이 프로필 추가",
+    "launchDashboardButton": "🖥️ 시설 운영 대시보드 열기",
+    "addTitle": "디스플레이 프로필 추가",
+    "editTitle": "디스플레이 프로필 편집",
+    "nameLabel": "디스플레이 이름",
+    "namePlaceholder": "예: 조직학 벤치 3 — 벽면 디스플레이",
+    "facilityLabel": "수행 검사실",
+    "selectFacility": "— 시설 선택 —",
+    "assignedViewsLabel": "할당된 대시보드 보기",
+    "carouselIntervalLabel": "캐러셀 간격(초)",
+    "carouselIntervalPlaceholder": "예: 20",
+    "deviceTokenLabel": "장치 토큰 / MAC / IP(선택 사항)",
+    "deviceTokenPlaceholder": "예: AA:BB:CC:DD:EE:FF",
+    "deviceTokenNote": "정보 제공 목적으로만 사용되며, 자체 자산 관리를 위해 기록됩니다. 실제 하드웨어에 대해 검증되지 않습니다.",
+    "showInactive": "비활성 표시",
+    "inactive": "비활성",
+    "deactivate": "비활성화",
+    "reactivate": "재활성화",
+    "emptyRow": "등록된 디스플레이 프로필이 없습니다."
   }
 }

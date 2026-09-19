@@ -74,7 +74,8 @@ const GrossingScreenPage: React.FC = () => {
   const {
     handleAddBlock, handleRemoveBlock, handleAddStain, handleRemoveStain,
     pendingStainRemoval, confirmPendingStainRemoval, cancelPendingStainRemoval,
-    handleUpdatePieceCount,
+    handleUpdatePieceCount, handleRecordFixationEnded, handleConfirmFixativeRatio,
+    handleRaiseFixationDeficiency, specimensWithOpenFixationDeficiency,
   } = useGrossingScreen({ caseData, setCaseData: setCaseData as any, signingUser: user, knownVersionRef, setConcurrencyConflict });
 
   const onRemoveBlock = useCallback(async (specimenId: string, blockId: string) => {
@@ -131,6 +132,54 @@ const GrossingScreenPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="ps-grossing-protocol-info ps-grossing-protocol-info--none">{t('grossingScreen.noProtocol')}</div>
+              )}
+            </div>
+
+            {/* Real, per direct request (ISO 15189 traceability) —
+                record only, no gating. Fixation end is the real,
+                natural moment tissue actually leaves the fixative at
+                grossing; the ratio confirmation is a real, qualitative
+                judgment call, not a computed number — see
+                Specimen.ts's own doc comments for the full reasoning. */}
+            <div className="ps-grossing-fixation-tracking">
+              <div className="ps-grossing-fixation-field">
+                <span className="ps-grossing-fixation-label">Fixation ended:</span>
+                {sp.processing?.fixationEndedAt ? (
+                  <span className="ps-grossing-fixation-value">{new Date(sp.processing.fixationEndedAt).toLocaleString()}</span>
+                ) : (
+                  <button type="button" className="ps-grossing-fixation-action" onClick={() => handleRecordFixationEnded(sp.id)}>
+                    Record now
+                  </button>
+                )}
+              </div>
+              <div className="ps-grossing-fixation-field">
+                <span className="ps-grossing-fixation-label">Fixative:tissue ratio:</span>
+                {sp.processing?.fixativeToTissueRatioConfirmation ? (
+                  <span className="ps-grossing-fixation-value">
+                    Confirmed by {sp.processing.fixativeToTissueRatioConfirmation.userName} \u2014 {new Date(sp.processing.fixativeToTissueRatioConfirmation.confirmedAt).toLocaleString()}
+                  </span>
+                ) : (
+                  <button type="button" className="ps-grossing-fixation-action" onClick={() => handleConfirmFixativeRatio(sp.id)}>
+                    Confirm adequate ratio
+                  </button>
+                )}
+              </div>
+              {/* Real, per direct decision — a human, not a gate, raises
+                  this. Only offered while real fixation data is
+                  genuinely still missing; once both are recorded above,
+                  there's nothing left to flag. */}
+              {(!sp.processing?.fixationEndedAt || !sp.processing?.fixativeToTissueRatioConfirmation) && (
+                specimensWithOpenFixationDeficiency.has(sp.id) ? (
+                  <div className="ps-grossing-fixation-field">
+                    <span className="ps-grossing-fixation-value ps-grossing-fixation-value--flagged">Deficiency raised</span>
+                  </div>
+                ) : (
+                  <div className="ps-grossing-fixation-field">
+                    <button type="button" className="ps-grossing-fixation-action ps-grossing-fixation-action--deficiency" onClick={() => handleRaiseFixationDeficiency(sp.id)}>
+                      Raise deficiency
+                    </button>
+                  </div>
+                )
               )}
             </div>
 

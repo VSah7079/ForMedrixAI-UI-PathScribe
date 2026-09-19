@@ -58,6 +58,7 @@ import { resolveCytologyRetrospectiveReviewPoolMembership } from '@/services/cyt
 import { resolveCytologyPostSignOutPeerReviewPoolMembership } from '@/services/cytology/resolveCytologyPostSignOutPeerReviewPoolMembership';
 import { resolveCytologyHistologyCorrelationPoolMembership } from '@/services/cytology/resolveCytologyHistologyCorrelationPoolMembership';
 import { resolveCytologyDecantPendingMembership } from '@/services/cytology/resolveCytologyDecantPendingMembership';
+import { resolveSpecimenEntryMatchesCategory } from '@/services/specimenDictionary/resolveSpecimenEntryMatchesCategory';
 import { resolveCytologyRoseActiveMembership } from '@/services/cytology/resolveCytologyRoseActiveMembership';
 import type { Case } from '@/types/case/Case';
 import type { NonGynCytologyRouting } from '@/services/cytology/ICytologyRoutingSettingsService';
@@ -291,7 +292,7 @@ const CytologyWorklistPage: React.FC = () => {
           if (entry && (entry.type === 'Cytology' || entry.type === 'FNA')) { cytoDictEntry = entry; return true; }
           return false;
         }) as any;
-        const isGynCytology = cytoDictEntry?.isGynCytology === true;
+        const isGynCytology = resolveSpecimenEntryMatchesCategory(cytoDictEntry, ['GYN_CYTOLOGY']);
         const organSite = cytoDictEntry?.organSite;
         const specimenId = cytoSpecimen?.id ?? null;
         let isQcPending = false;
@@ -497,7 +498,7 @@ const CytologyWorklistPage: React.FC = () => {
                 {triageRows.map((c, i) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < triageRows.length - 1 ? '1px solid #111827' : 'none' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#8B5CF618', color: '#8B5CF6', border: '1px solid #8B5CF633' }}>Awaiting hrHPV Result</span>
@@ -524,7 +525,7 @@ const CytologyWorklistPage: React.FC = () => {
                 {recallRows.map((c, i) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < recallRows.length - 1 ? '1px solid #111827' : 'none' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#DC262618', color: '#DC2626', border: '1px solid #DC262633' }}>
@@ -545,7 +546,7 @@ const CytologyWorklistPage: React.FC = () => {
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < scansCompletedRows.length - 1 ? '1px solid #111827' : 'none', cursor: 'pointer' }}
                     onClick={() => navigate(`/cytology-worklist/${c.id}`)}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#22C55E18', color: '#22C55E', border: '1px solid #22C55E33' }}>Scan Complete — Ready to Screen</span>
@@ -583,9 +584,7 @@ const CytologyWorklistPage: React.FC = () => {
                       cursor: activeTab !== 'pool' ? 'pointer' : 'default',
                     }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>
-                        {formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                         Case {c.id} · MRN {c.patient?.mrn ?? '—'}
                       </div>

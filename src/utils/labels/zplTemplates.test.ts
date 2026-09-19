@@ -1,5 +1,6 @@
 // src/utils/labels/zplTemplates.test.ts
 import { describe, it, expect } from 'vitest';
+import { DEFAULT_CASSETTE_LABEL_LAYOUT } from '@/services/printSettings/IPrintSettingsService';
 import { buildCassetteZplTemplate, buildSlideZplTemplate, zplEscapeGs1 } from './zplTemplates';
 import { buildGs1DataMatrix } from './gs1DataMatrix';
 import type { Gs1LabelFields } from './gs1DataMatrix';
@@ -23,6 +24,7 @@ describe('zplTemplates — real, corrected fix to PS-51 Section 6.2\'s own ZPL t
     const gs1 = buildGs1DataMatrix(validFields)!;
     const zpl = buildCassetteZplTemplate({
       gs1, accessionNumber: 'PS2026-8821', specimenDesignator: 'A1', blockId: 'BLK-02', patientName: 'DOE, JOHN',
+      layout: DEFAULT_CASSETTE_LABEL_LAYOUT, dpi: 300,
     });
     expect(zpl).toContain('^FH^FD0100850000000000');
   });
@@ -31,13 +33,14 @@ describe('zplTemplates — real, corrected fix to PS-51 Section 6.2\'s own ZPL t
     const gs1 = buildGs1DataMatrix(validFields)!;
     const zpl = buildCassetteZplTemplate({
       gs1, accessionNumber: 'PS2026-8821', specimenDesignator: 'A1', blockId: 'BLK-02', patientName: 'DOE, JOHN',
+      layout: DEFAULT_CASSETTE_LABEL_LAYOUT, dpi: 300,
     });
     expect(zpl).toContain('^XA');
     // Real fix, found while verifying against Zebra's own ^BX syntax:
     // the spec's own "120" quality value was never actually valid —
     // ZPL DataMatrix quality levels are only 0/50/80/100/140/200.
     // ECC200 (GS1's own recommended level) is used instead.
-    expect(zpl).toContain('^BXN,4,200,,,1'); // columns/rows blank (auto), not 0 — real, Labelary-verified fix
+    expect(zpl).toContain('^BXN,3,200,,,1'); // columns/rows blank (auto), not 0 — real, Labelary-verified fix; module dots now computed from the real, admin-configured layout (0.25mm at 300dpi), not a hardcoded literal
     expect(zpl).toContain('^FDPS2026-8821');
     expect(zpl).toContain('A1 - BLK-02');
     expect(zpl).toContain('DOE, JOHN');
@@ -49,6 +52,7 @@ describe('zplTemplates — real, corrected fix to PS-51 Section 6.2\'s own ZPL t
     const zpl = buildCassetteZplTemplate({
       gs1, accessionNumber: 'PS2026-8821', specimenDesignator: 'A1', blockId: 'BLK-02',
       patientName: 'DOE^JOHN~XA^FO999,999^FS',
+      layout: DEFAULT_CASSETTE_LABEL_LAYOUT, dpi: 300,
     });
     const patientNameLine = zpl.split('\n').find(l => l.includes('DOE'));
     expect(patientNameLine).toBeDefined();

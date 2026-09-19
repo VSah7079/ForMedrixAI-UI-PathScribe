@@ -12,6 +12,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
+import { mockAuditService } from '@/services/auditlog/mockAuditService';
 
 export type SigningUser = ReturnType<typeof useAuth>['user'];
 
@@ -49,18 +50,35 @@ export type GenerateReportPdfSnapshotFn = () => Promise<{ pdfBase64?: string; ge
 // keeps its own return statement and blockOverride choice explicit at the
 // call site, not hidden inside a shared function's default.
 //
-// Usage:
-//   } catch (e) {
-//     if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
-//     console.error('...', e);
-//   }
+// Real, direct follow-up (PS-71): a real conflict was detected and shown to
+// the user, but never written to the audit trail — zero references to
+// ConcurrencyConflictError existed anywhere in services/auditlog/ before
+// this. Logged right here, in this one shared choke point, so every real
+// call site across all six hooks that already route through this function
+// gets audit coverage with no per-call-site change required. `userName`/
+// `actionName` are optional, additive context (same honest-when-absent
+// convention already established for AuditLog's own facilityId/stationId
+// fields) — callers that don't pass them still get a real audit entry, just
+// without per-user attribution, rather than silently getting no entry at
+// all. Known gap, not fixed here: SynopticReportPage.tsx's own 14 inline
+// ConcurrencyConflictError catch sites don't call this shared helper at all
+// (a separate, pre-existing duplication issue, not part of this ticket) —
+// only the six real hooks' conflicts are covered by this.
 export function handleConcurrencyConflict(
   e: unknown,
   setConcurrencyConflict: SetConcurrencyConflict,
-  options?: { blockOverride?: boolean },
+  options?: { blockOverride?: boolean; userName?: string; actionName?: string },
 ): boolean {
   if (e instanceof ConcurrencyConflictError) {
     setConcurrencyConflict({ actualVersion: e.actualVersion, blockOverride: options?.blockOverride });
+    mockAuditService.logEvent({
+      type: 'system',
+      event: 'Concurrency conflict detected',
+      detail: `${options?.actionName ?? 'save'}: expected version ${e.expectedVersion}, found ${e.actualVersion} — ${options?.blockOverride ? 'blocked, no override offered' : 'shown to user, override available'}`,
+      user: options?.userName ?? 'unknown',
+      caseId: e.caseId,
+      confidence: null,
+    }).catch(() => {});
     return true;
   }
   return false;

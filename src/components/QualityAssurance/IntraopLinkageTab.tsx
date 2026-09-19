@@ -131,7 +131,7 @@ export const IntraopLinkageTab: React.FC = () => {
       'Performed By': e.performedBy.userName,
       'OR Number': e.orNumber,
     }));
-    exportQaReportRows([...mergedRows, ...pendingRows], `intraoperative-linkage-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows([...mergedRows, ...pendingRows], `intraoperative-linkage-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading intraoperative linkage data…</div>;

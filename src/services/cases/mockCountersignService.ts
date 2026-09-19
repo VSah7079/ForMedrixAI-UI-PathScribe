@@ -93,6 +93,7 @@ export const mockCountersignService: ICountersignService = {
       residentName: input.residentName,
       releasedAt: new Date().toISOString(),
       releasedAnswersSnapshot: input.releasedAnswersSnapshot,
+      autopsyReportTier: input.autopsyReportTier,
       status: 'pending',
     };
     persist([newRecord, ...filtered]);

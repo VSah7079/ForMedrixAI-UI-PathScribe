@@ -1021,6 +1021,26 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     onChange={e => onUpdateBlock(specimenId, block.id, { pieceDescription: e.target.value || undefined })}
                   />
                 </div>
+                {/* Real, per direct follow-up: "add tissue
+                    descriptions on cassettes as that would be good
+                    for any block." Same real, simple single-line
+                    pattern as Piece Description above — genuinely
+                    distinct from it (this names WHAT tissue is in the
+                    cassette, e.g. "Heart — LAD"; Piece Description
+                    describes the physical fragment count/condition),
+                    and distinct from the Block Comments thread below
+                    (a running note log, not a structured, one-line
+                    identifying description). */}
+                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
+                  <label className="ps-conf-label" htmlFor={`block-tissue-desc-${block.id}`}>Tissue Description</label>
+                  <input
+                    id={`block-tissue-desc-${block.id}`} type="text" className="ps-conf-select"
+                    disabled={block.status === 'Cancelled'}
+                    value={block.tissueDescription ?? ''}
+                    placeholder="e.g. Heart — LAD, Cerebral Cortex, Left Ventricle"
+                    onChange={e => onUpdateBlock(specimenId, block.id, { tissueDescription: e.target.value || undefined })}
+                  />
+                </div>
                 {/* Real, per the RFP-APLIS-2026-GLOBAL Grossing
                     Station Hardware Integration gap — populates the
                     real, previously-empty DigitalAsset pipeline (see

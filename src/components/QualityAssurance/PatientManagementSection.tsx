@@ -123,6 +123,10 @@ export const PatientManagementSection: React.FC = () => {
     setLinkRelationshipType('same_person'); setStatusMessage(null);
   };
 
+  // PS-72: kept as plain strings (not JSX) — they're only ever consumed
+  // below via ConfirmModal, and that's where the single, whole-message
+  // data-phi span goes (same "redact the whole message" convention as
+  // PhiToastMessage, since every branch here names at least one patient).
   const confirmActionLabel = activeAction === 'merge'
     ? `Merge ${selectedPatient?.firstName} ${selectedPatient?.lastName} into ${targetPatient?.firstName} ${targetPatient?.lastName}?`
     : activeAction === 'link'
@@ -186,7 +190,7 @@ export const PatientManagementSection: React.FC = () => {
             <div className="ps-accession-outside-link-results" style={{ marginTop: 10 }}>
               {primaryResults.map(r => (
                 <div key={r.id} className="ps-accession-outside-link-result">
-                  <span>{r.firstName} {r.lastName} — MRN {r.mrn} — DOB {new Date(r.dateOfBirth).toLocaleDateString()}</span>
+                  <span data-phi="true">{r.firstName} {r.lastName} — MRN {r.mrn} — DOB {new Date(r.dateOfBirth).toLocaleDateString()}</span>
                   <button className="ps-conf-btn-secondary" onClick={() => selectPrimaryPatient(r)}>Select</button>
                 </div>
               ))}
@@ -198,8 +202,8 @@ export const PatientManagementSection: React.FC = () => {
           <div className="ps-conf-table-wrap" style={{ padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{selectedPatient.firstName} {selectedPatient.lastName}</div>
-                <div className="ps-conf-hint">MRN {selectedPatient.mrn} · DOB {new Date(selectedPatient.dateOfBirth).toLocaleDateString()} · {selectedPatient.id}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }} data-phi="name">{selectedPatient.firstName} {selectedPatient.lastName}</div>
+                <div className="ps-conf-hint" data-phi="true">MRN {selectedPatient.mrn} · DOB {new Date(selectedPatient.dateOfBirth).toLocaleDateString()} · {selectedPatient.id}</div>
                 {selectedPatient.mergedInto && (
                   <p className="ps-conf-hint" style={{ color: '#ef4444' }}>⚠ This record was merged into {selectedPatient.mergedInto} — acting on the surviving record is usually correct instead.</p>
                 )}
@@ -217,7 +221,7 @@ export const PatientManagementSection: React.FC = () => {
               <div className="ps-conf-hint" style={{ fontWeight: 600 }}>Real Cases ({selectedCases.length})</div>
               {selectedCases.length === 0 ? <p className="ps-conf-hint">No real cases under this identity.</p> : (
                 <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
-                  {selectedCases.map(c => <li key={c.id} className="ps-conf-hint">{c.accession?.fullAccession ?? c.id}</li>)}
+                  {selectedCases.map(c => <li key={c.id} className="ps-conf-hint" data-phi="accession">{c.accession?.fullAccession ?? c.id}</li>)}
                 </ul>
               )}
             </div>
@@ -225,10 +229,10 @@ export const PatientManagementSection: React.FC = () => {
             {(samePersonLinks.length > 0 || familyRelationLinks.length > 0) && (
               <div style={{ marginTop: 10 }}>
                 {samePersonLinks.length > 0 && (
-                  <div className="ps-conf-hint">Same person: {samePersonLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
+                  <div className="ps-conf-hint" data-phi="name">Same person: {samePersonLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
                 )}
                 {familyRelationLinks.length > 0 && (
-                  <div className="ps-conf-hint">Family relation: {familyRelationLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
+                  <div className="ps-conf-hint" data-phi="name">Family relation: {familyRelationLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
                 )}
               </div>
             )}
@@ -239,7 +243,11 @@ export const PatientManagementSection: React.FC = () => {
               <button className="ps-conf-btn-primary" disabled={selectedCases.length === 0} onClick={() => openAction('move')}>Move a Case…</button>
             </div>
 
-            {statusMessage && <p className="ps-conf-hint" style={{ color: statusMessage.startsWith('⚠') ? '#ef4444' : '#10b981', marginTop: 10 }}>{statusMessage}</p>}
+            {/* PS-72: whole-message tagging, same convention as PhiToastMessage —
+                the ✓ success paths here always name a target patient; only the
+                ⚠ failure path doesn't, and redacting that one too is the accepted
+                trade-off for not needing per-branch logic here. */}
+            {statusMessage && <p className="ps-conf-hint" data-phi="true" style={{ color: statusMessage.startsWith('⚠') ? '#ef4444' : '#10b981', marginTop: 10 }}>{statusMessage}</p>}
           </div>
 
           {activeAction === 'move' && (
@@ -286,7 +294,7 @@ export const PatientManagementSection: React.FC = () => {
       <ConfirmModal
         show={confirmOpen}
         title="Confirm Patient Management Action"
-        message={`${confirmActionLabel} ${confirmActionMessage}`}
+        message={<span data-phi="true">{confirmActionLabel} {confirmActionMessage}</span>}
         confirmLabel={busy ? 'Working…' : 'Confirm'}
         cancelLabel="Cancel"
         onConfirm={handleConfirmedAction}

@@ -117,7 +117,7 @@ export const DriftCorrectionTab: React.FC = () => {
       'Detail': l.detail,
       'Timestamp': l.timestamp,
     }));
-    exportQaReportRows(rows, `drift-correction-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `drift-correction-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading drift correction data…</div>;

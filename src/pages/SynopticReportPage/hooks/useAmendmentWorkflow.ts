@@ -61,6 +61,8 @@ import { amendmentService, reportVersionService } from '@/services';
 import { aiBehaviorService } from '@/services';
 import { lisAmendmentNoticeService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { publishReportReleasedEvent } from '@/services/reports/publishReportReleasedEvent';
+import { resolveFinalDiagnosisText } from '@/services/reportTemplates/resolveFinalDiagnosisText';
 import type { VersionHistoryEntry, FieldOverride } from '../modals/AmendmentModal';
 import type { NotificationMethod } from '@/types/reports/AmendmentRecord';
 import type { Case, SynopticReportInstance, ProtocolChange, AiFieldSuggestion, GrossingReportInstance } from '@/types/case/Case';
@@ -142,13 +144,37 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return undefined;
         console.error(e);
       }
-      sendSynopticReportToLis({
-        kind: hasConcurrentAmendment ? 'corrected_with_addition' : 'new_instance',
-        caseId: caseData.id, instanceId: activeInstance.instanceId,
-        sequenceNumber: (caseData.synopticReports ?? []).length,
-        addendumTitle: activeInstance.templateName,
-        payloadBody: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
-      });
+      // Real, per direct follow-up ("wire that in" — replacing
+      // sendSynopticReportToLis entirely for orchestration-mode
+      // amendments): buildOruR01Payload.ts (and therefore
+      // publishReportReleasedEvent.ts) only ever works for a real
+      // orchestrator-mode case — confirmed directly, it returns null
+      // otherwise. CoPilot/assist-mode has no real, separate ORU^R01
+      // pipeline of its own, so it keeps its own, real, established
+      // mechanism (sendSynopticReportToLis, mockOutboundLisSyncQueueService)
+      // completely unchanged — same real, existing gate
+      // useSignOutWorkflow.ts's own handleSignOutConfirm already
+      // draws between the two modes for its own, separate "re-sign
+      // the whole case" path.
+      if (caseData.reportingMode === 'assist') {
+        sendSynopticReportToLis({
+          kind: hasConcurrentAmendment ? 'corrected_with_addition' : 'new_instance',
+          caseId: caseData.id, instanceId: activeInstance.instanceId,
+          sequenceNumber: (caseData.synopticReports ?? []).length,
+          addendumTitle: activeInstance.templateName,
+          payloadBody: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
+        });
+      } else {
+        publishReportReleasedEvent({
+          caseId: caseData.id,
+          instanceId: activeInstance.instanceId,
+          reportType: 'ADDENDUM',
+          releasedAt: new Date().toISOString(),
+          releasedBy: signingUser?.id ? { id: signingUser.id, name: signingUser.name ?? signingUser.id } : undefined,
+          performingFacilityId: (caseData as any)?.order?.facilityId,
+          generatePdf: generateReportPdfSnapshot,
+        }).catch(e => console.error('[useAmendmentWorkflow] Real, non-blocking failure publishing ADDENDUM event:', e));
+      }
     }
 
     if (activeInstance?.pendingAmendmentId) {
@@ -161,15 +187,38 @@ export function useAmendmentWorkflow({
       // (Amended)/(Corrected) display label. Falls back to 'amendment'
       // only if the release call itself failed to return the record.
       const releasedRevisionType = amendmentReleaseRes.ok ? amendmentReleaseRes.data.type : 'amendment';
+      // Real, per direct correction ("a text field on the report
+      // should be declared as the final diagnosis... we need to
+      // audit those changes") — resolves the real, prior text from
+      // whichever field a real template author explicitly designated
+      // as the Final Diagnosis (resolveFinalDiagnosisText.ts), never
+      // instance.comment directly — confirmed via direct
+      // investigation that field has no real, dedicated editing UI
+      // at all and cannot be relied on to hold the real diagnosis.
+      // Read against originalReportSnapshot.answers (the real,
+      // pre-edit snapshot captured at Stage 1, before any editing
+      // happened) for "before", and the current, live answers for
+      // "after" — same real template for both, since a correction
+      // never changes which template an instance uses.
+      const originalAnswers = amendmentReleaseRes.ok
+        ? (amendmentReleaseRes.data.originalReportSnapshot as any)?.answers as Record<string, unknown> | undefined
+        : undefined;
+      const previouslyReportedAs = originalAnswers
+        ? await resolveFinalDiagnosisText(activeInstance.templateId, originalAnswers)
+        : undefined;
+      const correctedTo = await resolveFinalDiagnosisText(activeInstance.templateId, activeInstance.answers ?? {});
       // Real, per direct guidance's own follow-up on provenance &
       // auditability - same real gap, same fix, as the addendum path
-      // above.
+      // above. Now carries the real, explicit before/after Final
+      // Diagnosis text, not just the fact that a correction happened.
       log('amendment_released', {
         caseId: caseData.id,
         amendmentId: activeInstance.pendingAmendmentId,
         type: releasedRevisionType,
         reportInstanceId: activeInstance.instanceId,
         specimenId: activeInstance.specimenId,
+        previouslyReportedAs,
+        correctedTo,
       });
       setCaseData(prev => prev ? {
         ...prev,
@@ -199,10 +248,25 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return undefined;
         console.error(e);
       }
-      sendSynopticReportToLis({
-        kind: 'corrected', caseId: caseData.id, instanceId: activeInstance.instanceId,
-        payloadBody: `Synoptic instance ${activeInstance.instanceId} corrected and re-signed out.`,
-      });
+      // Real, per this function's own header above (the addendum
+      // path) — same real, mode-gated reasoning applies here too.
+      if (caseData.reportingMode === 'assist') {
+        sendSynopticReportToLis({
+          kind: 'corrected', caseId: caseData.id, instanceId: activeInstance.instanceId,
+          payloadBody: `Synoptic instance ${activeInstance.instanceId} corrected and re-signed out.`,
+        });
+      } else {
+        publishReportReleasedEvent({
+          caseId: caseData.id,
+          instanceId: activeInstance.instanceId,
+          reportType: 'CORRECTED',
+          releasedAt: new Date().toISOString(),
+          releasedBy: signingUser?.id ? { id: signingUser.id, name: signingUser.name ?? signingUser.id } : undefined,
+          performingFacilityId: (caseData as any)?.order?.facilityId,
+          generatePdf: generateReportPdfSnapshot,
+          previouslyReportedAs,
+        }).catch(e => console.error('[useAmendmentWorkflow] Real, non-blocking failure publishing CORRECTED event:', e));
+      }
     }
 
     // CoPilot's real completion moment — version record, tagged correctly

@@ -42,6 +42,26 @@ export interface ContainerType {
    *  file header. */
   systemLogicNotes: string;
   status: 'Active' | 'Inactive';
+  /** Real, per direct guidance's own recommended ProcessingContainer
+   *  attributes — numeric capacity in mL. Undefined for a container
+   *  whose real capacity genuinely varies or isn't meaningfully fixed
+   *  (a biohazard bag, a custom site container) — never a fabricated
+   *  number to fill the field. */
+  capacityMl?: number;
+  /** Real, per direct guidance — references
+   *  FixativeDictionaryEntry.id (services/protocols/IPathwayMaterialDictionaryService.ts),
+   *  the same real fixative catalog ProtocolPathway.fixativeType now
+   *  draws from. Nullable/undefined for a genuinely dry or non-fixing
+   *  container (a fresh/dry specimen bag, an RPMI transport tube) —
+   *  never defaulted to a fixative that container doesn't actually
+   *  contain. */
+  defaultFixativeId?: string;
+  /** Real, per direct guidance — whether this container ships
+   *  pre-filled with its own default fixative (true) or is filled at
+   *  the bench/by the collector (false/undefined). Only meaningful
+   *  alongside a real defaultFixativeId; a container with no default
+   *  fixative at all is neither prefilled nor bench-filled with one. */
+  isPrefilled?: boolean;
   /** Real, per direct request: "Each Performing Lab will want their own
    *  types. If Performing Lab not defined, it is available for
    *  everyone." Same field-name convention and same null/undefined =

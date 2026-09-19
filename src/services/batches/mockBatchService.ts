@@ -14,6 +14,12 @@ import { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import { resolveMaterialFromScan } from '@/utils/resolveMaterialFromScan';
 import { mockAuditService } from '../auditlog/mockAuditService';
+import { mockSpecimenDeficiencyService } from '../deficiencies/mockSpecimenDeficiencyService';
+import { mockReagentLotService } from '../reagentLots/mockReagentLotService';
+import { mockStainTypeService } from '../stains/mockStainTypeService';
+import { mockScanStationService } from '../scanStations/mockScanStationService';
+import { shouldAutoAppendControl } from './shouldAutoAppendControl';
+import { batchHasControlForLot, createControlSlideCase } from './ensureControlSlideAppended';
 import { mockHardwareContainerRegistryService } from '../hardwareContainers/mockHardwareContainerRegistryService';
 import { CONTAINER_TYPE_CODE } from '../hardwareContainers/IHardwareContainerRegistryService';
 import type { ContainerType } from '../hardwareContainers/IHardwareContainerRegistryService';
@@ -299,6 +305,7 @@ export const mockBatchService: IBatchService = {
       referralDestinationFacilityId: draft.processingNode === 'External Referral' ? draft.referralDestinationFacilityId : undefined,
       referralTestRequested: draft.processingNode === 'External Referral' ? draft.referralTestRequested : undefined,
       cytologyStainTypeId: draft.processingNode === 'Cytology Staining' ? draft.cytologyStainTypeId : undefined,
+      stainingReagentLotIds: draft.processingNode === 'Staining' ? draft.stainingReagentLotIds : undefined,
       protocol: draft.protocol,
       priority: draft.priority,
       status: 'active',
@@ -317,6 +324,47 @@ export const mockBatchService: IBatchService = {
       // BatchDetailView.tsx — see that file's own comment for the full
       // reasoning.
       if ('error' in checkOutResult) return { ok: false, error: checkOutResult.error };
+    }
+
+    // Real, per PS-289/PS-292's own "batch-manifest scanning with
+    // automatic control-slide appending" piece — for every real
+    // reagent lot selected for this new 'Staining' batch whose own
+    // stain requires an auto-appended control (shouldAutoAppendControl.ts),
+    // and isn't already represented in this same, brand-new batch
+    // (trivially true at creation, but checked the same real way a
+    // later addition would be, for forward compatibility), create and
+    // append one real control item now. Never blocks batch creation
+    // on a failure here — a reagent lot that fails to resolve, or a
+    // stain type that no longer exists, is a real, separate data
+    // problem the tech's own physical batch creation must not be
+    // held hostage to.
+    if (batch.processingNode === 'Staining' && batch.stainingReagentLotIds && batch.stainingReagentLotIds.length > 0) {
+      for (const reagentLotId of batch.stainingReagentLotIds) {
+        try {
+          const lotRes = await mockReagentLotService.getById(reagentLotId);
+          if (!lotRes.ok || !lotRes.data.stainTypeId) continue;
+          const stainTypesRes = await mockStainTypeService.getAll();
+          if (!stainTypesRes.ok) continue;
+          const stainType = stainTypesRes.data.find(s => s.id === lotRes.data.stainTypeId);
+          if (!stainType || !shouldAutoAppendControl(stainType)) continue;
+          if (await batchHasControlForLot(batch, reagentLotId)) continue;
+
+          let facilityId = 'unknown';
+          if (draft.stationId) {
+            const stationRes = await mockScanStationService.getById(draft.stationId);
+            if (stationRes.ok) facilityId = stationRes.data.facilityId;
+          }
+          const { caseData, slideId } = await createControlSlideCase(lotRes.data, stainType, facilityId);
+          batch.items.push({
+            id: genId('batch-item'), materialType: 'slide', displayId: slideId,
+            caseAccession: caseData.accession.fullAccession,
+            specimenLabel: 'A', addedAt: new Date().toISOString(),
+            addedByUserId: 'system', addedByUserName: 'System (auto-appended control)',
+          });
+        } catch {
+          // Real, deliberate silent skip — see this block's own header.
+        }
+      }
     }
 
     batches.push(batch);
@@ -666,6 +714,69 @@ export const mockBatchService: IBatchService = {
       type: 'system', event: 'Cytology Instrument Status Update',
       detail: `Batch ${batch.masterBarcode} (Cytology Processing): instrument reports '${status}'.`,
       user: 'System', caseId: null, confidence: null,
+    }).catch(() => {});
+    return { ok: true, data: updatedBatch };
+  },
+
+  async setStainingInstrumentStatus(batchId: ID, status): Promise<ServiceResult<Batch>> {
+    const batches = loadBatches();
+    const batch = findBatch(batches, batchId);
+    if (!batch) return { ok: false, error: `No batch found with id "${batchId}".` };
+    if (batch.processingNode !== 'Staining') {
+      return { ok: false, error: `Batch ${batch.masterBarcode} is a '${batch.processingNode}' batch, not 'Staining' — instrument status only applies to a Staining batch.` };
+    }
+    const updatedBatch: Batch = { ...batch, stainingInstrumentStatus: status };
+    saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    mockAuditService.logEvent({
+      type: 'system', event: 'Staining Instrument Status Update',
+      detail: `Batch ${batch.masterBarcode} (Staining): instrument reports '${status}'.`,
+      user: 'System', caseId: null, confidence: null,
+    }).catch(() => {});
+
+    // Real, per the original Stain QC Module spec's own §2.4 — a
+    // real, confirmed run failure auto-raises a real deficiency
+    // against every real specimen this batch's own items belong to,
+    // never left for a human to notice and raise by hand (unlike
+    // def-missing-fixation-completion's own deliberately manual
+    // posture) — a known instrument failure is a real, conclusive
+    // signal already in hand the moment it's received.
+    if (status === 'Run Failed') {
+      const affectedAccessions = [...new Set((batch.items ?? []).map(i => i.caseAccession))];
+      for (const accession of affectedAccessions) {
+        const caseData = await caseRouter.getCase(accession);
+        if (!caseData) continue;
+        const specimenLabels = [...new Set((batch.items ?? []).filter(i => i.caseAccession === accession).map(i => i.specimenLabel).filter((l): l is string => !!l))];
+        const targets = specimenLabels.length > 0 ? specimenLabels : [undefined];
+        for (const specimenLabel of targets) {
+          const specimen = specimenLabel ? (caseData.specimens ?? []).find(sp => sp.label === specimenLabel) : undefined;
+          await mockSpecimenDeficiencyService.raise({
+            caseId: caseData.id,
+            specimenId: specimen?.id,
+            specimenLabel,
+            deficiencyTypeId: 'def-stain-batch-failed',
+            comment: `Automated stainer reported 'Run Failed' for batch ${batch.masterBarcode}.`,
+            raisedBy: 'system',
+          }).catch(() => {});
+        }
+      }
+    }
+
+    return { ok: true, data: updatedBatch };
+  },
+
+  async confirmQcVisualRead(batchId: ID, userId: string, userName: string): Promise<ServiceResult<Batch>> {
+    const batches = loadBatches();
+    const batch = findBatch(batches, batchId);
+    if (!batch) return { ok: false, error: `No batch found with id "${batchId}".` };
+    if (batch.processingNode !== 'Staining') {
+      return { ok: false, error: `Batch ${batch.masterBarcode} is a '${batch.processingNode}' batch, not 'Staining' — the QC visual read checklist only applies to a Staining batch.` };
+    }
+    const updatedBatch: Batch = { ...batch, qcVisualReadConfirmation: { userId, userName, confirmedAt: new Date().toISOString() } };
+    saveBatches(batches.map(b => b.id === batchId ? updatedBatch : b));
+    mockAuditService.logEvent({
+      type: 'system', event: 'QC Visual Read Confirmed',
+      detail: `Batch ${batch.masterBarcode} (Staining): visual read checklist confirmed by ${userName}.`,
+      user: userId, caseId: null, confidence: null,
     }).catch(() => {});
     return { ok: true, data: updatedBatch };
   },

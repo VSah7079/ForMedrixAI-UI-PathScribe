@@ -109,7 +109,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
       'Changed Fields': r.changedFieldCount ?? '',
       'Attending Feedback': r.attendingFeedback ?? '',
     }));
-    exportQaReportRows(rows, `countersign-turnaround-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `countersign-turnaround-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading countersign data…</div>;

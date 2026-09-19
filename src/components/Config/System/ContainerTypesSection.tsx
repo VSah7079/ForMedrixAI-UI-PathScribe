@@ -9,8 +9,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
 import '../../../pathscribe.css';
-import { containerTypeService } from '../../../services';
+import { containerTypeService, fixativeDictionaryService } from '../../../services';
 import type { ContainerType, ContainerCategory } from '../../../services/containerTypes/IContainerTypeService';
+import type { FixativeDictionaryEntry } from '../../../services/protocols/IPathwayMaterialDictionaryService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import { prepareDuplicate } from '../../../utils/duplicateEntry';
 import { findDuplicate } from '../../../utils/validateUnique';
@@ -34,11 +35,12 @@ interface ContainerTypeModalProps {
   containerType?: ContainerType;
   existingEntries: ContainerType[];
   labs: Facility[];
+  fixatives: FixativeDictionaryEntry[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, containerType, existingEntries, labs, onSave, onClose }) => {
+const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, containerType, existingEntries, labs, fixatives, onSave, onClose }) => {
   const [draft, setDraft] = useState<Draft>(
     containerType
       ? { ...containerType, active: containerType.status !== 'Inactive' }
@@ -113,6 +115,32 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
           </div>
 
           <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Capacity (mL)</label>
+            <input type="number" className="ps-conf-input" value={draft.capacityMl ?? ''}
+              onChange={e => set('capacityMl', e.target.value === '' ? undefined : Number(e.target.value))}
+              placeholder="Leave blank if capacity genuinely varies or isn't meaningful" />
+          </div>
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="container-default-fixative">Default Fixative</label>
+            <select id="container-default-fixative" className="ps-conf-select"
+              value={draft.defaultFixativeId ?? ''} onChange={e => set('defaultFixativeId', e.target.value || undefined)}>
+              <option value="">\u2014 None (dry / bench-filled) \u2014</option>
+              {fixatives.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">Prefilled</label>
+            <div className="ps-conf-toggle-row">
+              <div onClick={() => set('isPrefilled', !draft.isPrefilled)} className={`ps-conf-toggle-track ${draft.isPrefilled ? 'ps-conf-toggle-track--active' : ''}`}>
+                <div className="ps-conf-toggle-thumb" />
+              </div>
+              <span className="ps-conf-toggle-label">{draft.isPrefilled ? 'Ships pre-filled with the fixative above' : 'Filled at the bench / by the collector'}</span>
+            </div>
+          </div>
+
+          <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="container-performing-lab">Performing Lab</label>
             <select id="container-performing-lab" className="ps-conf-select"
               value={draft.performingLabFacilityId ?? ''}
@@ -152,6 +180,7 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
 // ─── Main ContainerTypesSection ────────────────────────────────────────────────
 const ContainerTypesSection: React.FC = () => {
   const [types,        setTypes]        = useState<ContainerType[]>([]);
+  const [fixatives,    setFixatives]    = useState<FixativeDictionaryEntry[]>([]);
   const [labs,         setLabs]         = useState<Facility[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
@@ -164,6 +193,7 @@ const ContainerTypesSection: React.FC = () => {
       if (res.ok) setTypes(res.data);
       setLoading(false);
     });
+    fixativeDictionaryService.getAll().then(res => { if (res.ok) setFixatives(res.data.filter(f => f.active)); });
     // Same real, shared query every dictionary needing lab-scoping
     // uses now — see utils/performingLabs.ts's own header for why this
     // was extracted (found already independently duplicated).
@@ -284,7 +314,7 @@ const ContainerTypesSection: React.FC = () => {
         </div>
       </div>
 
-      {modal && <ContainerTypeModal mode={modal.mode} containerType={modal.containerType} existingEntries={types} labs={labs} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <ContainerTypeModal mode={modal.mode} containerType={modal.containerType} existingEntries={types} labs={labs} fixatives={fixatives} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };

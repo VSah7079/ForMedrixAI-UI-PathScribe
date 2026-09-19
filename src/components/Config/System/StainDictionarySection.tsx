@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { stainTypeService, sectioningProtocolService, stainOrderMacroService } from '../../../services';
 import type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from '../../../services';
@@ -48,6 +48,14 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
   const [turnaround, setTurnaround] = useState(entry?.defaultTurnaroundHours?.toString() ?? '');
   const [defaultBillingCode, setDefaultBillingCode] = useState(entry?.defaultBillingCode ?? '');
   const [excludeFromIhcSequenceCounting, setExcludeFromIhcSequenceCounting] = useState(entry?.excludeFromIhcSequenceCounting ?? false);
+  // Real, per PS-289/PS-292's own Gating Strategy and "batch-manifest
+  // scanning with automatic control-slide appending" pieces — see
+  // IStainService.ts's own doc comments on each field for the full
+  // reasoning.
+  const [qcEnforcementMode, setQcEnforcementMode] = useState<StainType['qcEnforcementMode']>(entry?.qcEnforcementMode);
+  const [requiresTargetControl, setRequiresTargetControl] = useState(entry?.requiresTargetControl ?? false);
+  const [allowControlAutoAppend, setAllowControlAutoAppend] = useState(entry?.allowControlAutoAppend ?? false);
+  const [defaultControlTissueType, setDefaultControlTissueType] = useState(entry?.defaultControlTissueType ?? '');
   const [active, setActive] = useState(entry?.active ?? true);
   const [nameError, setNameError] = useState<string | null>(null);
   // ── Real, per direct guidance: Molecular-category fields ──────────
@@ -97,6 +105,10 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
       defaultTurnaroundHours: turnaround ? Number(turnaround) : undefined,
       defaultBillingCode: defaultBillingCode.trim() || undefined,
       excludeFromIhcSequenceCounting: defaultBillingCode.trim() ? excludeFromIhcSequenceCounting : undefined,
+      qcEnforcementMode: qcEnforcementMode || undefined,
+      requiresTargetControl: requiresTargetControl || undefined,
+      allowControlAutoAppend: requiresTargetControl && allowControlAutoAppend ? true : undefined,
+      defaultControlTissueType: requiresTargetControl && defaultControlTissueType.trim() ? defaultControlTissueType.trim() : undefined,
       methodology: category === 'Molecular' && methodology ? methodology : undefined,
       defaultTargets: category === 'Molecular' && selectedTargets.length > 0 ? selectedTargets : undefined,
       billingRule,
@@ -163,6 +175,66 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
               </p>
             )}
           </div>
+
+          {(category === 'IHC' || category === 'Special Stain') && (
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">QC & Control Slide Settings</label>
+
+              <div className="ps-conf-form-row">
+                <div className="ps-conf-form-field">
+                  <label className="ps-conf-label" htmlFor="stain-qc-mode">Post-Run QC Enforcement Mode</label>
+                  <select id="stain-qc-mode" className="ps-conf-select" value={qcEnforcementMode ?? ''} onChange={e => setQcEnforcementMode((e.target.value || undefined) as StainType['qcEnforcementMode'])}>
+                    <option value="">\u2014 No override (use bench default) \u2014</option>
+                    <option value="Enforced">Enforced</option>
+                    <option value="Auto-Resolve">Auto-Resolve</option>
+                    <option value="Hybrid">Hybrid</option>
+                  </select>
+                  <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+                    Overrides the Workstation Group's own instrument-level default for any batch running this
+                    specific stain. Leave unset to defer entirely to the bench.
+                  </p>
+                </div>
+              </div>
+
+              <div className="ps-conf-toggle-row">
+                <div onClick={() => { const next = !requiresTargetControl; setRequiresTargetControl(next); if (!next) { setAllowControlAutoAppend(false); setDefaultControlTissueType(''); } }}
+                  className={`ps-conf-toggle-track ${requiresTargetControl ? 'ps-conf-toggle-track--active' : ''}`}>
+                  <div className="ps-conf-toggle-thumb" />
+                </div>
+                <span className={`ps-conf-toggle-label ${requiresTargetControl ? 'ps-conf-toggle-label--active' : ''}`}>
+                  Require target control slide (enforces the QC gate at sign-out)
+                </span>
+              </div>
+
+              {requiresTargetControl && (
+                <>
+                  <div className="ps-conf-toggle-row ps-conf-section-subtitle--top-gap">
+                    <div onClick={() => setAllowControlAutoAppend(!allowControlAutoAppend)}
+                      className={`ps-conf-toggle-track ${allowControlAutoAppend ? 'ps-conf-toggle-track--active' : ''}`}>
+                      <div className="ps-conf-toggle-thumb" />
+                    </div>
+                    <span className={`ps-conf-toggle-label ${allowControlAutoAppend ? 'ps-conf-toggle-label--active' : ''}`}>
+                      Auto-append control slide on batch creation
+                    </span>
+                  </div>
+                  <p className="ps-conf-section-subtitle">
+                    Off: turn this off if this stain relies on a real, internal tissue control, or the lab allocates
+                    its control slide manually — the QC gate above still applies, it just won't be satisfied by an
+                    auto-created slide.
+                  </p>
+
+                  <div className="ps-conf-form-field ps-conf-section-subtitle--top-gap">
+                    <label className="ps-conf-label">Default Control Tissue</label>
+                    <input className="ps-conf-input" value={defaultControlTissueType} onChange={e => setDefaultControlTissueType(e.target.value)} placeholder="e.g. Tonsil, Breast, Colon (normal mucosa)" />
+                    <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+                      Informational only — pre-fills the auto-created control's own specimen description. Never
+                      validated or enforced; a real run's own control tissue choice can differ.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {(category === 'IHC' || category === 'Immunofluorescence') && (
             <div className="ps-conf-form-row">
               <div className="ps-conf-form-field">
@@ -603,44 +675,38 @@ const StainDictionarySection: React.FC = () => {
       AntibodyClone: s.antibodyClone ?? '', Vendor: s.vendor ?? '',
       DefaultTurnaroundHours: s.defaultTurnaroundHours ?? '', Active: s.active ? 'Yes' : 'No',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Diagnostic Assays');
-    XLSX.writeFile(wb, 'StainDictionary.xlsx');
+    downloadCsv('StainDictionary.csv', toCsv(rows));
   };
 
-  const handleStainFileUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const handleStainFileUpload = async (file: File) => {
+    if (!isCsvFile(file)) {
+      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows: any[] = parseCsv(text);
 
-      const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
-      let newCount = 0, updateCount = 0;
-      const preview = rows.map(row => {
-        const name = get(row, 'Name', 'name');
-        const existing = stainTypes.find(s => s.name.toLowerCase() === name.toLowerCase());
-        if (existing) updateCount++; else newCount++;
-        const category = (get(row, 'Category', 'category') || existing?.category || 'Routine') as StainCategory;
-        const turnaround = get(row, 'DefaultTurnaroundHours', 'defaultTurnaroundHours');
-        const activeText = get(row, 'Active', 'active');
-        return {
-          name, category,
-          description: get(row, 'Description', 'description') || existing?.description,
-          antibodyClone: get(row, 'AntibodyClone', 'antibodyClone') || existing?.antibodyClone,
-          vendor: get(row, 'Vendor', 'vendor') || existing?.vendor,
-          defaultTurnaroundHours: turnaround ? Number(turnaround) : existing?.defaultTurnaroundHours,
-          active: activeText ? /^(yes|true|y|1)$/i.test(activeText) : (existing?.active ?? true),
-        };
-      }).filter(d => d.name);
+    const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
+    let newCount = 0, updateCount = 0;
+    const preview = rows.map(row => {
+      const name = get(row, 'Name', 'name');
+      const existing = stainTypes.find(s => s.name.toLowerCase() === name.toLowerCase());
+      if (existing) updateCount++; else newCount++;
+      const category = (get(row, 'Category', 'category') || existing?.category || 'Routine') as StainCategory;
+      const turnaround = get(row, 'DefaultTurnaroundHours', 'defaultTurnaroundHours');
+      const activeText = get(row, 'Active', 'active');
+      return {
+        name, category,
+        description: get(row, 'Description', 'description') || existing?.description,
+        antibodyClone: get(row, 'AntibodyClone', 'antibodyClone') || existing?.antibodyClone,
+        vendor: get(row, 'Vendor', 'vendor') || existing?.vendor,
+        defaultTurnaroundHours: turnaround ? Number(turnaround) : existing?.defaultTurnaroundHours,
+        active: activeText ? /^(yes|true|y|1)$/i.test(activeText) : (existing?.active ?? true),
+      };
+    }).filter(d => d.name);
 
-      setStainImportPreview(preview);
-      setStainImportCounts({ newCount, updateCount });
-    };
-    reader.readAsBinaryString(file);
+    setStainImportPreview(preview);
+    setStainImportCounts({ newCount, updateCount });
   };
 
   const handleApplyStainImport = () => {
@@ -684,7 +750,7 @@ const StainDictionarySection: React.FC = () => {
             <div className="ps-specdict-header-actions">
               <button className="ps-conf-btn-secondary" onClick={handleDownloadStainTypes}>Export</button>
               <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>Import Spreadsheet</button>
-              <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
+              <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
             </div>
             <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Diagnostic Process</button>
           </div>

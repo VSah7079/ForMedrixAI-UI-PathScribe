@@ -1066,6 +1066,109 @@ const SEED_ACTIONS: SystemAction[] = [
     },
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
+  // Real, per direct follow-up ("some cases will have DP, others may
+  // not") — same real, established READ_FLAGS/READ_SPECIMEN pattern,
+  // never a separate, parallel voice system for DP-relevant rows.
+  {
+    id: 'READ_DIGITAL_READINESS', label: 'Read Digital Readiness', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Ctrl+Alt+V', internalKey: 'F15+PS040',
+    voiceTriggers: ['read digital readiness', 'slide status', 'scan status', 'read scan status'],
+    voiceTriggersByLanguage: {
+      fr: ["lire la disponibilité numérique", "statut de la lame", "statut du scan"],
+      de: ["digitale bereitschaft vorlesen", "objektträger status", "scan status"],
+      nl: ["digitale gereedheid voorlezen", "objectglaasje status", "scan status"],
+      ko: ["디지털 준비 상태 읽기", "슬라이드 상태", "스캔 상태"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'READ_DP_TRIAGE', label: 'Read AI Triage', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Ctrl+Alt+W', internalKey: 'F15+PS041',
+    voiceTriggers: ['read ai triage', 'ai result', 'read ai result', 'what is the ai finding'],
+    voiceTriggersByLanguage: {
+      fr: ["lire le triage ia", "résultat ia", "quel est le résultat ia"],
+      de: ["ki triage vorlesen", "ki ergebnis", "wie lautet das ki ergebnis"],
+      nl: ["ai triage voorlezen", "ai resultaat", "wat is het ai resultaat"],
+      ko: ["AI 트리아지 읽기", "AI 결과", "AI 결과가 뭐야"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'OPEN_SLIDE_DETAILS', label: 'Open Slide Details', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Ctrl+Alt+X', internalKey: 'F15+PS042',
+    voiceTriggers: ['open slide details', 'show slide details', 'slide details'],
+    voiceTriggersByLanguage: {
+      fr: ["ouvrir les détails de la lame", "afficher les détails de la lame"],
+      de: ["objektträger details öffnen", "objektträger details anzeigen"],
+      nl: ["objectglaasje details openen", "objectglaasje details tonen"],
+      ko: ["슬라이드 상세 정보 열기", "슬라이드 상세 정보 보기"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'TABLE_FILTER_DP', label: 'Filter Digital Pathology', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Ctrl+Alt+Y', internalKey: 'F15+PS043',
+    voiceTriggers: ['filter dp', 'filter digital pathology', 'dp cases', 'show dp cases', 'digital pathology cases'],
+    voiceTriggersByLanguage: {
+      fr: ["filtrer dp", "cas de pathologie numérique", "afficher les cas dp"],
+      de: ["dp filtern", "digitale pathologie fälle", "dp fälle anzeigen"],
+      nl: ["dp filteren", "digitale pathologie zaken", "dp zaken tonen"],
+      ko: ["DP 필터", "디지털 병리 증례", "DP 증례 표시"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Real, per direct follow-up recalling a real, prior requirement
+  // ("I do not want to send the Pathologist to multiple worklist").
+  {
+    id: 'TABLE_FILTER_GYNCYTO', label: 'Filter GYN Cytology', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Ctrl+Alt+Z', internalKey: 'F15+PS044',
+    voiceTriggers: ['filter gyn cytology', 'gyn cytology cases', 'show gyn cytology', 'filter gyn'],
+    voiceTriggersByLanguage: {
+      fr: ["filtrer cytologie gyn", "cas de cytologie gyn"],
+      de: ["gyn zytologie filtern", "gyn zytologie fälle"],
+      nl: ["gyn cytologie filteren", "gyn cytologie zaken"],
+      ko: ["부인과 세포 검사 필터", "부인과 세포 검사 증례"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'TABLE_FILTER_NONGYNCYTO', label: 'Filter Non-GYN Cytology / FNA', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Alt+Shift+K', internalKey: 'F15+PS045',
+    voiceTriggers: ['filter non gyn cytology', 'non gyn cytology cases', 'filter fna', 'fna cases', 'show fna'],
+    voiceTriggersByLanguage: {
+      fr: ["filtrer cytologie non gyn", "cas de cytologie non gyn", "filtrer fna"],
+      de: ["nicht gyn zytologie filtern", "fna fälle filtern"],
+      nl: ["niet gyn cytologie filteren", "fna zaken filteren"],
+      ko: ["비부인과 세포 검사 필터", "FNA 증례 필터"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'TABLE_FILTER_AUTOPSY', label: 'Filter Autopsy', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Alt+Shift+Q', internalKey: 'F15+PS046',
+    voiceTriggers: ['filter autopsy', 'autopsy cases', 'show autopsy cases'],
+    voiceTriggersByLanguage: {
+      fr: ["filtrer autopsie", "cas d'autopsie", "afficher les cas d'autopsie"],
+      de: ["autopsie filtern", "autopsie fälle", "autopsie fälle anzeigen"],
+      nl: ["autopsie filteren", "autopsie zaken", "autopsie zaken tonen"],
+      ko: ["부검 필터", "부검 증례", "부검 증례 표시"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Real, per direct follow-up recalling the messaging system's own
+  // unread pattern.
+  {
+    id: 'TABLE_FILTER_NEWCASES', label: 'Filter New Cases', category: VOICE_CONTEXT.WORKLIST,
+    shortcut: 'Alt+Shift+U', internalKey: 'F15+PS047',
+    voiceTriggers: ['filter new cases', 'new cases', 'show new cases', 'unopened cases'],
+    voiceTriggersByLanguage: {
+      fr: ["filtrer les nouveaux cas", "nouveaux cas", "afficher les nouveaux cas"],
+      de: ["neue fälle filtern", "neue fälle", "neue fälle anzeigen"],
+      nl: ["nieuwe zaken filteren", "nieuwe zaken", "nieuwe zaken tonen"],
+      ko: ["새 증례 필터", "새 증례", "새 증례 표시"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
 {
     id: 'TABLE_FILTER_COMPLETED',
     label: 'Filter Completed',
@@ -3065,6 +3168,15 @@ function dispatchInternalKey(internalKey: string) {
 
 
 let currentAppContext: string = VOICE_CONTEXT.WORKLIST;
+// Real, per PS-289's own comment thread — separate from
+// currentAppContext above: hardware-driven (which station a
+// technician has selected), not page/route-driven. Undefined means
+// no station selected, same real "No station" state
+// NavBarScanStation.tsx's own indicator already shows.
+let currentStationProfile: string | undefined = undefined;
+// Real, per PS-289's own comment thread — see
+// IActionRegistryService.ts's own doc comment for the full reasoning.
+let currentActionGroupActionIds: Set<string> = new Set();
 
 // ─── Live registry — loaded from storage, mutated by updateAction ─────────────
 const LIVE_ACTIONS: SystemAction[] = loadActions();
@@ -3162,6 +3274,15 @@ export const mockActionRegistryService: IActionRegistryService = {
   setCurrentContext: (c: string) => {
     currentAppContext = c;
   },
+  // Real, per PS-289's own comment thread.
+  setCurrentStationProfile: (functionalArea: string | undefined) => {
+    currentStationProfile = functionalArea;
+  },
+  // Real, per PS-289's own comment thread — see
+  // IActionRegistryService.ts's own doc comment for the full reasoning.
+  setCurrentActionGroupActionIds: (actionIds: string[] | undefined) => {
+    currentActionGroupActionIds = new Set(actionIds ?? []);
+  },
   // Real feature, per direct follow-up: "are we not mapping keyboard
   // commands in the Action Registry?" — the real, missing piece was a
   // live keydown listener that actually executes an action when its
@@ -3169,8 +3290,23 @@ export const mockActionRegistryService: IActionRegistryService = {
   // exact same isActive + GLOBAL_CATEGORIES-or-current-context
   // eligibility rule findActionByTrigger already used for voice, so
   // keyboard and voice matching can never silently drift apart.
+  // Real, per PS-289's own comment thread — extended with a THIRD,
+  // independent "OR" branch: an action whose own stationProfiles
+  // includes the current, real station's functionalArea is eligible
+  // too, on top of (never instead of) the existing app-context rule.
+  // Real, per PS-289's own comment thread — extended again with a
+  // FOURTH, independent "OR" branch: an action whose own id is a
+  // member of the current station's resolved action group bundle is
+  // eligible too. See setCurrentActionGroupActionIds's own doc
+  // comment for why this is genuinely separate from stationProfiles
+  // matching, not a duplicate of it.
   getEligibleActions: (): SystemAction[] =>
-    LIVE_ACTIONS.filter(a => a.isActive && (GLOBAL_CATEGORIES.has(a.category) || a.category === currentAppContext)),
+    LIVE_ACTIONS.filter(a => a.isActive && (
+      GLOBAL_CATEGORIES.has(a.category)
+      || a.category === currentAppContext
+      || (!!currentStationProfile && !!a.stationProfiles?.includes(currentStationProfile))
+      || currentActionGroupActionIds.has(a.id)
+    )),
 onAction: (callback: (actionId: string) => void) => {
     const handler = (e: any) => {
       if (e.detail?.id) callback(e.detail.id);

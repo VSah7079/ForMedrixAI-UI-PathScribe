@@ -639,6 +639,7 @@ export async function buildContext(
       performingFacilityId: caseData.order?.facilityId,
       orderingPhysicianId: caseData.order?.orderingPhysicianId ?? caseData.order?.requestingProvider,
       subspecialtyId,
+      caseStatus: caseData.status,
     });
   } catch (e) {
     // Routing must never hard-fail report generation — degrade to

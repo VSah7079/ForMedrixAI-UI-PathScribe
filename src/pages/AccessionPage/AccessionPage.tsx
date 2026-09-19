@@ -37,6 +37,7 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { PhiToastMessage } from '@/components/Common/PhiToastMessage';
 
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { ORCH_ID_PREFIX, isOrchCaseId, formatOrchCaseId } from '@/services/cases/reportingModeRouting';
@@ -129,6 +130,42 @@ import { mockMasterPaymentTypeService } from '@/services/billing/mockMasterPayme
 import { mockJurisdictionPaymentMappingService } from '@/services/billing/mockJurisdictionPaymentMappingService';
 import type { MasterPaymentType } from '@/types/billing/MasterPaymentType';
 import type { JurisdictionPaymentMapping } from '@/types/billing/JurisdictionPaymentMapping';
+import { resolveAutopsyIntakeFormValidation, type AutopsyIntakeFormState } from '@/services/autopsy/resolveAutopsyIntakeFormValidation';
+import { buildAutopsyCaseDetailsFromIntakeForm } from '@/services/autopsy/buildAutopsyCaseDetailsFromIntakeForm';
+import { JURISDICTION_LABELS, type Jurisdiction as AutopsyJurisdiction } from '@/types/systemConfig';
+import type { AutopsyCaseAuthority } from '@/types/autopsy/AutopsyCaseDetails';
+import { resolveSpecimenEntryMatchesCategory } from '@/services/specimenDictionary/resolveSpecimenEntryMatchesCategory';
+import type { AutopsyOrganCode } from '@/types/autopsy/AutopsyOrganCode';
+import { AUTOPSY_ORGAN_TO_SECTION } from '@/types/autopsy/AutopsyOrganCode';
+import { classifyAutopsyOrganCodeFromSiteText } from '@/services/autopsy/classifyAutopsyOrganCodeFromSiteText';
+import { formatConsentingRelativePriorityHint } from '@/services/autopsy/formatConsentingRelativePriorityHint';
+
+/** Real, UI-presentation-only grouping for the Autopsy organ picker
+ *  below — deliberately kept out of AutopsyOrganCode.ts itself, which
+ *  stays a domain-level organ->section fact, not a display concern.
+ *  Section titles here match data/templates/Autopsy/
+ *  autopsy_gross_examination.json's own real section titles exactly,
+ *  so a picked organ's group name is recognizable against the actual
+ *  synoptic section it will reveal. */
+const AUTOPSY_ORGAN_PICKER_GROUPS: { sectionTitle: string; organs: AutopsyOrganCode[] }[] = (() => {
+  const sectionTitleById: Record<string, string> = {
+    head_and_neck: 'Head & Neck', cardiovascular_system: 'Cardiovascular',
+    respiratory_system: 'Respiratory', gastrointestinal_hepatobiliary: 'Gastrointestinal & Hepatobiliary',
+    genitourinary_endocrine: 'Genitourinary & Endocrine', musculoskeletal_hematopoietic: 'Musculoskeletal & Hematopoietic',
+  };
+  const bySectionId = new Map<string, AutopsyOrganCode[]>();
+  for (const [organ, sectionId] of Object.entries(AUTOPSY_ORGAN_TO_SECTION) as [AutopsyOrganCode, string][]) {
+    if (!bySectionId.has(sectionId)) bySectionId.set(sectionId, []);
+    bySectionId.get(sectionId)!.push(organ);
+  }
+  return Object.entries(sectionTitleById).map(([sectionId, sectionTitle]) => ({
+    sectionTitle, organs: bySectionId.get(sectionId) ?? [],
+  }));
+})();
+
+function autopsyOrganCodeLabel(code: AutopsyOrganCode): string {
+  return code.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
 
 // ── Local form types ────────────────────────────────────────────────────────
 
@@ -234,8 +271,25 @@ interface SpecimenDraft {
   // more precisely than the dictionary's own defaults, and a custom
   // specimen has no dictionary entry to pull them from at all.
   containerType: string;
+  /** Real, per direct request — the real, actual fixative volume for
+   *  this specific specimen. Defaulted from the selected container
+   *  type's own capacityMl when one is chosen, but editable — see
+   *  SpecimenContainer.fixativeVolumeMl's own doc comment for the
+   *  full reasoning. Empty string (not 0) is the real "not entered"
+   *  state, same convention as every other blank-by-default numeric-
+   *  as-string field in this draft. */
+  fixativeVolumeMl: string;
   anatomicSite: string;
   laterality: string;
+  /** Real, per direct guidance's own confirmed two-tier
+   *  specimen-to-organ mapping strategy (Tier 1: Explicit Entry via
+   *  this UI picker) — mirrors Specimen.ts's own real organCodes
+   *  field exactly. Only ever shown/editable for a specimen whose own
+   *  dictionary entry is genuinely Autopsy-category
+   *  (resolveSpecimenEntryMatchesCategory); every other specimen
+   *  leaves this undefined, never an empty array standing in for "not
+   *  applicable." */
+  organCodes?: AutopsyOrganCode[];
   /** Real feature, per direct follow-up: "I would like to include the
    *  AI badge, confidence on fields being suggested." True only when
    *  the current laterality value came from
@@ -375,7 +429,7 @@ function emptySpecimen(label: string): SpecimenDraft {
     // receivedAt defaults to "now" — the one moment the accessioner is
     // actually present for. Formatted for a datetime-local input.
     receivedAt: new Date().toISOString().slice(0, 16),
-    containerType: '', anatomicSite: '', laterality: '', lateralityInferred: false,
+    containerType: '', fixativeVolumeMl: '', anatomicSite: '', laterality: '', lateralityInferred: false,
     manualDeficiencies: [],
     externalId: '', externalIdSource: '',
   };
@@ -787,14 +841,33 @@ const AccessionPage: React.FC = () => {
   // ── Specimens ────────────────────────────────────────────────────────────
   const { dictionary } = useSpecimenDictionary();
   const [specimens, setSpecimens] = useState<SpecimenDraft[]>([emptySpecimen('A')]);
-  // Real, per direct guidance's own real mechanism: shows the new
-  // cytology-specific accessioning fields only when the case actually
-  // includes a real cytology/FNA specimen — same real type check this
-  // module's own worklist pages already use elsewhere.
+  // Real, per direct guidance's own confirmed integration — the same
+  // real form state/validation/build functions
+  // components/Autopsy/AutopsyIntakeForm.tsx already used as a
+  // standalone form, now driving a real, conditional section of this
+  // page instead (per direct guidance's own "should these additional
+  // fields become visible when an autopsy specimen has been picked").
+  const [autopsyForm, setAutopsyForm] = useState<AutopsyIntakeFormState>({
+    jurisdiction: '', caseAuthority: '', authorityType: '', authorityName: '',
+    verbalOrderReceivedAt: '', verbalOrderReceivedFrom: '',
+    consentingRelativeName: '', consentingRelativeRelationship: '',
+  });
+  // Real, per direct guidance's own confirmed generalization: both
+  // checks now key off the real, closed, dictionary-level
+  // specimenCategory (specimenDictionary/specimenTypes.ts) via the
+  // one, real, shared resolveSpecimenEntryMatchesCategory.ts —
+  // never free-text type/name matching. A real customer can name
+  // either dictionary entry anything, in any real language.
   const cytologyRelevant = specimens.some(s => {
     const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
-    return entry?.type === 'Cytology' || entry?.type === 'FNA';
+    return resolveSpecimenEntryMatchesCategory(entry, ['GYN_CYTOLOGY', 'NON_GYN_CYTOLOGY']);
   });
+
+  const autopsyRelevant = specimens.some(s => {
+    const entry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
+    return resolveSpecimenEntryMatchesCategory(entry, ['AUTOPSY']);
+  });
+  const autopsyFormValidation = resolveAutopsyIntakeFormValidation(autopsyForm);
 
   const addSpecimen = () => {
     setSpecimens(prev => [...prev, emptySpecimen(getSpecimenLabel(prev.length, selectedFacility?.specimenLabelStyle))]);
@@ -1286,12 +1359,24 @@ const AccessionPage: React.FC = () => {
         // just "was this field imported") — feeds the new "Suggested"
         // badge, per direct follow-up.
         const inferredLaterality = inferLateralityFromText(sp.description);
+        // Real, per direct guidance's own confirmed two-tier
+        // specimen-to-organ mapping strategy (Tier 2: Fallback
+        // Classifier) — this import-from-order path is exactly the
+        // real "legacy/unmapped free-text specimen" scenario that
+        // tier was built for. A real, best-effort suggestion only —
+        // the accessioner sees it pre-checked in the organ picker
+        // built above and can freely add/remove before submit, same
+        // as every other imported-but-editable field here.
+        const suggestedOrganCodes = resolveSpecimenEntryMatchesCategory(exactMatch, ['AUTOPSY'])
+          ? classifyAutopsyOrganCodeFromSiteText(sp.description)
+          : [];
         return {
           ...emptySpecimen(getSpecimenLabel(i, importedFacilityStyle)),
           dictionaryEntryId: exactMatch?.id ?? '',
           description: exactMatch ? (exactMatch.normalizedLabel || exactMatch.name) : sp.description,
           laterality: inferredLaterality,
           lateralityInferred: inferredLaterality !== '',
+          organCodes: suggestedOrganCodes.length > 0 ? suggestedOrganCodes : undefined,
           resolvedDepartmentName: sp.departmentId ? catNameById.get(sp.departmentId) : undefined,
           departmentWasAutoCreated: sp.departmentWasAutoCreated,
           dictionaryEntryWasAutoCreated: sp.dictionaryEntryWasAutoCreated,
@@ -1423,7 +1508,7 @@ const AccessionPage: React.FC = () => {
     // any of them; the accessioner picks via the selector rendered
     // below the omnibox (see encounterCandidates' own render site).
     setEncounterCandidates(active);
-    toast.warning(`${active.length} active encounters found for ${patientLabel} — select the correct one below.`);
+    toast.warning(<PhiToastMessage>{active.length} active encounters found for {patientLabel} — select the correct one below.</PhiToastMessage>);
   }
 
   // Real feature, per direct specification: "Change / Unlink
@@ -1495,7 +1580,7 @@ const AccessionPage: React.FC = () => {
       const candidate = parsed.serial ?? parsed.additionalId;
       const match = candidate ? pendingOrders.find(o => isExactOrderMatch(o, candidate)) : undefined;
       if (match) {
-        toast.success(`✓ Scanned Specimen Label: ${match.externalOrderNumber} (${match.patient.firstName} ${match.patient.lastName})`);
+        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {match.externalOrderNumber} ({match.patient.firstName} {match.patient.lastName})</PhiToastMessage>);
         playScanBeep();
         await handleImportOrder(match.id);
         return;
@@ -1508,7 +1593,7 @@ const AccessionPage: React.FC = () => {
     if (parsed.type === 'delimited') {
       const match = parsed.accession ? pendingOrders.find(o => isExactOrderMatch(o, parsed.accession!)) : undefined;
       if (match) {
-        toast.success(`✓ Scanned Specimen Label: ${match.externalOrderNumber} (${match.patient.firstName} ${match.patient.lastName})`);
+        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {match.externalOrderNumber} ({match.patient.firstName} {match.patient.lastName})</PhiToastMessage>);
         playScanBeep();
         await handleImportOrder(match.id);
         return;
@@ -1527,7 +1612,7 @@ const AccessionPage: React.FC = () => {
         const dobIso = parsed.dob ? parseScannedDob(parsed.dob) : undefined;
         if (dobIso) setDob(dobIso);
         const label = [parsed.givenName, parsed.familyName].filter(Boolean).join(' ') || parsed.mrn || 'new patient';
-        toast.success(`✓ Scanned Specimen Label: ${parsed.accession ?? raw} (${label})`);
+        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {parsed.accession ?? raw} ({label})</PhiToastMessage>);
         playScanBeep();
         return;
       }
@@ -1539,7 +1624,7 @@ const AccessionPage: React.FC = () => {
     // Requisition #, Order #, MRN], per the spec's own fallback.
     const plainMatch = pendingOrders.find(o => isExactOrderMatch(o, parsed.value));
     if (plainMatch) {
-      toast.success(`✓ Scanned Specimen Label: ${plainMatch.externalOrderNumber} (${plainMatch.patient.firstName} ${plainMatch.patient.lastName})`);
+      toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {plainMatch.externalOrderNumber} ({plainMatch.patient.firstName} {plainMatch.patient.lastName})</PhiToastMessage>);
       playScanBeep();
       await handleImportOrder(plainMatch.id);
       return;
@@ -1622,7 +1707,7 @@ const AccessionPage: React.FC = () => {
     setNameSuffix('');
     setDob(patient.dateOfBirth ?? '');
     setMrn(patient.mrn ?? '');
-    toast.success(`Loaded ${patient.firstName} ${patient.lastName} from the patient index — verify details and continue.`);
+    toast.success(<PhiToastMessage>Loaded {patient.firstName} {patient.lastName} from the patient index — verify details and continue.</PhiToastMessage>);
     void lookupActiveEncountersForPatient(patient.id, `${patient.firstName} ${patient.lastName}`);
   }
 
@@ -1667,7 +1752,7 @@ const AccessionPage: React.FC = () => {
     return names;
   }, [resolvedDepartmentIds, departmentsById]);
 
-  const canSubmit = !!caseInfoValid && specimensValid && !submitting && !departmentConflictNames;
+  const canSubmit = !!caseInfoValid && specimensValid && !submitting && !departmentConflictNames && (!autopsyRelevant || autopsyFormValidation.valid);
 
   const selectedFacility = useMemo(() => facilities.find(c => c.id === clientId), [facilities, clientId]);
 
@@ -1869,6 +1954,14 @@ const AccessionPage: React.FC = () => {
           // real gating as clinicalHistoryEntries/Case.order above).
           clinicalHistory: cytologyRelevant && s.clinicalHistory.length ? s.clinicalHistory : undefined,
           specimenDictionaryEntryId: s.dictionaryEntryId || undefined,
+          // Real, per direct guidance's own confirmed two-tier
+          // specimen-to-organ mapping strategy (Tier 1: Explicit
+          // Entry). Only ever set for a genuinely Autopsy-category
+          // specimen with at least one organ actually checked — never
+          // an empty array standing in for "not applicable," matching
+          // this file's own established convention for every other
+          // optional field here.
+          organCodes: resolveSpecimenEntryMatchesCategory(entry, ['AUTOPSY']) && s.organCodes?.length ? s.organCodes : undefined,
           // Real feature, per direct request: "if the specimen level is
           // deterministic, why should we make them assign?" This is a
           // real, coder-configured default (SpecimenEntry.
@@ -1897,7 +1990,10 @@ const AccessionPage: React.FC = () => {
             processedAt: new Date(s.processedAt).toISOString(),
             processedAtIsEstimated: s.processedAtIsEstimated || undefined,
           } : undefined,
-          container: s.containerType.trim() ? { type: s.containerType.trim() } : undefined,
+          container: (s.containerType.trim() || s.fixativeVolumeMl.trim()) ? {
+            type: s.containerType.trim() || undefined,
+            fixativeVolumeMl: s.fixativeVolumeMl.trim() ? Number(s.fixativeVolumeMl) : undefined,
+          } : undefined,
           externalId: s.externalId.trim() || undefined,
           externalIdSource: s.externalIdSource.trim() || undefined,
           specimenFlags: [],
@@ -2014,7 +2110,7 @@ const AccessionPage: React.FC = () => {
             downtimeReasonCode: isDowntimeAccession ? (downtimeReasonCode || undefined) : undefined,
           });
       if (mpiResult.outcome === 'ambiguous') {
-        toast.warning(`Patient match needs review: ${mpiResult.reason}`);
+        toast.warning(<PhiToastMessage>Patient match needs review: {mpiResult.reason}</PhiToastMessage>);
       }
 
       // Real, per direct guidance ("should the accession do this as
@@ -2085,6 +2181,14 @@ const AccessionPage: React.FC = () => {
 
       const newCase: Case = {
         id: caseId,
+        // Real, per direct guidance's own confirmed integration — the
+        // same real buildAutopsyCaseDetailsFromIntakeForm.ts function
+        // components/Autopsy/AutopsyIntakeForm.tsx already used as a
+        // standalone form's own submit handler, called here instead.
+        // Preserves everything else about this real case-creation
+        // flow (accession number, originHospitalId/originEnterpriseId,
+        // patient, specimens) completely unchanged.
+        autopsy: autopsyRelevant ? buildAutopsyCaseDetailsFromIntakeForm(autopsyForm) : undefined,
         reportingMode: 'orchestrator',
         accession: {
           accessionNumber: fullAccession,
@@ -2322,9 +2426,11 @@ const AccessionPage: React.FC = () => {
           if (anyTemplateChanged) {
             const lowConfidenceCount = evalResult.assignments.filter(a => a.belowThreshold).length;
             toast.success(
-              lowConfidenceCount > 0
-                ? `Case ${caseId}: Grossing Templates refined — ${lowConfidenceCount} of ${evalResult.assignments.length} specimen(s) fell back to the default.`
-                : `Case ${caseId}: Grossing Templates refined based on specimen details.`
+              <PhiToastMessage>
+                {lowConfidenceCount > 0
+                  ? `Case ${caseId}: Grossing Templates refined — ${lowConfidenceCount} of ${evalResult.assignments.length} specimen(s) fell back to the default.`
+                  : `Case ${caseId}: Grossing Templates refined based on specimen details.`}
+              </PhiToastMessage>
             );
           }
 
@@ -2499,7 +2605,7 @@ const AccessionPage: React.FC = () => {
       // claiming a specific AI outcome that hasn't happened yet. A
       // separate, later toast reports the real refinement outcome once
       // it completes.
-      toast.success(`Case ${caseId} accessioned with ${specimens.length} specimen(s). Refining Grossing Template assignments…`);
+      toast.success(<PhiToastMessage>Case {caseId} accessioned with {specimens.length} specimen(s). Refining Grossing Template assignments…</PhiToastMessage>);
 
       // Closes the loop described in the original Intraop spec — "when
       // the formal order finally arrives from the LIS, PathScribe
@@ -2658,8 +2764,9 @@ const AccessionPage: React.FC = () => {
                         className={`ps-accession-order-picker-item ${sourceOrderId === o.id ? 'ps-accession-order-picker-item--selected' : ''} ${importing ? 'ps-accession-order-picker-item--disabled' : ''}`}
                         onClick={() => !importing && handleImportOrder(o.id)}>
                         <div className="ps-accession-order-picker-main">
-                          <strong>{o.externalOrderNumber}</strong> — {o.patient.firstName} {o.patient.lastName}
-                          {o.patient.mrn && <span> · MRN {o.patient.mrn}</span>}
+                          <strong>{o.externalOrderNumber}</strong>{' — '}
+                          <span data-phi="name">{o.patient.firstName} {o.patient.lastName}</span>
+                          {o.patient.mrn && <span data-phi="mrn"> · MRN {o.patient.mrn}</span>}
                         </div>
                         <div className="ps-accession-order-picker-meta">{o.externalAssigningAuthority} · {o.source.toUpperCase()} · {o.priority ?? 'Routine'}</div>
                       </div>
@@ -2774,7 +2881,7 @@ const AccessionPage: React.FC = () => {
               </div>
               <div>
                 <label className="ps-label" htmlFor="accession-dob">Date of Birth</label>
-                <input id="accession-dob" className="ps-input-dark" type="date" value={dob} onChange={e => setDob(e.target.value)} />
+                <input id="accession-dob" data-phi="dob" className="ps-input-dark" type="date" value={dob} onChange={e => setDob(e.target.value)} />
               </div>
               <div>
                 <label className="ps-label" htmlFor="accession-sex">Sex</label>
@@ -2888,6 +2995,81 @@ const AccessionPage: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {autopsyRelevant && (
+                <div className="ps-card-dark" style={{ gridColumn: '1 / -1', padding: 16, marginTop: 4, marginBottom: 4 }}>
+                  <div className="ps-label" style={{ marginBottom: 10, fontWeight: 700 }}>
+                    Autopsy — Case Authority &amp; Authorization
+                  </div>
+
+                  <div className="ps-accession-specimen-row-3col">
+                    <div>
+                      <label className="ps-label">Jurisdiction</label>
+                      <select className="ps-conf-select" value={autopsyForm.jurisdiction} onChange={e => setAutopsyForm({ ...autopsyForm, jurisdiction: e.target.value as AutopsyJurisdiction })}>
+                        <option value="">Select...</option>
+                        {(Object.keys(JURISDICTION_LABELS) as AutopsyJurisdiction[]).map(j => (
+                          <option key={j} value={j}>{JURISDICTION_LABELS[j]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="ps-label">Case Authority</label>
+                      <select className="ps-conf-select" value={autopsyForm.caseAuthority} onChange={e => setAutopsyForm({ ...autopsyForm, caseAuthority: e.target.value as AutopsyCaseAuthority })}>
+                        <option value="">Select...</option>
+                        <option value="medicolegal_forensic">Medicolegal / Forensic</option>
+                        <option value="hospital_consented">Hospital-Consented</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {autopsyForm.caseAuthority === 'medicolegal_forensic' && (
+                    <div className="ps-accession-specimen-row-3col" style={{ marginTop: 10 }}>
+                      <div>
+                        <label className="ps-label">Authority Type</label>
+                        <input className="ps-conf-input" value={autopsyForm.authorityType} placeholder="e.g. Coroner, Medical Examiner" onChange={e => setAutopsyForm({ ...autopsyForm, authorityType: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="ps-label">Verbal Order Received At</label>
+                        <input type="datetime-local" className="ps-conf-input" value={autopsyForm.verbalOrderReceivedAt} onChange={e => setAutopsyForm({ ...autopsyForm, verbalOrderReceivedAt: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="ps-label">Verbal Order Received From</label>
+                        <input className="ps-conf-input" value={autopsyForm.verbalOrderReceivedFrom} placeholder="e.g. On-call Deputy Coroner" onChange={e => setAutopsyForm({ ...autopsyForm, verbalOrderReceivedFrom: e.target.value })} />
+                      </div>
+                    </div>
+                  )}
+
+                  {autopsyForm.caseAuthority === 'hospital_consented' && (
+                    <div className="ps-accession-specimen-row-3col" style={{ marginTop: 10 }}>
+                      <div>
+                        <label className="ps-label">Consenting Relative Name (optional)</label>
+                        <input className="ps-conf-input" value={autopsyForm.consentingRelativeName} onChange={e => setAutopsyForm({ ...autopsyForm, consentingRelativeName: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="ps-label">Relationship (optional)</label>
+                        <input className="ps-conf-input" value={autopsyForm.consentingRelativeRelationship} placeholder="e.g. spouse, adult child" onChange={e => setAutopsyForm({ ...autopsyForm, consentingRelativeRelationship: e.target.value })} />
+                        {/* Real, per direct follow-up: "it all needs
+                            to be wired" — resolveConsentingRelativePriority.ts
+                            had zero real UI callers; this is that
+                            real, informational surfacing. This field
+                            stays genuine free text (real, deliberate
+                            — see its own placeholder), so this is a
+                            real hint alongside it, not a forced
+                            structured dropdown. */}
+                        {autopsyForm.jurisdiction && formatConsentingRelativePriorityHint(autopsyForm.jurisdiction) && (
+                          <span className="ps-conf-field-hint">{formatConsentingRelativePriorityHint(autopsyForm.jurisdiction)}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {!autopsyFormValidation.valid && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: '#fca5a5' }}>
+                      Complete the required Autopsy fields above before submitting.
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   Patient ID (optional)
@@ -2910,7 +3092,7 @@ const AccessionPage: React.FC = () => {
                     <PatientIdStatusDot jurisdiction={selectedFacility.jurisdiction} rawId={mrn} />
                   )}
                 </label>
-                <input className="ps-input-dark" value={mrn} onChange={e => setMrn(e.target.value)}
+                <input data-phi="mrn" className="ps-input-dark" value={mrn} onChange={e => setMrn(e.target.value)}
                   placeholder={selectedFacility
                     ? `${patientIdStandard.label} format, e.g. ${patientIdStandard.example} — auto-generated if blank`
                     : 'Select a Submitting Facility first, or leave blank to auto-generate'} />
@@ -3276,7 +3458,18 @@ const AccessionPage: React.FC = () => {
                       <div>
                         <label className="ps-label">Container Type</label>
                         <select className="ps-input-dark" value={s.containerType}
-                          onChange={e => updateSpecimenField(idx, 'containerType', e.target.value)}>
+                          onChange={e => {
+                            const selected = containerTypes.find(c => c.name === e.target.value);
+                            updateSpecimenField(idx, 'containerType', e.target.value);
+                            // Real, per direct request — defaults the real
+                            // fixative volume from the selected container's
+                            // own real capacity; stays editable afterward,
+                            // never overwrites a value the accessioner
+                            // already entered by hand.
+                            if (selected?.capacityMl && !s.fixativeVolumeMl) {
+                              updateSpecimenField(idx, 'fixativeVolumeMl', String(selected.capacityMl));
+                            }
+                          }}>
                           <option value="">Select container type…</option>
                           {(['histology', 'cytology', 'special_media'] as const).map(cat => {
                             const inCat = containerTypes.filter(c => c.category === cat);
@@ -3292,7 +3485,55 @@ const AccessionPage: React.FC = () => {
                           })}
                         </select>
                       </div>
+                      <div>
+                        <label className="ps-label">Fixative Volume (mL)</label>
+                        <input type="number" className="ps-input-dark" value={s.fixativeVolumeMl}
+                          onChange={e => updateSpecimenField(idx, 'fixativeVolumeMl', e.target.value)}
+                          placeholder="Real, actual volume used" />
+                      </div>
                     </div>
+
+                    {resolveSpecimenEntryMatchesCategory(selectedEntry, ['AUTOPSY']) && (
+                      <div className="ps-accession-specimen-field--wide">
+                        <label className="ps-label">
+                          Organ(s) Included — drives which Autopsy Grossing Synoptic sections apply
+                        </label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                          {AUTOPSY_ORGAN_PICKER_GROUPS.map(group => (
+                            <div key={group.sectionTitle}>
+                              <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.7, marginBottom: 3 }}>{group.sectionTitle}</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {group.organs.map(organ => {
+                                  const checked = (s.organCodes ?? []).includes(organ);
+                                  return (
+                                    <label
+                                      key={organ}
+                                      style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12,
+                                        padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+                                        background: checked ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
+                                        border: checked ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.12)',
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          const current = s.organCodes ?? [];
+                                          const next = checked ? current.filter(o => o !== organ) : [...current, organ];
+                                          setSpecimens(prev => prev.map((row, i) => i === idx ? { ...row, organCodes: next } : row));
+                                        }}
+                                      />
+                                      {autopsyOrganCodeLabel(organ)}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="ps-accession-specimen-row-3col">
                       <div>
@@ -3439,7 +3680,7 @@ const AccessionPage: React.FC = () => {
               <div className="ps-card-dark ps-accession-card">
                 <h3>Labels</h3>
                 <p className="ps-accession-print-hint">
-                  1 requisition label + {justAccessionedCase.specimens.length} container label(s) for {justAccessionedCase.caseData.accession.fullAccession}.
+                  1 requisition label + {justAccessionedCase.specimens.length} container label(s) for <strong data-phi="accession">{justAccessionedCase.caseData.accession.fullAccession}</strong>.
                 </p>
                 <button className="ps-btn-secondary" onClick={handlePrintLabels}>🖨️ Print Labels</button>
               </div>
@@ -3708,7 +3949,7 @@ const AccessionPage: React.FC = () => {
               wasManualOverride: false, // this modal only offers Merge Now / Go to Queue Later / Dismiss — no manual case-ID entry
               performedBy: user?.name ?? 'Unknown User',
             });
-            toast.success(`Intraoperative entry merged into ${intraopMatch.caseId}`);
+            toast.success(<PhiToastMessage>Intraoperative entry merged into {intraopMatch.caseId}</PhiToastMessage>);
             setIntraopMatch(null);
           }}
           onGoToQueueLater={() => { setIntraopMatch(null); navigate('/intraop-queue'); }}

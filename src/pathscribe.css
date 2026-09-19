@@ -5312,7 +5312,21 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 /* ── Table shell ─────────────────────────────────────────── */
 .wl-table-wrap   { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
-.wl-table-scroll { flex: 1; overflow: auto; position: relative; }
+/* Real, per direct report: "I open the worklist, I immediately use
+   the mouse wheel to scroll down, and the worklist sort of shifts to
+   the right and then shifts back to the left." Confirmed directly:
+   real case data continues arriving asynchronously after the initial
+   render (verified via direct measurement — this element's own real
+   scrollHeight genuinely grows as more rows load in), which can make
+   a real vertical scrollbar appear right in the window a user starts
+   scrolling. scrollbar-gutter: stable reserves that real space
+   permanently, so the scrollbar's own appearance/disappearance never
+   changes this element's real available width again — the actual
+   root mechanism, regardless of the exact real timing that triggers
+   it. Real, honest browser-support note: Chrome/Edge 94+, Firefox
+   97+ — not Safari as of most versions; a real no-op there (falls
+   back to today's existing behavior), never a regression. */
+.wl-table-scroll { flex: 1; overflow: auto; position: relative; scrollbar-gutter: stable; }
 .wl-table        { width: 100%; border-collapse: collapse; font-family: inherit; }
 .wl-container    { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 
@@ -5323,6 +5337,18 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 /* ── Table cells ─────────────────────────────────────────── */
 .wl-td          { padding: 9px 10px; font-size: 12.5px; color: #cbd5e1; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; }
+/* Real, per direct follow-up ("some cases will have DP, others may
+   not") \u2014 compact badges, single-row structure, integrated into
+   this same existing worklist rather than a second, separate page. */
+.wl-td-dp       { padding: 6px 8px; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: normal; max-width: 220px; cursor: pointer; }
+.wl-dp-badge    { display: block; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 5px 8px; font-size: 11.5px; line-height: 1.35; cursor: pointer; font-family: inherit; }
+.wl-dp-badge-sub { font-size: 10.5px; opacity: 0.85; margin-top: 2px; }
+.wl-dp-badge--ready,
+.wl-dp-badge--unremarkable { background: rgba(34,197,94,0.14); color: #86efac; }
+.wl-dp-badge--partial,
+.wl-dp-badge--equivocal    { background: rgba(245,158,11,0.14); color: #fcd34d; }
+.wl-dp-badge--error,
+.wl-dp-badge--high_risk    { background: rgba(239,68,68,0.14); color: #fca5a5; }
 .wl-td-muted    { padding: 9px 10px; font-size: 12px; color: #64748b; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; }
 .wl-td-center   { padding: 9px 6px; font-size: 12px; color: #64748b; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: center; }
 .wl-td-dob      { padding: 9px 10px; font-size: 12px; color: #94a3b8; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; }
@@ -9253,61 +9279,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-body-modal-note-label    { color: #fbbf24; font-weight: 600; }
 .ps-body-modal-footer        { display: flex; gap: 10px; justify-content: flex-end; }
 
-/* ── Delegation Type Section ──────────────────────────────────────────────── */
-.ps-del-shell                { display: flex; flex-direction: column; gap: 24px; }
-.ps-del-header               { display: flex; justify-content: space-between; align-items: flex-start; }
-.ps-del-header-text          { flex: 1; }
-.ps-del-title                { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 0; }
-.ps-del-subtitle             { font-size: 13px; color: #64748b; margin: 4px 0 0; }
-.ps-del-group-label          { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.ps-del-list                 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-items: start; }
-.ps-del-empty                { font-size: 13px; color: #94a3b8; padding: 12px 0; }
-.ps-del-form                 { background: rgba(138,180,248,0.04); border: 1px solid rgba(138,180,248,0.2); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.ps-del-form-title           { font-size: 13px; font-weight: 700; color: #8AB4F8; }
-.ps-del-form-grid            { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ps-del-form-field           { display: flex; flex-direction: column; }
-.ps-del-form-label           { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: block; }
-.ps-del-form-label-note      { font-weight: 400; text-transform: none; color: #94a3b8; margin-left: 4px; }
-.ps-del-form-input           { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); }
-.ps-del-form-input:focus     { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-input--error    { border-color: #f87171; }
-.ps-del-form-input--mono     { font-family: monospace; }
-.ps-del-form-input--disabled { opacity: 0.5; cursor: not-allowed; }
-.ps-del-form-textarea        { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); resize: vertical; }
-.ps-del-form-textarea:focus  { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-textarea--error { border-color: #f87171; }
-.ps-del-form-error           { font-size: 11px; color: #f87171; margin-top: 2px; }
-.ps-del-form-colors          { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.ps-del-form-swatch          { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; outline: 3px solid transparent; outline-offset: 2px; transition: outline 0.15s; }
-.ps-del-form-swatch--active  { outline-color: currentColor; }
-.ps-del-form-color-preview   { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
-.ps-del-form-color-dot       { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
-.ps-del-form-color-input     { width: 80px; padding: 3px 7px; border-radius: 6px; font-size: 12px; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; outline: none; }
-.ps-del-form-toggles         { display: flex; gap: 24px; flex-wrap: wrap; }
-.ps-del-form-footer          { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
-.ps-del-row                  { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: opacity 0.2s; }
-.ps-del-row--active          { background: rgba(255,255,255,0.03); opacity: 1; }
-.ps-del-row--inactive        { background: rgba(255,255,255,0.01); opacity: 0.5; }
-.ps-del-row-dot              { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ps-del-row-id               { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 90px; text-align: center; }
-.ps-del-row-info             { flex: 1; min-width: 0; }
-.ps-del-row-name-row         { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ps-del-row-name             { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-.ps-del-row-system-badge     { font-size: 10px; color: #94a3b8; font-weight: 600; }
-.ps-del-row-transfers        { font-size: 10px; color: #f59e0b; font-weight: 600; }
-.ps-del-row-note-req         { font-size: 10px; color: #94a3b8; }
-.ps-del-row-cpt              { font-size: 10px; color: #64748b; }
-.ps-del-row-desc             { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ps-del-row-actions          { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-delete       { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-label        { font-size: 11px; color: #f87171; }
-.ps-del-btn-delete-confirm   { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
-.ps-del-btn-delete-cancel    { padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
-.ps-del-btn-remove           { padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid transparent; color: #94a3b8; flex-shrink: 0; transition: color 0.15s; }
-.ps-del-btn-remove:hover:not(:disabled) { color: #f87171; }
-.ps-del-btn-remove:disabled  { opacity: 0.4; cursor: not-allowed; }
-.ps-del-loading              { font-size: 13px; color: #94a3b8; }
-
 /* ── Governing Bodies Section ─────────────────────────────────────────────── */
 .ps-gov-shell                { display: flex; flex-direction: column; gap: 0; }
 .ps-gov-header               { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
@@ -9362,61 +9333,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-body-modal-note          { padding: 10px 13px; border-radius: 7px; background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.2); font-size: 11px; color: #94a3b8; line-height: 1.6; }
 .ps-body-modal-note-label    { color: #fbbf24; font-weight: 600; }
 .ps-body-modal-footer        { display: flex; gap: 10px; justify-content: flex-end; }
-
-/* ── Delegation Type Section ──────────────────────────────────────────────── */
-.ps-del-shell                { display: flex; flex-direction: column; gap: 24px; }
-.ps-del-header               { display: flex; justify-content: space-between; align-items: flex-start; }
-.ps-del-header-text          { flex: 1; }
-.ps-del-title                { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 0; }
-.ps-del-subtitle             { font-size: 13px; color: #64748b; margin: 4px 0 0; }
-.ps-del-group-label          { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.ps-del-list                 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-items: start; }
-.ps-del-empty                { font-size: 13px; color: #94a3b8; padding: 12px 0; }
-.ps-del-form                 { background: rgba(138,180,248,0.04); border: 1px solid rgba(138,180,248,0.2); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.ps-del-form-title           { font-size: 13px; font-weight: 700; color: #8AB4F8; }
-.ps-del-form-grid            { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ps-del-form-field           { display: flex; flex-direction: column; }
-.ps-del-form-label           { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: block; }
-.ps-del-form-label-note      { font-weight: 400; text-transform: none; color: #94a3b8; margin-left: 4px; }
-.ps-del-form-input           { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); }
-.ps-del-form-input:focus     { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-input--error    { border-color: #f87171; }
-.ps-del-form-input--mono     { font-family: monospace; }
-.ps-del-form-input--disabled { opacity: 0.5; cursor: not-allowed; }
-.ps-del-form-textarea        { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); resize: vertical; }
-.ps-del-form-textarea:focus  { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-textarea--error { border-color: #f87171; }
-.ps-del-form-error           { font-size: 11px; color: #f87171; margin-top: 2px; }
-.ps-del-form-colors          { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.ps-del-form-swatch          { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; outline: 3px solid transparent; outline-offset: 2px; transition: outline 0.15s; }
-.ps-del-form-swatch--active  { outline-color: currentColor; }
-.ps-del-form-color-preview   { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
-.ps-del-form-color-dot       { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
-.ps-del-form-color-input     { width: 80px; padding: 3px 7px; border-radius: 6px; font-size: 12px; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; outline: none; }
-.ps-del-form-toggles         { display: flex; gap: 24px; flex-wrap: wrap; }
-.ps-del-form-footer          { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
-.ps-del-row                  { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: opacity 0.2s; }
-.ps-del-row--active          { background: rgba(255,255,255,0.03); opacity: 1; }
-.ps-del-row--inactive        { background: rgba(255,255,255,0.01); opacity: 0.5; }
-.ps-del-row-dot              { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ps-del-row-id               { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 90px; text-align: center; }
-.ps-del-row-info             { flex: 1; min-width: 0; }
-.ps-del-row-name-row         { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ps-del-row-name             { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-.ps-del-row-system-badge     { font-size: 10px; color: #94a3b8; font-weight: 600; }
-.ps-del-row-transfers        { font-size: 10px; color: #f59e0b; font-weight: 600; }
-.ps-del-row-note-req         { font-size: 10px; color: #94a3b8; }
-.ps-del-row-cpt              { font-size: 10px; color: #64748b; }
-.ps-del-row-desc             { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ps-del-row-actions          { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-delete       { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-label        { font-size: 11px; color: #f87171; }
-.ps-del-btn-delete-confirm   { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
-.ps-del-btn-delete-cancel    { padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
-.ps-del-btn-remove           { padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid transparent; color: #94a3b8; flex-shrink: 0; transition: color 0.15s; }
-.ps-del-btn-remove:hover:not(:disabled) { color: #f87171; }
-.ps-del-btn-remove:disabled  { opacity: 0.4; cursor: not-allowed; }
-.ps-del-loading              { font-size: 13px; color: #94a3b8; }
 
 /* ── Identifier Formats Section ───────────────────────────────────────────── */
 .ps-idf-shell                { display: flex; flex-direction: column; gap: 16px; }
@@ -9551,61 +9467,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-body-modal-note          { padding: 10px 13px; border-radius: 7px; background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.2); font-size: 11px; color: #94a3b8; line-height: 1.6; }
 .ps-body-modal-note-label    { color: #fbbf24; font-weight: 600; }
 .ps-body-modal-footer        { display: flex; gap: 10px; justify-content: flex-end; }
-
-/* ── Delegation Type Section ──────────────────────────────────────────────── */
-.ps-del-shell                { display: flex; flex-direction: column; gap: 24px; }
-.ps-del-header               { display: flex; justify-content: space-between; align-items: flex-start; }
-.ps-del-header-text          { flex: 1; }
-.ps-del-title                { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 0; }
-.ps-del-subtitle             { font-size: 13px; color: #64748b; margin: 4px 0 0; }
-.ps-del-group-label          { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.ps-del-list                 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-items: start; }
-.ps-del-empty                { font-size: 13px; color: #94a3b8; padding: 12px 0; }
-.ps-del-form                 { background: rgba(138,180,248,0.04); border: 1px solid rgba(138,180,248,0.2); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.ps-del-form-title           { font-size: 13px; font-weight: 700; color: #8AB4F8; }
-.ps-del-form-grid            { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ps-del-form-field           { display: flex; flex-direction: column; }
-.ps-del-form-label           { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: block; }
-.ps-del-form-label-note      { font-weight: 400; text-transform: none; color: #94a3b8; margin-left: 4px; }
-.ps-del-form-input           { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); }
-.ps-del-form-input:focus     { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-input--error    { border-color: #f87171; }
-.ps-del-form-input--mono     { font-family: monospace; }
-.ps-del-form-input--disabled { opacity: 0.5; cursor: not-allowed; }
-.ps-del-form-textarea        { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); resize: vertical; }
-.ps-del-form-textarea:focus  { border-color: rgba(138,180,248,0.5); }
-.ps-del-form-textarea--error { border-color: #f87171; }
-.ps-del-form-error           { font-size: 11px; color: #f87171; margin-top: 2px; }
-.ps-del-form-colors          { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.ps-del-form-swatch          { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; outline: 3px solid transparent; outline-offset: 2px; transition: outline 0.15s; }
-.ps-del-form-swatch--active  { outline-color: currentColor; }
-.ps-del-form-color-preview   { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
-.ps-del-form-color-dot       { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
-.ps-del-form-color-input     { width: 80px; padding: 3px 7px; border-radius: 6px; font-size: 12px; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; outline: none; }
-.ps-del-form-toggles         { display: flex; gap: 24px; flex-wrap: wrap; }
-.ps-del-form-footer          { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
-.ps-del-row                  { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: opacity 0.2s; }
-.ps-del-row--active          { background: rgba(255,255,255,0.03); opacity: 1; }
-.ps-del-row--inactive        { background: rgba(255,255,255,0.01); opacity: 0.5; }
-.ps-del-row-dot              { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ps-del-row-id               { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 90px; text-align: center; }
-.ps-del-row-info             { flex: 1; min-width: 0; }
-.ps-del-row-name-row         { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ps-del-row-name             { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-.ps-del-row-system-badge     { font-size: 10px; color: #94a3b8; font-weight: 600; }
-.ps-del-row-transfers        { font-size: 10px; color: #f59e0b; font-weight: 600; }
-.ps-del-row-note-req         { font-size: 10px; color: #94a3b8; }
-.ps-del-row-cpt              { font-size: 10px; color: #64748b; }
-.ps-del-row-desc             { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ps-del-row-actions          { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-delete       { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-label        { font-size: 11px; color: #f87171; }
-.ps-del-btn-delete-confirm   { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
-.ps-del-btn-delete-cancel    { padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
-.ps-del-btn-remove           { padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid transparent; color: #94a3b8; flex-shrink: 0; transition: color 0.15s; }
-.ps-del-btn-remove:hover:not(:disabled) { color: #f87171; }
-.ps-del-btn-remove:disabled  { opacity: 0.4; cursor: not-allowed; }
-.ps-del-loading              { font-size: 13px; color: #94a3b8; }
 
 /* ── Identifier Formats Section ───────────────────────────────────────────── */
 .ps-idf-shell                { display: flex; flex-direction: column; gap: 16px; }
@@ -9912,83 +9773,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-body-modal-note-label    { color: #fbbf24; font-weight: 600; }
 
 .ps-body-modal-footer        { display: flex; gap: 10px; justify-content: flex-end; }
-
-/* ── Delegation Type Section ──────────────────────────────────────────────── */
-.ps-del-shell                { display: flex; flex-direction: column; gap: 24px; }
-
-.ps-del-header               { display: flex; justify-content: space-between; align-items: flex-start; }
-.ps-del-header-text          { flex: 1; }
-
-.ps-del-title                { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 0; }
-.ps-del-subtitle             { font-size: 13px; color: #64748b; margin: 4px 0 0; }
-
-.ps-del-group-label          { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.ps-del-list                 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-items: start; }
-
-.ps-del-empty                { font-size: 13px; color: #94a3b8; padding: 12px 0; }
-.ps-del-form                 { background: rgba(138,180,248,0.04); border: 1px solid rgba(138,180,248,0.2); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-
-.ps-del-form-title           { font-size: 13px; font-weight: 700; color: #8AB4F8; }
-.ps-del-form-grid            { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-.ps-del-form-field           { display: flex; flex-direction: column; }
-.ps-del-form-label           { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: block; }
-
-.ps-del-form-label-note      { font-weight: 400; text-transform: none; color: #94a3b8; margin-left: 4px; }
-.ps-del-form-input           { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); }
-
-.ps-del-form-input--error    { border-color: #f87171; }
-.ps-del-form-input--mono     { font-family: monospace; }
-
-.ps-del-form-input--disabled { opacity: 0.5; cursor: not-allowed; }
-.ps-del-form-textarea        { padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); color: #e2e8f0; outline: none; font-family: inherit; border: 1px solid rgba(255,255,255,0.1); resize: vertical; }
-
-.ps-del-form-textarea--error { border-color: #f87171; }
-.ps-del-form-error           { font-size: 11px; color: #f87171; margin-top: 2px; }
-
-.ps-del-form-colors          { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.ps-del-form-swatch          { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0; outline: 3px solid transparent; outline-offset: 2px; transition: outline 0.15s; }
-
-.ps-del-form-swatch--active  { outline-color: currentColor; }
-.ps-del-form-color-preview   { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
-
-.ps-del-form-color-dot       { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
-.ps-del-form-color-input     { width: 80px; padding: 3px 7px; border-radius: 6px; font-size: 12px; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; outline: none; }
-
-.ps-del-form-toggles         { display: flex; gap: 24px; flex-wrap: wrap; }
-.ps-del-form-footer          { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
-
-.ps-del-row                  { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: opacity 0.2s; }
-.ps-del-row--active          { background: rgba(255,255,255,0.03); opacity: 1; }
-
-.ps-del-row--inactive        { background: rgba(255,255,255,0.01); opacity: 0.5; }
-.ps-del-row-dot              { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-
-.ps-del-row-id               { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; min-width: 90px; text-align: center; }
-.ps-del-row-info             { flex: 1; min-width: 0; }
-
-.ps-del-row-name-row         { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ps-del-row-name             { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-
-.ps-del-row-system-badge     { font-size: 10px; color: #94a3b8; font-weight: 600; }
-.ps-del-row-transfers        { font-size: 10px; color: #f59e0b; font-weight: 600; }
-
-.ps-del-row-note-req         { font-size: 10px; color: #94a3b8; }
-.ps-del-row-cpt              { font-size: 10px; color: #64748b; }
-
-.ps-del-row-desc             { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ps-del-row-actions          { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-
-.ps-del-confirm-delete       { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ps-del-confirm-label        { font-size: 11px; color: #f87171; }
-
-.ps-del-btn-delete-confirm   { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
-.ps-del-btn-delete-cancel    { padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #64748b; }
-
-.ps-del-btn-remove           { padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; background: transparent; border: 1px solid transparent; color: #94a3b8; flex-shrink: 0; transition: color 0.15s; }
-.ps-del-btn-remove:hover:not(:disabled) { color: #f87171; }
-
-.ps-del-loading              { font-size: 13px; color: #94a3b8; }
 
 /* ── Identifier Formats Section ───────────────────────────────────────────── */
 .ps-idf-shell                { display: flex; flex-direction: column; gap: 16px; }
@@ -17520,6 +17304,58 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   color: #f59e0b;
 }
 
+.ps-grossing-fixation-tracking {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.ps-grossing-fixation-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ps-grossing-fixation-label {
+  color: #94a3b8;
+}
+
+.ps-grossing-fixation-value {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.ps-grossing-fixation-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.ps-grossing-fixation-action:hover {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.ps-grossing-fixation-action--deficiency {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.ps-grossing-fixation-action--deficiency:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.ps-grossing-fixation-value--flagged {
+  color: #f59e0b;
+}
+
 .ps-grossing-block-table {
   width: 100%;
   border-collapse: collapse;
@@ -17670,6 +17506,1678 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-grossing-audit-row:last-child {
   border-bottom: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Microtomy Workstation (PS-284) — real, per direct follow-up ("keep it
+   consistent with GrossingScreenPage/SynopticReportPage") — same dark
+   palette, spacing, and badge/table conventions as ps-grossing-* above,
+   under its own ps-microtomy-* prefix per this file's own established
+   one-prefix-per-page convention.
+   ───────────────────────────────────────────────────────────────────────── */
+.ps-microtomy-page {
+  padding: 20px 28px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.ps-microtomy-loading {
+  padding: 40px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.ps-microtomy-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ps-microtomy-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.ps-microtomy-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.ps-microtomy-context-bar strong {
+  color: #e2e8f0;
+}
+
+.ps-microtomy-scan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ps-microtomy-scan-input {
+  flex: 1;
+  max-width: 360px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.ps-microtomy-scan-error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.ps-microtomy-mode-switcher {
+  display: flex;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.ps-microtomy-mode-btn {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ps-microtomy-mode-btn--active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.ps-microtomy-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .ps-microtomy-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-microtomy-panel {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.ps-microtomy-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ps-microtomy-alert-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ps-microtomy-alert-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  cursor: pointer;
+}
+
+.ps-microtomy-alert-badge--off {
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.ps-microtomy-context-field {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ps-microtomy-context-field strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.ps-microtomy-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.ps-microtomy-slide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ps-microtomy-slide-table th {
+  text-align: left;
+  padding: 8px 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ps-microtomy-slide-table td {
+  padding: 8px;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  vertical-align: middle;
+}
+
+.ps-microtomy-slide-row--selected {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.ps-microtomy-slide-row--control {
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.ps-microtomy-print-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.ps-microtomy-print-badge--pending { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.ps-microtomy-print-badge--printing { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+.ps-microtomy-print-badge--printed { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.ps-microtomy-print-badge--failed { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.ps-microtomy-print-badge--canceled { background: rgba(148, 163, 184, 0.1); color: #64748b; text-decoration: line-through; }
+
+.ps-microtomy-control-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  margin-left: 6px;
+}
+
+.ps-microtomy-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ps-microtomy-row-btn {
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.ps-microtomy-row-btn:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.ps-microtomy-row-btn--danger:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.ps-microtomy-row-btn--primary {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.ps-microtomy-add-stain-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.ps-microtomy-add-stain-input {
+  width: 64px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.ps-microtomy-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.ps-microtomy-category-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ps-microtomy-category-tab {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.ps-microtomy-category-tab--active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.ps-microtomy-hardware-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  font-size: 12px;
+}
+
+.ps-microtomy-hardware-card:last-child {
+  border-bottom: none;
+}
+
+.ps-microtomy-hardware-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ps-microtomy-hardware-status--ready { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.ps-microtomy-hardware-status--warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.ps-microtomy-hardware-status--error { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.ps-microtomy-hardware-status--offline { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+
+.ps-microtomy-label-preview {
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+  background: #0f172a;
+  padding: 10px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ps-microtomy-label-preview-barcode {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  background: #1e293b;
+  border-radius: 2px;
+  padding: 3px;
+}
+
+.ps-microtomy-label-preview-barcode span {
+  width: 4px;
+  height: 4px;
+  background: #e2e8f0;
+}
+
+.ps-microtomy-label-preview-text {
+  font-size: 10px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.ps-microtomy-label-preview-warning {
+  font-size: 11px;
+  color: #f59e0b;
+  margin-top: 6px;
+}
+
+.ps-microtomy-comment-section {
+  margin-top: 10px;
+}
+
+.ps-microtomy-comment-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ps-microtomy-comment-item {
+  font-size: 12px;
+  color: #cbd5e1;
+  padding: 6px 8px;
+  background: rgba(148, 163, 184, 0.05);
+  border-radius: 6px;
+}
+
+.ps-microtomy-comment-meta {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ps-microtomy-comment-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ps-microtomy-comment-textarea {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 8px;
+  font-size: 12px;
+  min-height: 50px;
+  resize: vertical;
+}
+
+.ps-microtomy-cytology-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 700px) {
+  .ps-microtomy-cytology-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-microtomy-field-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ps-microtomy-field-input,
+.ps-microtomy-field-select {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.ps-microtomy-prep-suggestion-box {
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.05);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.ps-microtomy-batch-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  font-size: 13px;
+}
+
+.ps-microtomy-batch-progress-row:last-child {
+  border-bottom: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Real, per PS-285 (Embedding Station) — deliberately styled to match
+   ps-microtomy-* / ps-grossing-* directly (same dark palette, spacing,
+   and badge/table conventions), under its own ps-embedding-* prefix
+   per this file's own established one-prefix-per-page convention. Not
+   a copy-paste accident — see EmbeddingStationPage.tsx's own header
+   comment for why this mirrors ps-microtomy-* so closely: the same
+   direct guidance behind PS-284's own visual-consistency request
+   applies here, sibling workstation to sibling workstation.
+   ───────────────────────────────────────────────────────────────────────── */
+.ps-embedding-page {
+  padding: 20px 28px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.ps-embedding-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ps-embedding-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.ps-embedding-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.ps-embedding-context-bar strong {
+  color: #e2e8f0;
+}
+
+.ps-embedding-scan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ps-embedding-scan-input {
+  flex: 1;
+  max-width: 360px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.ps-embedding-scan-error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.ps-embedding-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .ps-embedding-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-embedding-panel {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.ps-embedding-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ps-embedding-alert-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ps-embedding-alert-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  cursor: pointer;
+}
+
+.ps-embedding-alert-badge--off {
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.ps-embedding-alert-badge--readonly {
+  cursor: default;
+}
+
+.ps-embedding-context-field {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ps-embedding-context-field strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.ps-embedding-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ps-embedding-row-btn {
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.ps-embedding-row-btn:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.ps-embedding-row-btn--danger:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.ps-embedding-row-btn--primary {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.ps-embedding-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.ps-embedding-hardware-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  font-size: 12px;
+}
+
+.ps-embedding-hardware-card:last-child {
+  border-bottom: none;
+}
+
+.ps-embedding-hardware-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ps-embedding-hardware-status--ready { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.ps-embedding-hardware-status--warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.ps-embedding-hardware-status--error { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.ps-embedding-hardware-status--offline { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+
+.ps-embedding-comment-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ps-embedding-comment-item {
+  font-size: 12px;
+  color: #cbd5e1;
+  padding: 6px 8px;
+  background: rgba(148, 163, 184, 0.05);
+  border-radius: 6px;
+}
+
+.ps-embedding-comment-meta {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ps-embedding-comment-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ps-embedding-comment-textarea {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 8px;
+  font-size: 12px;
+  min-height: 50px;
+  resize: vertical;
+}
+
+.ps-embedding-field-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ps-embedding-field-input,
+.ps-embedding-field-select {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+/* Real, per PS-285's own "Base Mold Size Picker: quick-select for
+   standard sizes" — a real chip grid, same interaction pattern as
+   ps-microtomy-category-tab. */
+.ps-embedding-mold-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ps-embedding-mold-chip {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ps-embedding-mold-chip--active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+/* Real, per PS-285's own "Orientation Instructions" quick-fill
+   suggestions. */
+.ps-embedding-orientation-quickfills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Real, per PS-285's own "Discrepancy Reporting: one-touch buttons"
+   — a genuinely distinct, high-contrast red family (never the amber
+   used for ordinary alert badges), since a discrepancy button halts
+   the block workflow, not just flags a note. */
+.ps-embedding-discrepancy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+@media (max-width: 500px) {
+  .ps-embedding-discrepancy-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-embedding-discrepancy-btn {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ps-embedding-discrepancy-btn:hover {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.ps-embedding-discrepancy-active {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #f87171;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Real, per PS-285's own "Multi-Cassette / Split-Block Tracking:
+   visual indicators when a specimen was split across multiple
+   cassettes... to ensure all related cassettes are embedded
+   together." */
+.ps-embedding-split-banner {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+}
+
+.ps-embedding-split-banner--complete {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+.ps-embedding-piece-count-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Real, per PS-286 (Slide Distribution Station) — third of the PS-284→
+   285→286→287→288 workstation-build sequence, deliberately styled to
+   match ps-embedding-* / ps-microtomy-* / ps-grossing-* directly (same
+   dark palette, spacing, badge conventions), under its own
+   ps-slidedist-* prefix per this file's own one-prefix-per-page
+   convention. This bench is a real continuous-scan QUEUE rather than
+   one work item at a time, so it adds a queue-row list, a destination
+   toggle, a quick-picker search grid, and a schematic "occupied slots"
+   chip grid — genuinely new shapes the sibling workstations didn't
+   need, styled from the same shared building blocks as the rest of
+   this file (ps-overlay/ps-modal-dark, ps-btn-primary/secondary).
+   ───────────────────────────────────────────────────────────────────────── */
+.ps-slidedist-page {
+  padding: 20px 28px;
+  max-width: 1520px;
+  margin: 0 auto;
+}
+
+.ps-slidedist-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ps-slidedist-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.ps-slidedist-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.ps-slidedist-context-bar strong {
+  color: #e2e8f0;
+}
+
+.ps-slidedist-scan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ps-slidedist-scan-input {
+  flex: 1;
+  max-width: 420px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.ps-slidedist-scan-error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.ps-slidedist-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .ps-slidedist-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-slidedist-panel {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.ps-slidedist-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ps-slidedist-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.ps-slidedist-queue-row {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.ps-slidedist-queue-row:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.ps-slidedist-queue-row--active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.ps-slidedist-queue-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 4px;
+}
+
+.ps-slidedist-queue-row-meta {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.ps-slidedist-priority-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+.ps-slidedist-priority-badge--STAT { background: rgba(248, 113, 113, 0.18); color: #f87171; }
+.ps-slidedist-priority-badge--Rush { background: rgba(245, 158, 11, 0.18); color: #f59e0b; }
+.ps-slidedist-priority-badge--Routine { background: rgba(148, 163, 184, 0.12); color: #94a3b8; }
+
+.ps-slidedist-empty {
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px 0;
+}
+
+.ps-slidedist-slot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.ps-slidedist-slot-chip {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ps-slidedist-slot-chip--active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.ps-slidedist-slot-chip--physical { border-color: rgba(74, 222, 128, 0.4); }
+.ps-slidedist-slot-chip--digital { border-color: rgba(124, 58, 237, 0.4); }
+.ps-slidedist-slot-chip--exception { border-color: rgba(248, 113, 113, 0.6); background: rgba(248, 113, 113, 0.15); color: #f87171; }
+
+.ps-slidedist-destination-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ps-slidedist-toggle-btn {
+  flex: 1;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.ps-slidedist-toggle-btn--active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.ps-slidedist-search-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.ps-slidedist-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.ps-slidedist-picker-chip {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ps-slidedist-picker-chip--active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.ps-slidedist-field-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ps-slidedist-field-input,
+.ps-slidedist-field-select {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.ps-slidedist-context-field {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ps-slidedist-context-field strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.ps-slidedist-split-warning {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+}
+
+.ps-slidedist-exception-banner {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ps-slidedist-exception-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ps-slidedist-exception-btn {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ps-slidedist-exception-btn:hover {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.ps-slidedist-event-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.ps-slidedist-event-item {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 4px 8px;
+  background: rgba(148, 163, 184, 0.05);
+  border-radius: 6px;
+}
+
+.ps-slidedist-row-btn {
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.ps-slidedist-row-btn:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.ps-slidedist-row-btn--danger:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   PS-287 — Add-On Order Page (Pathologist-Initiated Add-On Orders).
+   Fourth of the PS-284→285→286→287→288 workstation series — styled to
+   match ps-embedding-* / ps-microtomy-* / ps-slidedist-* directly (same dark
+   palette, spacing, badge conventions), under its own ps-addon-* prefix
+   per this file's own one-prefix-per-page convention. Genuinely new
+   shapes this page needed: a case-search landing state (no siblings
+   have this — they're all scan-to-open), a real kind/mode toggle group
+   reused across priority/media/control-mode pickers, a cart list, and a
+   tracking-stage badge set with its own five-plus-exception palette.
+   ───────────────────────────────────────────────────────────────────────── */
+.ps-addon-page {
+  padding: 20px 28px;
+  max-width: 1520px;
+  margin: 0 auto;
+}
+
+.ps-addon-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.ps-addon-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.ps-addon-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ps-addon-scan-input {
+  flex: 1;
+  max-width: 420px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.ps-addon-scan-error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.ps-addon-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.ps-addon-context-bar strong {
+  color: #e2e8f0;
+}
+
+.ps-addon-warning-inline {
+  color: #f59e0b;
+  font-size: 12px;
+}
+
+.ps-addon-notice-banner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+}
+
+.ps-addon-warning-banner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+}
+
+.ps-addon-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr 340px;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  .ps-addon-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-addon-panel {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.ps-addon-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ps-addon-empty {
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px 0;
+}
+
+.ps-addon-specimen-group {
+  margin-bottom: 12px;
+}
+
+.ps-addon-specimen-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin: 0 0 6px;
+}
+
+.ps-addon-block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.ps-addon-block-row:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.ps-addon-block-row--selected {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.ps-addon-block-row--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ps-addon-block-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+.ps-addon-block-row-meta {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.ps-addon-block-flag {
+  color: #f59e0b;
+}
+
+.ps-addon-block-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.18);
+  color: #f87171;
+}
+
+.ps-addon-kind-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.ps-addon-toggle-btn {
+  flex: 1;
+  min-width: 70px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 7px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.ps-addon-toggle-btn--active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.ps-addon-field-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ps-addon-field-input,
+.ps-addon-field-textarea {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
+.ps-addon-search-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.ps-addon-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.ps-addon-picker-chip {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ps-addon-picker-chip--active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.ps-addon-add-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.ps-addon-cart-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ps-addon-cart-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ps-addon-cart-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.ps-addon-cart-row-meta {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.ps-addon-cart-panel-badge {
+  color: #38bdf8;
+}
+
+.ps-addon-submit-btn {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.ps-addon-row-btn {
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.ps-addon-row-btn:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.ps-addon-row-btn--warn {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+  margin-top: 6px;
+}
+
+.ps-addon-row-btn--warn:hover {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.6);
+}
+
+.ps-addon-tracking-panel {
+  margin-top: 4px;
+}
+
+.ps-addon-tracking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ps-addon-tracking-row {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.ps-addon-tracking-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e2e8f0;
+  margin-bottom: 4px;
+}
+
+.ps-addon-tracking-row-meta {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.ps-addon-stage-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.ps-addon-stage-badge--requested { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.ps-addon-stage-badge--retrieved { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.ps-addon-stage-badge--cutting { background: rgba(124, 58, 237, 0.15); color: #a78bfa; }
+.ps-addon-stage-badge--staining { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.ps-addon-stage-badge--done { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+.ps-addon-stage-badge--exception { background: rgba(248, 113, 113, 0.18); color: #f87171; }
+.ps-addon-stage-badge--cancelled { background: rgba(100, 116, 139, 0.2); color: #64748b; }
+
+.ps-addon-exception-form {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.ps-addon-exception-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ps-addon-exception-banner {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
 }
 
 /* Real fix, per direct UI/UX request: the Temporary/Downtime Placeholder
@@ -20793,9 +22301,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Spacing is set per-child rather than by a uniform gap: the tagline belongs
-     to the mark above it, the version does not. Grouping them evenly made all
-     three read as one block. */
+  /* Spacing is per-child (see .ps-login-colophon-meta's own margin-top)
+     rather than a uniform gap, so the version tag can sit further from the
+     logo than the logo's internal tagline sits from its own wordmark. */
   gap: 0;
   margin-top: 20px;
 }
@@ -20807,29 +22315,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   opacity: 0.8;
 }
 
-/* ForMedrixAI tagline. Live text rather than the baked-in raster version:
-   at the colophon's 150px logo width the artwork's own tagline would render
-   around 4px and be unreadable. Set at 10px it stays legible while remaining
-   subordinate to the PathScribe brand above. */
-.ps-login-colophon-tagline {
-  margin-top: 5px;
-  /* Measured at 175px on screen with 9px/0.08em, matching the logo width
-     above, so the two stack as one aligned block rather than two loose
-     lines. If the tagline ever overhangs, letter-spacing is the fine
-     adjustment: each 0.01em is roughly 2.5px of width. */
-  font-size: 9px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-indent: 0.08em;         /* offsets the trailing letter-space when centred */
-  text-transform: uppercase;
-  color: #8494a8;              /* 4.72:1 */
-}
-
-.ps-login-tagline-sep {
-  margin: 0 0.15em;
-  color: #22d3ee;              /* 6.94:1 */
-}
+/* ForMedrixAI tagline: previously live text, separate from the logo image,
+   because the artwork's baked-in tagline used to render unreadably small at
+   this width. The current logo file (Update 282) is a corrected, higher-
+   fidelity lockup where the tagline reads fine at 175px, so the tagline is
+   now part of .ps-login-colophon-logo's own image and this separate text
+   was removed. Kept here only as a historical note in case that trade-off
+   needs revisiting for a future logo revision.
+*/
 
 .ps-login-colophon-meta {
   margin-top: 16px;
@@ -21868,6 +23361,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-auditlog-table--audit { min-width: 680px; }
 .ps-auditlog-table--error { min-width: 760px; }
 .ps-auditlog-table--quality { min-width: 820px; }
+.ps-auditlog-table--disposal { min-width: 860px; }
 
 .ps-auditlog-thead {
   display: grid;
@@ -21893,6 +23387,13 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-auditlog-row--interfaces { grid-template-columns: 165px 85px 1fr 130px 130px 85px; }
 .ps-auditlog-thead--quality,
 .ps-auditlog-row--quality { grid-template-columns: 165px 130px 100px 155px 1fr 150px 145px; }
+/* Real feature — Stain QC Module §2.5 waste tracking/reporting
+   (DisposalReportPage.tsx). Same real grid-table convention as the
+   other ps-auditlog-*--<variant> pairs above, 7 columns: Disposed At |
+   Material Type | Item ID | Case Accession | Specimen | Disposed By |
+   Last Known Location. */
+.ps-auditlog-thead--disposal,
+.ps-auditlog-row--disposal { grid-template-columns: 150px 90px 190px 140px 100px 150px 1fr; }
 
 .ps-auditlog-tbody { flex: 1; overflow-y: auto; }
 .ps-auditlog-empty { padding: 50px; text-align: center; color: #94a3b8; }
@@ -23381,7 +24882,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   background: none; border: 1px solid rgba(148,163,184,0.3); color: #94a3b8;
 }
 
-.ps-navbar-station-wrap { position: relative; }
+.ps-navbar-station-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
 /* Real fix, per direct follow-up: "Visual Workstation Anchor: Keep
    the active station name clearly visible and high-contrast." A
    real, solid cyan fill — deliberately distinct from .ps-nav-btn's
@@ -23393,6 +24894,20 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   font-size: 12px; font-weight: 700; white-space: nowrap;
 }
 .ps-navbar-station-btn:hover { background: rgba(34,211,238,0.25); }
+/* Real fix, per PS-289's own comment thread — the one addendum piece
+   never actually delivered: a real, one-click deep-link from the
+   always-visible station control straight to that station's own
+   WorkstationGroup.dedicatedPageRoute, once one is set. Deliberately
+   a distinct green (not the cyan identity pin) — this is an action
+   button, not a status indicator — and only ever rendered when a
+   real route exists; never a disabled/greyed stand-in for "no bench
+   page yet." */
+.ps-navbar-bench-btn {
+  height: 34px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  background: rgba(52,211,153,0.15); border: 1.5px solid #34d399; color: #34d399;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.ps-navbar-bench-btn:hover { background: rgba(52,211,153,0.25); }
 .ps-navbar-station-menu {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 500;
   background: #0f1729; border: 1px solid rgba(34,211,238,0.3); border-radius: 8px;
@@ -23881,6 +25396,10 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-batch-field-label { font-size: 12px; font-weight: 600; color: var(--ps-text-muted); margin-top: 14px; margin-bottom: 6px; }
 .ps-batch-field-label:first-child { margin-top: 0; }
 
+.ps-batch-reagent-lot-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; border: 1px solid var(--ps-border-bright); border-radius: 6px; padding: 8px 10px; }
+.ps-batch-reagent-lot-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ps-text-muted); cursor: pointer; }
+.ps-batch-reagent-lot-empty { font-size: 12px; color: var(--ps-text-dim); font-style: italic; }
+
 /* ── Station-to-Processing-Node consistency hint (NewContainerModal) ── */
 .ps-batch-node-hint { font-size: 11px; color: var(--ps-text-dim); margin-top: 5px; }
 .ps-batch-node-hint--warn { color: #f59e0b; }
@@ -24003,6 +25522,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-batch-decal-timer--normal { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: #38bdf8; }
 .ps-batch-decal-timer--warning { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35); color: #fbbf24; }
 .ps-batch-decal-timer--overdue { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.4); color: #f87171; }
+.ps-batch-reagent-lot-summary { font-size: 13px; color: var(--ps-text-muted); margin-top: 10px; }
 .ps-batch-decal-timer-icon { font-size: 16px; }
 
 .ps-batch-duration-row { display: flex; gap: 12px; }
@@ -24270,6 +25790,99 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-orboard-setup-empty { color: #6b7280; margin-top: 16px; }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   PS-288 — Facility Ops Dashboard (pages/FacilityOpsDashboard/). Same
+   real, high-contrast, wall-display dark palette/typography as
+   ps-orboard-* above, generalized across all five department views.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ps-opsdash-setup-page { min-height: 100vh; background: #0a0a0a; color: #e5e7eb; display: flex; align-items: center; justify-content: center; }
+.ps-opsdash-setup-content { text-align: center; max-width: 420px; }
+.ps-opsdash-setup-description { color: #9ca3af; margin-bottom: 20px; }
+.ps-opsdash-setup-select { font-size: 20px; padding: 12px; border-radius: 8px; width: 100%; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; }
+.ps-opsdash-setup-empty { color: #6b7280; margin-top: 16px; }
+.ps-opsdash-loading { min-height: 100vh; background: #0a0a0a; color: #9ca3af; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+
+/* Real, closed device-binding gap: token confirmation step in
+   ProfileSetup (FacilityOpsDashboardPage.tsx) when a Display Profile
+   has a deviceToken recorded. */
+.ps-opsdash-setup-token-error { color: #f87171; margin-top: 10px; font-weight: 600; }
+.ps-opsdash-setup-token-actions { display: flex; gap: 12px; margin-top: 20px; justify-content: center; }
+.ps-opsdash-btn-secondary { background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 8px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+.ps-opsdash-btn-primary { background: #34d399; color: #0a0a0a; border: none; border-radius: 8px; padding: 10px 20px; font-size: 16px; font-weight: 700; cursor: pointer; }
+.ps-opsdash-btn-primary:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+
+.ps-opsdash-page { min-height: 100vh; background: #0a0a0a; color: #e5e7eb; padding: 24px 28px; }
+
+.ps-opsdash-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
+.ps-opsdash-header-eyebrow { font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+.ps-opsdash-header-view-title { font-size: 32px; font-weight: 800; }
+.ps-opsdash-header-meta { color: #9ca3af; font-size: 15px; margin-top: 2px; }
+.ps-opsdash-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.ps-opsdash-clock { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ps-opsdash-carousel-dots { display: flex; gap: 6px; }
+.ps-opsdash-carousel-dot { width: 8px; height: 8px; border-radius: 50%; background: #374151; }
+.ps-opsdash-carousel-dot--active { background: #60a5fa; }
+
+/* Real, per direct scope confirmation ("Honest polling stand-in...
+   plus a real Offline/Stale Data badge") — never claims real-time
+   push; visually flags whenever the last real poll failed or is
+   older than the stale threshold, rather than silently showing data
+   that may no longer be current. */
+.ps-opsdash-offline-badge {
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 5px 12px; border-radius: 10px; background: rgba(239,68,68,0.2); color: #fca5a5;
+  animation: ps-opsdash-offline-pulse 2s ease-in-out infinite;
+}
+.ps-opsdash-updated-note { font-size: 12px; color: #6b7280; }
+
+.ps-opsdash-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.ps-opsdash-stat-tile { background: #111827; border-radius: 12px; padding: 16px 18px; border: 3px solid transparent; }
+.ps-opsdash-stat-tile--warning { border-color: #F59E0B; }
+.ps-opsdash-stat-tile--overdue { border-color: #EF4444; animation: ps-opsdash-tile-flash 1.2s step-start infinite; }
+.ps-opsdash-stat-value { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ps-opsdash-stat-tile--warning .ps-opsdash-stat-value { color: #F59E0B; }
+.ps-opsdash-stat-tile--overdue .ps-opsdash-stat-value { color: #EF4444; }
+.ps-opsdash-stat-label { color: #9ca3af; font-size: 13px; margin-top: 4px; }
+
+.ps-opsdash-alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.ps-opsdash-alert-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 10px;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35);
+}
+.ps-opsdash-alert-row--warning { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); }
+.ps-opsdash-alert-kind {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 3px 8px; border-radius: 999px; background: rgba(239,68,68,0.25); color: #fca5a5; white-space: nowrap;
+}
+.ps-opsdash-alert-row--warning .ps-opsdash-alert-kind { background: rgba(245,158,11,0.25); color: #fcd34d; }
+.ps-opsdash-alert-title { font-weight: 700; }
+.ps-opsdash-alert-detail { color: #9ca3af; font-size: 13px; }
+
+.ps-opsdash-queue-empty { text-align: center; padding: 60px; color: #6b7280; font-size: 18px; }
+.ps-opsdash-queue-list { display: flex; flex-direction: column; gap: 8px; }
+.ps-opsdash-queue-row {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px;
+  background: #111827; border-radius: 10px; padding: 12px 18px; border: 3px solid transparent;
+}
+.ps-opsdash-queue-row--stat { border-color: #EF4444; }
+.ps-opsdash-queue-row--warning { border-color: #F59E0B; }
+.ps-opsdash-queue-row--overdue { border-color: #EF4444; }
+.ps-opsdash-queue-label { font-weight: 700; font-size: 16px; }
+.ps-opsdash-queue-detail { color: #9ca3af; font-size: 13px; margin-top: 2px; }
+.ps-opsdash-queue-timer { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.ps-opsdash-queue-timer--normal { color: #22C55E; }
+.ps-opsdash-queue-timer--warning { color: #F59E0B; }
+.ps-opsdash-queue-timer--overdue { color: #EF4444; }
+.ps-opsdash-queue-age { color: #6b7280; font-size: 13px; text-align: right; }
+.ps-opsdash-stat-pill {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.04em; color: #fff; background: #EF4444;
+  border-radius: 4px; padding: 2px 6px; margin-left: 8px; vertical-align: middle;
+}
+
+@keyframes ps-opsdash-offline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes ps-opsdash-tile-flash { 0%, 49% { border-color: #EF4444; } 50%, 100% { border-color: #7f1d1d; } }
+
+/* ─────────────────────────────────────────────────────────────────────────
    Molecular Order Queue — pages/MolecularOrderQueuePage/. Real, per
    direct request to demo HPV orders/reflex genotyping. Same dark
    visual language as the rest of this app's admin/queue surfaces.
@@ -24306,3 +25919,131 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   border-radius: 999px; padding: 1px 6px; cursor: pointer;
 }
 .ps-wsi-launch-error { color: #f87171; font-size: 11px; margin-left: 2px; cursor: help; }
+
+/* Real, per direct guidance's own confirmed "no inline CSS" ask for
+   the Autopsy Intake Form (AutopsyIntakeForm.tsx) — real, defined
+   classes matching this file's own established design conventions
+   (pill badges, amber/green semantic coloring) rather than inline
+   style objects. */
+.ps-autopsy-intake-card { max-width: 720px; margin: 0 auto; }
+.ps-autopsy-intake-status { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--ps-conf-border, #1e293b); }
+.ps-autopsy-status-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+.ps-autopsy-status-badge--temporary { background: rgba(245,158,11,0.15); color: #fcd34d; }
+.ps-autopsy-status-badge--fully_authorized { background: rgba(34,197,94,0.15); color: #86efac; }
+.ps-autopsy-gate-note { margin-top: 8px; font-size: 12px; color: #fcd34d; }
+.ps-autopsy-intake-footer { border-top: none; padding: 16px 0 0; }
+
+/* Real, per direct guidance's own confirmed Digital Readiness spec
+   \u00a73 \u2014 the Slide Detail Drawer, integrated into the same, existing
+   worklist rather than a second, separate page. */
+.ps-slide-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 92vw; background: #111827; border-left: 1px solid #1f2937; box-shadow: -8px 0 24px rgba(0,0,0,0.35); z-index: 1100; overflow-y: auto; padding: 20px; }
+.ps-slide-drawer-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.ps-slide-drawer-title { font-size: 16px; font-weight: 700; color: #e5e7eb; }
+.ps-slide-drawer-subtitle { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+.ps-slide-drawer-close { background: none; border: none; color: #9ca3af; font-size: 20px; cursor: pointer; line-height: 1; padding: 4px; }
+.ps-slide-drawer-section { border-top: 1px solid #1f2937; padding: 14px 0; }
+.ps-slide-drawer-section-title { font-size: 12px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.ps-slide-drawer-empty { font-size: 12.5px; color: #6b7280; }
+.ps-slide-drawer-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.ps-slide-drawer-row-body { flex: 1; min-width: 0; }
+.ps-slide-drawer-row-title { font-size: 12.5px; color: #e5e7eb; font-weight: 600; }
+.ps-slide-drawer-row-meta { font-size: 11.5px; color: #9ca3af; margin-top: 2px; }
+.ps-slide-drawer-actions { display: flex; flex-direction: column; gap: 8px; padding-top: 16px; }
+
+/* Real, per direct follow-up ("Surg Path, Cytology and Autopsy...
+   almost belong together") — the real discipline branch tabs. */
+.ps-wl-branch-tabs { display: flex; gap: 8px; padding: 0 0 8px; }
+.ps-wl-branch-tab { padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: #94a3b8; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer; }
+.ps-wl-branch-tab--active { color: #e2e8f0; background: rgba(99,102,241,0.18); border-color: #6366F1; }
+
+/* Real, per direct follow-up ("allow the admin to enter/edit the
+   parameters in order for them to ensure safety") — CassetteLabelLayoutEditor.tsx */
+.ps-cassette-layout-preset-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.ps-cassette-layout-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 16px; margin-bottom: 14px; }
+.ps-cassette-layout-warnings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.ps-cassette-layout-warning { background: rgba(239,68,68,0.08); border-left: 3px solid #EF4444; color: #FCA5A5; }
+.ps-cassette-layout-ok { color: #6EE7B7; font-size: 13px; padding: 8px 0; margin-bottom: 14px; }
+.ps-cassette-layout-preview-wrap { margin-bottom: 16px; }
+.ps-cassette-layout-preview-label { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+.ps-cassette-layout-preview-svg { background: #f8fafc; border-radius: 4px; }
+.ps-cassette-preview-face { fill: #ffffff; stroke: #94a3b8; stroke-width: 1; }
+.ps-cassette-preview-barcode { fill: #1a1a1a; }
+.ps-cassette-preview-text { fill: #1a1a1a; font-family: monospace; }
+.ps-cassette-layout-testprint { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; }
+.ps-cassette-layout-testprint-title { font-size: 14px; margin-bottom: 4px; }
+.ps-cassette-layout-testprint-row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+
+/* ============================================================
+   TOAST NOTIFICATIONS (react-toastify) — PS-72 follow-up
+   Pete flagged react-toastify's default light-mode popup as
+   stylistically out of place in an otherwise all-dark UI, then
+   directly asked whether the fix should come from PathScribe's own
+   CSS rather than one-off overrides — it does. react-toastify
+   exposes its whole look as --toastify-* custom properties
+   specifically so a consuming app can retheme it this way instead
+   of fighting its selectors with !important.
+
+   These are re-mapped onto the SAME tokens/palette already used
+   everywhere else in the app for status colour — --ps-surface/
+   --ps-border/--ps-text (App backgrounds/Borders/Text, above) and
+   the info=teal / success=green / warning=amber / error=red set
+   used by .ps-badge-* / .ps-confidence-* — rather than inventing a
+   new toast-only colour scheme.
+
+   Import order matters: both this file and ReactToastify.css
+   declare `:root { --toastify-*: ... }`, so whichever loads LAST
+   wins regardless of selector specificity. App.tsx imports
+   ReactToastify.css before this file for exactly that reason —
+   don't reorder those without moving this block too.
+   ============================================================ */
+:root {
+  --toastify-color-light:       var(--ps-surface);
+  --toastify-color-dark:        var(--ps-surface);
+  --toastify-color-info:        var(--ps-teal);
+  --toastify-color-success:     #10b981;
+  --toastify-color-warning:     #f59e0b;
+  --toastify-color-error:       #ef4444;
+  --toastify-color-transparent: rgba(11,17,32,0.7);
+
+  --toastify-icon-color-info:    var(--ps-teal-light);
+  --toastify-icon-color-success: #4ade80;
+  --toastify-icon-color-warning: #fbbf24;
+  --toastify-icon-color-error:   #f87171;
+
+  --toastify-toast-background: var(--ps-surface);
+  --toastify-toast-bd-radius:  var(--ps-radius-md);
+  --toastify-toast-shadow:     var(--ps-shadow-modal);
+  --toastify-font-family:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica', 'Arial', sans-serif;
+
+  --toastify-text-color-light:   var(--ps-text);
+  --toastify-text-color-dark:    var(--ps-text);
+  --toastify-text-color-info:    var(--ps-text);
+  --toastify-text-color-success: var(--ps-text);
+  --toastify-text-color-warning: var(--ps-text);
+  --toastify-text-color-error:   var(--ps-text);
+
+  --toastify-spinner-color:            var(--ps-teal-light);
+  --toastify-spinner-color-empty-area: var(--ps-border);
+  --toastify-color-progress-info:      var(--ps-teal);
+  --toastify-color-progress-success:   #10b981;
+  --toastify-color-progress-warning:   #f59e0b;
+  --toastify-color-progress-error:     #ef4444;
+}
+
+/* A tinted left accent bar per variant — the same visual language as
+   .ps-badge-* / .ps-confidence-* (soft background + coloured accent),
+   so a toast reads as native to PathScribe rather than a foreign
+   popup dropped on top of it. */
+.Toastify__toast {
+  border:             1px solid var(--ps-border-bright);
+  border-left-width:  4px;
+  font-family:        var(--toastify-font-family);
+}
+.Toastify__toast--default { border-left-color: var(--ps-border-bright); }
+.Toastify__toast--info    { border-left-color: var(--ps-teal); }
+.Toastify__toast--success { border-left-color: #10b981; }
+.Toastify__toast--warning { border-left-color: #f59e0b; }
+.Toastify__toast--error   { border-left-color: #ef4444; }
+
+.Toastify__close-button { color: var(--ps-text-muted); opacity: 0.7; }
+.Toastify__close-button:hover { opacity: 1; color: var(--ps-text); }

@@ -3,9 +3,11 @@ import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import RequestReviewModal from '@/components/RequestReview/RequestReviewModal';
+import ExternalConsultAccessModal from '@/components/ExternalConsult/ExternalConsultAccessModal';
 import { PoolClaimModal } from '@/components/Worklist/PoolClaimModal';
 import EMRSidecarDrawer from './EMRSidecarDrawer';
 import { useCompanionWindow } from '@/hooks/useCompanionWindow';
+import { resolveIsFinalStatus } from '@/services/reportTemplates/TemplateRoutingService';
 
 
 interface BottomActionBarProps {
@@ -16,6 +18,14 @@ interface BottomActionBarProps {
   onFinalize: () => void;
   onFinalizeAndNext: () => void;
   onSignOut: () => void;
+  /** Real, per direct research and design recommendation ("Provide a
+   *  Manual Trigger... 'Release as Preliminary' button... at any point
+   *  before final verification") — the manual pathologist action
+   *  identified as the primary real trigger (~80% of real preliminary-
+   *  report cases). Optional: undefined on any surface (e.g. the
+   *  Cytology sign-out page) that hasn't wired this yet — never a
+   *  broken button on a page that doesn't support it. */
+  onReleasePreliminary?: () => void;
   /** Manual trigger for the Amendment/Addendum modal on an already-
    *  finalized case — before this, the modal only ever opened itself
    *  automatically for one narrow scenario (a deferred synoptic being
@@ -135,6 +145,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onFinalize,
   onFinalizeAndNext,
   onSignOut,
+  onReleasePreliminary,
   onRequestAmendment,
   onPrint,
   onOpenReprints,
@@ -156,6 +167,9 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const navigate = useNavigate();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [claimOpen,  setClaimOpen]  = useState(false);
+  // PS-290 — see ExternalConsultAccessModal.tsx's own header for the
+  // real, load-bearing disclosure this feature carries.
+  const [consultOpen, setConsultOpen] = useState(false);
 
   // Real fix, per direct report: at a narrow enough effective viewport
   // (the fixed-width right-hand action cluster forcing this scrollable
@@ -328,6 +342,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             <ActionButton onClick={() => onDelegate?.()} variant="outline" color="#a78bfa" title="Delegate case">👥 Delegate</ActionButton>
             <ActionButton onClick={() => onTeam?.()} variant="outline" color="#0891B2" title="Manage case team">👤 Team</ActionButton>
             <ActionButton onClick={() => setReviewOpen(true)} variant="outline" color="#a78bfa" title="Request informal peer review">🔍 Req. Review</ActionButton>
+            <ActionButton onClick={() => setConsultOpen(true)} variant="outline" color="#f87171" title="External consult / second-opinion access (demo/pilot only — not real security)">🌐 Consult</ActionButton>
             <ActionButton onClick={() => onHistory?.()} variant="outline" color="#0891B2">📋 History</ActionButton>
             <ActionButton onClick={() => onFlags?.()} variant="outline" color="#f59e0b">🚩 Flags</ActionButton>
             <ActionButton onClick={() => onCodes?.()} variant="outline" color={codesColor}># Codes</ActionButton>
@@ -463,6 +478,24 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             )}
           </>
         )}
+        {!isPool && caseData?.reportingMode !== 'assist' && onReleasePreliminary && !resolveIsFinalStatus(caseData?.status) && (
+          // Real, per direct research and design recommendation: shown
+          // "at any point before final verification" — deliberately
+          // NOT gated on allFinalized/isFinalized the way Sign Out
+          // Case is. The whole real point of this action is releasing
+          // a partial, in-progress finding early (the acute leukemia
+          // bone marrow case, the transplant kidney showing acute
+          // rejection) — requiring the case to already be complete
+          // first would defeat it entirely.
+          <ActionButton
+            onClick={onReleasePreliminary}
+            variant="outline"
+            color="#c026d3"
+            title="Send the current Preliminary findings to the outbound interface now — does not sign out or finalize the case"
+          >
+            📤 Release as Preliminary
+          </ActionButton>
+        )}
         {!isPool && caseData?.reportingMode !== 'assist' && (allFinalized || isFinalized) && status !== 'finalized' &&
           // Real, critical fix, per direct specification: Post-Sign-Out
           // Release Buffer. A real, serious bug found during a
@@ -521,6 +554,14 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       fromUserId={user?.id ?? 'u1'}
       fromUserName={user?.name ?? 'Unknown'}
       onClose={() => setReviewOpen(false)}
+    />
+
+    <ExternalConsultAccessModal
+      isOpen={consultOpen}
+      caseData={caseData}
+      currentUserId={user?.id ?? 'u1'}
+      currentUserName={user?.name ?? 'Unknown'}
+      onClose={() => setConsultOpen(false)}
     />
 
     <PoolClaimModal

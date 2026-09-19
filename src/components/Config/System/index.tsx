@@ -9,13 +9,18 @@ import StainDictionarySection from './StainDictionarySection';
 import VendorIntegrationsSection from './VendorIntegrationsSection';
 import CytologyQcRulesSection from './CytologyQcRulesSection';
 import OrSuiteTerminalsSection from './OrSuiteTerminalsSection';
+import DisplayProfilesSection from './DisplayProfilesSection';
 import MigrationFieldMappingsSection from './MigrationFieldMappingsSection';
 import CancerRegistrySettingsSection from './CancerRegistrySettingsSection';
 import ProtocolDictionarySection from './ProtocolDictionarySection';
 import PrinterProfilesSection from './PrinterProfilesSection';
 import GrossingRouteOverridesSection from './GrossingRouteOverridesSection';
 import DepartmentsSection from './DepartmentsSection';
+import AssetLocationDictionarySection from './AssetLocationDictionarySection';
 import ContainerTypesSection from './ContainerTypesSection';
+import ReagentLotsSection from './ReagentLotsSection';
+import WorkstationGroupsSection from './WorkstationGroupsSection';
+import ActionGroupsSection from './ActionGroupsSection';
 import ScanStationsSection from './ScanStationsSection';
 import CassetteRoutingRulesSection from './CassetteRoutingRulesSection';
 import CassetteColorsSection from './CassetteColorsSection';
@@ -40,6 +45,8 @@ import BillingTypeTriggerSection from './BillingTypeTriggerSection';
 import ParticipationTypesSection from './ParticipationTypesSection';
 import SessionSecuritySection    from './SessionSecuritySection';
 import ReleaseBufferSection      from './ReleaseBufferSection';
+import ConcordanceReviewSettingsSection from './ConcordanceReviewSettingsSection';
+import DeliveryRulesSection from './DeliveryRulesSection';
 import ContributionSettingsSection from './ContributionSettingsSection';
 import ExternalResourcesSection  from './ExternalResourcesSection';
 import ResearchFeedSection      from './ResearchFeedSection';
@@ -75,10 +82,15 @@ type SystemSection =
   | 'vendor_integrations'
   | 'cytology_qc_rules'
   | 'or_suite_terminals'
+  | 'display_profiles'
   | 'migration_field_mappings'
   | 'cancer_registry_settings'
   | 'departments'
+  | 'asset_locations'
   | 'container_types'
+  | 'reagent_lots'
+  | 'workstation_groups'
+  | 'action_groups'
   | 'scan_stations'
   | 'cassette_routing_rules'
   | 'cassette_colors'
@@ -87,6 +99,8 @@ type SystemSection =
   | 'retention'
   | 'session_security'
   | 'release_buffer'
+  | 'concordance_review_settings'
+  | 'delivery_rules'
   | 'contribution_settings'
   | 'qa_config_center'
   | 'external_resources'
@@ -156,6 +170,9 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   { id: 'cassette_colors',     emoji: '🎨', label: 'Cassette Colors'       , group: 'Lab Materials & Workflows' },
   { id: 'cassette_routing_rules', emoji: '🧊', label: 'Cassette Routing Rules', group: 'Lab Materials & Workflows' },
   { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
+  { id: 'reagent_lots',        emoji: '🧫', label: 'Reagent & Solution Lots', group: 'Lab Materials & Workflows' },
+  { id: 'workstation_groups',  emoji: '🗺️', label: 'Workstation Groups'    , group: 'Lab Materials & Workflows' },
+  { id: 'action_groups',       emoji: '⚡', label: 'Action Groups'          , group: 'Lab Materials & Workflows' },
   { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
   // Real, per this module's own DP/AI vendor integration plan's final
   // remaining item. Placed in the same real group as the diagnostic
@@ -168,6 +185,10 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   // Intraoperative/Frozen Section Dashboard — same real group as the
   // other lab-hardware/workflow registries.
   { id: 'or_suite_terminals',  emoji: '🏥', label: 'OR Suite Terminals'     , group: 'Lab Materials & Workflows' },
+  // PS-288 — data-only device registry for the five real Facility Ops
+  // Dashboard wall displays. Same real group as OR Suite Terminals,
+  // a genuinely analogous physical-display registry.
+  { id: 'display_profiles',    emoji: '🖥️', label: 'Display Profiles (Facility Ops Dashboards)', group: 'Lab Materials & Workflows' },
   // Real, per the RFP-APLIS-2026-GLOBAL Historical Data Migration
   // Engine gap.
   { id: 'migration_field_mappings', emoji: '📦', label: 'Migration Field Mappings', group: 'Lab Materials & Workflows' },
@@ -178,6 +199,7 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Lab Materials & Workflows' },
   { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
   { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
+  { id: 'asset_locations',     emoji: '📍', label: 'Asset Location Dictionary', group: 'Lab Materials & Workflows' },
 
   // ── Clinical Lookups ──
   { id: 'governing_bodies',    emoji: '📋', label: 'Governing Bodies'      , group: 'Clinical Lookups' },
@@ -206,6 +228,8 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   { id: 'document_style',      emoji: '🖋', label: 'Document Style'        , group: 'Administration & Compliance' },
   { id: 'external_resources',  emoji: '🌐', label: 'External Resources'    , group: 'Administration & Compliance' },
   { id: 'release_buffer',      emoji: '⏳', label: 'Post-Sign-Out Release Buffer', group: 'Administration & Compliance' },
+  { id: 'concordance_review_settings', emoji: '⚖', label: 'Preliminary-vs-Final Concordance Review', group: 'Administration & Compliance' },
+  { id: 'delivery_rules', emoji: '📬', label: 'Delivery Configuration Rules', group: 'Administration & Compliance' },
   { id: 'qa_config_center',    emoji: '✅', label: 'QA Configuration Center' , group: 'Administration & Compliance' },
   { id: 'research_feed',       emoji: '📰', label: 'Research Feed'         , group: 'Administration & Compliance' },
   { id: 'session_security',    emoji: '🔒', label: 'Session Security'      , group: 'Administration & Compliance' },
@@ -285,13 +309,18 @@ const SystemTab: React.FC = () => {
       case 'vendor_integrations': return <VendorIntegrationsSection />;
       case 'cytology_qc_rules': return <CytologyQcRulesSection />;
       case 'or_suite_terminals':  return <OrSuiteTerminalsSection />;
+      case 'display_profiles':    return <DisplayProfilesSection />;
       case 'migration_field_mappings': return <MigrationFieldMappingsSection />;
       case 'cancer_registry_settings': return <CancerRegistrySettingsSection />;
       case 'protocols':           return <ProtocolDictionarySection />;
       case 'printer_profiles':    return <PrinterProfilesSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'grossing_route_overrides': return <GrossingRouteOverridesSection />;
       case 'departments': return <DepartmentsSection />;
+      case 'asset_locations': return <AssetLocationDictionarySection />;
       case 'container_types': return <ContainerTypesSection />;
+      case 'reagent_lots': return <ReagentLotsSection />;
+      case 'workstation_groups': return <WorkstationGroupsSection />;
+      case 'action_groups': return <ActionGroupsSection />;
       case 'scan_stations': return <ScanStationsSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'cassette_routing_rules': return <CassetteRoutingRulesSection />;
       case 'cassette_colors': return <CassetteColorsSection />;
@@ -315,6 +344,8 @@ const SystemTab: React.FC = () => {
       case 'participation_types': return <ParticipationTypesSection />;
       case 'session_security':    return <SessionSecuritySection />;
       case 'release_buffer':      return <ReleaseBufferSection />;
+      case 'concordance_review_settings': return <ConcordanceReviewSettingsSection />;
+      case 'delivery_rules': return <DeliveryRulesSection />;
       case 'contribution_settings': return <ContributionSettingsSection />;
       case 'external_resources':  return <ExternalResourcesSection />;
       case 'research_feed':       return <ResearchFeedSection />;

@@ -29,7 +29,7 @@
 // payload builder in this app already has.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type InterfaceTransactionType = 'A08' | 'A40' | 'A47' | 'ORU_R01' | 'LIS_SYNC' | 'ORDER_CREATED' | 'REGISTRY_REPORT';
+export type InterfaceTransactionType = 'A08' | 'A40' | 'A47' | 'ORU_R01' | 'LIS_SYNC' | 'ORDER_CREATED' | 'REGISTRY_REPORT' | 'PRINT_JOB';
 
 export interface InterfaceDispatchEnvelope {
   queueEntryId: string;

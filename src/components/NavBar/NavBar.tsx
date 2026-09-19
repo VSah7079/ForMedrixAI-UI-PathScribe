@@ -333,7 +333,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
         {/* Left */}
         <div className="ps-nav-left">
           <img
-            src="/pathscribe-logo-clean.svg"
+            src="/pathscribe-logo-clean.png"
             alt="PathScribe"
             className="ps-nav-logo"
             onClick={onLogoClick}

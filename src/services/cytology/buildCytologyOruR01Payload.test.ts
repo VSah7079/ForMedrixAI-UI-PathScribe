@@ -92,3 +92,63 @@ describe('buildCytologyOruR01Payload — real, cytology-specific dispatch payloa
     expect(payload.narrative.primaryInterpretation).toBe('Atypical squamous cells of undetermined significance (ASC-US).');
   });
 });
+
+describe('buildCytologyOruR01Payload — resultState/previouslyReportedAs, per direct follow-up ("Cytology has no amendment mechanism at all")', () => {
+  it('defaults to FINAL when no resultState is passed, preserving every existing real caller\u2019s behavior unchanged', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD);
+    expect(payload.resultState).toBe('FINAL');
+    expect(payload.narrative.previouslyReportedAs).toBeUndefined();
+  });
+
+  it('a real CORRECTED dispatch carries the real, verbatim previouslyReportedAs text the caller supplied', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'CORRECTED', 'Negative for intraepithelial lesion or malignancy (NILM).');
+    expect(payload.resultState).toBe('CORRECTED');
+    expect(payload.narrative.previouslyReportedAs).toBe('Negative for intraepithelial lesion or malignancy (NILM).');
+  });
+
+  it('a real CORRECTED dispatch with no previouslyReportedAs supplied carries none \u2014 never a fabricated placeholder', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'CORRECTED');
+    expect(payload.narrative.previouslyReportedAs).toBeUndefined();
+  });
+
+  it('a real FINAL dispatch never carries this field, even if a caller mistakenly supplied one', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'FINAL', 'Some prior text.');
+    expect(payload.narrative.previouslyReportedAs).toBeUndefined();
+  });
+});
+
+describe('buildCytologyOruR01Payload — ADDENDUM support, per direct correction ("Cytology cases can have addendums")', () => {
+  it('a real ADDENDUM dispatch carries the real, verbatim addendumText from the record\u2019s own report content', () => {
+    const record = { ...SIGN_OUT_RECORD, reportContent: { ...SIGN_OUT_RECORD.reportContent, addendumText: 'HPV co-testing: positive for HPV 16.' } };
+    const payload = buildCytologyOruR01Payload(record, 'ADDENDUM');
+    expect(payload.resultState).toBe('ADDENDUM');
+    expect(payload.narrative.addendumText).toBe('HPV co-testing: positive for HPV 16.');
+  });
+
+  it('a real ADDENDUM dispatch with no addendumText set on the record carries none \u2014 never a fabricated placeholder', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'ADDENDUM');
+    expect(payload.narrative.addendumText).toBeUndefined();
+  });
+
+  it('a real ADDENDUM dispatch never carries previouslyReportedAs \u2014 an addendum leaves the original diagnosis intact, it never replaces it', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'ADDENDUM', 'Some prior text.');
+    expect(payload.narrative.previouslyReportedAs).toBeUndefined();
+  });
+
+  it('a real CORRECTED dispatch never carries addendumText, even if the record happens to have one set', () => {
+    const record = { ...SIGN_OUT_RECORD, reportContent: { ...SIGN_OUT_RECORD.reportContent, addendumText: 'Some addendum text.' } };
+    const payload = buildCytologyOruR01Payload(record, 'CORRECTED');
+    expect(payload.narrative.addendumText).toBeUndefined();
+  });
+
+  it('a real FINAL dispatch never carries addendumText either', () => {
+    const record = { ...SIGN_OUT_RECORD, reportContent: { ...SIGN_OUT_RECORD.reportContent, addendumText: 'Some addendum text.' } };
+    const payload = buildCytologyOruR01Payload(record, 'FINAL');
+    expect(payload.narrative.addendumText).toBeUndefined();
+  });
+
+  it('an addendum\u2019s own primaryInterpretation is whatever the record\u2019s own report content says \u2014 this function never alters it, matching the real "leaves the original diagnosis intact" posture', () => {
+    const payload = buildCytologyOruR01Payload(SIGN_OUT_RECORD, 'ADDENDUM');
+    expect(payload.narrative.primaryInterpretation).toBe('Atypical squamous cells of undetermined significance (ASC-US).');
+  });
+});

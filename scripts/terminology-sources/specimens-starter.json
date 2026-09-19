@@ -1,80 +1,144 @@
 {
+  "notes": "Real, researched starter data for the Specimen Dictionary (services/specimenDictionary/). Rebuilt 2026-06-01 after this file was found missing from the working copy (a real, unrelated environment/packaging gap — not a code bug — traced while investigating a cascading test-suite failure). This is a genuine reconstruction, not a byte-for-byte restoration of whatever the original file held: defaultBaseCptCode values are verified against the standard, publicly-published CAP/AMA surgical pathology specimen-level examples table (Levels II-VI; source cross-checked against a Medicare Administrative Contractor-style published specimen checklist during this rebuild) and assigned only where a specimen name is a real, standard example at that level — left blank, never guessed, for Cytology/FNA/Molecular/Autopsy/Consult/Gross-Only entries, which use different, unverified CPT code families. As with the prior version of this file, none of this is a substitute for real coder review before any production/billing use.",
   "specimens": [
     {
-      "id": "sp-colon-biopsy",
-      "name": "Colon Biopsy",
-      "description": "",
-      "subspecialty": "GI Pathology",
+      "id": "sp001",
+      "name": "Core Needle Biopsy — Breast",
+      "description": "Image- or palpation-guided core needle biopsy of a breast lesion.",
+      "subspecialty": "Breast Pathology",
       "type": "Biopsy",
-      "procedure": "Endoscopic Biopsy",
-      "normalizedLabel": "Colon Biopsy",
+      "procedure": "Core Needle Biopsy",
+      "normalizedLabel": "Core Needle Biopsy — Breast",
       "synonyms": [
-        "Colonic Biopsy",
-        "Colon Bx"
+        "Breast Core Biopsy",
+        "Breast Core Needle Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-colon-polyp",
-      "name": "Colon Polyp",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Biopsy",
-      "procedure": "Polypectomy",
-      "normalizedLabel": "Colon Polyp",
+      "id": "sp002",
+      "name": "Breast, Excisional Biopsy",
+      "description": "Excisional biopsy/lumpectomy of a breast lesion, requiring microscopic evaluation of surgical margins.",
+      "subspecialty": "Breast Pathology",
+      "type": "Excision",
+      "procedure": "Excisional Biopsy / Lumpectomy",
+      "normalizedLabel": "Breast, Excisional Biopsy",
       "synonyms": [
-        "Colonic Polyp"
+        "Lumpectomy",
+        "Breast Lumpectomy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-esophagus-biopsy",
-      "name": "Esophagus Biopsy",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Biopsy",
-      "procedure": "Endoscopic Biopsy",
-      "normalizedLabel": "Esophagus Biopsy",
+      "id": "sp003",
+      "name": "Breast, Reduction Mammoplasty",
+      "description": "Bilateral or unilateral reduction mammoplasty specimen.",
+      "subspecialty": "Breast Pathology",
+      "type": "Excision",
+      "procedure": "Reduction Mammoplasty",
+      "normalizedLabel": "Breast, Reduction Mammoplasty",
       "synonyms": [
-        "Esophageal Biopsy"
+        "Reduction Mammoplasty"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-gastric-biopsy",
-      "name": "Gastric Biopsy",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Biopsy",
-      "procedure": "Endoscopic Biopsy",
-      "normalizedLabel": "Gastric Biopsy",
-      "synonyms": [
-        "Stomach Biopsy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-appendix-incidental",
-      "name": "Appendix, Incidental",
-      "description": "",
-      "subspecialty": "GI Pathology",
+      "id": "sp004",
+      "name": "Mastectomy, Partial",
+      "description": "Partial (segmental) mastectomy specimen.",
+      "subspecialty": "Breast Pathology",
       "type": "Resection",
+      "procedure": "Partial Mastectomy",
+      "normalizedLabel": "Mastectomy, Partial",
+      "synonyms": [
+        "Segmental Mastectomy",
+        "Partial Mastectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp005",
+      "name": "Mastectomy, Simple/Total",
+      "description": "Simple (total) mastectomy specimen, without regional lymph nodes.",
+      "subspecialty": "Breast Pathology",
+      "type": "Resection",
+      "procedure": "Simple/Total Mastectomy",
+      "normalizedLabel": "Mastectomy, Simple/Total",
+      "synonyms": [
+        "Total Mastectomy",
+        "Simple Mastectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp006",
+      "name": "Mastectomy, Total, with Axillary Lymph Node Dissection",
+      "description": "Total mastectomy specimen submitted together with a regional (axillary) lymph node dissection.",
+      "subspecialty": "Breast Pathology",
+      "type": "Resection",
+      "procedure": "Mastectomy with Axillary Dissection",
+      "normalizedLabel": "Mastectomy, Total, with Axillary Lymph Node Dissection",
+      "synonyms": [
+        "Modified Radical Mastectomy",
+        "Mastectomy with ALND"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
+    },
+    {
+      "id": "sp007",
+      "name": "Sentinel Lymph Node, Axillary",
+      "description": "Sentinel lymph node(s) submitted for breast cancer staging.",
+      "subspecialty": "Breast Pathology",
+      "type": "Biopsy",
+      "procedure": "Sentinel Lymph Node Biopsy",
+      "normalizedLabel": "Sentinel Lymph Node, Axillary",
+      "synonyms": [
+        "Sentinel Node Biopsy",
+        "SLN Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp008",
+      "name": "Appendix, Incidental",
+      "description": "Appendix removed incidentally during an unrelated abdominal procedure.",
+      "subspecialty": "GI Pathology",
+      "type": "Excision",
       "procedure": "Incidental Appendectomy",
       "normalizedLabel": "Appendix, Incidental",
       "synonyms": [
@@ -83,257 +147,396 @@
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88302"
     },
     {
-      "id": "sp-appendix-nonincidental",
-      "name": "Appendix, Non-Incidental",
-      "description": "",
+      "id": "sp009",
+      "name": "Appendix, Other than Incidental",
+      "description": "Appendectomy performed for suspected appendicitis or other primary indication.",
       "subspecialty": "GI Pathology",
-      "type": "Resection",
+      "type": "Excision",
       "procedure": "Appendectomy",
-      "normalizedLabel": "Appendix, Non-Incidental",
+      "normalizedLabel": "Appendix, Other than Incidental",
       "synonyms": [
-        "Appendicitis Specimen"
+        "Appendectomy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88304"
     },
     {
-      "id": "sp-colon-resection-tumor",
-      "name": "Colon Segmental Resection, For Tumor",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Resection",
-      "procedure": "Segmental Colectomy",
-      "normalizedLabel": "Colon Segmental Resection, For Tumor",
-      "synonyms": [
-        "Colectomy for Tumor",
-        "Colon Resection, Neoplastic"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88309"
-    },
-    {
-      "id": "sp-colon-resection-other",
-      "name": "Colon Segmental Resection, Other Than Tumor",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Resection",
-      "procedure": "Segmental Colectomy",
-      "normalizedLabel": "Colon Segmental Resection, Other Than Tumor",
-      "synonyms": [
-        "Colectomy, Non-Neoplastic"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-gallbladder",
+      "id": "sp010",
       "name": "Gallbladder",
-      "description": "",
+      "description": "Cholecystectomy specimen.",
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Cholecystectomy",
       "normalizedLabel": "Gallbladder",
       "synonyms": [
-        "Cholecystectomy Specimen"
+        "Cholecystectomy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88304"
     },
     {
-      "id": "sp-liver-biopsy",
-      "name": "Liver Needle or Wedge Biopsy",
-      "description": "",
+      "id": "sp011",
+      "name": "Colon, Biopsy",
+      "description": "Endoscopic colon biopsy.",
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
-      "procedure": "Core/Wedge Biopsy",
-      "normalizedLabel": "Liver Needle or Wedge Biopsy",
+      "procedure": "Colon Biopsy",
+      "normalizedLabel": "Colon, Biopsy",
       "synonyms": [
-        "Liver Biopsy"
+        "Colonic Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp012",
+      "name": "Polyp, Colorectal",
+      "description": "Endoscopically removed colorectal polyp.",
+      "subspecialty": "GI Pathology",
+      "type": "Excision",
+      "procedure": "Polypectomy",
+      "normalizedLabel": "Polyp, Colorectal",
+      "synonyms": [
+        "Colon Polyp",
+        "Colorectal Polypectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp013",
+      "name": "Colon, Segmental Resection — No Tumor",
+      "description": "Segmental colon resection for a non-neoplastic indication (e.g. diverticulitis, ischemia).",
+      "subspecialty": "GI Pathology",
+      "type": "Resection",
+      "procedure": "Segmental Colectomy",
+      "normalizedLabel": "Colon, Segmental Resection — No Tumor",
+      "synonyms": [
+        "Segmental Colon Resection"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-small-intestine-biopsy",
-      "name": "Small Intestine Biopsy",
-      "description": "",
+      "id": "sp014",
+      "name": "Colon, Segmental Resection for Tumor",
+      "description": "Segmental colon resection performed for a known or suspected colonic tumor.",
+      "subspecialty": "GI Pathology",
+      "type": "Resection",
+      "procedure": "Segmental Colectomy for Tumor",
+      "normalizedLabel": "Colon, Segmental Resection for Tumor",
+      "synonyms": [
+        "Colectomy for Cancer"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
+    },
+    {
+      "id": "sp015",
+      "name": "Esophagus, Biopsy",
+      "description": "Endoscopic esophageal biopsy.",
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
-      "procedure": "Endoscopic Biopsy",
-      "normalizedLabel": "Small Intestine Biopsy",
+      "procedure": "Esophageal Biopsy",
+      "normalizedLabel": "Esophagus, Biopsy",
+      "synonyms": [
+        "Esophageal Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp016",
+      "name": "Esophagus, Partial/Total Resection",
+      "description": "Esophagectomy specimen, partial or total.",
+      "subspecialty": "GI Pathology",
+      "type": "Resection",
+      "procedure": "Esophagectomy",
+      "normalizedLabel": "Esophagus, Partial/Total Resection",
+      "synonyms": [
+        "Esophagectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
+    },
+    {
+      "id": "sp017",
+      "name": "Stomach, Biopsy",
+      "description": "Endoscopic gastric biopsy.",
+      "subspecialty": "GI Pathology",
+      "type": "Biopsy",
+      "procedure": "Gastric Biopsy",
+      "normalizedLabel": "Stomach, Biopsy",
+      "synonyms": [
+        "Gastric Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp018",
+      "name": "Stomach, Subtotal/Total Resection for Tumor",
+      "description": "Gastrectomy specimen resected for a known or suspected gastric tumor.",
+      "subspecialty": "GI Pathology",
+      "type": "Resection",
+      "procedure": "Gastrectomy for Tumor",
+      "normalizedLabel": "Stomach, Subtotal/Total Resection for Tumor",
+      "synonyms": [
+        "Gastrectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
+    },
+    {
+      "id": "sp019",
+      "name": "Small Intestine, Biopsy",
+      "description": "Endoscopic small bowel biopsy.",
+      "subspecialty": "GI Pathology",
+      "type": "Biopsy",
+      "procedure": "Small Bowel Biopsy",
+      "normalizedLabel": "Small Intestine, Biopsy",
       "synonyms": [
         "Small Bowel Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-small-intestine-resection-tumor",
-      "name": "Small Intestine Resection, For Tumor",
-      "description": "",
+      "id": "sp020",
+      "name": "Small Intestine, Resection for Tumor",
+      "description": "Small bowel resection performed for a known or suspected small intestinal tumor.",
       "subspecialty": "GI Pathology",
       "type": "Resection",
-      "procedure": "Bowel Resection",
-      "normalizedLabel": "Small Intestine Resection, For Tumor",
+      "procedure": "Small Bowel Resection for Tumor",
+      "normalizedLabel": "Small Intestine, Resection for Tumor",
       "synonyms": [
-        "Small Bowel Resection, Neoplastic"
+        "Small Bowel Resection"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-breast-core-biopsy",
-      "name": "Core Needle Biopsy \u2014 Breast",
-      "description": "",
-      "subspecialty": "Breast Pathology",
+      "id": "sp021",
+      "name": "Gallbladder, Calculous",
+      "description": "Cholecystectomy for gallstone (calculous) disease, with no gross finding warranting microscopic examination beyond the lab's standard gross-only protocol.",
+      "subspecialty": "GI Pathology",
+      "type": "Gross Only",
+      "procedure": "Cholecystectomy, Calculous Disease",
+      "normalizedLabel": "Gallbladder, Calculous",
+      "synonyms": [
+        "Gallstone Cholecystectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultComplexity": "GROSS_ONLY"
+    },
+    {
+      "id": "sp022",
+      "name": "Liver, Biopsy",
+      "description": "Needle or wedge liver biopsy.",
+      "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Biopsy",
-      "procedure": "Core Needle Biopsy",
-      "normalizedLabel": "Core Needle Biopsy \u2014 Breast",
+      "procedure": "Liver Biopsy",
+      "normalizedLabel": "Liver, Biopsy",
       "synonyms": [
-        "Breast Core Biopsy",
-        "Breast Needle Core Tissue Biopsy"
+        "Liver Needle Biopsy",
+        "Liver Wedge Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-breast-lumpectomy",
-      "name": "Breast, Excision of Lesion, With Margin Exam",
-      "description": "",
-      "subspecialty": "Breast Pathology",
-      "type": "Excision",
-      "procedure": "Lumpectomy",
-      "normalizedLabel": "Breast, Excision of Lesion, With Margin Exam",
-      "synonyms": [
-        "Lumpectomy",
-        "Breast Tylectomy",
-        "Breast Segmentectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-breast-mastectomy-partial",
-      "name": "Breast Mastectomy, Partial or Simple, Without Lymph Nodes",
-      "description": "",
-      "subspecialty": "Breast Pathology",
+      "id": "sp023",
+      "name": "Liver, Partial Resection",
+      "description": "Partial hepatectomy specimen.",
+      "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Resection",
-      "procedure": "Partial/Simple Mastectomy",
-      "normalizedLabel": "Breast Mastectomy, Partial or Simple, Without Lymph Nodes",
+      "procedure": "Partial Hepatectomy",
+      "normalizedLabel": "Liver, Partial Resection",
       "synonyms": [
-        "Simple Mastectomy"
+        "Hepatectomy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-breast-mastectomy-radical",
-      "name": "Breast Mastectomy, Radical or Modified Radical",
-      "description": "",
-      "subspecialty": "Breast Pathology",
-      "type": "Resection",
-      "procedure": "Radical/Modified Radical Mastectomy",
-      "normalizedLabel": "Breast Mastectomy, Radical or Modified Radical",
+      "id": "sp024",
+      "name": "Pancreas, Biopsy",
+      "description": "Core or incisional pancreatic biopsy.",
+      "subspecialty": "Hepatobiliary & Pancreatic Pathology",
+      "type": "Biopsy",
+      "procedure": "Pancreatic Biopsy",
+      "normalizedLabel": "Pancreas, Biopsy",
       "synonyms": [
-        "Modified Radical Mastectomy"
+        "Pancreas Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp025",
+      "name": "Pancreaticoduodenectomy",
+      "description": "Whipple procedure specimen — total or subtotal pancreatic resection with duodenum.",
+      "subspecialty": "Hepatobiliary & Pancreatic Pathology",
+      "type": "Resection",
+      "procedure": "Whipple Procedure",
+      "normalizedLabel": "Pancreaticoduodenectomy",
+      "synonyms": [
+        "Whipple Procedure",
+        "Whipple Resection"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-axillary-sentinel-node",
-      "name": "Axillary Sentinel Lymph Node",
-      "description": "",
-      "subspecialty": "Breast Pathology",
+      "id": "sp026",
+      "name": "Kidney, Biopsy",
+      "description": "Percutaneous or open kidney biopsy, non-transplant.",
+      "subspecialty": "GU Pathology",
       "type": "Biopsy",
-      "procedure": "Sentinel Lymph Node Biopsy",
-      "normalizedLabel": "Axillary Sentinel Lymph Node",
+      "procedure": "Renal Biopsy",
+      "normalizedLabel": "Kidney, Biopsy",
       "synonyms": [
-        "Sentinel Node, Axilla"
+        "Renal Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-prostate-needle-biopsy",
-      "name": "Prostate Needle Biopsy",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
-      "type": "Biopsy",
-      "procedure": "Core Needle Biopsy",
-      "normalizedLabel": "Prostate Needle Biopsy",
-      "synonyms": [
-        "Prostate Core Biopsy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-prostate-tur",
-      "name": "Prostate, Transurethral Resection (TURP)",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
+      "id": "sp027",
+      "name": "Kidney, Partial/Total Nephrectomy",
+      "description": "Nephrectomy specimen, partial or total.",
+      "subspecialty": "GU Pathology",
+      "type": "Resection",
+      "procedure": "Nephrectomy",
+      "normalizedLabel": "Kidney, Partial/Total Nephrectomy",
+      "synonyms": [
+        "Nephrectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp028",
+      "name": "Prostate, Needle Biopsy",
+      "description": "Transrectal or transperineal prostate needle biopsy.",
+      "subspecialty": "GU Pathology",
+      "type": "Biopsy",
+      "procedure": "Prostate Needle Biopsy",
+      "normalizedLabel": "Prostate, Needle Biopsy",
+      "synonyms": [
+        "Prostate Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp029",
+      "name": "Prostate, TUR",
+      "description": "Transurethral resection of the prostate.",
+      "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "TURP",
-      "normalizedLabel": "Prostate, Transurethral Resection (TURP)",
+      "normalizedLabel": "Prostate, TUR",
       "synonyms": [
-        "TURP",
-        "Prostate Chips"
+        "TURP"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-prostate-radical",
+      "id": "sp030",
       "name": "Prostate, Radical Resection",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
+      "description": "Radical prostatectomy specimen.",
+      "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "Radical Prostatectomy",
       "normalizedLabel": "Prostate, Radical Resection",
@@ -343,419 +546,450 @@
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-nephrectomy",
-      "name": "Kidney, Partial or Total Nephrectomy",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
-      "type": "Resection",
-      "procedure": "Nephrectomy",
-      "normalizedLabel": "Kidney, Partial or Total Nephrectomy",
-      "synonyms": [
-        "Nephrectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-bladder-biopsy",
-      "name": "Bladder Biopsy",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
+      "id": "sp031",
+      "name": "Urinary Bladder, Biopsy",
+      "description": "Cystoscopic bladder biopsy.",
+      "subspecialty": "GU Pathology",
       "type": "Biopsy",
-      "procedure": "Cystoscopic Biopsy",
-      "normalizedLabel": "Bladder Biopsy",
+      "procedure": "Bladder Biopsy",
+      "normalizedLabel": "Urinary Bladder, Biopsy",
       "synonyms": [
-        "Urinary Bladder Biopsy"
+        "Bladder Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-bladder-tur",
-      "name": "Bladder, Transurethral Resection (TURBT)",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
+      "id": "sp032",
+      "name": "Urinary Bladder, TUR",
+      "description": "Transurethral resection of a bladder tumor/lesion.",
+      "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "TURBT",
-      "normalizedLabel": "Bladder, Transurethral Resection (TURBT)",
+      "normalizedLabel": "Urinary Bladder, TUR",
       "synonyms": [
-        "TURBT",
-        "Bladder Chips"
+        "TURBT"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-bladder-resection",
-      "name": "Bladder, Partial or Total Resection",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
-      "type": "Resection",
-      "procedure": "Cystectomy",
-      "normalizedLabel": "Bladder, Partial or Total Resection",
+      "id": "sp033",
+      "name": "Testis, Biopsy",
+      "description": "Testicular biopsy, not for castration.",
+      "subspecialty": "GU Pathology",
+      "type": "Biopsy",
+      "procedure": "Testicular Biopsy",
+      "normalizedLabel": "Testis, Biopsy",
       "synonyms": [
-        "Cystectomy"
+        "Testicular Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp034",
+      "name": "Pleural Fluid Cytology",
+      "description": "Cytologic examination of pleural fluid.",
+      "subspecialty": "Cytology",
+      "type": "Cytology",
+      "procedure": "Fluid Cytology",
+      "normalizedLabel": "Pleural Fluid Cytology",
+      "synonyms": [
+        "Pleural Fluid",
+        "Thoracentesis Cytology"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp035",
+      "name": "Peritoneal Fluid Cytology",
+      "description": "Cytologic examination of peritoneal (ascitic) fluid.",
+      "subspecialty": "Cytology",
+      "type": "Cytology",
+      "procedure": "Fluid Cytology",
+      "normalizedLabel": "Peritoneal Fluid Cytology",
+      "synonyms": [
+        "Ascitic Fluid Cytology",
+        "Peritoneal Washing"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp036",
+      "name": "Urine Cytology",
+      "description": "Voided or catheterized urine cytology.",
+      "subspecialty": "Cytology",
+      "type": "Cytology",
+      "procedure": "Urine Cytology",
+      "normalizedLabel": "Urine Cytology",
+      "synonyms": [
+        "Urine Cytology"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp037",
+      "name": "Bronchial Washing/Brushing Cytology",
+      "description": "Cytologic examination of a bronchoscopic washing or brushing specimen.",
+      "subspecialty": "Cytology",
+      "type": "Cytology",
+      "procedure": "Bronchial Cytology",
+      "normalizedLabel": "Bronchial Washing/Brushing Cytology",
+      "synonyms": [
+        "Bronchial Washing",
+        "Bronchial Brushing"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp038",
+      "name": "Lymph Node, Fine Needle Aspiration",
+      "description": "Fine needle aspiration of a palpable or image-guided lymph node.",
+      "subspecialty": "Cytology",
+      "type": "FNA",
+      "procedure": "Fine Needle Aspiration",
+      "normalizedLabel": "Lymph Node, Fine Needle Aspiration",
+      "synonyms": [
+        "Lymph Node FNA"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp039",
+      "name": "Molecular, Next-Generation Sequencing Panel",
+      "description": "Tissue submitted specifically for a next-generation sequencing molecular panel.",
+      "subspecialty": "Molecular Pathology",
+      "type": "Molecular",
+      "procedure": "NGS Panel",
+      "normalizedLabel": "Molecular, Next-Generation Sequencing Panel",
+      "synonyms": [
+        "NGS Panel",
+        "Molecular Panel"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp040",
+      "name": "Autopsy, Complete",
+      "description": "Complete autopsy examination.",
+      "subspecialty": "Autopsy",
+      "type": "Autopsy",
+      "procedure": "Complete Autopsy",
+      "normalizedLabel": "Autopsy, Complete",
+      "synonyms": [
+        "Full Autopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp041",
+      "name": "Pathology Consultation, Outside Slides",
+      "description": "Outside slides submitted for a pathologist consultation/second opinion, no new tissue processing.",
+      "subspecialty": "Consultation",
+      "type": "Consult",
+      "procedure": "Slide Consultation",
+      "normalizedLabel": "Pathology Consultation, Outside Slides",
+      "synonyms": [
+        "Outside Consult",
+        "Slide Review"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null
+    },
+    {
+      "id": "sp042",
+      "name": "Endometrium, Curettings/Biopsy",
+      "description": "Endometrial curettings or office biopsy.",
+      "subspecialty": "GYN Pathology",
+      "type": "Biopsy",
+      "procedure": "Endometrial Biopsy",
+      "normalizedLabel": "Endometrium, Curettings/Biopsy",
+      "synonyms": [
+        "Endometrial Curettings"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp043",
+      "name": "Cervix, Biopsy",
+      "description": "Cervical punch or colposcopic biopsy.",
+      "subspecialty": "GYN Pathology",
+      "type": "Biopsy",
+      "procedure": "Cervical Biopsy",
+      "normalizedLabel": "Cervix, Biopsy",
+      "synonyms": [
+        "Cervical Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp044",
+      "name": "Cervix, Conization",
+      "description": "Cervical cone biopsy (cold-knife or LEEP).",
+      "subspecialty": "GYN Pathology",
+      "type": "Excision",
+      "procedure": "Cervical Conization",
+      "normalizedLabel": "Cervix, Conization",
+      "synonyms": [
+        "Cone Biopsy",
+        "LEEP"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp045",
+      "name": "Ovary, Biopsy/Wedge Resection",
+      "description": "Ovarian biopsy or wedge resection.",
+      "subspecialty": "GYN Pathology",
+      "type": "Biopsy",
+      "procedure": "Ovarian Biopsy",
+      "normalizedLabel": "Ovary, Biopsy/Wedge Resection",
+      "synonyms": [
+        "Ovarian Wedge Resection"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp046",
+      "name": "Ovary, Neoplastic Resection",
+      "description": "Oophorectomy performed for a known or suspected ovarian neoplasm.",
+      "subspecialty": "GYN Pathology",
+      "type": "Resection",
+      "procedure": "Oophorectomy, Neoplastic",
+      "normalizedLabel": "Ovary, Neoplastic Resection",
+      "synonyms": [
+        "Oophorectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp047",
+      "name": "Uterus, Neoplastic, with or without Tubes and Ovaries",
+      "description": "Hysterectomy performed for a known or suspected uterine, tubal, or ovarian neoplasm.",
+      "subspecialty": "GYN Pathology",
+      "type": "Resection",
+      "procedure": "Hysterectomy, Neoplastic",
+      "normalizedLabel": "Uterus, Neoplastic, with or without Tubes and Ovaries",
+      "synonyms": [
+        "Hysterectomy for Cancer"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-testis-biopsy",
-      "name": "Testis Biopsy",
-      "description": "",
-      "subspecialty": "Genitourinary Pathology",
-      "type": "Biopsy",
-      "procedure": "Open Biopsy",
-      "normalizedLabel": "Testis Biopsy",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-cervical-biopsy",
-      "name": "Cervical Biopsy",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Biopsy",
-      "procedure": "Punch Biopsy",
-      "normalizedLabel": "Cervical Biopsy",
-      "synonyms": [
-        "Cervix Biopsy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-cervical-cone",
-      "name": "Cervical Cone / Conization",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
+      "id": "sp048",
+      "name": "Fallopian Tube, Ectopic Pregnancy",
+      "description": "Fallopian tube resected for ectopic pregnancy.",
+      "subspecialty": "GYN Pathology",
       "type": "Excision",
-      "procedure": "Cone Biopsy / LEEP",
-      "normalizedLabel": "Cervical Cone / Conization",
+      "procedure": "Salpingectomy, Ectopic Pregnancy",
+      "normalizedLabel": "Fallopian Tube, Ectopic Pregnancy",
       "synonyms": [
-        "LEEP",
-        "Cone Biopsy"
+        "Tubal Ectopic Pregnancy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-emc",
-      "name": "Endometrial Curettings (EMC)",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
+      "id": "sp049",
+      "name": "Fallopian Tube, Sterilization",
+      "description": "Fallopian tube segment removed for elective sterilization.",
+      "subspecialty": "GYN Pathology",
+      "type": "Excision",
+      "procedure": "Tubal Ligation",
+      "normalizedLabel": "Fallopian Tube, Sterilization",
+      "synonyms": [
+        "Tubal Ligation Specimen"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88302"
+    },
+    {
+      "id": "sp050",
+      "name": "Skin, Biopsy",
+      "description": "Punch, shave, or incisional skin biopsy, not a cyst/tag/debridement/plastic-repair specimen.",
+      "subspecialty": "Dermatopathology",
       "type": "Biopsy",
-      "procedure": "Endometrial Curettage",
-      "normalizedLabel": "Endometrial Curettings (EMC)",
+      "procedure": "Skin Biopsy",
+      "normalizedLabel": "Skin, Biopsy",
       "synonyms": [
-        "Endometrial Biopsy",
-        "D&C \u2014 Endometrial"
+        "Skin Punch Biopsy",
+        "Skin Shave Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-uterus-nonneoplastic",
-      "name": "Uterus, With or Without Adnexa \u2014 Non-Neoplastic",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Resection",
-      "procedure": "Hysterectomy",
-      "normalizedLabel": "Uterus, With or Without Adnexa \u2014 Non-Neoplastic",
-      "synonyms": [
-        "Hysterectomy, Benign"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-uterus-neoplastic",
-      "name": "Uterus, With or Without Adnexa \u2014 Neoplastic",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Resection",
-      "procedure": "Hysterectomy",
-      "normalizedLabel": "Uterus, With or Without Adnexa \u2014 Neoplastic",
-      "synonyms": [
-        "Hysterectomy, Malignant"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88309"
-    },
-    {
-      "id": "sp-ovary-nonneoplastic",
-      "name": "Ovary, With or Without Fallopian Tube \u2014 Non-Neoplastic",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Resection",
-      "procedure": "Salpingo-Oophorectomy",
-      "normalizedLabel": "Ovary, With or Without Fallopian Tube \u2014 Non-Neoplastic",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-ovary-neoplastic",
-      "name": "Ovary, With or Without Fallopian Tube \u2014 Neoplastic",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Resection",
-      "procedure": "Salpingo-Oophorectomy",
-      "normalizedLabel": "Ovary, With or Without Fallopian Tube \u2014 Neoplastic",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-poc-spontaneous",
-      "name": "Products of Conception \u2014 Spontaneous or Missed Abortion",
-      "description": "",
-      "subspecialty": "Gynecologic Pathology",
-      "type": "Gross and Microscopic",
-      "procedure": "D&C",
-      "normalizedLabel": "Products of Conception \u2014 Spontaneous or Missed Abortion",
-      "synonyms": [
-        "POC",
-        "Spontaneous Abortion Specimen"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-skin-other",
-      "name": "Skin \u2014 Other Than Cyst/Tag/Debridement",
-      "description": "",
+      "id": "sp051",
+      "name": "Skin, Cyst/Tag/Debridement",
+      "description": "Skin cyst excision, skin tag removal, or debridement specimen.",
       "subspecialty": "Dermatopathology",
       "type": "Excision",
-      "procedure": "Shave/Punch/Excisional Biopsy",
-      "normalizedLabel": "Skin \u2014 Other Than Cyst/Tag/Debridement",
+      "procedure": "Skin Cyst/Tag Excision",
+      "normalizedLabel": "Skin, Cyst/Tag/Debridement",
       "synonyms": [
-        "Skin Biopsy",
-        "Skin Excision"
+        "Skin Tag Excision",
+        "Epidermal Cyst"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-skin-cyst-tag",
-      "name": "Skin Cyst, Tag or Debridement",
-      "description": "",
-      "subspecialty": "Dermatopathology",
-      "type": "Excision",
-      "procedure": "Simple Excision",
-      "normalizedLabel": "Skin Cyst, Tag or Debridement",
-      "synonyms": [
-        "Skin Tag",
-        "Epidermal Inclusion Cyst"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88304"
     },
     {
-      "id": "sp-whipple",
-      "name": "Pancreaticoduodenectomy",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Resection",
-      "procedure": "Whipple Procedure",
-      "normalizedLabel": "Pancreaticoduodenectomy",
+      "id": "sp052",
+      "name": "Skin, Plastic Repair",
+      "description": "Skin excised incidentally during a plastic/reconstructive repair.",
+      "subspecialty": "Dermatopathology",
+      "type": "Excision",
+      "procedure": "Plastic Repair Margin",
+      "normalizedLabel": "Skin, Plastic Repair",
       "synonyms": [
-        "Whipple Procedure",
-        "Pancreas, Total or Subtotal Resection"
+        "Plastic Repair Skin"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88309"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88302"
     },
     {
-      "id": "sp-tonsil-adenoid",
-      "name": "Tonsil and/or Adenoids",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Resection",
-      "procedure": "Tonsillectomy/Adenoidectomy",
-      "normalizedLabel": "Tonsil and/or Adenoids",
-      "synonyms": [
-        "Tonsillectomy",
-        "Adenoidectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88304"
-    },
-    {
-      "id": "sp-tonsil-biopsy",
-      "name": "Tonsil Biopsy",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Biopsy",
-      "procedure": "Biopsy",
-      "normalizedLabel": "Tonsil Biopsy",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-thyroid-biopsy",
-      "name": "Thyroid Biopsy",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Biopsy",
-      "procedure": "Open/Core Biopsy",
-      "normalizedLabel": "Thyroid Biopsy",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-thyroid-resection",
-      "name": "Thyroid, Total or Lobe Resection",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Resection",
-      "procedure": "Thyroidectomy",
-      "normalizedLabel": "Thyroid, Total or Lobe Resection",
-      "synonyms": [
-        "Thyroidectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-parotid",
-      "name": "Parotid Gland",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Resection",
-      "procedure": "Parotidectomy",
-      "normalizedLabel": "Parotid Gland",
-      "synonyms": [
-        "Parotidectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-larynx-resection",
-      "name": "Larynx, Partial or Total Resection, Without Lymph Nodes",
-      "description": "",
-      "subspecialty": "Head and Neck Pathology",
-      "type": "Resection",
-      "procedure": "Laryngectomy",
-      "normalizedLabel": "Larynx, Partial or Total Resection, Without Lymph Nodes",
-      "synonyms": [
-        "Laryngectomy"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-lung-transbronchial",
-      "name": "Lung Transbronchial Biopsy",
-      "description": "",
+      "id": "sp053",
+      "name": "Lung, Transbronchial Biopsy",
+      "description": "Bronchoscopic transbronchial lung biopsy.",
       "subspecialty": "Pulmonary Pathology",
       "type": "Biopsy",
       "procedure": "Transbronchial Biopsy",
-      "normalizedLabel": "Lung Transbronchial Biopsy",
-      "synonyms": [],
+      "normalizedLabel": "Lung, Transbronchial Biopsy",
+      "synonyms": [
+        "TBBx"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-lung-wedge",
-      "name": "Lung Wedge Biopsy/Resection",
-      "description": "",
+      "id": "sp054",
+      "name": "Lung, Wedge Biopsy",
+      "description": "Surgical wedge biopsy of the lung.",
       "subspecialty": "Pulmonary Pathology",
-      "type": "Resection",
-      "procedure": "Wedge Resection",
-      "normalizedLabel": "Lung Wedge Biopsy/Resection",
-      "synonyms": [],
+      "type": "Biopsy",
+      "procedure": "Lung Wedge Biopsy",
+      "normalizedLabel": "Lung, Wedge Biopsy",
+      "synonyms": [
+        "Wedge Lung Biopsy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-lung-resection",
-      "name": "Lung, Total, Lobe or Segmental Resection",
-      "description": "",
+      "id": "sp055",
+      "name": "Lung, Total/Lobe/Segment Resection",
+      "description": "Pneumonectomy, lobectomy, or segmentectomy specimen.",
       "subspecialty": "Pulmonary Pathology",
       "type": "Resection",
-      "procedure": "Lobectomy/Pneumonectomy",
-      "normalizedLabel": "Lung, Total, Lobe or Segmental Resection",
+      "procedure": "Lung Resection",
+      "normalizedLabel": "Lung, Total/Lobe/Segment Resection",
       "synonyms": [
         "Lobectomy",
         "Pneumonectomy"
@@ -763,301 +997,335 @@
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-soft-tissue-biopsy",
-      "name": "Soft Tissue, Biopsy or Simple Excision",
-      "description": "",
-      "subspecialty": "Soft Tissue and Bone Pathology",
+      "id": "sp056",
+      "name": "Bronchus, Biopsy",
+      "description": "Bronchoscopic endobronchial biopsy.",
+      "subspecialty": "Pulmonary Pathology",
       "type": "Biopsy",
-      "procedure": "Biopsy/Simple Excision",
-      "normalizedLabel": "Soft Tissue, Biopsy or Simple Excision",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88305"
-    },
-    {
-      "id": "sp-bone-biopsy",
-      "name": "Bone (Except Bone Marrow) Biopsy or Curetting",
-      "description": "",
-      "subspecialty": "Soft Tissue and Bone Pathology",
-      "type": "Biopsy",
-      "procedure": "Biopsy/Curettage",
-      "normalizedLabel": "Bone (Except Bone Marrow) Biopsy or Curetting",
-      "synonyms": [],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultBaseCptCode": "88307"
-    },
-    {
-      "id": "sp-joint-resection",
-      "name": "Joint Resection",
-      "description": "",
-      "subspecialty": "Soft Tissue and Bone Pathology",
-      "type": "Resection",
-      "procedure": "Total Joint Arthroplasty",
-      "normalizedLabel": "Joint Resection",
+      "procedure": "Endobronchial Biopsy",
+      "normalizedLabel": "Bronchus, Biopsy",
       "synonyms": [
-        "Total Knee/Hip Arthroplasty Specimen"
+        "Endobronchial Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-lymph-node-biopsy",
-      "name": "Lymph Node Biopsy",
-      "description": "",
-      "subspecialty": "Hematopathology",
+      "id": "sp057",
+      "name": "Larynx, Biopsy",
+      "description": "Laryngoscopic laryngeal biopsy.",
+      "subspecialty": "Head & Neck Pathology",
       "type": "Biopsy",
-      "procedure": "Excisional/Needle Biopsy",
-      "normalizedLabel": "Lymph Node Biopsy",
-      "synonyms": [],
+      "procedure": "Laryngeal Biopsy",
+      "normalizedLabel": "Larynx, Biopsy",
+      "synonyms": [
+        "Laryngeal Biopsy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-sentinel-lymph-node",
-      "name": "Sentinel Lymph Node",
-      "description": "",
-      "subspecialty": "Hematopathology",
-      "type": "Biopsy",
-      "procedure": "Sentinel Node Biopsy",
-      "normalizedLabel": "Sentinel Lymph Node",
-      "synonyms": [],
+      "id": "sp058",
+      "name": "Larynx, Partial/Total Resection",
+      "description": "Laryngectomy specimen, partial or total, without regional lymph nodes.",
+      "subspecialty": "Head & Neck Pathology",
+      "type": "Resection",
+      "procedure": "Laryngectomy",
+      "normalizedLabel": "Larynx, Partial/Total Resection",
+      "synonyms": [
+        "Laryngectomy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-lymph-node-lymphoma",
-      "name": "Lymph Node, For Lymphoma Workup",
-      "description": "",
-      "subspecialty": "Hematopathology",
-      "type": "Biopsy",
-      "procedure": "Excisional Biopsy",
-      "normalizedLabel": "Lymph Node, For Lymphoma Workup",
-      "synonyms": [],
+      "id": "sp059",
+      "name": "Tonsil and/or Adenoid",
+      "description": "Routine tonsillectomy and/or adenoidectomy specimen.",
+      "subspecialty": "Head & Neck Pathology",
+      "type": "Excision",
+      "procedure": "Tonsillectomy/Adenoidectomy",
+      "normalizedLabel": "Tonsil and/or Adenoid",
+      "synonyms": [
+        "Tonsillectomy",
+        "Adenoidectomy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88304"
+    },
+    {
+      "id": "sp060",
+      "name": "Salivary Gland, Biopsy",
+      "description": "Incisional or core biopsy of a salivary gland.",
+      "subspecialty": "Head & Neck Pathology",
+      "type": "Biopsy",
+      "procedure": "Salivary Gland Biopsy",
+      "normalizedLabel": "Salivary Gland, Biopsy",
+      "synonyms": [
+        "Salivary Gland Biopsy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
+    },
+    {
+      "id": "sp061",
+      "name": "Salivary Gland, Resection",
+      "description": "Salivary gland resection (e.g. parotidectomy, submandibular gland excision).",
+      "subspecialty": "Head & Neck Pathology",
+      "type": "Resection",
+      "procedure": "Salivary Gland Resection",
+      "normalizedLabel": "Salivary Gland, Resection",
+      "synonyms": [
+        "Parotidectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-brain-biopsy",
-      "name": "Brain Biopsy",
-      "description": "",
+      "id": "sp062",
+      "name": "Thyroid, Total/Lobe",
+      "description": "Thyroidectomy specimen, total or lobectomy.",
+      "subspecialty": "Head & Neck Pathology",
+      "type": "Resection",
+      "procedure": "Thyroidectomy",
+      "normalizedLabel": "Thyroid, Total/Lobe",
+      "synonyms": [
+        "Thyroid Lobectomy",
+        "Total Thyroidectomy"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp063",
+      "name": "Brain, Biopsy",
+      "description": "Stereotactic or open brain biopsy.",
       "subspecialty": "Neuropathology",
       "type": "Biopsy",
-      "procedure": "Stereotactic/Open Biopsy",
-      "normalizedLabel": "Brain Biopsy",
-      "synonyms": [],
+      "procedure": "Brain Biopsy",
+      "normalizedLabel": "Brain, Biopsy",
+      "synonyms": [
+        "Stereotactic Brain Biopsy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-nerve-biopsy",
-      "name": "Nerve Biopsy/Segment",
-      "description": "",
+      "id": "sp064",
+      "name": "Brain/Meninges, Tumor Resection",
+      "description": "Craniotomy specimen resected for a known or suspected brain or meningeal tumor.",
+      "subspecialty": "Neuropathology",
+      "type": "Resection",
+      "procedure": "Craniotomy for Tumor",
+      "normalizedLabel": "Brain/Meninges, Tumor Resection",
+      "synonyms": [
+        "Craniotomy Tumor Resection"
+      ],
+      "active": true,
+      "version": 1,
+      "updatedBy": "system",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
+    },
+    {
+      "id": "sp065",
+      "name": "Nerve, Biopsy",
+      "description": "Peripheral nerve biopsy.",
       "subspecialty": "Neuropathology",
       "type": "Biopsy",
       "procedure": "Peripheral Nerve Biopsy",
-      "normalizedLabel": "Nerve Biopsy/Segment",
-      "synonyms": [],
+      "normalizedLabel": "Nerve, Biopsy",
+      "synonyms": [
+        "Peripheral Nerve Biopsy"
+      ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
       "defaultBaseCptCode": "88305"
     },
     {
-      "id": "sp-cyto-pap",
-      "name": "Cervical/Vaginal Pap Smear",
-      "description": "Screened under the separate 88142-88175 cytology code family, not 88300-88309 surgical pathology.",
-      "subspecialty": "Cytopathology",
-      "type": "Cytology",
-      "procedure": "Pap Smear",
-      "normalizedLabel": "Cervical/Vaginal Pap Smear",
+      "id": "sp066",
+      "name": "Bone, Biopsy/Curettings",
+      "description": "Bone biopsy or curettings, not a pathologic-fracture fragment.",
+      "subspecialty": "Bone & Soft Tissue Pathology",
+      "type": "Biopsy",
+      "procedure": "Bone Biopsy",
+      "normalizedLabel": "Bone, Biopsy/Curettings",
       "synonyms": [
-        "Pap Test",
-        "ThinPrep Pap"
+        "Bone Curettings"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "isGynCytology": true
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-cyto-nongyn",
-      "name": "Non-Gynecologic Cytology (Body Fluid/Washing/Brushing)",
-      "description": "",
-      "subspecialty": "Cytopathology",
-      "type": "Cytology",
-      "procedure": "Fluid/Washing/Brushing",
-      "normalizedLabel": "Non-Gynecologic Cytology (Body Fluid/Washing/Brushing)",
+      "id": "sp067",
+      "name": "Bone Resection",
+      "description": "En bloc bone resection.",
+      "subspecialty": "Bone & Soft Tissue Pathology",
+      "type": "Resection",
+      "procedure": "Bone Resection",
+      "normalizedLabel": "Bone Resection",
       "synonyms": [
-        "Body Fluid Cytology",
-        "Bronchial Washing"
+        "Bone Tumor Resection"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-fna-thyroid",
-      "name": "Fine Needle Aspiration, Thyroid",
-      "description": "",
-      "subspecialty": "Cytopathology",
-      "type": "FNA",
-      "procedure": "FNA",
-      "normalizedLabel": "Fine Needle Aspiration, Thyroid",
+      "id": "sp068",
+      "name": "Soft Tissue, Lipoma",
+      "description": "Excised lipoma.",
+      "subspecialty": "Bone & Soft Tissue Pathology",
+      "type": "Excision",
+      "procedure": "Lipoma Excision",
+      "normalizedLabel": "Soft Tissue, Lipoma",
       "synonyms": [
-        "Thyroid FNA"
+        "Lipoma"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88304"
     },
     {
-      "id": "sp-fna-lymph-node",
-      "name": "Fine Needle Aspiration, Lymph Node",
-      "description": "",
-      "subspecialty": "Cytopathology",
-      "type": "FNA",
-      "procedure": "FNA",
-      "normalizedLabel": "Fine Needle Aspiration, Lymph Node",
+      "id": "sp069",
+      "name": "Soft Tissue Mass, Biopsy, Not Lipoma",
+      "description": "Biopsy of a soft tissue mass other than a lipoma.",
+      "subspecialty": "Bone & Soft Tissue Pathology",
+      "type": "Biopsy",
+      "procedure": "Soft Tissue Mass Biopsy",
+      "normalizedLabel": "Soft Tissue Mass, Biopsy, Not Lipoma",
       "synonyms": [
-        "Lymph Node FNA"
+        "Soft Tissue Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88307"
     },
     {
-      "id": "sp-molecular-solid-tumor",
-      "name": "Molecular/NGS Panel, Solid Tumor",
-      "description": "",
-      "subspecialty": "Molecular Pathology",
-      "type": "Molecular",
-      "procedure": "Next-Generation Sequencing",
-      "normalizedLabel": "Molecular/NGS Panel, Solid Tumor",
+      "id": "sp070",
+      "name": "Soft Tissue Tumor, Extensive Resection",
+      "description": "Wide/extensive resection of a soft tissue tumor.",
+      "subspecialty": "Bone & Soft Tissue Pathology",
+      "type": "Resection",
+      "procedure": "Soft Tissue Tumor Resection",
+      "normalizedLabel": "Soft Tissue Tumor, Extensive Resection",
       "synonyms": [
-        "NGS Panel",
-        "Solid Tumor Molecular Profiling"
+        "Sarcoma Resection"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88309"
     },
     {
-      "id": "sp-autopsy-complete",
-      "name": "Autopsy, Complete",
-      "description": "",
-      "subspecialty": "Autopsy",
-      "type": "Autopsy",
-      "procedure": "Complete Autopsy",
-      "normalizedLabel": "Autopsy, Complete",
+      "id": "sp071",
+      "name": "Hernia Sac, Any Location",
+      "description": "Hernia sac excised during hernia repair.",
+      "subspecialty": "General Surgical Pathology",
+      "type": "Excision",
+      "procedure": "Hernia Repair",
+      "normalizedLabel": "Hernia Sac, Any Location",
       "synonyms": [
-        "Complete Autopsy"
+        "Hernia Sac"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88302"
     },
     {
-      "id": "sp-autopsy-limited",
-      "name": "Autopsy, Limited (Organ or Region)",
-      "description": "",
-      "subspecialty": "Autopsy",
-      "type": "Autopsy",
-      "procedure": "Limited Autopsy",
-      "normalizedLabel": "Autopsy, Limited (Organ or Region)",
+      "id": "sp072",
+      "name": "Hemorrhoids",
+      "description": "Hemorrhoidectomy specimen.",
+      "subspecialty": "General Surgical Pathology",
+      "type": "Excision",
+      "procedure": "Hemorrhoidectomy",
+      "normalizedLabel": "Hemorrhoids",
       "synonyms": [
-        "Limited Autopsy"
+        "Hemorrhoidectomy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88304"
     },
     {
-      "id": "sp-consult-routine",
-      "name": "Outside Consultation \u2014 Prepared Slides, Routine",
-      "description": "",
-      "subspecialty": "Consultation",
-      "type": "Consult",
-      "procedure": "Slide Review",
-      "normalizedLabel": "Outside Consultation \u2014 Prepared Slides, Routine",
+      "id": "sp073",
+      "name": "Lymph Node, Biopsy",
+      "description": "Excisional or incisional biopsy of a single lymph node, not a regional dissection.",
+      "subspecialty": "General Surgical Pathology",
+      "type": "Biopsy",
+      "procedure": "Lymph Node Biopsy",
+      "normalizedLabel": "Lymph Node, Biopsy",
       "synonyms": [
-        "Outside Slide Review",
-        "Referred Consultation"
+        "Lymph Node Excisional Biopsy"
       ],
       "active": true,
       "version": 1,
       "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z"
-    },
-    {
-      "id": "sp-gross-only-cholecystectomy",
-      "name": "Cholecystectomy, Grossly Unremarkable (Gross Only Protocol)",
-      "description": "",
-      "subspecialty": "GI Pathology",
-      "type": "Gross Only",
-      "procedure": "Cholecystectomy",
-      "normalizedLabel": "Cholecystectomy, Grossly Unremarkable (Gross Only Protocol)",
-      "synonyms": [
-        "Gallbladder, Gross Only"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-03T07:47:45.000Z",
-      "defaultComplexity": "GROSS_ONLY"
-    },
-    {
-      "id": "sp-cyto-hpv-self",
-      "name": "Self-Collected Vaginal Swab (HPV Only)",
-      "description": "Real, per direct guidance's own Australia/NZ NCSP information: a real, distinct order code (HPV-SELF) from clinician-collected Cervical Screening Tests (CST-CLIN). Contains vaginal, not cervical, cells -- can never be used for Liquid-Based Cytology. Molecular hrHPV testing only; a positive result can never reflex to cytology from this same specimen -- see resolveCytologyTriageState.ts.",
-      "subspecialty": "Cytopathology",
-      "type": "Cytology",
-      "procedure": "Self-Collected Vaginal Swab",
-      "normalizedLabel": "Self-Collected Vaginal Swab (HPV Only)",
-      "synonyms": [
-        "HPV-SELF",
-        "Self-Collect",
-        "Dry Vaginal Swab",
-        "Copan FLOQSwab"
-      ],
-      "active": true,
-      "version": 1,
-      "updatedBy": "system",
-      "updatedAt": "2026-09-04T00:00:00.000Z",
-      "isGynCytology": true,
-      "isSelfCollected": true
+      "updatedAt": "2026-06-01T00:00:00.000Z",
+      "departmentId": null,
+      "defaultBaseCptCode": "88305"
     }
   ]
 }

@@ -29,7 +29,19 @@ touched by Tier 2.
   documented defaults. `defaultPrintBehavior` defaults to
   `'on_demand'`, matching the researched patient-safety
   recommendation (print as each cassette is logged, not deferred to a
-  batch at the end).
+  batch at the end). **New (PS-284, Microtomy Workstation):**
+  `SlideLabelLayoutConfig` interface + `DEFAULT_SLIDE_LABEL_LAYOUT`
+  (`faceWidthMm: 20.0, faceHeightMm: 8.0, moduleSizeMm: 0.2,
+  fontHeightMm: 1.2`), and `PrintSettingsConfig.slideLabelLayout` —
+  mirrors the existing `CassetteLabelLayoutConfig` shape for the new
+  microtomy slide-label print path. **Honest gap:** this config is not
+  yet wired into `buildSlideZplTemplate.ts`'s actual ZPL dot
+  coordinates, which remain hardcoded literals verified against
+  Labelary at a fixed 1.0"×0.25"/300dpi scale — re-verifying that
+  template against a configurable layout was out of scope for this
+  pass. There is also no admin editor UI for this field yet (unlike
+  `CassetteLabelLayoutConfig`, which `LabelDesignerPage/` already
+  covers) — both are real, tracked gaps, not silent placeholders.
 - **`mockPrintSettingsService.ts`** — the real, active Tier 1 implementation.
 - **`IFacilityPrintSettingsService.ts`** / **`mockFacilityPrintSettingsService.ts`**
   (+ `.test.ts`) — **New (Workstation & Hardware redesign).** Real Tier 2:

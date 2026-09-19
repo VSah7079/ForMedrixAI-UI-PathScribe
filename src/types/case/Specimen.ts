@@ -12,6 +12,7 @@ import { CaseComment } from "./CaseComment";
 import { MaterialComment } from "./MaterialComment";
 import type { CasePriority } from "@/services/cases/ICaseService";
 import type { MaterialLocation } from "./Material";
+import type { AutopsyOrganCode } from "@/types/autopsy/AutopsyOrganCode";
 import type { CytologyCategorySelection } from "@/types/cytology/CytologyReviewRecord";
 import type { RecordedClinicalHistoryEntry } from "@/types/clinicalHistory/RecordedClinicalHistoryEntry";
 import type { CytologyRoseEvaluation } from "@/types/cytology/CytologyRoseEvaluation";
@@ -41,11 +42,50 @@ export interface SpecimenProcessing {
    * just noted once in the deficiency resolution log that led to it.
    */
   processedAtIsEstimated?: boolean;
+  /** Real, per direct request (ISO 15189 traceability — "duration of
+   *  fixation... from specimen collection to grossing") — when tissue
+   *  was actually removed from fixative, typically at grossing when
+   *  the specimen is trimmed into cassettes. Record only, per direct
+   *  decision — no gating/warning on this yet if grossing happens
+   *  before a real, expected minimum fixation duration has elapsed
+   *  (unlike processedAt's own real, existing hard gate at sign-out —
+   *  FixativeTimeGateModal.tsx — which enforces that the fixation
+   *  START time is documented, not how long fixation actually
+   *  lasted). Undefined until grossing actually records it. */
+  fixationEndedAt?: string;
+  /** Real, per direct guidance's own follow-up ("timestamp and user
+   *  ID associated with the... check to satisfy laboratory
+   *  accreditation traceability requirements") — a real audit object,
+   *  not a bare boolean, mirroring this codebase's own established
+   *  {userId, userName} + timestamp shape (e.g.
+   *  QaActivityRecord.recordedBy). Presence of this object IS the
+   *  confirmation — there's no real, separate "confirmed: false"
+   *  state to represent; undefined means not yet confirmed. Records a
+   *  grossing tech's own direct visual/professional judgment that the
+   *  real fixative volume used (SpecimenContainer.fixativeVolumeMl)
+   *  was adequate for this specimen's own real size — the practical,
+   *  CAP-recognized standard being roughly 10:1 fixative-to-tissue by
+   *  volume. No real, structured tissue volume/weight field exists
+   *  anywhere in this codebase to compute an actual ratio against
+   *  (confirmed directly before building this), which is why this is
+   *  a real, qualitative confirmation rather than a computed number. */
+  fixativeToTissueRatioConfirmation?: { userId: string; userName: string; confirmedAt: string };
 }
 export interface SpecimenContainer {
   type?: string;
   identifier?: string;
   description?: string;
+  /** Real, per direct request (ISO 15189 traceability — "volume
+   *  ratio, typically 10:1 fixative-to-tissue... from specimen
+   *  collection to grossing") — the real, actual fixative volume used
+   *  for this specific specimen, in mL. Defaults from the selected
+   *  ContainerType's own capacityMl when a prefilled container is
+   *  chosen, but stays editable — a tech may add more fixative for a
+   *  larger-than-typical specimen, or this may be a dry container
+   *  filled at the bench with a volume that has nothing to do with
+   *  any catalog default. Undefined for a genuinely dry container or
+   *  whenever this wasn't recorded — never a fabricated number. */
+  fixativeVolumeMl?: number;
 }
 
 // ── Histology Blocks & Stains — minimal demo model ─────────────────────────
@@ -268,6 +308,339 @@ export interface StainOrder {
    *  repeat requested due to a technical artifact), distinct from
    *  the block-level or specimen-level threads. */
   comments?: MaterialComment[];
+  /** Real, per PS-284 (Microtomy Workstation) — "toggle for whether a
+   *  comment prints on the human-readable label area or stays
+   *  LIS-only." Governs the most recent entry in `comments` above;
+   *  undefined/false means LIS-only (the safe default — a slide label
+   *  has almost no room for free text, and printing an unreviewed
+   *  comment onto a physical label by default risks real, unintended
+   *  disclosure on a specimen that leaves the bench). */
+  commentPrintsOnLabel?: boolean;
+
+  // ── PS-284 Microtomy Workstation: real print-tracking fields ─────────
+  // Deliberately additive, never a new StainOrderStatus value — same
+  // "purely additive, safe" reasoning as disposedAt/disposedBy above.
+  // A slide's clinical status (Pending Cut/Cut & Placed/etc.) and its
+  // print/etch job status are two genuinely different real facts: a
+  // slide can be 'Cut & Placed' while its label printed, failed to
+  // print, or hasn't been sent to a printer yet at all.
+  /** Real, per PS-284's own "Per-slide status: Pending, Etching/
+   *  Printing, Printed, Failed, Canceled." Undefined means never
+   *  attempted — the common case for a slide that predates this
+   *  field, or was cut before ever reaching the Microtomy Workstation
+   *  page. */
+  printStatus?: 'Pending' | 'Printing' | 'Printed' | 'Failed' | 'Canceled';
+  printedAt?: string;
+  printedBy?: string;
+  /** Real, human-readable reason a print attempt failed (e.g. a
+   *  printCassetteSlideLabel error message) — shown on the slide row
+   *  so a tech can see why without re-attempting blind. */
+  printFailureReason?: string;
+  /** Real, per PS-284's own Add Stain Quick-Picker: "level depth/
+   *  microtome step distance." Free-form microns value — real cutting
+   *  depth conventions (4µm routine vs. thicker for some specials)
+   *  vary enough by stain/lab that this stays a plain number, not a
+   *  closed enum. */
+  levelDepthMicrons?: number;
+  /** Real, per PS-284's own "control-slide pairing checkbox
+   *  (auto-creates paired Stain + Control slide)." Set on BOTH the
+   *  clinical slide and its auto-created control slide, each pointing
+   *  at the other's `id` — a real, symmetric pairing link, distinct
+   *  from the existing restainOfSlideId's one-directional "repeats
+   *  this original" relationship. */
+  pairedControlSlideId?: string;
+  /** True only on the auto-created control member of a pairing above
+   *  — drives the control-slide badge in the slide grid. Undefined/
+   *  false for an ordinary clinical slide, including one that has a
+   *  paired control (pairedControlSlideId set, isControlSlide false/
+   *  undefined on the clinical slide itself). */
+  isControlSlide?: boolean;
+  /** Real, per PS-284's own Cytology & Decanting panel: "Preparation
+   *  Method Selector per slide." Only meaningful for a decant's own
+   *  slides (types/case/Material.ts's Decant.stains) — undefined for
+   *  an ordinary tissue block slide, which has no preparation-method
+   *  concept at all. */
+  preparationMethod?: 'Direct Smear (Air-Dried)' | 'Direct Smear (Fixed)' | 'Cytospin' | 'ThinPrep/Liquid-Based' | 'Cell Block';
+  /** Real, per PS-284's own "dedicated Reprint button requiring
+   *  single-tap reason selection (Jam, Scratched Glass, Misprint)."
+   *  Always set together, only on an explicit reprint action — same
+   *  "all set together, never individually" convention as
+   *  restainReason/restainOrderedBy/restainOrderedAt above. A reprint
+   *  is a duplicate of the SAME slide record (unlike a restain, which
+   *  is deliberately a new, separate StainOrder) — see
+   *  reprintCount below for the real, cumulative audit count this
+   *  keeps instead. */
+  lastReprintReason?: 'Jam' | 'Scratched Glass' | 'Misprint' | 'Other';
+  lastReprintOrderedBy?: string;
+  lastReprintOrderedAt?: string;
+  /** Real, cumulative count of reprint actions against this exact
+   *  slide record — "duplicate-label auditing" per the spec's own
+   *  language. Undefined/0 means never reprinted. */
+  reprintCount?: number;
+
+  // ── PS-286 (Slide Distribution Station) — post-staining routing ──
+  // Real, per PS-286's own "Chain-of-Custody Logging" requirement:
+  // this is a genuinely new real-world stage this app didn't track at
+  // all before — where a finished, stained physical slide actually
+  // GOES (a pathologist's desk, a courier bag, a specific scanner
+  // rack slot), as opposed to WsiScanBatch/WsiScanSlide (services/
+  // digitalPathology/), which already tracks the digital SCAN outcome
+  // once a slide reaches a scanner, but has no concept of the
+  // physical routing step before that, and no slide-level pathologist/
+  // subspecialty assignment at all (only Case.assignedTo/
+  // Case.subspecialtyId exist, at case granularity). Confirmed by
+  // direct investigation before building — see
+  // pages/SlideDistributionStationPage/README.md's own account.
+  /** Which real half of the post-staining workflow this slide was
+   *  routed through. Undefined until a distribution tech actually
+   *  scans and routes this slide — never defaulted. */
+  distributionDestination?: 'physical' | 'digital';
+  /** Real, per the spec's own "sets status to Checked Out/Assigned"
+   *  (physical) and "In Scanning Queue/Loaded on Scanner" (digital) —
+   *  one shared real status field covering both real destinations,
+   *  since a slide is only ever routed one way at a time. */
+  distributionStatus?: 'Assigned' | 'Checked Out' | 'In Scanning Queue' | 'Loaded on Scanner';
+  /** Real FK to services/users/ IUserService's own StaffUser.id — the
+   *  real attending pathologist this slide was routed to for physical
+   *  checkout. assignedPathologistName is cached for display, same
+   *  "FK + cached display name" convention as
+   *  SynopticReportInstance.pathologistId/pathologistName. */
+  assignedPathologistId?: string;
+  assignedPathologistName?: string;
+  /** Real FK to services/subspecialties/ ISubspecialtyService's own
+   *  Subspecialty.id — for routing to a subspecialty worklist/pool
+   *  (Dermpath, GI, Cytopathology) rather than one named individual.
+   *  Mutually exclusive with assignedPathologistId in practice (a
+   *  slide goes to a named person OR a pool, never validated as
+   *  exclusive here — the UI's own quick-picker enforces the real
+   *  choice, same posture as every other soft-exclusive pair in this
+   *  file, e.g. pairedControlSlideId/isControlSlide). */
+  assignedSubspecialtyId?: string;
+  /** Real, per the spec's own "Physical Location & Carrier Tracking:
+   *  input/scan for Slide Folder IDs, Tray Numbers, Courier Transit
+   *  Bags." All optional/independent — a tech may only ever fill in
+   *  whichever of these a given lab's own real workflow actually uses. */
+  physicalLocation?: {
+    slideFolderId?: string;
+    trayNumber?: string;
+    courierBagId?: string;
+  };
+  /** Real, per the spec's own "Equipment & Rack Mapping: target
+   *  specific instruments... map slot positions within scanner racks
+   *  (e.g. Rack ID 102, Slots 1-30)." scannerInstrumentId is a real,
+   *  free-text value — same honest, un-registried convention
+   *  WsiScanBatch.scannerInstrumentId already uses (confirmed by
+   *  direct check of mockWsiScanBatchService.ts's own seed data,
+   *  e.g. "Leica Aperio GT450 #2") — no formal instrument registry
+   *  exists in this app, so this doesn't invent one either. */
+  scannerAssignment?: {
+    scannerInstrumentId?: string;
+    rackId?: string;
+    slotPosition?: string;
+  };
+  /** Real, per the spec's own "Scan Exception Log" — set while a
+   *  flagged exception (unreadable barcode / unassigned accession /
+   *  missing glass) is still open on an already-queued slide;
+   *  undefined once resolved (cleared, not merely left stale — same
+   *  real convention as HardwareContainer.currentBatchId's own
+   *  "cleared the moment released" note). A brand-new, still-
+   *  unresolved scan that never even reached a real slide record
+   *  (an unreadable barcode with nothing to attach it to) is NOT
+   *  stored here — it stays a client-side, session-scoped entry in
+   *  the workstation's own exception log; see that hook's own header. */
+  activeExceptionReason?: 'Unreadable Barcode' | 'Unassigned Accession' | 'Missing Glass';
+  /** Real, append-only chain-of-custody log for this one real slide's
+   *  post-staining routing — same "append-only thread, never edited
+   *  or overwritten" reasoning as Case.caseComments's own doc comment,
+   *  applied here because the spec's own "Chain-of-Custody Logging"
+   *  requirement is explicitly an audit trail, not just a latest-
+   *  status field. */
+  distributionEvents?: SlideDistributionEvent[];
+
+  // ── PS-287 (Pathologist-Initiated Add-On Orders) ──────────────────────
+  // Real, per the spec's own "Add-On Order Builder" — a pathologist
+  // ordering a recut/special stain/IHC/molecular test against an
+  // EXISTING block, as opposed to a tech's own routine cutting plan
+  // (addMicrotomyStain, PS-284). Deliberately additive fields on the
+  // same real StainOrder record this app already uses for every other
+  // slide — an add-on order genuinely IS a StainOrder the moment it's
+  // submitted (same status lifecycle, same printing/distribution
+  // pipeline downstream), not a second, parallel order concept that
+  // would have to be reconciled with this one later. See
+  // utils/addOnOrderOperations.ts for the real creation/routing/
+  // exception logic and pages/AddOnOrderPage/README.md for the full
+  // investigation this was built against.
+  /** Undefined for a tech-driven routine slide (the common case up to
+   *  now) — set only when this StainOrder originated from a
+   *  pathologist's own add-on order, per the spec's own priority
+   *  selector (STAT/Urgent bypasses the routine queue the same real
+   *  way Case.order.priority's own 'STAT' already does elsewhere in
+   *  this app; Research/Protocol is explicitly lower, non-clinical
+   *  priority). */
+  addOnPriority?: 'STAT/Urgent' | 'Routine Sign-Out' | 'Research/Protocol';
+  /** Real FK to services/users/ IUserService's own StaffUser.id — which
+   *  pathologist actually placed this add-on order. orderedByName is
+   *  cached for display, same FK+cached-name convention as
+   *  assignedPathologistId/assignedPathologistName (PS-286) above.
+   *  Deliberately distinct from restainOrderedBy — a restain repeats a
+   *  slide that already existed; this is a genuinely new order against
+   *  a block, with its own real priority/routing/media selections a
+   *  restain never carries. */
+  orderedByPathologistId?: string;
+  orderedByPathologistName?: string;
+  orderedAt?: string;
+  /** Real, per the spec's own "IHC panel picker — single-stain or
+   *  panel search (e.g., Breast Panel: ER/PR/HER2/Ki-67)." Set on
+   *  every real StainOrder created as part of the same panel pick, so
+   *  the Order Builder/Tracking views can group and label them
+   *  together; undefined for a single-stain add-on order. See
+   *  utils/addOnOrderOperations.ts's own IHC_PANEL_PRESETS — a real,
+   *  small starter set built from this app's actual Stain Dictionary
+   *  seed data, not a fabricated external catalog; a full,
+   *  admin-manageable panel dictionary is real, separate follow-up
+   *  work (see that file's own header for the honest scope note). */
+  addOnPanelId?: string;
+  addOnPanelName?: string;
+  /** Real, per the spec's own "Slide Media & Charge Selector: Standard
+   *  Charged / Uncharged / Plus Glass." Genuinely missing anywhere in
+   *  this app before this pass (confirmed by direct investigation) —
+   *  a real, physical choice the cutting bench needs to know before
+   *  spooling labels, so it lives on the order itself, same as
+   *  levelDepthMicrons already does. */
+  slideMediaType?: 'Standard Charged' | 'Uncharged' | 'Plus Glass';
+  /** Real, per the spec's own "Microtome Bench Instructions: editable
+   *  notes field for special handling." Free text, plain (not rich-
+   *  text CaseComment) — same "genuinely different in kind" reasoning
+   *  MaterialComment.text/SlideDistributionEvent.detail already use
+   *  for a short, bench-facing operational note rather than a
+   *  clinical discussion thread. */
+  cuttingInstructions?: string;
+  /** Real, per the spec's own "Auto-Control Pairing: On-Slide Control
+   *  vs. Separate Control Slide." When a pathologist chooses On-Slide
+   *  (the control tissue rides on the SAME physical slide as the
+   *  clinical tissue — no second StainOrder), this records what
+   *  control tissue was used, pre-filled from the ordered
+   *  StainType.defaultControlTissueType and freely editable. The
+   *  Separate-Control choice reuses the real, existing same-block
+   *  sibling-slide mechanism instead (pairedControlSlideId/
+   *  isControlSlide, built for PS-284's own Add Stain Quick-Picker) —
+   *  deliberately NOT a second, parallel pairing mechanism. */
+  onSlideControlTissue?: string;
+  /** Real, per the spec's own "Automatic Order Splitting" — which real
+   *  lab bench queue this order resolved to at creation time
+   *  (Histology Cutting / Special Stains Bench / IHC & Special
+   *  Histochemistry / Reference-Send-Out), computed from the ordered
+   *  StainType.category. Stored, not merely re-derived on every
+   *  render, so the Order Tracking dashboard shows a stable value
+   *  even if a stain's own dictionary category is edited later. See
+   *  resolveAddOnRouting in utils/addOnOrderOperations.ts. */
+  routedQueueLabel?: 'Histology Cutting Queue' | 'Special Stains Bench Queue' | 'IHC/Special Histochemistry Queue' | 'Reference/Send-Out Lab Queue';
+  /** Real, per direct follow-up on this ticket's own Jira comment:
+   *  "everything it creates should ultimately land in the same real
+   *  vocabulary PS-284/285/286 are tying into" — SCAN_STATION_WORKFLOW_STAGES
+   *  (services/scanStations/IScanStationService.ts), not a second,
+   *  parallel queue-name vocabulary. Undefined for a Reference/
+   *  Send-Out order, which resolves to an external facility instead
+   *  (see sendOutReferenceLabFacilityId below), never a real internal
+   *  ScanStation. */
+  routedWorkflowStage?: string;
+  /** Real, per this ticket's own direct Jira comment: "a pathologist
+   *  ordering an add-on is ordering against a specific case, which
+   *  belongs to a specific performing lab... must route to that
+   *  case's own performing lab's queues — never a single,
+   *  enterprise-wide queue." Resolved once at real order time via
+   *  resolveCasePerformingLab (services/cases/casePoolAssignmentService.ts)
+   *  and stored here, same "stable at order time" reasoning as
+   *  routedQueueLabel above — a later change to the case's own
+   *  facility/performing-lab configuration must never silently
+   *  reroute an order that's already in flight. */
+  performingLabFacilityId?: string;
+  /** Real FK to services/facilities/ IFacilityService's own Facility.id
+   *  — only ever meaningful when routedQueueLabel is 'Reference/
+   *  Send-Out Lab Queue'. Deliberately a real, existing Facility with
+   *  roles.includes('reference_lab') (confirmed real, existing role —
+   *  "Somewhere your lab sends specimens TO for outsourced,
+   *  specialized testing"), not a fabricated destination list.
+   *  sendOutReferenceLabName cached for display, same convention as
+   *  every other FK+cached-name pair in this file. Real, honest scope
+   *  note: no per-performing-lab "preferred reference lab" mapping
+   *  exists anywhere in this app yet, so the ordering pathologist
+   *  picks explicitly from active reference_lab facilities each time,
+   *  rather than this system silently defaulting one — see
+   *  pages/AddOnOrderPage/README.md. */
+  sendOutReferenceLabFacilityId?: string;
+  sendOutReferenceLabName?: string;
+  /** Real, per the spec's own Real-Time Pathologist Order Tracking
+   *  dashboard ("Requested → Block Retrieved → Cut/Pending Stain →
+   *  Stained/QC → Checked Out/Scanned"). Deliberately NOT a new
+   *  StainOrderStatus value — same "purely additive, never touch the
+   *  exhaustive status enum" posture disposedAt/printStatus/PS-286's
+   *  own distribution fields already established. The dashboard's
+   *  own five display stages are derived fresh from this field plus
+   *  the existing status/distributionStatus fields by
+   *  computeAddOnTrackingStage (utils/addOnOrderOperations.ts) —
+   *  never a separately stored, driftable "current stage" value. Set
+   *  once, when a tech actually pulls the physical block to fulfill
+   *  this specific pending order. */
+  blockRetrievedAt?: string;
+  blockRetrievedBy?: string;
+  /** Real, per the spec's own §5 "Exception Handling & Block
+   *  Exhaustion" — set while a tech-flagged exhaustion/insufficiency
+   *  exception is open on this specific pending order; undefined once
+   *  resolved (same "cleared, not left stale" convention as
+   *  activeExceptionReason above). Deliberately one, single, current
+   *  exception per order — a second exception can't be flagged while
+   *  one is still open (see flagBlockExhaustion's own guard). The
+   *  full history of how it was raised/resolved lives in
+   *  exceptionEvents below, append-only, same reasoning
+   *  distributionEvents already established for this same file. */
+  exception?: AddOnOrderException;
+  /** Real, append-only audit log for every flag/approve/cancel/modify
+   *  transition this order's own exception has gone through — see
+   *  exception's own doc comment. */
+  exceptionEvents?: AddOnOrderExceptionEvent[];
+}
+
+/** See StainOrder.distributionEvents's own doc comment. */
+export interface SlideDistributionEvent {
+  id: string;
+  action: 'assigned' | 'checked_out' | 'loaded_on_scanner' | 'exception_flagged' | 'exception_resolved' | 'label_reprint_requested';
+  timestamp: string;
+  techUserId: string;
+  /** Real, human-readable summary of what this event recorded (target
+   *  pathologist/pool, physical location, scanner/rack/slot, or
+   *  exception reason) — plain text, same "genuinely different in
+   *  kind from CaseComment, never needing rich text" reasoning as
+   *  MaterialComment.text's own doc comment. */
+  detail: string;
+}
+
+/** See StainOrder.exception's own doc comment (PS-287). */
+export interface AddOnOrderException {
+  reason: 'Block exhausted' | 'Insufficient tissue for panel' | 'Requires re-grossing';
+  note?: string;
+  flaggedBy: string;
+  flaggedByName: string;
+  flaggedAt: string;
+  /** 'pending_pathologist_review' the moment a tech flags it — the
+   *  real trigger for the spec's own "Pathologist Notification Loop."
+   *  The other three are the loop's own real, closed set of responses
+   *  ("cancel/modify/approve-destructive-cutting options"). */
+  status: 'pending_pathologist_review' | 'approved_destructive_cut' | 'modified' | 'cancelled';
+  pathologistResponseBy?: string;
+  pathologistResponseByName?: string;
+  pathologistResponseAt?: string;
+  responseNote?: string;
+}
+
+/** See StainOrder.exceptionEvents's own doc comment (PS-287). */
+export interface AddOnOrderExceptionEvent {
+  id: string;
+  action: 'flagged' | 'approved_destructive_cut' | 'cancelled' | 'modified';
+  timestamp: string;
+  actorId: string;
+  actorName: string;
+  detail: string;
 }
 
 /** Real, shared shape for a stain-attributed applied or rejected
@@ -301,6 +674,19 @@ export interface HistologyBlock {
   id: string;
   /** Block letter — "A", "B", "C"... sequential per specimen. */
   label: string;
+  /** Real, per direct follow-up: "add tissue descriptions on
+   *  cassettes as that would be good for any block." Free text
+   *  naming what's actually in this specific cassette (e.g. "Heart —
+   *  LAD", "Cerebral Cortex", "Left Ventricle") — genuinely distinct
+   *  from `label` (the block's own sequential letter/number) and
+   *  from `sourcePathwayName` (which processing pathway generated
+   *  it, not what tissue is inside it). Deliberately general, not
+   *  Autopsy-specific — any block benefits from naming its own
+   *  contents, especially once a specimen has more than a couple.
+   *  Undefined for the overwhelming majority of blocks today (a
+   *  single-block specimen rarely needs one); editable the same way
+   *  `comments` is, never auto-derived from anything. */
+  tissueDescription?: string;
   status: BlockStatus;
   stains: StainOrder[];
   /**
@@ -554,7 +940,84 @@ export interface HistologyBlock {
    *  the common case — means every stain on this block still matches
    *  exactly what generateDefaultMaterial.ts originally generated. */
   userModified?: boolean;
+  /** Real, per PS-284 (Microtomy Workstation) — "high-contrast alert
+   *  badges for Tiny Tissue, Decal Required, Fragile." Decal Required
+   *  already exists as requiresDecal above; these two are the real,
+   *  genuinely missing pair — greenfield, additive booleans, same
+   *  undefined-means-false posture as every other flag on this type. */
+  tinyTissue?: boolean;
+  fragile?: boolean;
+  /** Real, per PS-285 (Embedding Station) — "Base Mold Size Picker:
+   *  quick-select for standard sizes." A closed set — free text would
+   *  defeat the point of a quick-select picker, and these five are the
+   *  ticket's own real, named options. Undefined means no mold size has
+   *  been recorded yet (every block embedded before this feature
+   *  existed, and any block not yet embedded). */
+  moldSize?: EmbeddingMoldSize;
+  /** Real, per PS-285 — "Orientation Instructions: grossing notes or
+   *  diagram flags for special orientations." Free text, same posture
+   *  as every other clinical narrative field in this app the real
+   *  vocabulary is too open to close (e.g. tissueDescription above) —
+   *  the ticket's own examples ("Embed on edge", "Epithelial surface
+   *  down", "Cross-section up") are illustrative quick-fill suggestions
+   *  the UI offers, not a closed enum this field is restricted to. */
+  orientationInstructions?: string;
+  /** Real, per PS-285 — "Multi-Cassette / Split-Block Tracking: visual
+   *  indicators when a specimen was split across multiple cassettes
+   *  (A1, A2, A3) to ensure all related cassettes are embedded
+   *  together." Genuinely different real concept from sharedCassetteId
+   *  above (multiple SPECIMENS sharing ONE physical cassette) — this is
+   *  the opposite: ONE specimen's tissue split ACROSS several separate
+   *  physical cassettes because it didn't fit in one. Blocks sharing
+   *  this id are cassette-split siblings of the same original tissue;
+   *  each still carries its own real, distinct label ("A1"/"A2"/"A3")
+   *  and its own independent embedding/staining lifecycle — this field
+   *  only groups them for the Embedding Station's own "were all of
+   *  these embedded together yet" check. Undefined = an ordinary block
+   *  that was never split (the overwhelming majority). */
+  splitBlockGroupId?: string;
+  /** Real, per PS-285 — "Discrepancy Reporting: one-touch buttons for
+   *  Missing Tissue/Empty Cassette, Extra Tissue Found, Unopened
+   *  Cassette/Unprocessed Tissue, Damaged Cassette/Broken Hinge." The
+   *  real sub-reason recorded alongside the same def-tissue-discrepancy
+   *  deficiency this event raises through the existing, shared
+   *  deficiency engine (mockDeficiencyTypeService.ts,
+   *  specimenDeficiencyService) — that deficiency's own free-text
+   *  comment already carries the raw piece-count numbers; this closed
+   *  set is what the Embedding Station's own one-touch buttons record,
+   *  for real analytics ("how many discrepancies were genuinely missing
+   *  tissue vs. a damaged cassette") free text alone can't support. */
+  lastDiscrepancyReason?: EmbeddingDiscrepancyReason;
+  lastDiscrepancyReportedBy?: string;
+  lastDiscrepancyReportedAt?: string;
+  /** Real, per PS-285 — "Reason Log: mandatory reason prompt for any
+   *  reprint (Wax Buildup, Faded Barcode, Mechanical Jam) for
+   *  compliance auditing." Same real "required reason, cumulative
+   *  count, never cleared" shape as StainOrder.lastReprintReason/
+   *  reprintCount (PS-284) — this is that same real pattern for a
+   *  cassette label instead of a slide label. */
+  lastCassetteReprintReason?: CassetteReprintReason;
+  lastCassetteReprintOrderedBy?: string;
+  lastCassetteReprintOrderedAt?: string;
+  cassetteReprintCount?: number;
 }
+
+/** Real, per PS-285 (Embedding Station) — the ticket's own five named
+ *  standard embedding mold sizes. */
+export type EmbeddingMoldSize = '7x7mm' | '15x15mm' | '24x24mm' | '24x30mm' | 'Mega Mold';
+
+/** Real, per PS-285 — the ticket's own four named one-touch discrepancy
+ *  reasons. */
+export type EmbeddingDiscrepancyReason =
+  | 'Missing Tissue/Empty Cassette'
+  | 'Extra Tissue Found'
+  | 'Unopened Cassette/Unprocessed Tissue'
+  | 'Damaged Cassette/Broken Hinge';
+
+/** Real, per PS-285 — the ticket's own three named cassette-reprint
+ *  reasons, plus 'Other' matching this app's own established pattern
+ *  for a required-reason field (e.g. StainOrder.lastReprintReason). */
+export type CassetteReprintReason = 'Wax Buildup' | 'Faded Barcode' | 'Mechanical Jam' | 'Other';
 
 /**
  * LIS synchronisation status — only meaningful for LIS mode (S26-) cases.
@@ -641,6 +1104,26 @@ export interface SpecimenGrossingOverride {
 export interface Specimen {
   /** Internal UUID */
   id: string;
+  /** Real, per direct guidance's own confirmed two-tier
+   *  specimen-to-organ mapping strategy: a real, structured,
+   *  enumerated organ classification — genuinely distinct from this
+   *  specimen's own free-text `description` (e.g. "Left lobe of
+   *  liver," "Formalin container A: Brain"), which stays honest about
+   *  external-system vocabulary variance and is never parsed for
+   *  this. An array (not a single code) to honestly handle real,
+   *  combined resections (e.g. a real liver+gallbladder specimen).
+   *  Drives real, derived Autopsy Grossing Synoptic section
+   *  visibility (types/autopsy/AutopsyOrganCode.ts,
+   *  services/autopsy/resolveActiveAutopsyGrossingSections.ts) —
+   *  "Whole Body" vs. "Head & Neck Only" etc. are no longer real,
+   *  separate presets, just what naturally falls out of which organs
+   *  are actually present. Optional and additive: a real specimen
+   *  with none set (legacy data, or a real, unmapped specimen) falls
+   *  back to the real, separate site-text classifier — see that
+   *  file's own doc comment — never blocks accessioning on this being
+   *  populated. Real, confirmed intake path per HL7/FHIR SPM-8 /
+   *  Specimen.collection.bodySite, not invented here. */
+  organCodes?: AutopsyOrganCode[];
   /** Real fix, Phase 1 of specimen/block-level CPT association: base
    *  surgical pathology CPT codes (88302-88309) are assigned per
    *  specimen in real practice, not as a flat, undifferentiated

@@ -41,6 +41,8 @@
 
 import * as qz from 'qz-tray';
 import type { ConnectOptions } from 'qz-tray';
+import type { PaperSize } from '@/types/printing/PrintJob';
+import { PAPER_SIZE_DIMENSIONS_MM } from '@/types/printing/PrintJob';
 
 export interface QzTrayResult<T> {
   ok: true;
@@ -125,6 +127,46 @@ export async function printZplViaQzTray(
     return { ok: true, data: undefined };
   } catch (err) {
     return { ok: false, message: `QZ Tray print failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * Real, per direct spec ("Decoupled Dispatch & Print Management
+ * System", Component B, Mode 1 — Native LIS Spooler): prints a
+ * rendered report PDF directly to a real, locally-configured network/
+ * IP printer via this same, already-integrated QZ Tray bridge —
+ * genuinely different config from printZplViaQzTray's own forceRaw
+ * ZPL path above: QZ Tray's real, own API accepts a `{type: 'pdf',
+ * format: 'base64', data}` payload for exactly this use, letting the
+ * local QZ Tray agent (not this browser) do the actual OS-level
+ * rasterization/spooling to a regular paper printer.
+ *
+ * Real, per direct follow-up ("we need to be able to define what kind
+ * of printer paper we are using... UK uses A4"): paperSize, when
+ * given, passes QZ Tray's own real `size`/`units` config fields
+ * (verified directly against @types/qz-tray's own PrinterOptions —
+ * `size: {width, height}` with `units: 'mm'`), using
+ * PAPER_SIZE_DIMENSIONS_MM's own real, standard dimensions. Omitted
+ * (undefined) leaves QZ Tray's own real, existing default behavior
+ * untouched — never a silent, invented fallback size on this app's
+ * own part.
+ */
+export async function printPdfViaQzTray(
+  printerName: string,
+  pdfBase64: string,
+  copies: number = 1,
+  paperSize?: PaperSize,
+): Promise<QzTrayResult<void> | QzTrayError> {
+  if (!isQzTrayConnected()) {
+    return { ok: false, message: 'Not connected to QZ Tray — call connectToQzTray() first.' };
+  }
+  try {
+    const sizeConfig = paperSize ? { size: PAPER_SIZE_DIMENSIONS_MM[paperSize], units: 'mm' as const } : {};
+    const config = qz.configs.create(printerName, { copies, ...sizeConfig });
+    await qz.print(config, [{ type: 'pixel', format: 'pdf', flavor: 'base64', data: pdfBase64 }]);
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return { ok: false, message: `QZ Tray PDF print failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 

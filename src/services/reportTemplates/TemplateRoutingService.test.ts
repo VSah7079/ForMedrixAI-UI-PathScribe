@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveReportTemplate, traceReportTemplateResolution } from './TemplateRoutingService';
+import { resolveReportTemplate, traceReportTemplateResolution, resolveIsFinalStatus } from './TemplateRoutingService';
 
 describe('TemplateRoutingService — Pass 0 / 0a (client override, Enterprise fallback)', () => {
   it('a facility with its own real override resolves via Pass 0, never checking Enterprise at all', () => {
@@ -135,5 +135,50 @@ describe('TemplateRoutingService — resolveReportTemplateAsync real Enterprise 
     // resolvePerformingLabFacilityId resolves it to its own real id —
     // confirmed passed through, not silently dropped.
     expect(getFacilityMap).toHaveBeenCalledWith('FAC-A');
+  });
+});
+
+describe('TemplateRoutingService — Pass -1 (Preliminary status gate)', () => {
+  it('resolveIsFinalStatus: only finalized, pending-release, and closed count as genuinely final', () => {
+    expect(resolveIsFinalStatus('finalized')).toBe(true);
+    expect(resolveIsFinalStatus('pending-release')).toBe(true);
+    expect(resolveIsFinalStatus('closed')).toBe(true);
+    expect(resolveIsFinalStatus('pending-countersign')).toBe(false);
+    expect(resolveIsFinalStatus('in-progress')).toBe(false);
+    expect(resolveIsFinalStatus('pathologist-review')).toBe(false);
+    expect(resolveIsFinalStatus(undefined)).toBe(false);
+  });
+
+  it('a case not yet finalized routes to the Preliminary template, skipping every other pass entirely, even with a real facility override that would otherwise win', () => {
+    const result = resolveReportTemplate({
+      caseStatus: 'in-progress',
+      performingFacilityId: 'FAC-A',
+      _facilityOverrides: { 'FAC-A': 'tmpl-facility-a' },
+    } as any);
+    expect(result.resolvedBy).toBe('preliminary-status');
+    expect(result.templateId).toBe('tmpl-prelim-surgpath');
+  });
+
+  it('real, per PS-292\'s own explicit "stay strict" decision: pending-countersign still routes to Preliminary \u2014 the content isn\'t genuinely done until the attending\'s own countersign completes', () => {
+    const result = resolveReportTemplate({ caseStatus: 'pending-countersign', subspecialtyId: 'breast' } as any);
+    expect(result.resolvedBy).toBe('preliminary-status');
+    expect(result.templateId).toBe('tmpl-prelim-surgpath');
+  });
+
+  it('real, deliberately investigated edge case: pending-release is treated as genuinely final, not Preliminary \u2014 the attending has already completed sign-out at that point, only external release is held back', () => {
+    const result = resolveReportTemplate({ caseStatus: 'pending-release', subspecialtyId: 'breast' } as any);
+    expect(result.resolvedBy).toBe('subspecialty');
+    expect(result.templateId).not.toBe('tmpl-prelim-surgpath');
+  });
+
+  it('finalized proceeds normally to Final-report resolution', () => {
+    const result = resolveReportTemplate({ caseStatus: 'finalized', subspecialtyId: 'breast' } as any);
+    expect(result.resolvedBy).toBe('subspecialty');
+  });
+
+  it('an omitted caseStatus skips the gate entirely and resolves exactly as it did before this field existed \u2014 never a forced Preliminary default on missing data', () => {
+    const result = resolveReportTemplate({ subspecialtyId: 'breast' } as any);
+    expect(result.resolvedBy).toBe('subspecialty');
+    expect(result.templateId).not.toBe('tmpl-prelim-surgpath');
   });
 });

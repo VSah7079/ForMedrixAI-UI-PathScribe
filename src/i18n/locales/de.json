@@ -100,7 +100,9 @@
     "itemCount_one": "{{count}} Element",
     "itemCount_other": "{{count}} Elemente",
     "rackCheckedOutError": "Gestell „{{value}}“ ist bereits einer anderen aktiven Charge zugewiesen.",
-    "notFoundError": "Keine Charge oder kein registrierter Behälter für „{{value}}“ gefunden."
+    "notFoundError": "Keine Charge oder kein registrierter Behälter für „{{value}}“ gefunden.",
+    "disposalReportTile": "Entsorgungsbericht",
+    "disposalReportTitle": "Entsorgungsbericht — ein filterbares, exportierbares Protokoll aller bereits entsorgten Materialien für CAP-/CLIA-/ISO-15189-Audits"
   },
   "newContainerModal": {
     "title": "Neuer Behälter",
@@ -551,5 +553,585 @@
       "GI_PANCREATIC": "GI/Pankreas",
       "OTHER_NGYN": "Sonstige"
     }
+  },
+  "autopsyIntake": {
+    "title": "Obduktionsaufnahme — Vorübergehende Aufnahme",
+    "subtitle": "Der Körper kann sofort entgegengenommen und gekühlt werden, noch bevor die vollständige rechtliche Genehmigung vorliegt. Erfassen Sie, was jetzt bekannt ist — der Rest kann folgen.",
+    "validationError": "Bitte füllen Sie die erforderlichen Felder aus, bevor Sie fortfahren.",
+    "selectPlaceholder": "Auswählen...",
+    "jurisdictionLabel": "Zuständigkeit",
+    "caseAuthorityLabel": "Fallbehörde",
+    "caseAuthority": {
+      "medicolegal_forensic": "Rechtsmedizinisch / Forensisch",
+      "hospital_consented": "Krankenhaus-Einwilligung"
+    },
+    "forensicSectionTitle": "Gerichtliche Anordnung",
+    "forensicSectionSubtitle": "Eine dringende mündliche Anordnung genügt, um den Körper jetzt entgegenzunehmen. Vor Beginn der äußeren und inneren Besichtigung ist eine schriftliche Genehmigung erforderlich.",
+    "authorityTypeLabel": "Art der Behörde",
+    "authorityTypePlaceholder": "z. B. Gerichtsmediziner, Staatsanwalt",
+    "authorityNameLabel": "Name der Behörde",
+    "authorityNamePlaceholder": "Optional",
+    "verbalOrderAtLabel": "Mündliche Anordnung erhalten am",
+    "verbalOrderFromLabel": "Mündliche Anordnung erhalten von",
+    "verbalOrderFromPlaceholder": "z. B. diensthabender Staatsanwalt",
+    "hospitalSectionTitle": "Krankenhaus-Einwilligung",
+    "hospitalSectionSubtitle": "Der Körper kann entgegengenommen werden, während die Familie entscheidet. Erfassen Sie die Kontaktperson, falls bereits bekannt.",
+    "relativeNameLabel": "Name des einwilligenden Angehörigen",
+    "relativeNamePlaceholder": "Optional, falls bereits bekannt",
+    "relativeRelationshipLabel": "Verwandtschaftsverhältnis",
+    "relativeRelationshipPlaceholder": "z. B. Ehepartner, erwachsenes Kind, Elternteil",
+    "accessionStatus": {
+      "temporary": "Vorübergehende Aufnahme",
+      "fully_authorized": "Vollständig genehmigt"
+    },
+    "grossExamPendingNote": "Die Besichtigung kann erst beginnen, wenn die vollständige Genehmigung vorliegt.",
+    "submitBtn": "Körper entgegennehmen"
+  },
+  "autopsyAuthCompletion": {
+    "title": "Genehmigung vervollständigen",
+    "subtitle": "Erfassen Sie die schriftliche Genehmigung, sobald sie eintrifft. Die Besichtigung bleibt gesperrt, bis diese vorliegt.",
+    "onFileSectionTitle": "Bereits erfasst",
+    "verbalOrderOnFile": "Mündliche Anordnung erhalten von {{authority}} am {{at}}.",
+    "writtenOrderSectionTitle": "Schriftliche Anordnung",
+    "orderReferenceLabel": "Aktenzeichen",
+    "orderReferencePlaceholder": "z. B. Aktenzeichen der gerichtlichen Anordnung",
+    "orderDateLabel": "Datum der Anordnung",
+    "relativeOnFile": "Erfasste Kontaktperson: {{name}} ({{relationship}}).",
+    "consentGrantSectionTitle": "Einwilligungserteilung",
+    "consentGivenAtLabel": "Einwilligung erteilt am",
+    "consentScopeLabel": "Umfang der Einwilligung",
+    "consentScopePlaceholder": "z. B. vollständig, keine Organentnahme (kommagetrennt)",
+    "validationError": "Bitte füllen Sie die erforderlichen Felder aus, bevor Sie fortfahren.",
+    "willUnblockNote": "Durch das Absenden kann die Besichtigung fortgesetzt werden.",
+    "submitBtn": "Genehmigung speichern",
+    "unknownValue": "unbekannt"
+  },
+  "autopsyBodyRelease": {
+    "title": "Leichnam freigeben",
+    "subtitle": "Erfassen Sie, wohin der Leichnam freigegeben wird. Dies wird Teil der dauerhaften Standorthistorie des Präparats.",
+    "releasedToLabel": "Freigegeben an",
+    "releasedToPlaceholder": "z. B. Bestattungsinstitut Schmidt",
+    "releasedByLabel": "Freigegeben von",
+    "releasedByPlaceholder": "z. B. Techniker: M. Davis",
+    "validationError": "Bitte füllen Sie beide Felder aus, bevor Sie fortfahren.",
+    "submitBtn": "Freigabe bestätigen",
+    "submittingBtn": "Wird freigegeben…",
+    "genericError": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+  },
+  "disposalReport": {
+    "pageTitle": "Entsorgungsbericht",
+    "pageSubtitle": "Ein echter, berechneter Bericht über jedes Präparat, jeden Block, jedes Objektträger, jeden Dekantat sowie jeden Matrixblock/-objektträger, der tatsächlich entsorgt wurde — filterbar nach Einrichtung, Materialtyp und Entsorgungsdatum und exportierbar für behördliche Prüfungen.",
+    "stats": {
+      "total": "Gesamt entsorgt"
+    },
+    "materialType": {
+      "block": "Gewebeblock",
+      "slide": "Objektträger",
+      "wet_tissue": "Feuchtgewebe"
+    },
+    "filters": {
+      "facilityLabel": "Nach Einrichtung filtern",
+      "allFacilities": "Alle Einrichtungen",
+      "materialTypeLabel": "Nach Materialtyp filtern",
+      "allMaterialTypes": "Alle Materialtypen",
+      "dateFromLabel": "Von Datum",
+      "dateTo": "bis",
+      "dateToLabel": "Bis Datum"
+    },
+    "columns": {
+      "disposedAt": "Entsorgt",
+      "materialType": "Typ",
+      "itemId": "Element-ID",
+      "caseAccession": "Fall",
+      "specimen": "Präparat",
+      "disposedBy": "Entsorgt von",
+      "location": "Standort"
+    },
+    "export": {
+      "button": "Exportieren",
+      "disposedAt": "Entsorgt am",
+      "materialType": "Materialtyp",
+      "itemId": "Element-ID",
+      "caseAccession": "Fallnummer",
+      "specimen": "Präparat",
+      "disposedBy": "Entsorgt von",
+      "location": "Standort"
+    },
+    "loading": "Bericht wird berechnet…",
+    "empty": "Für diese Filter wurde noch nichts entsorgt.",
+    "unknownLocation": "Unbekannt"
+  },
+  "home": {
+    "addOnOrderTile": {
+      "title": "Zusatzaufträge",
+      "description": "Vom Pathologen veranlasste Zusatzaufträge — Nachschnitte, Spezialfärbungen, IHC und Molekularpathologie — mit Echtzeit-Verfolgung"
+    },
+    "pathologyWorkspaceTile": {
+      "title": "Pathologie-Arbeitsbereich",
+      "description": "Zytologie-Screening, Molekulardiagnostik sowie Mikrotomie-, Einbettungs- und Objektträger-Verteilungsarbeitsplätze"
+    },
+    "qualityComplianceTile": {
+      "title": "Qualität & Compliance",
+      "description": "Systemaktivitätsprotokolle und Audit-Trail sowie die Arbeitswarteschlange der Qualitätssicherung — Abweichungen, Abgleich und CAPA-Management"
+    }
+  },
+  "qualityComplianceHub": {
+    "pageTitle": "Qualität & Compliance",
+    "pageSubtitle": "Systemprotokolle und Audit-Trail sowie die Arbeitswarteschlange der Qualitätssicherung — Abweichungen, intraoperative Verknüpfung, Diskordanz & Abgleich sowie CAPA-Management",
+    "backToHome": "← Zurück zur Startseite",
+    "auditTile": {
+      "title": "Audit",
+      "description": "Systemaktivitätsprotokolle, Fehler- und Schnittstellen-Ausnahmeprotokolle sowie finanzieller Audit-Trail"
+    },
+    "qualityAssuranceTile": {
+      "title": "Qualitätssicherung",
+      "description": "Abweichungen, intraoperative Verknüpfung sowie Diskordanz- und Abgleichsberichte"
+    }
+  },
+  "pathologyWorkspace": {
+    "pageTitle": "Pathologie-Arbeitsbereich",
+    "pageSubtitle": "Zytologie-Screening, Molekulardiagnostik sowie Mikrotomie-, Einbettungs- und Objektträger-Verteilungsarbeitsplätze",
+    "backToHome": "← Zurück zur Startseite",
+    "cytologyTile": {
+      "title": "Zytologie-Arbeitsbereich",
+      "description": "Primäres Screening-Zentrum für GYN-Abstriche, Non-GYN-Triage, Zellblock-Nachverfolgung und obligatorische Qualitätskontrolle"
+    },
+    "microtomyTile": {
+      "title": "Mikrotomie-Arbeitsbereich",
+      "description": "Echtzeit-Bedarfs- oder Stapeldruck von Objektträgeretiketten, Färbeverwaltung und Zytologie-/Dekantierungsvorbereitung am Mikrotom-Arbeitsplatz"
+    },
+    "embeddingTile": {
+      "title": "Einbettungs-Arbeitsbereich",
+      "description": "Kassetten-Scan/-Prüfung, Bestätigung der Gewebestückzahl, Formauswahl und Diskrepanzmeldung am Einbettungsarbeitsplatz"
+    },
+    "slideDistributionTile": {
+      "title": "Objektträger-Verteilungsarbeitsbereich",
+      "description": "Kontinuierliches Scan-Checkout an Pathologen oder Einspeisung in einen digitalen Scanner, mit Warnungen bei geteiltem Ziel und Ausnahmebehandlung"
+    },
+    "molecularTile": {
+      "title": "Molekular-Arbeitsbereich",
+      "description": "Chargen- und Plattenverwaltung, aktive Läufe und QC-/Probenzuordnung für die Molekulardiagnostik (HPV, CT/NG, respiratorische PCR)"
+    }
+  },
+  "microtomyWorkstation": {
+    "pageTitle": "Mikrotomie-Arbeitsplatz",
+    "scanPrompt": "Scannen Sie einen Block- oder Dekantier-/Flüssigkeitsbehälter-Barcode, um zu beginnen",
+    "scanPlaceholder": "Barcode scannen oder eingeben…",
+    "scanSubmit": "Los",
+    "context": {
+      "accession": "Zugangsnummer:",
+      "patient": "Patient:",
+      "dob": "Geburtsdatum:",
+      "specimenBlock": "Probe/Block:",
+      "specimenType": "Typ:",
+      "scanNext": "Nächsten Block/Dekantierung scannen →",
+      "title": "Blockübersicht",
+      "flag": {
+        "tinyTissue": "Winziges Gewebe",
+        "fragile": "Zerbrechlich",
+        "requiresDecal": "Entkalkung erforderlich"
+      },
+      "status": "Status: ",
+      "pieceCount": "Stückzahl: ",
+      "tissueDescription": "Gewebe: ",
+      "blockComments": "Blockkommentare",
+      "priorHistory": "Objektträger-Verlauf",
+      "noHistory": "Für diesen Block wurden noch keine Objektträger gedruckt."
+    },
+    "slideGrid": {
+      "title": "Objektträger-Raster",
+      "slideComments": "Objektträger-Kommentare",
+      "col": {
+        "level": "Ebene",
+        "stain": "Färbung",
+        "status": "Druckstatus",
+        "actions": "Aktionen"
+      },
+      "control": "Kontrolle",
+      "commentOnLabelTitle": "Der Kommentar dieses Objektträgers wird auf dem physischen Etikett gedruckt",
+      "onLabel": "Auf Etikett",
+      "reprintedCount": "{{count}}× neu gedruckt",
+      "print": "Drucken",
+      "reprintReasonPrompt": "Grund…",
+      "reprint": "Neu drucken",
+      "addLevelTitle": "Eine weitere Ebene derselben Färbung schneiden",
+      "addLevel": "+ Ebene",
+      "searchStains": "Färbungen suchen…",
+      "selectStain": "Färbung auswählen…",
+      "duplicateCount": "×",
+      "levelDepth": "µm",
+      "pairControl": "Mit Kontroll-Objektträger paaren"
+    },
+    "printStatus": {
+      "Pending": "Ausstehend",
+      "Printing": "Wird gedruckt…",
+      "Printed": "Gedruckt",
+      "Failed": "Fehlgeschlagen",
+      "Canceled": "Storniert"
+    },
+    "hardware": {
+      "printMode": "Druckmodus",
+      "onDemand": "Bei Bedarf",
+      "batch": "Stapel",
+      "nextUnprinted": "Nächster ungedruckter Objektträger:",
+      "printNext": "Nächsten drucken/gravieren",
+      "allPrinted": "Alle Objektträger dieses Blocks wurden gedruckt.",
+      "selectedCount": "{{count}} Objektträger ausgewählt",
+      "printBatch": "Stapel drucken",
+      "deviceStatus": "Gerätestatus",
+      "noPrinter": "Kein Drucker konfiguriert",
+      "status": {
+        "ready": "Bereit",
+        "error": "Druckfehler",
+        "offline": "Offline"
+      },
+      "labelPreview": "Etikettenvorschau",
+      "noPreview": "Wählen oder drucken Sie einen Objektträger, um dessen Etikett anzuzeigen.",
+      "noStation": "Für dieses Gerät ist keine Scan-Station ausgewählt — legen Sie eine über die Stationsanzeige in der Navigationsleiste fest.",
+      "notConfigured": "Diese Station ist nicht für echten Objektträger-Etikettendruck konfiguriert.",
+      "profileMissing": "Das konfigurierte Druckerprofil existiert nicht mehr."
+    },
+    "cytology": {
+      "title": "Probenflüssigkeits-/Dekantierpanel",
+      "volume": "Gesamtvolumen (mL)",
+      "appearance": "Erscheinungsbild",
+      "appearanceOption": {
+        "Clear": "Klar",
+        "Bloody": "Blutig",
+        "Turbid": "Trüb"
+      },
+      "yield": "Dekantier-Ausbeute / Pelletgröße",
+      "yieldOption": {
+        "Low": "Niedrig",
+        "Moderate": "Mäßig",
+        "High": "Hoch"
+      },
+      "suggestionIntro": "Vorgeschlagene Vorbereitung:",
+      "prepMethod": {
+        "ThinPrepLiquidBased": "ThinPrep (Flüssigkeitsbasiert)",
+        "DirectSmearAirDried": "Direktausstrich (lufttrocken)",
+        "DirectSmearFixed": "Direktausstrich (fixiert)",
+        "Cytospin": "Cytospin",
+        "CellBlock": "Zellblock"
+      },
+      "acceptSuggestion": "Vorschlag übernehmen"
+    },
+    "comments": {
+      "empty": "Noch keine Kommentare.",
+      "placeholder": "Kommentar hinzufügen…",
+      "printOnLabel": "Diesen Kommentar auf dem physischen Etikett drucken",
+      "add": "Kommentar hinzufügen"
+    },
+    "removeReason": {
+      "title": "Grund erforderlich",
+      "body": "Dieser Objektträger wurde bereits gedruckt — wählen Sie einen Grund, um ihn zu stornieren.",
+      "select": "Grund auswählen…"
+    },
+    "batchProgress": {
+      "title": "Fortschritt des Stapeldrucks",
+      "status": {
+        "pending": "Ausstehend",
+        "printing": "Wird gedruckt…",
+        "printed": "Gedruckt",
+        "failed": "Fehlgeschlagen"
+      },
+      "inProgress": "Wird gedruckt…"
+    }
+  },
+  "embeddingStation": {
+    "pageTitle": "Einbettungsstation",
+    "scanPrompt": "Scannen Sie einen Kassetten-Barcode, um zu beginnen",
+    "scanPlaceholder": "Barcode scannen oder eingeben…",
+    "scanSubmit": "Los",
+    "context": {
+      "accession": "Zugangsnummer:",
+      "patient": "Patient:",
+      "dob": "Geburtsdatum:",
+      "specimenBlock": "Probe/Block:",
+      "specimenType": "Typ:",
+      "scanNext": "Nächste Kassette scannen →",
+      "title": "Blockübersicht",
+      "flag": {
+        "tinyTissue": "Winziges Gewebe",
+        "fragile": "Zerbrechlich",
+        "requiresDecal": "Entkalkung erforderlich"
+      },
+      "derivedBadge": {
+        "biopsy": "Biopsie",
+        "needleCore": "Stanzbiopsie"
+      },
+      "status": "Status: ",
+      "tissueDescription": "Gewebe: ",
+      "blockComments": "Blockkommentare"
+    },
+    "pieceCount": {
+      "title": "Verifizierung der Gewebestückzahl",
+      "expected": "Erwartet (aus der Zuschnitt): ",
+      "confirm": "Bestätigen",
+      "observed": "Beobachtet bei der Einbettung: "
+    },
+    "discrepancy": {
+      "title": "Diskrepanzmeldung",
+      "reason": {
+        "missingTissue": "Fehlendes Gewebe/Leere Kassette",
+        "extraTissue": "Zusätzliches Gewebe gefunden",
+        "unopenedCassette": "Ungeöffnete Kassette/Unverarbeitetes Gewebe",
+        "damagedCassette": "Beschädigte Kassette/Gebrochenes Scharnier"
+      },
+      "lastFlagged": "Zuletzt gemeldet: {{reason}} (von {{by}})"
+    },
+    "mold": {
+      "title": "Standard-Formgröße"
+    },
+    "orientation": {
+      "title": "Orientierungsanweisungen",
+      "placeholder": "Freitext-Orientierungshinweise…"
+    },
+    "splitBlock": {
+      "title": "Mehrfachkassette / Geteilter Block",
+      "none": "Keine anderen ungruppierten Blöcke bei dieser Probe zum Gruppieren.",
+      "pickPrompt": "Wählen Sie die andere(n) Kassette(n), auf die das Gewebe dieser Probe aufgeteilt wurde:",
+      "group": "Als geteilte Kassetten gruppieren",
+      "pending": "Aufgeteilt auf {{labels}} — noch nicht alle Kassetten eingebettet.",
+      "allEmbedded": "Aufgeteilt auf {{labels}} — alle Kassetten eingebettet."
+    },
+    "specimenSummary": {
+      "title": "Blöcke der Probe",
+      "current": "aktuell"
+    },
+    "hardware": {
+      "deviceStatus": "Gerätestatus",
+      "noPrinter": "Kein Drucker konfiguriert",
+      "status": {
+        "ready": "Bereit",
+        "error": "Druckfehler",
+        "offline": "Offline"
+      },
+      "reprint": "Kassetten-Nachdruck",
+      "reprintCassette": "Kassette nachdrucken",
+      "reprintCount": "{{count}}× nachgedruckt, letzter Grund: ",
+      "reprintFailed": "Nachdruck fehlgeschlagen — siehe Meldung oben.",
+      "labelPreview": "Etikettenvorschau",
+      "noStation": "Keine Scanstation für dieses Gerät ausgewählt — legen Sie eine über die Stationsanzeige in der Navigationsleiste fest.",
+      "notConfigured": "Diese Station ist nicht für den echten Kassettenetikettendruck konfiguriert.",
+      "profileMissing": "Das konfigurierte Druckerprofil existiert nicht mehr."
+    },
+    "reprintReason": {
+      "title": "Begründung erforderlich",
+      "body": "Der Nachdruck eines Kassettenetiketts erfordert zu Prüfzwecken eine Begründung.",
+      "select": "Begründung auswählen…"
+    },
+    "comments": {
+      "empty": "Noch keine Kommentare.",
+      "placeholder": "Kommentar hinzufügen…",
+      "add": "Kommentar hinzufügen"
+    }
+  },
+  "slideDistribution": {
+    "pageTitle": "Objektträger-Verteilstation",
+    "scanPrompt": "Scannen Sie einen Objektträger- oder Block-/Kassetten-Barcode — die Warteschlange wächst kontinuierlich",
+    "scanPlaceholder": "Barcode scannen oder eingeben…",
+    "scanSubmit": "Los",
+    "context": {
+      "queueCount": "Objektträger in Warteschlange:",
+      "mode": "Zielmodus:",
+      "carrierOrScanner": "Träger / Scanner:",
+      "tech": "Techniker:"
+    },
+    "queue": {
+      "title": "Arbeitswarteschlange",
+      "count": "{{count}}",
+      "empty": "Noch keine Objektträger gescannt.",
+      "remove": "Aus der Warteschlange entfernen",
+      "unrouted": "Noch nicht weitergeleitet",
+      "unassigned": "Nicht zugewiesen",
+      "pool": "Subspezialitäten-Pool"
+    },
+    "slots": {
+      "title": "Chargenfortschritt",
+      "empty": "Noch nichts in der Warteschlange — scannen Sie einen Objektträger, um zu beginnen."
+    },
+    "activeSlide": {
+      "title": "Aktiver Objektträger",
+      "slide": "Objektträger:",
+      "status": "Status:",
+      "none": "Wählen Sie einen Objektträger aus der Warteschlange oder dem Raster oben.",
+      "reprintLabel": "Ersatzetikett auslösen",
+      "reprintFailed": "Nachdruck fehlgeschlagen — siehe Meldung oben.",
+      "history": "Nachweiskette"
+    },
+    "destination": {
+      "title": "Ziel & Zuweisung",
+      "physical": "Physische Abholung",
+      "digital": "Digitaler Scanner",
+      "searchPlaceholder": "Pathologen oder Pools suchen…",
+      "slideFolderId": "Objektträgermappen-ID",
+      "trayNumber": "Trägernummer",
+      "courierBagId": "Kurier-Transportbeutel",
+      "confirmPhysical": "Physische Weiterleitung bestätigen",
+      "scannerInstrument": "Scanner-Instrument",
+      "rackId": "Rack-ID",
+      "slotPosition": "Steckplatzposition",
+      "confirmDigital": "Scanner-Weiterleitung bestätigen",
+      "assignFailed": "Diese Weiterleitung konnte nicht gespeichert werden — siehe Meldung oben.",
+      "selectFirst": "Wählen Sie zuerst einen Objektträger aus der Warteschlange."
+    },
+    "exceptions": {
+      "title": "Scan-Ausnahmeprotokoll",
+      "scanLogTitle": "Nicht aufgelöste Scans",
+      "resolve": "Lösen",
+      "reason": {
+        "unreadableBarcode": "Unlesbarer Barcode",
+        "unassignedAccession": "Nicht zugewiesene Zugangsnummer",
+        "missingGlass": "Fehlender Objektträger",
+        "other": "Sonstiges"
+      }
+    }
+  },
+  "addOnOrder": {
+    "pageTitle": "Zusatzauftrags-Ersteller",
+    "search": {
+      "placeholder": "Zugangsnummer suchen oder scannen…",
+      "open": "Fall öffnen"
+    },
+    "context": {
+      "caseStatus": "Fallstatus",
+      "primaryPathologist": "Hauptpathologe",
+      "noPerformingLab": "Für diesen Fall konnte kein ausführendes Labor ermittelt werden — die Weiterleitung zeigt alle passenden Stationen, nicht auf ein Labor beschränkt."
+    },
+    "blockContext": {
+      "title": "Block- und Gewebekontext",
+      "empty": "Für diesen Fall liegen keine Proben vor.",
+      "specimen": "Probe {{label}} {{description}}",
+      "noBlocks": "Keine Blöcke für diese Probe.",
+      "exhausted": "Erschöpft",
+      "lost": "Verloren",
+      "damaged": "Beschädigt",
+      "cancelled": "Storniert",
+      "levelsCut": "{{count}} Schnittebene(n) bereits geschnitten",
+      "tinyTissue": "Winziges Gewebe",
+      "fragile": "Brüchig"
+    },
+    "builder": {
+      "title": "Zusatzauftrags-Ersteller",
+      "kind": {
+        "recut": "Nachschnitt / Tiefenebene",
+        "special_stain": "Spezialfärbung",
+        "ihc": "IHC",
+        "molecular": "Molekular / Fremdversand"
+      },
+      "panelPicker": "IHC-Panel",
+      "searchStain": "Färbung suchen…",
+      "noStains": "Keine passenden Färbungen.",
+      "levelDepth": "Schnitttiefe (µm)",
+      "controlPairing": "Kontrollpaarung",
+      "controlMode": {
+        "none": "Keine Kontrolle",
+        "on_slide": "Kontrolle auf demselben Objektträger",
+        "separate_slide": "Separater Kontroll-Objektträger"
+      },
+      "addToCart": "Zum Warenkorb hinzufügen"
+    },
+    "summary": {
+      "title": "Auftragsübersicht & Weiterleitung",
+      "blocksSelected": "{{count}} Block/Blöcke ausgewählt",
+      "emptyCart": "Noch keine Auftragszeilen hinzugefügt.",
+      "microns": "{{count}} µm Schnittebenen",
+      "routesTo": "Wird weitergeleitet an: {{stations}}",
+      "routesToQueueOnly": "Für dieses Labor ist noch keine passende Station konfiguriert — der Auftrag wird dennoch der Warteschlange zugeordnet.",
+      "remove": "Entfernen",
+      "noPerformingLab": "Das ausführende Labor dieses Falls konnte nicht ermittelt werden — Aufträge werden dennoch erstellt, jedoch ohne labor-bezogene Stationszuordnung.",
+      "priority": "Priorität",
+      "slideMedia": "Objektträger-Medium & Beschichtung",
+      "cuttingInstructions": "Anweisungen für den Mikrotom-Arbeitsplatz",
+      "sendOutLab": "Referenz-/Fremdversandlabor",
+      "selectLab": "Referenzlabor auswählen…",
+      "submit": "Zusatzauftrag einreichen",
+      "submitted": "Auftrag eingereicht."
+    },
+    "priority": {
+      "STAT_Urgent": "STAT / Dringend",
+      "Routine_Sign_Out": "Routinebefundung",
+      "Research_Protocol": "Forschung / Protokoll"
+    },
+    "slideMedia": {
+      "Standard_Charged": "Standard beschichtet",
+      "Uncharged": "Unbeschichtet",
+      "Plus_Glass": "Plus-Glas"
+    },
+    "tracking": {
+      "title": "Auftragsverfolgung",
+      "count": "{{count}}",
+      "empty": "Für diesen Fall wurden noch keine Zusatzaufträge erteilt.",
+      "stage": {
+        "Requested": "Angefordert",
+        "BlockRetrieved": "Block entnommen",
+        "CutPendingStain": "Geschnitten / Färbung ausstehend",
+        "StainedQC": "Gefärbt / QK",
+        "CheckedOutScanned": "Ausgegeben / gescannt",
+        "Exception": "Ausnahme",
+        "Cancelled": "Storniert"
+      },
+      "orderedBy": "Angeordnet von {{name}}",
+      "markRetrieved": "Block als entnommen markieren",
+      "exceptionNote": "Optionale Notiz…",
+      "confirmFlag": "Ausnahme melden",
+      "cancelFlag": "Abbrechen",
+      "flagException": "Ausnahme melden",
+      "flaggedBy": "Gemeldet von {{name}}",
+      "responseNote": "Antwortnotiz…",
+      "approveDestructive": "Destruktiven Schnitt genehmigen",
+      "modify": "Ändern und erneut einreichen",
+      "cancelOrder": "Auftrag stornieren"
+    }
+  },
+  "facilityOpsDashboard": {
+    "bindDisplayTitle": "Dieses Display binden",
+    "bindDisplayDescription": "Wählen Sie das Anzeigeprofil, das dieses Wandgerät zeigen soll.",
+    "selectProfile": "— Anzeigeprofil auswählen —",
+    "noProfilesConfigured": "Es sind noch keine Anzeigeprofile konfiguriert. Fügen Sie eines unter Konfiguration → System → Anzeigeprofile hinzu.",
+    "loadingProfile": "Anzeigeprofil wird geladen…",
+    "loadingData": "Dashboard-Daten werden geladen…",
+    "offlineStaleBadge": "Offline / Veraltete Daten",
+    "lastUpdated": "Aktualisiert {{time}}",
+    "confirmTokenTitle": "Gerätetoken bestätigen",
+    "confirmTokenDescription": "Geben Sie das für „{{name}}“ hinterlegte Gerätetoken ein, um die Bindung dieses Displays abzuschließen.",
+    "confirmTokenPlaceholder": "Gerätetoken eingeben",
+    "confirmTokenError": "Dieses Token stimmt nicht mit dem für dieses Display hinterlegten überein. Wenden Sie sich an Ihren Administrator und versuchen Sie es erneut.",
+    "confirmTokenNote": "Dies bestätigt, dass Sie das von einem Administrator für dieses Display hinterlegte Token kennen — es überprüft keine echte physische Hardware.",
+    "queueEmpty": "Derzeit nichts in der Warteschlange.",
+    "statPill": "STAT",
+    "overdueBy": "Überfällig um {{duration}}",
+    "ageLabel": "vor {{duration}}",
+    "views": {
+      "grossingIntake": "Eingang & Zuschnitt",
+      "embeddingMicrotomy": "Einbettung & Mikrotomie",
+      "stainingIhc": "Färbung & IHC",
+      "sendoutReference": "Weiterversand & Referenzlabor",
+      "diagnosticSignout": "Diagnostischer Abschluss / Scanner"
+    }
+  },
+  "displayProfiles": {
+    "sectionTitle": "Anzeigeprofile (Betriebs-Dashboards)",
+    "sectionSubtitle": "Echtes, reines Datenregister für die fünf Wanddisplays der Betriebs-Dashboards — jedes Profil bindet ein physisches Display an ein ausführendes Labor und eine oder mehrere Abteilungsansichten. Es wird keine physische Hardwarebindung überprüft oder erzwungen; das Gerätetoken dient nur zu Informationszwecken.",
+    "addButton": "+ Anzeigeprofil hinzufügen",
+    "launchDashboardButton": "🖥️ Betriebs-Dashboard öffnen",
+    "addTitle": "Anzeigeprofil hinzufügen",
+    "editTitle": "Anzeigeprofil bearbeiten",
+    "nameLabel": "Anzeigename",
+    "namePlaceholder": "z. B. Histologie-Arbeitsplatz 3 — Wanddisplay",
+    "facilityLabel": "Ausführendes Labor",
+    "selectFacility": "— Einrichtung auswählen —",
+    "assignedViewsLabel": "Zugewiesene Dashboard-Ansicht(en)",
+    "carouselIntervalLabel": "Karussell-Intervall (Sekunden)",
+    "carouselIntervalPlaceholder": "z. B. 20",
+    "deviceTokenLabel": "Gerätetoken / MAC / IP (optional)",
+    "deviceTokenPlaceholder": "z. B. AA:BB:CC:DD:EE:FF",
+    "deviceTokenNote": "Nur zu Informationszwecken — für Ihre eigene Bestandsverwaltung erfasst. Wird niemals gegen echte Hardware validiert.",
+    "showInactive": "Inaktive anzeigen",
+    "inactive": "Inaktiv",
+    "deactivate": "Deaktivieren",
+    "reactivate": "Reaktivieren",
+    "emptyRow": "Keine Anzeigeprofile vorhanden."
   }
 }

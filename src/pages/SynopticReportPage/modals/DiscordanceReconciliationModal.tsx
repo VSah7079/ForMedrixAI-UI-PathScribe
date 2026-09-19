@@ -141,6 +141,20 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
       <div className="ps-ms-modal">
         <div className="ps-ms-header">Frozen-to-Permanent Reconciliation</div>
         <div className="ps-ms-body">
+          {/* Real, per direct follow-up ("shows the intraop vs final
+              with AI outcome... an extra step but probably a good
+              step") — this modal only ever opens via the real,
+              automatic detection in useSignOutWorkflow.ts (confirmed
+              directly: there is no other, manual trigger anywhere in
+              this app), so every real instance of this screen IS the
+              "AI outcome" the pathologist was asked to actively look
+              at, not rely on a flag alone. Stated plainly rather than
+              left implicit. */}
+          <div className="ps-intraop-note" style={{ borderColor: 'rgba(250,204,21,0.5)' }}>
+            <span className="ps-intraop-note-label">⚖ Automatically Flagged for Review</span>
+            A frozen section was performed on this specimen — compare it against the final diagnosis below before continuing sign-out.
+          </div>
+
           {isTeachingCase && (
             <div className="ps-intraop-note" style={{ borderColor: 'rgba(96,165,250,0.4)' }}>
               <span className="ps-intraop-note-label">🎓 Teaching Case</span>

@@ -80,6 +80,9 @@ event-driven HL7 handling).
   case locally, then navigates straight to it — exactly Step 4.2's
   own "so subsequent opens during that session are instant."
 
+- **Real, new consumer (PS-287, Sep 2026):** `casePoolAssignmentService.ts`'s own `resolveCasePerformingLab()` — built for pool routing, but genuinely reusable as-is — is now also how `pages/AddOnOrderPage/hooks/useAddOnOrderStation.ts` resolves which real performing lab a pathologist's add-on order belongs to, per that ticket's own direct Jira comment ("must route to that case's own performing lab's queues — never a single, enterprise-wide queue"). Read-only; nothing in this folder's own files changed.
+- **Real, new consumer (PS-288, Sep 2026):** `caseRouter.getAll(undefined, { bypassAccessControl: true, includeOrchestration: true })` — the same real call `computePendingBatchQueue.ts` already established — is now also how `services/facilityOpsDashboard/buildFacilityLookupMaps.ts` builds its own `accession -> Case.originHospitalId` and `caseId -> Case` lookup maps, shared across all five PS-288 department dashboard summary functions. Read-only; nothing in this folder's own files changed.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

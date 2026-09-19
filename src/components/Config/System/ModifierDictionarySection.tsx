@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import { mockModifierDictionaryService } from '@/services/billing/mockModifierDictionaryService';
 import type { ModifierTableVersion } from '@/services/billing/ModifierTableVersion';
 import { parseModifierUploadRows, DEFAULT_CPT_MODIFIERS, type CptModifierEntry } from '@/services/billing/cptModifierDictionary';
@@ -128,30 +128,27 @@ const ModifierDictionarySection: React.FC = () => {
     refresh();
   };
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = async (file: File) => {
     setUploadError(null);
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      try {
-        const workbook = XLSX.read(data, { type: 'binary' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-        const { entries, problems } = parseModifierUploadRows(rows);
-        if (entries.length === 0 && problems.length === 0) {
-          setUploadError('No real rows found in this file — check it has Code and Description columns.');
-          return;
-        }
-        if (problems.length > 0) setUploadError(problems.slice(0, 5).join(' '));
-        setUploadPreview(entries);
-        setUploadFileName(file.name);
-        if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.(xlsx|csv)$/i, '')}`);
-      } catch {
-        setUploadError("Could not read this file — make sure it's a real .xlsx or .csv spreadsheet.");
+    if (!isCsvFile(file)) {
+      setUploadError(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    try {
+      const text = await readFileAsText(file);
+      const rows = parseCsv(text);
+      const { entries, problems } = parseModifierUploadRows(rows);
+      if (entries.length === 0 && problems.length === 0) {
+        setUploadError('No real rows found in this file — check it has Code and Description columns.');
+        return;
       }
-    };
-    reader.readAsBinaryString(file);
+      if (problems.length > 0) setUploadError(problems.slice(0, 5).join(' '));
+      setUploadPreview(entries);
+      setUploadFileName(file.name);
+      if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.csv$/i, '')}`);
+    } catch {
+      setUploadError("Could not read this file — make sure it's a real .csv file.");
+    }
   };
 
   const handleApplyUpload = async () => {
@@ -178,10 +175,7 @@ const ModifierDictionarySection: React.FC = () => {
   };
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet(TEMPLATE_EXAMPLE_ROWS);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Modifiers');
-    XLSX.writeFile(wb, 'ModifierDictionaryTemplate.xlsx');
+    downloadCsv('ModifierDictionaryTemplate.csv', toCsv(TEMPLATE_EXAMPLE_ROWS));
   };
 
   if (loading) return <div className="ps-conf-loading">Loading Modifier Dictionary...</div>;
@@ -207,7 +201,7 @@ const ModifierDictionarySection: React.FC = () => {
         <div className="ps-conf-row-actions">
           <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
           <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
-          <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx"
+          <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv"
             onChange={e => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
         </div>
       </div>

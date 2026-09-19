@@ -288,6 +288,8 @@ the other — both were updated by hand for `reference_lab` here, but
 this is a real, standing risk for the next new role, not just a
 one-time miss.
 
+- **Real, new consumer (PS-287, Sep 2026):** `getAll()`, filtered to `roles.includes('reference_lab') && status === 'Active'`, is now how `pages/AddOnOrderPage/`'s own Order Summary & Routing panel offers a real Reference/Send-Out Lab picker for a molecular/send-out add-on order — the first real place this app lets a user actively choose a `reference_lab` facility, as opposed to that role's prior, purely-descriptive existence on the Facility record. Read-only; nothing in this folder's own files changed. Real, honest scope note: no per-performing-lab "preferred reference lab" mapping exists — the ordering pathologist picks explicitly each time.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

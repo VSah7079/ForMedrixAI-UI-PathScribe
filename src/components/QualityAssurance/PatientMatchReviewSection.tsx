@@ -180,7 +180,7 @@ export const PatientMatchReviewSection: React.FC = () => {
         'Possible Matches': candidates || 'none',
       };
     });
-    exportQaReportRows(rows, `patient-match-review-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `patient-match-review-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   return (
@@ -239,10 +239,10 @@ export const PatientMatchReviewSection: React.FC = () => {
             <div key={record.id} style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }} data-phi="name">
                     {record.lastName}, {record.firstName}
                   </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }} data-phi="true">
                     MRN {record.mrn} · DOB {new Date(record.dateOfBirth).toLocaleDateString()} · Flagged {new Date(record.createdAt).toLocaleString()}
                   </div>
                 </div>
@@ -285,8 +285,8 @@ export const PatientMatchReviewSection: React.FC = () => {
                       return (
                         <div key={candId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '10px 14px' }}>
                           <div>
-                            <div style={{ fontSize: 13, color: '#e5e7eb' }}>{cand.lastName}, {cand.firstName}</div>
-                            <div style={{ fontSize: 11, color: '#6b7280' }}>MRN {cand.mrn} · DOB {new Date(cand.dateOfBirth).toLocaleDateString()}</div>
+                            <div style={{ fontSize: 13, color: '#e5e7eb' }} data-phi="name">{cand.lastName}, {cand.firstName}</div>
+                            <div style={{ fontSize: 11, color: '#6b7280' }} data-phi="true">MRN {cand.mrn} · DOB {new Date(cand.dateOfBirth).toLocaleDateString()}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button
@@ -333,7 +333,7 @@ export const PatientMatchReviewSection: React.FC = () => {
         show={!!confirmNewTarget}
         title="Confirm as new patient"
         message={confirmNewTarget
-          ? `This confirms ${confirmNewTarget.lastName}, ${confirmNewTarget.firstName} (MRN ${confirmNewTarget.mrn}) is genuinely a different person from every candidate record shown${(confirmNewTarget.reviewCandidateIds?.length ?? 0) > 0 ? ` (${confirmNewTarget.reviewCandidateIds!.length} candidate${confirmNewTarget.reviewCandidateIds!.length === 1 ? '' : 's'})` : ''}. This dismisses the review flag — getting this wrong leaves two separate identities for what may be the same patient.`
+          ? <span data-phi="true">{`This confirms ${confirmNewTarget.lastName}, ${confirmNewTarget.firstName} (MRN ${confirmNewTarget.mrn}) is genuinely a different person from every candidate record shown${(confirmNewTarget.reviewCandidateIds?.length ?? 0) > 0 ? ` (${confirmNewTarget.reviewCandidateIds!.length} candidate${confirmNewTarget.reviewCandidateIds!.length === 1 ? '' : 's'})` : ''}. This dismisses the review flag — getting this wrong leaves two separate identities for what may be the same patient.`}</span>
           : ''}
         confirmLabel="Confirm as new"
         cancelLabel="Cancel"
@@ -345,7 +345,7 @@ export const PatientMatchReviewSection: React.FC = () => {
         show={!!mergeTarget}
         title="Merge patient records"
         message={mergeTarget
-          ? `This will merge ${mergeTarget.provisional.lastName}, ${mergeTarget.provisional.firstName} (MRN ${mergeTarget.provisional.mrn}) into the existing record for ${mergeTarget.candidate.lastName}, ${mergeTarget.candidate.firstName} (MRN ${mergeTarget.candidate.mrn}). Every case currently on the provisional record will be repointed to the confirmed one. This cannot be undone from this screen.`
+          ? <span data-phi="true">{`This will merge ${mergeTarget.provisional.lastName}, ${mergeTarget.provisional.firstName} (MRN ${mergeTarget.provisional.mrn}) into the existing record for ${mergeTarget.candidate.lastName}, ${mergeTarget.candidate.firstName} (MRN ${mergeTarget.candidate.mrn}). Every case currently on the provisional record will be repointed to the confirmed one. This cannot be undone from this screen.`}</span>
           : ''}
         confirmLabel="Merge"
         cancelLabel="Cancel"
@@ -357,7 +357,7 @@ export const PatientMatchReviewSection: React.FC = () => {
         show={!!linkTarget}
         title="Link patient records"
         message={linkTarget
-          ? `This confirms ${linkTarget.provisional.lastName}, ${linkTarget.provisional.firstName} (MRN ${linkTarget.provisional.mrn}) and ${linkTarget.candidate.lastName}, ${linkTarget.candidate.firstName} (MRN ${linkTarget.candidate.mrn}) are the same real person — for example, referred to this lab by two different, unrelated EMR systems. Unlike a merge, BOTH records stay fully active and will keep matching their own future orders under their own MRN. Patient History will show cases from both going forward.`
+          ? <span data-phi="true">{`This confirms ${linkTarget.provisional.lastName}, ${linkTarget.provisional.firstName} (MRN ${linkTarget.provisional.mrn}) and ${linkTarget.candidate.lastName}, ${linkTarget.candidate.firstName} (MRN ${linkTarget.candidate.mrn}) are the same real person — for example, referred to this lab by two different, unrelated EMR systems. Unlike a merge, BOTH records stay fully active and will keep matching their own future orders under their own MRN. Patient History will show cases from both going forward.`}</span>
           : ''}
         confirmLabel="Link"
         cancelLabel="Cancel"

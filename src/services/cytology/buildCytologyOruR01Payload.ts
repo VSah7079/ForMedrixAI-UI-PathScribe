@@ -43,7 +43,15 @@ export type CytologyOruR01GeographyExtension = CisoeAOruExtension;
 export interface CytologyOruR01Payload {
   messageId: string;
   eventType: 'ORU_R01';
-  resultState: 'FINAL';
+  /** Real, per direct correction ("Cytology cases can have addendums")
+   *  — 'ADDENDUM' restored after an earlier, wrong assumption that
+   *  Cytology had no addendum concept of its own. That reasoning
+   *  conflated "Cytology doesn't use Surg Path's own multi-instance
+   *  data model" with "Cytology has no addendum concept at all" — two
+   *  genuinely separate things. An addendum here is built on this
+   *  module's own CytologySignOutRecord architecture (a new, linked,
+   *  immutable record — see addsToRecordId), never Surg Path's. */
+  resultState: 'FINAL' | 'CORRECTED' | 'ADDENDUM';
   eventTimestamp: string;
   caseId: string;
   signOutRecordId: string;
@@ -64,6 +72,13 @@ export interface CytologyOruR01Payload {
     primaryInterpretation: string;
     additionalInterpretations?: string;
     recommendations?: string;
+    /** Real, per direct correction — mirrors
+     *  narrative.previouslyReportedAs's own real, verbatim posture:
+     *  the real, free-text supplemental content, unchanged from
+     *  whatever the caller supplied. Only ever populated for a genuine
+     *  ADDENDUM dispatch. */
+    previouslyReportedAs?: string;
+    addendumText?: string;
   };
   /** The real, generated PDF, base64-encoded — this app's own,
    *  genuinely simpler cytology renderer (generateCytologyReportPdf.ts),
@@ -80,7 +95,11 @@ export interface CytologyOruR01Payload {
   geographyExtension?: CytologyOruR01GeographyExtension;
 }
 
-export function buildCytologyOruR01Payload(signOutRecord: CytologySignOutRecord): CytologyOruR01Payload {
+export function buildCytologyOruR01Payload(
+  signOutRecord: CytologySignOutRecord,
+  resultState: 'FINAL' | 'CORRECTED' | 'ADDENDUM' = 'FINAL',
+  previouslyReportedAs?: string,
+): CytologyOruR01Payload {
   const content = signOutRecord.reportContent;
   const doc = generateCytologyReportPdf(content);
   const dataUri = doc.output('datauristring');
@@ -89,7 +108,7 @@ export function buildCytologyOruR01Payload(signOutRecord: CytologySignOutRecord)
   return {
     messageId: crypto.randomUUID(),
     eventType: 'ORU_R01',
-    resultState: 'FINAL',
+    resultState,
     eventTimestamp: signOutRecord.signedAt,
     caseId: signOutRecord.caseId,
     signOutRecordId: signOutRecord.id,
@@ -101,6 +120,8 @@ export function buildCytologyOruR01Payload(signOutRecord: CytologySignOutRecord)
       primaryInterpretation: content.primaryInterpretation,
       additionalInterpretations: content.additionalInterpretations.length ? content.additionalInterpretations.join('; ') : undefined,
       recommendations: content.recommendations.length ? content.recommendations.join('; ') : undefined,
+      previouslyReportedAs: resultState === 'CORRECTED' ? (previouslyReportedAs || undefined) : undefined,
+      addendumText: resultState === 'ADDENDUM' ? (content.addendumText || undefined) : undefined,
     },
     reportPdfBase64,
     geographyExtension: content.cisoeAScore ? { type: 'cisoe_a', score: content.cisoeAScore } : undefined,

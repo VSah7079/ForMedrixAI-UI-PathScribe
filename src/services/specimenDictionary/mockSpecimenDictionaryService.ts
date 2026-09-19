@@ -55,6 +55,81 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     // assignment given to the other native kidney needle biopsy entry.
     defaultBaseCptCode: '88305',
   },
+  // Real, per direct follow-up: "add tissue descriptions on
+  // cassettes... then test a protocol." A real, first Autopsy-
+  // category specimen dictionary entry — previously none existed
+  // anywhere (confirmed via a full-codebase search before adding
+  // this), which meant the entire Autopsy-relevant accessioning UI
+  // (AccessionPage.tsx's own Case Authority section, the Organ(s)
+  // Included picker) was genuinely unreachable in practice: nothing
+  // in the real Specimen Dictionary picker would ever resolve to
+  // specimenCategory 'AUTOPSY', so autopsyRelevant could never
+  // become true through the normal accessioning flow. This closes
+  // that real gap directly, paired with the real
+  // proto-autopsy-cardiac-sectioning Protocol above (services/
+  // protocols/mockProtocolService.ts) as a genuine, working example
+  // of the Targeted Organ / Multi-Specimen scenario (Part B's own
+  // Rule Set 4, Specimen Container C: Heart).
+  {
+    id: 'sp-heart-autopsy',
+    name: 'Heart, Autopsy',
+    description: 'Whole heart submitted at autopsy for cardiac sectioning and coronary artery examination.',
+    type: 'Heart', procedure: 'Autopsy Examination',
+    specimenCategory: 'AUTOPSY',
+    normalizedLabel: 'Heart, Autopsy',
+    synonyms: ['Autopsy Heart', 'Cardiac Autopsy Specimen', 'Heart, Whole (Autopsy)'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+    // References the real proto-autopsy-cardiac-sectioning Protocol
+    // above \u2014 generateDefaultMaterial.ts resolves this at
+    // accessioning to auto-generate 6 real blocks (4 coronary vessel
+    // blocks + 2 myocardial blocks), each auto-labeled sequentially
+    // (e.g. C1\u2013C6 for a specimen labeled "C"), rather than one
+    // undifferentiated block.
+    protocolId: 'proto-autopsy-cardiac-sectioning',
+  },
+  // Real, per direct follow-up ("can you put some seed data in so
+  // that I can demonstrate the DP and Non GYN/FNA case columns") —
+  // investigation found every real cytology specimen this app's own
+  // seeded cases reference (sp-cyto-pap, sp-cyto-hpv-self,
+  // sp-fna-thyroid) was a genuinely dangling specimenDictionaryEntryId
+  // — none of the three existed in this dictionary at all. This is
+  // the exact reason the Surg Path branch tab was silently including
+  // real GYN cytology cases: resolveCaseHasSpecimenCategory's own
+  // dictionary lookup found nothing for these ids, so
+  // resolveCaseDisciplineBranch fell through to its own real
+  // remainder bucket (surgpath) for every one of them — a real,
+  // confirmed root cause, not a guess.
+  {
+    id: 'sp-cyto-pap',
+    name: 'Cervical/Vaginal Pap Smear',
+    description: 'Cervical/vaginal Pap smear, liquid-based cytology.',
+    type: 'Cytology', procedure: 'Pap Smear',
+    specimenCategory: 'GYN_CYTOLOGY',
+    normalizedLabel: 'Cervical/Vaginal Pap Smear',
+    synonyms: ['Pap Smear', 'Cervical Cytology', 'ThinPrep Pap'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'sp-cyto-hpv-self',
+    name: 'Self-Collected Vaginal Swab (HPV Only)',
+    description: 'Self-collected vaginal swab for primary HPV screening only \u2014 no real cytology interpretation performed on this real specimen type.',
+    type: 'Cytology', procedure: 'Self-Collected Vaginal Swab',
+    specimenCategory: 'GYN_CYTOLOGY',
+    isSelfCollected: true,
+    normalizedLabel: 'Self-Collected Vaginal Swab (HPV Only)',
+    synonyms: ['Self-Collected HPV Swab', 'HPV Self-Sampling'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'sp-fna-thyroid',
+    name: 'Thyroid Fine Needle Aspiration',
+    description: 'Fine needle aspiration of the thyroid \u2014 a real, non-GYN cytology specimen.',
+    type: 'FNA', procedure: 'Fine Needle Aspiration',
+    specimenCategory: 'NON_GYN_CYTOLOGY',
+    normalizedLabel: 'Thyroid Fine Needle Aspiration',
+    synonyms: ['Thyroid FNA', 'Thyroid Fine Needle Aspirate'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
 ]);
 
 const STORAGE_KEY = 'specimen_dictionary';

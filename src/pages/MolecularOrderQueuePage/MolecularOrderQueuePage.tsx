@@ -137,7 +137,7 @@ const MolecularOrderQueuePage: React.FC = () => {
           <thead>
             <tr>
               <th>{t('molecularOrderQueue.col.type')}</th>
-              <th>{t('molecularOrderQueue.col.accession')}</th>
+              <th data-phi="accession">{t('molecularOrderQueue.col.accession')}</th>
               <th>{t('molecularOrderQueue.col.assay')}</th>
               <th>{t('molecularOrderQueue.col.reason')}</th>
               <th>{t('molecularOrderQueue.col.status')}</th>

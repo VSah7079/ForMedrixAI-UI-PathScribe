@@ -100,7 +100,9 @@
     "itemCount_one": "{{count}} item",
     "itemCount_other": "{{count}} items",
     "rackCheckedOutError": "Rek \"{{value}}\" is al uitgecheckt naar een andere actieve batch.",
-    "notFoundError": "Geen batch of geregistreerde container gevonden voor \"{{value}}\"."
+    "notFoundError": "Geen batch of geregistreerde container gevonden voor \"{{value}}\".",
+    "disposalReportTile": "Afvalregistratierapport",
+    "disposalReportTitle": "Afvalregistratierapport — een filterbaar, exporteerbaar logboek van alles wat al is verwijderd, voor CAP-/CLIA-/ISO 15189-audits"
   },
   "newContainerModal": {
     "title": "Nieuwe container",
@@ -551,5 +553,585 @@
       "GI_PANCREATIC": "GI/Pancreas",
       "OTHER_NGYN": "Overig"
     }
+  },
+  "autopsyIntake": {
+    "title": "Autopsie-intake — Tijdelijke opname",
+    "subtitle": "Het lichaam kan onmiddellijk worden ontvangen en gekoeld, zelfs voordat de volledige wettelijke toestemming aanwezig is. Vul in wat nu bekend is; de rest kan volgen.",
+    "validationError": "Vul de verplichte velden in voordat u verzendt.",
+    "selectPlaceholder": "Selecteren...",
+    "jurisdictionLabel": "Jurisdictie",
+    "caseAuthorityLabel": "Gezag over de zaak",
+    "caseAuthority": {
+      "medicolegal_forensic": "Forensisch / Gerechtelijk",
+      "hospital_consented": "Ziekenhuis-toestemming"
+    },
+    "forensicSectionTitle": "Gerechtelijke machtiging",
+    "forensicSectionSubtitle": "Een dringend mondeling bevel volstaat om het lichaam nu te ontvangen. Schriftelijke machtiging is vereist voordat de sectie kan beginnen.",
+    "authorityTypeLabel": "Type gezag",
+    "authorityTypePlaceholder": "bijv. Lijkschouwer, Officier van Justitie",
+    "authorityNameLabel": "Naam van het gezag",
+    "authorityNamePlaceholder": "Optioneel",
+    "verbalOrderAtLabel": "Mondeling bevel ontvangen op",
+    "verbalOrderFromLabel": "Mondeling bevel ontvangen van",
+    "verbalOrderFromPlaceholder": "bijv. dienstdoende officier van justitie",
+    "hospitalSectionTitle": "Ziekenhuis-toestemming",
+    "hospitalSectionSubtitle": "Het lichaam kan worden ontvangen terwijl de familie beslist. Noteer het contactpersoon indien al bekend.",
+    "relativeNameLabel": "Naam toestemmend familielid",
+    "relativeNamePlaceholder": "Optioneel, indien al bekend",
+    "relativeRelationshipLabel": "Relatie",
+    "relativeRelationshipPlaceholder": "bijv. echtgenoot, volwassen kind, ouder",
+    "accessionStatus": {
+      "temporary": "Tijdelijke opname",
+      "fully_authorized": "Volledig gemachtigd"
+    },
+    "grossExamPendingNote": "De sectie kan pas beginnen zodra de volledige machtiging aanwezig is.",
+    "submitBtn": "Lichaam ontvangen"
+  },
+  "autopsyAuthCompletion": {
+    "title": "Machtiging voltooien",
+    "subtitle": "Voer de schriftelijke machtiging in zodra deze binnenkomt. De sectie blijft geblokkeerd totdat dit aanwezig is.",
+    "onFileSectionTitle": "Reeds geregistreerd",
+    "verbalOrderOnFile": "Mondeling bevel ontvangen van {{authority}} op {{at}}.",
+    "writtenOrderSectionTitle": "Schriftelijk bevel",
+    "orderReferenceLabel": "Referentienummer",
+    "orderReferencePlaceholder": "bijv. referentienummer van het gerechtelijk bevel",
+    "orderDateLabel": "Datum van het bevel",
+    "relativeOnFile": "Geregistreerd contactpersoon: {{name}} ({{relationship}}).",
+    "consentGrantSectionTitle": "Toestemmingsverlening",
+    "consentGivenAtLabel": "Toestemming gegeven op",
+    "consentScopeLabel": "Omvang van de toestemming",
+    "consentScopePlaceholder": "bijv. volledig, geen orgaanretentie (komma-gescheiden)",
+    "validationError": "Vul de verplichte velden in voordat u verzendt.",
+    "willUnblockNote": "Verzenden maakt het mogelijk om de sectie voort te zetten.",
+    "submitBtn": "Machtiging opslaan",
+    "unknownValue": "onbekend"
+  },
+  "autopsyBodyRelease": {
+    "title": "Lichaam vrijgeven",
+    "subtitle": "Registreer waarheen het lichaam wordt vrijgegeven. Dit wordt onderdeel van de permanente locatiegeschiedenis van het specimen.",
+    "releasedToLabel": "Vrijgegeven aan",
+    "releasedToPlaceholder": "bijv. Uitvaartcentrum Smith",
+    "releasedByLabel": "Vrijgegeven door",
+    "releasedByPlaceholder": "bijv. Technicus: M. Davis",
+    "validationError": "Vul beide velden in voordat u verzendt.",
+    "submitBtn": "Vrijgave bevestigen",
+    "submittingBtn": "Bezig met vrijgeven…",
+    "genericError": "Er is iets misgegaan. Probeer het opnieuw."
+  },
+  "disposalReport": {
+    "pageTitle": "Afvalregistratierapport",
+    "pageSubtitle": "Een echt, berekend rapport van elk specimen, blok, objectglaasje, decantaat en matrixblok/-objectglaasje dat daadwerkelijk is verwijderd — filterbaar op locatie, materiaaltype en verwijderingsdatum, en exporteerbaar voor regelgevende audits.",
+    "stats": {
+      "total": "Totaal verwijderd"
+    },
+    "materialType": {
+      "block": "Weefselblok",
+      "slide": "Objectglaasje",
+      "wet_tissue": "Nat weefsel"
+    },
+    "filters": {
+      "facilityLabel": "Filteren op locatie",
+      "allFacilities": "Alle locaties",
+      "materialTypeLabel": "Filteren op materiaaltype",
+      "allMaterialTypes": "Alle materiaaltypen",
+      "dateFromLabel": "Vanaf datum",
+      "dateTo": "tot",
+      "dateToLabel": "Tot datum"
+    },
+    "columns": {
+      "disposedAt": "Verwijderd",
+      "materialType": "Type",
+      "itemId": "Item-ID",
+      "caseAccession": "Casus",
+      "specimen": "Specimen",
+      "disposedBy": "Verwijderd door",
+      "location": "Locatie"
+    },
+    "export": {
+      "button": "Exporteren",
+      "disposedAt": "Verwijderd op",
+      "materialType": "Materiaaltype",
+      "itemId": "Item-ID",
+      "caseAccession": "Casusnummer",
+      "specimen": "Specimen",
+      "disposedBy": "Verwijderd door",
+      "location": "Locatie"
+    },
+    "loading": "Rapport wordt berekend…",
+    "empty": "Er is nog niets verwijderd dat aan deze filters voldoet.",
+    "unknownLocation": "Onbekend"
+  },
+  "home": {
+    "addOnOrderTile": {
+      "title": "Aanvullende orders",
+      "description": "Door de patholoog geïnitieerde aanvullende orders plaatsen — hersnedes, speciale kleuringen, IHC en moleculair — met realtime tracking"
+    },
+    "pathologyWorkspaceTile": {
+      "title": "Pathologie-werkruimte",
+      "description": "Cytologiescreening, moleculaire diagnostiek en de microtomie-, inbed- en objectglaasjes-distributiewerkstations"
+    },
+    "qualityComplianceTile": {
+      "title": "Kwaliteit & Compliance",
+      "description": "Systeemactiviteitslogboeken en audittrail, en de werkwachtrij van kwaliteitsborging — tekortkomingen, afstemming en CAPA-beheer"
+    }
+  },
+  "qualityComplianceHub": {
+    "pageTitle": "Kwaliteit & Compliance",
+    "pageSubtitle": "Systeemlogboeken en audittrail, en de werkwachtrij van kwaliteitsborging — tekortkomingen, intraoperatieve koppeling, discordantie & afstemming, en CAPA-beheer",
+    "backToHome": "← Terug naar Start",
+    "auditTile": {
+      "title": "Audit",
+      "description": "Systeemactiviteitslogboeken, fout- en interface-uitzonderingslogboeken, en financiële audittrail"
+    },
+    "qualityAssuranceTile": {
+      "title": "Kwaliteitsborging",
+      "description": "Tekortkomingen, intraoperatieve koppeling, en discordantie- en afstemmingsrapportage"
+    }
+  },
+  "pathologyWorkspace": {
+    "pageTitle": "Pathologie-werkruimte",
+    "pageSubtitle": "Cytologiescreening, moleculaire diagnostiek en de microtomie-, inbed- en objectglaasjes-distributiewerkstations",
+    "backToHome": "← Terug naar Start",
+    "cytologyTile": {
+      "title": "Cytologie-werkruimte",
+      "description": "Primair screeningcentrum voor GYN-uitstrijkjes, non-GYN-triage, celblok-tracking en verplichte kwaliteitscontrole"
+    },
+    "microtomyTile": {
+      "title": "Microtomie-werkruimte",
+      "description": "Realtime print-op-aanvraag of batch-etiketten voor objectglaasjes, kleuringbeheer en cytologie-/decanteervoorbereiding bij het microtoom"
+    },
+    "embeddingTile": {
+      "title": "Inbed-werkruimte",
+      "description": "Cassette scannen/verifiëren, bevestiging van het aantal weefselstukjes, malkeuze en discrepantiemelding bij het inbedstation"
+    },
+    "slideDistributionTile": {
+      "title": "Objectglaasjes-distributiewerkruimte",
+      "description": "Continue scan-uitgifte aan pathologen of inname in een digitale scanner, met waarschuwingen voor gesplitste bestemming en uitzonderingsafhandeling"
+    },
+    "molecularTile": {
+      "title": "Moleculaire werkruimte",
+      "description": "Batch- en plaatbeheer, actieve runs en QC/monsterkoppeling voor moleculaire diagnostiek (HPV, CT/NG, respiratoire PCR)"
+    }
+  },
+  "microtomyWorkstation": {
+    "pageTitle": "Microtomie-werkstation",
+    "scanPrompt": "Scan een blok- of decanteer-/vloeistofcontainer-barcode om te beginnen",
+    "scanPlaceholder": "Scan of typ een barcode…",
+    "scanSubmit": "Ga",
+    "context": {
+      "accession": "Accessie:",
+      "patient": "Patiënt:",
+      "dob": "Geboortedatum:",
+      "specimenBlock": "Specimen/Blok:",
+      "specimenType": "Type:",
+      "scanNext": "Volgend blok/decantatie scannen →",
+      "title": "Blokoverzicht",
+      "flag": {
+        "tinyTissue": "Minuscuul weefsel",
+        "fragile": "Breekbaar",
+        "requiresDecal": "Decalcificatie vereist"
+      },
+      "status": "Status: ",
+      "pieceCount": "Aantal stukken: ",
+      "tissueDescription": "Weefsel: ",
+      "blockComments": "Blokopmerkingen",
+      "priorHistory": "Geschiedenis objectglaasjes",
+      "noHistory": "Nog geen objectglaasjes afgedrukt voor dit blok."
+    },
+    "slideGrid": {
+      "title": "Objectglaasjesraster",
+      "slideComments": "Opmerkingen objectglaasje",
+      "col": {
+        "level": "Niveau",
+        "stain": "Kleuring",
+        "status": "Afdrukstatus",
+        "actions": "Acties"
+      },
+      "control": "Controle",
+      "commentOnLabelTitle": "De opmerking van dit objectglaasje wordt op het fysieke etiket afgedrukt",
+      "onLabel": "Op etiket",
+      "reprintedCount": "{{count}}× opnieuw afgedrukt",
+      "print": "Afdrukken",
+      "reprintReasonPrompt": "Reden…",
+      "reprint": "Opnieuw afdrukken",
+      "addLevelTitle": "Nog een niveau van precies dezelfde kleuring snijden",
+      "addLevel": "+ Niveau",
+      "searchStains": "Kleuringen zoeken…",
+      "selectStain": "Selecteer een kleuring…",
+      "duplicateCount": "×",
+      "levelDepth": "µm",
+      "pairControl": "Koppelen aan controle-objectglaasje"
+    },
+    "printStatus": {
+      "Pending": "In behandeling",
+      "Printing": "Wordt afgedrukt…",
+      "Printed": "Afgedrukt",
+      "Failed": "Mislukt",
+      "Canceled": "Geannuleerd"
+    },
+    "hardware": {
+      "printMode": "Afdrukmodus",
+      "onDemand": "Op aanvraag",
+      "batch": "Batch",
+      "nextUnprinted": "Volgend niet-afgedrukt objectglaasje:",
+      "printNext": "Volgende afdrukken/etsen",
+      "allPrinted": "Alle objectglaasjes van dit blok zijn afgedrukt.",
+      "selectedCount": "{{count}} objectglaasje(s) geselecteerd",
+      "printBatch": "Batch afdrukken",
+      "deviceStatus": "Apparaatstatus",
+      "noPrinter": "Geen printer geconfigureerd",
+      "status": {
+        "ready": "Gereed",
+        "error": "Afdrukfout",
+        "offline": "Offline"
+      },
+      "labelPreview": "Etiketvoorbeeld",
+      "noPreview": "Selecteer of druk een objectglaasje af om het etiket te bekijken.",
+      "noStation": "Geen scanstation geselecteerd voor dit apparaat — stel er een in via de stationindicator in de navigatiebalk.",
+      "notConfigured": "Dit station is niet geconfigureerd voor echt afdrukken van objectglaasjesetiketten.",
+      "profileMissing": "Het geconfigureerde printerprofiel bestaat niet meer."
+    },
+    "cytology": {
+      "title": "Specimenvloeistof-/decanteerpaneel",
+      "volume": "Totaal volume (mL)",
+      "appearance": "Uiterlijk",
+      "appearanceOption": {
+        "Clear": "Helder",
+        "Bloody": "Bloederig",
+        "Turbid": "Troebel"
+      },
+      "yield": "Decanteeropbrengst / pelletgrootte",
+      "yieldOption": {
+        "Low": "Laag",
+        "Moderate": "Matig",
+        "High": "Hoog"
+      },
+      "suggestionIntro": "Voorgestelde voorbereiding:",
+      "prepMethod": {
+        "ThinPrepLiquidBased": "ThinPrep (vloeistofgebaseerd)",
+        "DirectSmearAirDried": "Direct uitstrijkje (luchtgedroogd)",
+        "DirectSmearFixed": "Direct uitstrijkje (gefixeerd)",
+        "Cytospin": "Cytospin",
+        "CellBlock": "Celblok"
+      },
+      "acceptSuggestion": "Suggestie accepteren"
+    },
+    "comments": {
+      "empty": "Nog geen opmerkingen.",
+      "placeholder": "Opmerking toevoegen…",
+      "printOnLabel": "Deze opmerking afdrukken op het fysieke etiket",
+      "add": "Opmerking toevoegen"
+    },
+    "removeReason": {
+      "title": "Reden vereist",
+      "body": "Dit objectglaasje is al afgedrukt — selecteer een reden om het te annuleren.",
+      "select": "Selecteer een reden…"
+    },
+    "batchProgress": {
+      "title": "Voortgang batch afdrukken",
+      "status": {
+        "pending": "In behandeling",
+        "printing": "Wordt afgedrukt…",
+        "printed": "Afgedrukt",
+        "failed": "Mislukt"
+      },
+      "inProgress": "Wordt afgedrukt…"
+    }
+  },
+  "embeddingStation": {
+    "pageTitle": "Inbedstation",
+    "scanPrompt": "Scan een cassette-barcode om te beginnen",
+    "scanPlaceholder": "Scan of typ een barcode…",
+    "scanSubmit": "Ga",
+    "context": {
+      "accession": "Accessie:",
+      "patient": "Patiënt:",
+      "dob": "Geboortedatum:",
+      "specimenBlock": "Preparaat/Blok:",
+      "specimenType": "Type:",
+      "scanNext": "Volgende cassette scannen →",
+      "title": "Blokoverzicht",
+      "flag": {
+        "tinyTissue": "Minuscuul weefsel",
+        "fragile": "Fragiel",
+        "requiresDecal": "Decalcificatie vereist"
+      },
+      "derivedBadge": {
+        "biopsy": "Biopsie",
+        "needleCore": "Naaldbiopt"
+      },
+      "status": "Status: ",
+      "tissueDescription": "Weefsel: ",
+      "blockComments": "Blokopmerkingen"
+    },
+    "pieceCount": {
+      "title": "Verificatie aantal weefselstukjes",
+      "expected": "Verwacht (bij snijden): ",
+      "confirm": "Bevestigen",
+      "observed": "Waargenomen bij inbedding: "
+    },
+    "discrepancy": {
+      "title": "Discrepantiemelding",
+      "reason": {
+        "missingTissue": "Ontbrekend weefsel/Lege cassette",
+        "extraTissue": "Extra weefsel gevonden",
+        "unopenedCassette": "Ongeopende cassette/Onverwerkt weefsel",
+        "damagedCassette": "Beschadigde cassette/Gebroken scharnier"
+      },
+      "lastFlagged": "Laatst gemeld: {{reason}} (door {{by}})"
+    },
+    "mold": {
+      "title": "Standaard malmaat"
+    },
+    "orientation": {
+      "title": "Oriëntatie-instructies",
+      "placeholder": "Vrije tekst voor oriëntatienotities…"
+    },
+    "splitBlock": {
+      "title": "Multi-cassette / Gesplitst blok",
+      "none": "Geen andere niet-gegroepeerde blokken bij dit preparaat om mee te groeperen.",
+      "pickPrompt": "Selecteer de andere cassette(s) waarover het weefsel van dit preparaat is gesplitst:",
+      "group": "Groeperen als gesplitste cassettes",
+      "pending": "Gesplitst over {{labels}} — nog niet alle cassettes zijn ingebed.",
+      "allEmbedded": "Gesplitst over {{labels}} — alle cassettes zijn ingebed."
+    },
+    "specimenSummary": {
+      "title": "Blokken van het preparaat",
+      "current": "huidig"
+    },
+    "hardware": {
+      "deviceStatus": "Apparaatstatus",
+      "noPrinter": "Geen printer geconfigureerd",
+      "status": {
+        "ready": "Gereed",
+        "error": "Printfout",
+        "offline": "Offline"
+      },
+      "reprint": "Cassette opnieuw afdrukken",
+      "reprintCassette": "Cassette opnieuw afdrukken",
+      "reprintCount": "{{count}}× opnieuw afgedrukt, laatste reden: ",
+      "reprintFailed": "Opnieuw afdrukken mislukt — zie het bericht hierboven.",
+      "labelPreview": "Etiketvoorbeeld",
+      "noStation": "Geen scanstation geselecteerd voor dit apparaat — stel er één in via de stationsindicator in de navigatiebalk.",
+      "notConfigured": "Dit station is niet geconfigureerd voor echt cassette-etikettendruk.",
+      "profileMissing": "Het geconfigureerde printerprofiel bestaat niet meer."
+    },
+    "reprintReason": {
+      "title": "Reden vereist",
+      "body": "Het opnieuw afdrukken van een cassette-etiket vereist een reden, voor compliance-auditing.",
+      "select": "Selecteer een reden…"
+    },
+    "comments": {
+      "empty": "Nog geen opmerkingen.",
+      "placeholder": "Voeg een opmerking toe…",
+      "add": "Opmerking toevoegen"
+    }
+  },
+  "slideDistribution": {
+    "pageTitle": "Objectglaasjes-distributiestation",
+    "scanPrompt": "Scan een objectglaasje- of blok-/cassettebarcode — de wachtrij groeit continu",
+    "scanPlaceholder": "Scan of typ een barcode…",
+    "scanSubmit": "Ga",
+    "context": {
+      "queueCount": "Objectglaasjes in wachtrij:",
+      "mode": "Bestemmingsmodus:",
+      "carrierOrScanner": "Drager / Scanner:",
+      "tech": "Analist:"
+    },
+    "queue": {
+      "title": "Werkwachtrij",
+      "count": "{{count}}",
+      "empty": "Nog geen objectglaasjes gescand.",
+      "remove": "Verwijderen uit wachtrij",
+      "unrouted": "Nog niet doorgestuurd",
+      "unassigned": "Niet toegewezen",
+      "pool": "Subspecialisme-pool"
+    },
+    "slots": {
+      "title": "Batchvoortgang",
+      "empty": "Nog niets in de wachtrij — scan een objectglaasje om te beginnen."
+    },
+    "activeSlide": {
+      "title": "Actief objectglaasje",
+      "slide": "Objectglaasje:",
+      "status": "Status:",
+      "none": "Selecteer een objectglaasje uit de wachtrij of het raster hierboven.",
+      "reprintLabel": "Vervangend etiket aanvragen",
+      "reprintFailed": "Opnieuw afdrukken mislukt — zie het bericht hierboven.",
+      "history": "Bewaringsketen"
+    },
+    "destination": {
+      "title": "Bestemming & toewijzing",
+      "physical": "Fysieke uitgifte",
+      "digital": "Digitale scanner",
+      "searchPlaceholder": "Zoek pathologen of pools…",
+      "slideFolderId": "Objectglaasjesmap-ID",
+      "trayNumber": "Traynummer",
+      "courierBagId": "Koerier-transportzak",
+      "confirmPhysical": "Fysieke routering bevestigen",
+      "scannerInstrument": "Scannerinstrument",
+      "rackId": "Rek-ID",
+      "slotPosition": "Slotpositie",
+      "confirmDigital": "Scannerroutering bevestigen",
+      "assignFailed": "Deze routering kon niet worden opgeslagen — zie het bericht hierboven.",
+      "selectFirst": "Selecteer eerst een objectglaasje uit de wachtrij."
+    },
+    "exceptions": {
+      "title": "Scanuitzonderingenlogboek",
+      "scanLogTitle": "Onopgeloste scans",
+      "resolve": "Oplossen",
+      "reason": {
+        "unreadableBarcode": "Onleesbare barcode",
+        "unassignedAccession": "Niet-toegewezen accessie",
+        "missingGlass": "Ontbrekend objectglaasje",
+        "other": "Overig"
+      }
+    }
+  },
+  "addOnOrder": {
+    "pageTitle": "Aanvullende-opdrachtbouwer",
+    "search": {
+      "placeholder": "Zoek of scan een accessienummer…",
+      "open": "Dossier openen"
+    },
+    "context": {
+      "caseStatus": "Dossierstatus",
+      "primaryPathologist": "Hoofdpatholoog",
+      "noPerformingLab": "Er kon geen uitvoerend laboratorium worden bepaald voor dit dossier — routering toont alle overeenkomende stations, niet beperkt tot één laboratorium."
+    },
+    "blockContext": {
+      "title": "Blok- en weefselcontext",
+      "empty": "Dit dossier bevat geen specimens.",
+      "specimen": "Specimen {{label}} {{description}}",
+      "noBlocks": "Geen blokken voor dit specimen.",
+      "exhausted": "Uitgeput",
+      "lost": "Zoekgeraakt",
+      "damaged": "Beschadigd",
+      "cancelled": "Geannuleerd",
+      "levelsCut": "{{count}} niveau(s) al gesneden",
+      "tinyTissue": "Zeer klein weefsel",
+      "fragile": "Breekbaar"
+    },
+    "builder": {
+      "title": "Aanvullende-opdrachtbouwer",
+      "kind": {
+        "recut": "Hersnede / dieptecoupe",
+        "special_stain": "Speciale kleuring",
+        "ihc": "IHC",
+        "molecular": "Moleculair / uitbesteding"
+      },
+      "panelPicker": "IHC-panel",
+      "searchStain": "Zoek een kleuring…",
+      "noStains": "Geen overeenkomende kleuringen.",
+      "levelDepth": "Coupediepte (µm)",
+      "controlPairing": "Controlekoppeling",
+      "controlMode": {
+        "none": "Geen controle",
+        "on_slide": "Controle op hetzelfde glaasje",
+        "separate_slide": "Apart controleglaasje"
+      },
+      "addToCart": "Toevoegen aan winkelwagen"
+    },
+    "summary": {
+      "title": "Ordersamenvatting & routering",
+      "blocksSelected": "{{count}} blok(ken) geselecteerd",
+      "emptyCart": "Nog geen orderregels toegevoegd.",
+      "microns": "{{count}} µm niveaus",
+      "routesTo": "Routeert naar: {{stations}}",
+      "routesToQueueOnly": "Nog geen overeenkomend station geconfigureerd voor dit laboratorium — de order wordt toch naar de wachtrij gerouteerd.",
+      "remove": "Verwijderen",
+      "noPerformingLab": "Het uitvoerend laboratorium van dit dossier kon niet worden bepaald — orders worden toch aangemaakt, zonder labgebonden stationmatch.",
+      "priority": "Prioriteit",
+      "slideMedia": "Glaasjesmateriaal & lading",
+      "cuttingInstructions": "Instructies voor de microtoomwerkplek",
+      "sendOutLab": "Referentie-/uitbestedingslaboratorium",
+      "selectLab": "Selecteer een referentielaboratorium…",
+      "submit": "Aanvullende order indienen",
+      "submitted": "Order ingediend."
+    },
+    "priority": {
+      "STAT_Urgent": "STAT / Spoed",
+      "Routine_Sign_Out": "Routinematige afronding",
+      "Research_Protocol": "Onderzoek / protocol"
+    },
+    "slideMedia": {
+      "Standard_Charged": "Standaard geladen",
+      "Uncharged": "Ongeladen",
+      "Plus_Glass": "Plus-glas"
+    },
+    "tracking": {
+      "title": "Ordertracking",
+      "count": "{{count}}",
+      "empty": "Nog geen aanvullende orders geplaatst voor dit dossier.",
+      "stage": {
+        "Requested": "Aangevraagd",
+        "BlockRetrieved": "Blok opgehaald",
+        "CutPendingStain": "Gesneden / kleuring in afwachting",
+        "StainedQC": "Gekleurd / KC",
+        "CheckedOutScanned": "Uitgecheckt / gescand",
+        "Exception": "Uitzondering",
+        "Cancelled": "Geannuleerd"
+      },
+      "orderedBy": "Besteld door {{name}}",
+      "markRetrieved": "Markeer blok als opgehaald",
+      "exceptionNote": "Optionele notitie…",
+      "confirmFlag": "Uitzondering markeren",
+      "cancelFlag": "Annuleren",
+      "flagException": "Uitzondering markeren",
+      "flaggedBy": "Gemarkeerd door {{name}}",
+      "responseNote": "Reactienotitie…",
+      "approveDestructive": "Destructieve coupe goedkeuren",
+      "modify": "Wijzigen en opnieuw indienen",
+      "cancelOrder": "Order annuleren"
+    }
+  },
+  "facilityOpsDashboard": {
+    "bindDisplayTitle": "Dit display koppelen",
+    "bindDisplayDescription": "Selecteer het weergaveprofiel dat dit wandscherm moet tonen.",
+    "selectProfile": "— selecteer weergaveprofiel —",
+    "noProfilesConfigured": "Er zijn nog geen weergaveprofielen geconfigureerd. Voeg er een toe onder Configuratie → Systeem → Weergaveprofielen.",
+    "loadingProfile": "Weergaveprofiel laden…",
+    "loadingData": "Dashboardgegevens laden…",
+    "offlineStaleBadge": "Offline / Verouderde gegevens",
+    "lastUpdated": "Bijgewerkt {{time}}",
+    "confirmTokenTitle": "Apparaattoken bevestigen",
+    "confirmTokenDescription": "Voer het apparaattoken in dat is vastgelegd voor \"{{name}}\" om de koppeling van dit scherm te voltooien.",
+    "confirmTokenPlaceholder": "Apparaattoken invoeren",
+    "confirmTokenError": "Dit token komt niet overeen met het token dat voor dit scherm is vastgelegd. Neem contact op met uw beheerder en probeer het opnieuw.",
+    "confirmTokenNote": "Dit bevestigt dat u het token kent dat een beheerder voor dit scherm heeft vastgelegd — het verifieert geen echte fysieke hardware.",
+    "queueEmpty": "Momenteel niets in de wachtrij.",
+    "statPill": "STAT",
+    "overdueBy": "Te laat met {{duration}}",
+    "ageLabel": "{{duration}} geleden",
+    "views": {
+      "grossingIntake": "Intake & uitsnijden",
+      "embeddingMicrotomy": "Inbedding & microtomie",
+      "stainingIhc": "Kleuring & IHC",
+      "sendoutReference": "Doorverwijzing & referentielaboratorium",
+      "diagnosticSignout": "Diagnostische afronding / scanner"
+    }
+  },
+  "displayProfiles": {
+    "sectionTitle": "Weergaveprofielen (facilitaire operatiedashboards)",
+    "sectionSubtitle": "Echt, uitsluitend gegevensregister voor de vijf wanddisplays van de operatiedashboards — elk profiel koppelt een fysiek display aan één uitvoerend laboratorium en één of meer afdelingsweergaven. Er wordt geen fysieke hardwarekoppeling geverifieerd of afgedwongen; het apparaattoken is uitsluitend informatief.",
+    "addButton": "+ Weergaveprofiel toevoegen",
+    "launchDashboardButton": "🖥️ Facilitair operatiedashboard openen",
+    "addTitle": "Weergaveprofiel toevoegen",
+    "editTitle": "Weergaveprofiel bewerken",
+    "nameLabel": "Weergavenaam",
+    "namePlaceholder": "bijv. Histologiebank 3 — Wanddisplay",
+    "facilityLabel": "Uitvoerend laboratorium",
+    "selectFacility": "— selecteer faciliteit —",
+    "assignedViewsLabel": "Toegewezen dashboardweergave(n)",
+    "carouselIntervalLabel": "Carrouselinterval (seconden)",
+    "carouselIntervalPlaceholder": "bijv. 20",
+    "deviceTokenLabel": "Apparaattoken / MAC / IP (optioneel)",
+    "deviceTokenPlaceholder": "bijv. AA:BB:CC:DD:EE:FF",
+    "deviceTokenNote": "Uitsluitend informatief — vastgelegd voor uw eigen inventarisbeheer. Wordt nooit tegen echte hardware gevalideerd.",
+    "showInactive": "Toon inactieve",
+    "inactive": "Inactief",
+    "deactivate": "Deactiveren",
+    "reactivate": "Heractiveren",
+    "emptyRow": "Geen weergaveprofielen bekend."
   }
 }

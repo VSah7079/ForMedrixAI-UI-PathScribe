@@ -81,4 +81,76 @@ describe('processInboundWsiScanStatusUpdateEvent — real, per direct follow-up 
       expect(refreshed.data.slides[0].failureReason).toBe('Focus error');
     }
   });
+
+  // Real, per direct guidance's own confirmed Surgical Pathology vs.
+  // Cytology DP technical breakdown — a real cytology slide's own
+  // Z-stack acquisition, exactly as the real interface engine's own
+  // inbound event reports it, passed through end-to-end.
+  it('real, a genuine z_stack acquisition with a real focal plane count passes through end-to-end, exactly as the real interface engine reported it', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id, { acquisitionMode: 'z_stack', focalPlaneCount: 9 }));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) {
+      expect(refreshed.data.slides[0].acquisitionMode).toBe('z_stack');
+      expect(refreshed.data.slides[0].focalPlaneCount).toBe(9);
+    }
+  });
+
+  it('real, a genuine surgical pathology single_plane event carries no real focal plane count \u2014 never a fabricated default', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id, { acquisitionMode: 'single_plane' }));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) {
+      expect(refreshed.data.slides[0].acquisitionMode).toBe('single_plane');
+      expect(refreshed.data.slides[0].focalPlaneCount).toBeUndefined();
+    }
+  });
+
+  it('real, an event that never reports acquisitionMode at all (an older interface engine version) leaves it genuinely undefined, never defaulted to single_plane', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) expect(refreshed.data.slides[0].acquisitionMode).toBeUndefined();
+  });
+
+  // Real, per direct guidance's own confirmed Digital Readiness spec
+  // — a real slide can scan successfully (scanStatus 'completed')
+  // but still fail the real IMS's own automated post-scan quality
+  // check, genuinely distinct from a real scan hardware failure.
+  it('real, a genuine scan success with a real QC failure passes through as scanStatus completed AND qcPassed false \u2014 two genuinely distinct outcomes, not conflated', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id, { scanStatus: 'completed', qcPassed: false, failureReason: 'Out-of-focus' }));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) {
+      expect(refreshed.data.slides[0].scanStatus).toBe('completed');
+      expect(refreshed.data.slides[0].qcPassed).toBe(false);
+      expect(refreshed.data.slides[0].failureReason).toBe('Out-of-focus');
+    }
+  });
+
+  it('real, a genuine QC pass is honestly recorded as true, never left undefined once the real IMS has actually reported a result', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id, { scanStatus: 'completed', qcPassed: true }));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) expect(refreshed.data.slides[0].qcPassed).toBe(true);
+  });
+
+  it('real, an event that never reports qcPassed at all leaves it genuinely undefined \u2014 never defaulted to true just because scanning finished', async () => {
+    const { mockWsiScanBatchService } = await import('../digitalPathology/mockWsiScanBatchService');
+    const created = await mockWsiScanBatchService.create(NEW_BATCH);
+    if (!created.ok) throw new Error('setup failed');
+    await processInboundWsiScanStatusUpdateEvent(payload(created.data.id, { scanStatus: 'completed' }));
+    const refreshed = await mockWsiScanBatchService.getById(created.data.id);
+    if (refreshed.ok) expect(refreshed.data.slides[0].qcPassed).toBeUndefined();
+  });
 });

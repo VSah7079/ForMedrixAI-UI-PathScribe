@@ -21,6 +21,7 @@
 
 import type { ServiceResult, ID } from '../types';
 import type { MolecularTarget, CptMappingRule, MolecularMethodology } from '@/types/billing/MolecularBillingRule';
+import type { QcEnforcementMode } from '../workstationGroups/IWorkstationGroupService';
 
 export type StainCategory = 'Routine' | 'Special Stain' | 'IHC' | 'Immunofluorescence' | 'Molecular' | 'Cytology' | 'Other';
 
@@ -81,6 +82,70 @@ export interface StainType {
    * suggestAncillaryCodesForStains (services/billing/codeMapTable.ts).
    */
   excludeFromIhcSequenceCounting?: boolean;
+  /** Real, per PS-289/PS-292's own Gating Strategy research — the
+   *  per-stain override for the post-run QC gate. When set, this
+   *  overrides the WorkstationGroup's own instrument-level default
+   *  (services/workstationGroups/IWorkstationGroupService.ts) for any
+   *  batch running this specific stain — some stains may genuinely
+   *  need PathScribe-enforced visual gating regardless of what a
+   *  given bench's own default posture is, while others can safely
+   *  rely on external verification. Undefined means "no override,
+   *  defer entirely to the workstation's own default" — never a
+   *  silently-assumed 'Enforced' or 'Auto-Resolve'. Reuses the same
+   *  QcEnforcementMode type WorkstationGroup already defines, not a
+   *  second, parallel enum for the same real concept. */
+  qcEnforcementMode?: QcEnforcementMode;
+  /** Real, per PS-289/PS-292's own "batch-manifest scanning with
+   *  automatic control-slide appending" piece (original Stain QC
+   *  Module spec's own \u00a72.3), per direct clinical guidance: IHC,
+   *  target-specific special stains (PAS, GMS, AFB/Ziehl-Neelsen,
+   *  Gram, Congo Red, Alcian Blue, Trichrome, Reticulin, silver
+   *  stains), and ISH genuinely require a positive control to confirm
+   *  target detection/reaction integrity. Routine H&E does not — it
+   *  relies on general process QC (instrument/reagent/tech), not a
+   *  target-specific control. ISH-category stains in this app's own
+   *  real seed data are classified 'Molecular' (e.g. st-her2-fish),
+   *  not a separate category — Molecular already runs through its own,
+   *  separate MolecularBatch/control-requirement mechanism
+   *  (resolveMolecularControlRequirementValidation.ts), never the
+   *  generic 'Staining' batch node this field's own consumer
+   *  (shouldAutoAppendControl.ts) operates on, so this stays false/
+   *  undefined for Molecular-category entries by construction, not by
+   *  a separate exclusion rule.
+   *
+   *  A real, stored, per-stain field rather than a computed category
+   *  default, since real exceptions exist within "Special Stain" too
+   *  (some connective-tissue stains carry their own real, internal
+   *  tissue control and genuinely don't need a separate one) — an
+   *  admin sets this explicitly per stain, including those real
+   *  exceptions, rather than inheriting a category-wide assumption
+   *  that would misfire on them. Governs whether this stain's own
+   *  post-run sign-out gate applies at all (resolveStainQcGate.ts's
+   *  own 'not-applicable' outcome when unset) — genuinely separate
+   *  from allowControlAutoAppend below, which governs a different,
+   *  earlier-stage question (whether the system creates the control
+   *  ITEM automatically). Undefined means false — never a silently-
+   *  assumed control requirement for an unconfigured stain. */
+  requiresTargetControl?: boolean;
+  /** Real, per direct follow-up refining the above into two real,
+   *  independent toggles rather than one: a stain can genuinely
+   *  require a target control (requiresTargetControl: true) while the
+   *  lab still wants to suppress automatic slide generation for it —
+   *  a custom/lab-developed stain relying on a real, internal tissue
+   *  control, or one the lab's own SOP allocates manually rather than
+   *  through this system. Only meaningful when requiresTargetControl
+   *  is true; shouldAutoAppendControl.ts checks both together
+   *  (requiresTargetControl && allowControlAutoAppend), never either
+   *  alone. Undefined means false — never a silently-assumed
+   *  auto-append for a stain that hasn't explicitly opted in. */
+  allowControlAutoAppend?: boolean;
+  /** Real, optional — the real tissue type a lab typically uses as
+   *  this stain's own positive control (e.g. "Tonsil", "Appendix",
+   *  "Placenta"), pre-filled on the synthetic control case
+   *  shouldAutoAppendControl.ts creates. A real, informational default
+   *  only — never validated or enforced; a lab's own real control
+   *  tissue choice for a specific run can differ. */
+  defaultControlTissueType?: string;
   /** Real, per direct guidance ("the stain dictionary could also store
    *  process requests like FISH... build for general molecular
    *  pathology out of the box") - only meaningful when category is

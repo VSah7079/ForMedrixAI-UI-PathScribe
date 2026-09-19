@@ -2,7 +2,9 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom";
 import { buildPoolGroupRows, splitPoolRowsByUrgency, computeRestrictedPoolKeys, type PoolDividerRow, type SubspecialtyForRestrictionCheck } from './poolGrouping';
 import { buildAmendmentGroupRows, type AmendmentDividerRow } from './amendmentGrouping';
+import { buildAutopsyGroupRows, type AutopsyDividerRow } from './autopsyGrouping';
 import type { AmendmentType } from '@/types/reports/AmendmentRecord';
+import { resolveDigitalReadinessBadge, resolveDpTriageBadge } from '@/services/digitalPathology/resolveWorklistDpBadges';
 import { storageGet, storageSet } from '@/services/mockStorage';
 import { useAuth } from "@/contexts/AuthContext";
 import { useSystemConfig } from "@/contexts/SystemConfigContext";
@@ -34,7 +36,8 @@ type SortEntry = {
 type DividerRow = 
   | { __divider: true; label: string; count: number; isPool: false; isUrgent: boolean; restrictedCount?: number }
   | PoolDividerRow
-  | AmendmentDividerRow;
+  | AmendmentDividerRow
+  | AutopsyDividerRow;
 
 type DisplayRow = Case | DividerRow;
 
@@ -46,6 +49,23 @@ interface WorklistTableProps {
    *  top followed by Addenda." Only meaningful when activeFilter ===
    *  'amended' — see amendmentGrouping.ts. */
   amendmentTypeByCaseId?: ReadonlyMap<string, AmendmentType | 'notice'>;
+  /** Real, per direct follow-up ("some cases will have DP, others may
+   *  not") — every real case's own real, most-recent WsiScanBatch
+   *  slides and completed AiScreeningResult, keyed by caseId. Both
+   *  maps are genuinely sparse: a case with no real digital slide
+   *  data simply has no entry, and the Digital Readiness/DP AI Triage
+   *  columns render nothing for that row — never a fabricated badge.
+   *  Deliberately kept in the SAME worklist a pathologist already
+   *  uses, not a second, separate page they'd have to remember to
+   *  also check. */
+  wsiSlidesByCaseId?: ReadonlyMap<string, import('@/services/digitalPathology/IWsiScanBatchService').WsiScanSlide[]>;
+  dpResultByCaseId?: ReadonlyMap<string, import('@/types/digitalPathology/AiScreeningResult').AiScreeningResult>;
+  onOpenDpDrawer?: (caseId: string) => void;
+  // Real, per direct follow-up ("Autopsy, there are so few, can we
+  // just group the records?") — only ever checked for the one real
+  // group-by-status behavior below; every other branch's own row
+  // ordering is completely unaffected.
+  branchFilter?: 'all' | 'surgpath' | 'cytology' | 'autopsy';
   tableHeight?: number;
   delegatedCaseIds?: string[];
   onBeforeNavigate?: (caseId: string) => void;
@@ -80,9 +100,11 @@ const HEADER_COLUMNS: { label: string; key: string }[] = [
   { label: 'MRN',         key: 'mrn'                  },
   { label: 'Sex',         key: 'sex'                  },
   { label: 'DOB (Age)',   key: 'dateOfBirth'          },
-  { label: 'Specimen(s)', key: 'specimenSummary'      },
   { label: 'Accession',   key: 'accessionDate'        },
   { label: 'Physician',   key: 'submittingPhysician'  },
+  { label: 'Specimen(s)', key: 'specimenSummary'      },
+  { label: 'Digital Readiness', key: 'digitalReadiness' },
+  { label: 'DP AI Triage & Biomarkers', key: 'dpTriage' },
   { label: 'Flag(s)',     key: 'flagSeverity'         },
   { label: 'Status   ', key: 'status'               },
 ];
@@ -427,6 +449,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   cases,
   activeFilter,
   amendmentTypeByCaseId,
+  wsiSlidesByCaseId,
+  dpResultByCaseId,
+  onOpenDpDrawer,
+  branchFilter,
   tableHeight,
   delegatedCaseIds = [],
   onBeforeNavigate,
@@ -1071,6 +1097,14 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       return buildAmendmentGroupRows(finalCases, amendmentTypeByCaseId);
     }
 
+    // Real, per direct follow-up ("Autopsy, there are so few, can we
+    // just group the records?") — same real, deliberate "genuinely
+    // separate branch" reasoning as the Amendment grouping right
+    // above, not a variant of the default Urgent/All Cases grouping.
+    if (branchFilter === 'autopsy') {
+      return buildAutopsyGroupRows(finalCases);
+    }
+
     const pool        = finalCases.filter(c => c.status === 'pool');
     const urgent      = finalCases.filter(c => isUrgentCase(c) && c.status !== 'pool');
     const normal      = finalCases.filter(c => !isUrgentCase(c) && c.status !== 'pool');
@@ -1109,7 +1143,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     rows.push(...normalPoolRows);
 
     return rows;
-  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId]);
+  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId, branchFilter]);
 
   /**
    * visibleRows:
@@ -1281,6 +1315,20 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                   // than pool dividers (never collapsible, no
                   // restricted-pool-membership concept applies here).
                   if ('isAmendmentGroup' in row) {
+                    return (
+                      <div key={`div-${row.label}-${rowIndex}`} className="wl-card-divider">
+                        <span className="wl-card-divider__label">{row.label}</span>
+                        <span className="wl-card-divider__count">{row.count}</span>
+                        <div className="wl-card-divider__line" />
+                      </div>
+                    );
+                  }
+                  // Real, per direct follow-up ("Autopsy, there are
+                  // so few, can we just group the records?") — same
+                  // real, simple, non-collapsible divider shape as
+                  // the Amendment group right above; no real
+                  // "collapsible pool" concept applies here either.
+                  if ('isAutopsyGroup' in row) {
                     return (
                       <div key={`div-${row.label}-${rowIndex}`} className="wl-card-divider">
                         <span className="wl-card-divider__label">{row.label}</span>
@@ -1532,15 +1580,27 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
           */}
           <colgroup>
             <col style={{ width: '32px' }} />{/* urgent dot — fixed, icon */}
-            <col style={{ width: '13%' }} />{/* case id */}
-            <col style={{ width: '13%' }} />{/* patient */}
-            <col style={{ width: '6%'  }} />{/* mrn */}
+            <col style={{ width: '11%' }} />{/* case id */}
+            <col style={{ width: '12%' }} />{/* patient */}
+            <col style={{ width: '5%'  }} />{/* mrn */}
             <col style={{ width: '30px' }} />{/* sex — fixed, single letter */}
-            <col style={{ width: '10%' }} />{/* dob */}
-            <col style={{ width: '19%' }} />{/* specimens */}
-            <col style={{ width: '8%'  }} />{/* accession */}
-            <col style={{ width: '12%' }} />{/* physician */}
-            <col style={{ width: '18%' }} />{/* flags */}
+            <col style={{ width: '9%'  }} />{/* dob */}
+            {/* Real, per direct follow-up: "I would prefer to keep
+                the mrn, sex, dob (Age) with the accession date AND
+                physician, then specimen and the rest of the
+                columns." Reordered to match; widths trimmed slightly
+                (was 8%/12%) to make real room for the two DP columns
+                below, which this colgroup had never accounted for at
+                all since they were added \u2014 the real, confirmed
+                root cause of the 34" monitor's own column-width
+                trouble (table-layout:fixed with a colgroup that
+                defines fewer <col>s than the table actually has). */}
+            <col style={{ width: '7%'  }} />{/* accession */}
+            <col style={{ width: '10%' }} />{/* physician */}
+            <col style={{ width: '14%' }} />{/* specimens */}
+            <col style={{ width: '10%' }} />{/* digital readiness */}
+            <col style={{ width: '12%' }} />{/* dp ai triage & biomarkers */}
+            <col style={{ width: '10%' }} />{/* flags */}
             <col style={{ width: '40px' }} />{/* status dot — fixed, icon */}
           </colgroup>
 
@@ -1568,7 +1628,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
           <tbody>
             {finalCases.length === 0 ? (
               <tr>
-                <td colSpan={11} className="wl-td-empty">
+                <td colSpan={13} className="wl-td-empty">
                   No cases match the current filter.
                 </td>
               </tr>
@@ -1583,7 +1643,24 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                   if ('isAmendmentGroup' in row) {
                     return (
                       <tr key={`div-${row.label}-${rowIndex}`}>
-                        <td colSpan={11} className="wl-td-divider--normal">
+                        <td colSpan={13} className="wl-td-divider--normal">
+                          <div className="wl-card-divider" style={{ padding: 0 }}>
+                            <span className="wl-card-divider__label">{row.label}</span>
+                            <span className="wl-card-divider__count">{row.count}</span>
+                            <div className="wl-card-divider__line" />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  // Real, per direct follow-up ("Autopsy, there are
+                  // so few, can we just group the records?") — same
+                  // simpler treatment as the Amendment group right
+                  // above.
+                  if ('isAutopsyGroup' in row) {
+                    return (
+                      <tr key={`div-${row.label}-${rowIndex}`}>
+                        <td colSpan={13} className="wl-td-divider--normal">
                           <div className="wl-card-divider" style={{ padding: 0 }}>
                             <span className="wl-card-divider__label">{row.label}</span>
                             <span className="wl-card-divider__count">{row.count}</span>
@@ -1599,7 +1676,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                   return (
                     <tr key={`div-${row.label}-${rowIndex}`}>
                       <td
-                        colSpan={11}
+                        colSpan={13}
                         className={row.isUrgent ? 'wl-td-divider--urgent' : 'wl-td-divider--normal'}
                         onClick={isCollapsible ? () => togglePoolCollapsed(row.poolKey) : undefined}
                         style={isCollapsible ? { cursor: 'pointer' } : undefined}
@@ -1720,6 +1797,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       )}
                     </td>
 
+                    {/* Real, per direct follow-up: "I would prefer to
+                        keep the mrn, sex, dob (Age) with the
+                        accession date AND physician, then specimen
+                        and the rest of the columns." Accession and
+                        Physician moved here, immediately after DOB
+                        and before Specimens \u2014 same real cell
+                        content as before, just reordered. */}
+                    {/* Accession date */}
+                    <td className="wl-td-date">
+                      {formatDate(c.order?.receivedDate, c.order?.facilityId)}
+                    </td>
+
+                    {/* Physician */}
+                    <td className="wl-td-physician">
+                      {c.order?.requestingProvider ?? '—'}
+                    </td>
+
                     {/* Specimens */}
                     <td className="wl-td">
                       {isRestricted(c) ? (
@@ -1733,14 +1827,35 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       )}
                     </td>
 
-                    {/* Accession date */}
-                    <td className="wl-td-date">
-                      {formatDate(c.order?.receivedDate, c.order?.facilityId)}
+                    {/* Real, per direct follow-up ("some cases will
+                        have DP, others may not") — same, single
+                        worklist, two new, genuinely optional columns.
+                        Both badges render nothing at all for a case
+                        with no real digital slide/AI data, rather
+                        than an empty placeholder cell claiming a real
+                        absence of data is itself a real status. */}
+                    <td className="wl-td wl-td-dp" onClick={() => onOpenDpDrawer?.(c.id)}>
+                      {(() => {
+                        const badge = resolveDigitalReadinessBadge(wsiSlidesByCaseId?.get(c.id));
+                        if (!badge) return null;
+                        return (
+                          <button type="button" className={`wl-dp-badge wl-dp-badge--${badge.level}`} title="View slide details">
+                            {badge.summaryText}
+                          </button>
+                        );
+                      })()}
                     </td>
-
-                    {/* Physician */}
-                    <td className="wl-td-physician">
-                      {c.order?.requestingProvider ?? '—'}
+                    <td className="wl-td wl-td-dp" onClick={() => onOpenDpDrawer?.(c.id)}>
+                      {(() => {
+                        const badge = resolveDpTriageBadge(dpResultByCaseId?.get(c.id));
+                        if (!badge) return null;
+                        return (
+                          <button type="button" className={`wl-dp-badge wl-dp-badge--${badge.level}`} title="View AI triage details">
+                            <div>{badge.primaryText}</div>
+                            {badge.biomarkerSummary && <div className="wl-dp-badge-sub">{badge.biomarkerSummary}</div>}
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     {/* Flags */}
@@ -1766,12 +1881,12 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
             {isLoadingMore && (
               <tr>
-                <td colSpan={11} className="wl-loading-state">
+                <td colSpan={13} className="wl-loading-state">
                   <div className="wl-loader-spinner wl-loader-center" />
                 </td>
               </tr>
             )}
-            <tr><td colSpan={11} className="wl-row-spacer" /></tr>
+            <tr><td colSpan={13} className="wl-row-spacer" /></tr>
           </tbody>
         </table>
         </div>{/* end scroll container */}

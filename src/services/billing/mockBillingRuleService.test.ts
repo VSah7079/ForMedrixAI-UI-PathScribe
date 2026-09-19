@@ -124,12 +124,34 @@ describe('mockBillingRuleService — real, per-billingCode append-only versionin
     expect(res.ok).toBe(false);
   });
 
-  it('the real IHC-ADDL/PIN4-PANEL/FROZEN-FIRST/FROZEN-ADDL seed entries honestly carry no RVU, matching the disclosed gap', async () => {
+  // Real, direct follow-up (PS-83): the gap this test originally locked in
+  // is now half-closed, not fully open or fully closed. Version 1 (still
+  // ACTIVE, still the version every real charge resolves against today)
+  // honestly still carries no RVU - unchanged. Version 2 (PENDING_APPROVAL,
+  // not yet live) carries a real, web-search-sourced RVU awaiting a real
+  // reviewer's decision - same posture as the pre-existing 88307 example
+  // this file already covers elsewhere, not a new pattern.
+  it('the real IHC-ADDL/PIN4-PANEL/FROZEN-FIRST/FROZEN-ADDL seed entries: version 1 (ACTIVE) still honestly carries no RVU, version 2 (PENDING_APPROVAL) carries a real, unverified-pending-customer-review RVU', async () => {
     const res = await mockBillingRuleService.getAll();
     if (!res.ok) throw new Error('setup failed');
-    const gapped = res.data.filter(v => ['IHC-ADDL', 'PIN4-PANEL', 'FROZEN-FIRST', 'FROZEN-ADDL'].includes(v.billingCode));
-    expect(gapped).toHaveLength(4);
-    gapped.forEach(v => expect(v.rvuWork).toBeUndefined());
+    const gapCodes = ['IHC-ADDL', 'PIN4-PANEL', 'FROZEN-FIRST', 'FROZEN-ADDL'];
+    const entries = res.data.filter(v => gapCodes.includes(v.billingCode));
+    expect(entries).toHaveLength(8); // 4 codes x 2 versions each
+
+    const v1 = entries.filter(v => v.version === 1);
+    expect(v1).toHaveLength(4);
+    v1.forEach(v => {
+      expect(v.status).toBe('ACTIVE');
+      expect(v.rvuWork).toBeUndefined();
+    });
+
+    const v2 = entries.filter(v => v.version === 2);
+    expect(v2).toHaveLength(4);
+    v2.forEach(v => {
+      expect(v.status).toBe('PENDING_APPROVAL');
+      expect(v.rvuWork).toBeGreaterThan(0);
+      expect(v.changeReason).toMatch(/findacode\.com/);
+    });
   });
 
   it('a real site creating its FIRST override of an existing enterprise billingCode gets its OWN real version 1 - a genuinely new, independent sequence, no changeReason forced on it', async () => {

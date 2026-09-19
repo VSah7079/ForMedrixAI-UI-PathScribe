@@ -30,6 +30,19 @@ import Sidebar            from './components/Sidebar';
 import MaterialTreePanel  from './components/MaterialTreePanel';
 import LeftReportPanel    from './components/LeftReportPanel';
 import { AmendmentStatusBanner } from './components/AmendmentStatusBanner';
+import AutopsyAuthorizationCompletionForm from '../../components/Autopsy/AutopsyAuthorizationCompletionForm';
+import AutopsyBodyReleaseForm from '../../components/Autopsy/AutopsyBodyReleaseForm';
+import { resolveAutopsyGrossExaminationGate } from '@/services/autopsy/resolveAutopsyGrossExaminationGate';
+import { resolveAutopsyAccessionStatus } from '@/services/autopsy/resolveAutopsyAccessionStatus';
+import { resolveAutopsyTatSlaMatrix } from '@/services/autopsy/resolveAutopsyTatSlaMatrix';
+import { formatAutopsyTatSlaSummary } from '@/services/autopsy/formatAutopsyTatSlaSummary';
+import { resolveHtaApplicability } from '@/services/autopsy/resolveHtaApplicability';
+import { resolveAutopsyBodyReleaseGate } from '@/services/autopsy/resolveAutopsyBodyReleaseGate';
+import { resolveAutopsyBodyAlreadyReleased } from '@/services/autopsy/resolveAutopsyBodyAlreadyReleased';
+import { signAutopsyReport } from '@/services/autopsy/signAutopsyReport';
+import { releasePreliminaryReport } from '@/services/reports/releasePreliminaryReport';
+import { getMainBodySpecimen } from '@/services/autopsy/getMainBodySpecimen';
+import type { AutopsyCaseDetails } from '@/types/autopsy/AutopsyCaseDetails';
 // Real fix, per direct follow-up: "I want informal reviews to be
 // handled differently than delegations types, so remove the informal
 // action from that workflow." InformalReviewBanner.tsx was built
@@ -69,6 +82,7 @@ import { useAmendmentWorkflow } from './hooks/useAmendmentWorkflow';
 import { useGrossingCompletion } from './hooks/useGrossingCompletion';
 import { useOrchestratorDraft, writeCaseDraft } from './hooks/useOrchestratorDraft';
 import { useSignOutWorkflow } from './hooks/useSignOutWorkflow';
+import { resolveBuildReportAvailability } from './hooks/resolveBuildReportDirection';
 import FinalizeSynopticModal from './modals/FinalizeSynopticModal';
 import LogoutWarningModal    from '@/components/Common/LogoutWarningModal';
 import UnsavedWarningModal   from './modals/UnsavedWarningModal';
@@ -113,6 +127,8 @@ import type { CaseComment } from '@/types/case/CaseComment';
 import { specimenDeficiencyService } from '@/services';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { FixativeTimeGateModal, type FixativeGateSpecimen, type FixativeResolution } from './modals/FixativeTimeGateModal';
+import { StainQcGateModal } from './modals/StainQcGateModal';
+import type { StainQcGateBlockingItem } from './hooks/checkStainQcGate';
 import { PreAnalyticDateGateModal, type PreAnalyticDateGateSpecimen, type PreAnalyticDateResolution } from './modals/PreAnalyticDateGateModal';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
 import { resolvePreAnalyticDateGateConfig } from '@/services/billing/resolvePreAnalyticDateGateConfig';
@@ -126,6 +142,7 @@ import '@/pathscribe.css';
 import type { Case } from '@/types/case/Case';
 import type { Specimen } from '@/types/case/Specimen';
 import { AiReviewModal }  from './modals/AiReviewModal';
+import { AiNarrativeReviewModal } from './modals/AiNarrativeReviewModal';
 import { DelegateModal }  from '../Synoptic/Delegate/DelegateModal';
 import CaseTeamModal            from './modals/CaseTeamModal';
 import { PreFinalisationModal } from './modals/PreFinalisationModal';
@@ -267,6 +284,19 @@ const SynopticReportPage: React.FC = () => {
       // knew), since other writes may have landed between the conflict
       // being detected and this force-save actually running.
       await writeCaseDraft(caseData, caseId, orchSections);
+      // Real, direct follow-up (PS-71): "Save Mine Anyway" is the real,
+      // user-initiated override of a detected conflict — the other half of
+      // "record both blocked and overridden edit collisions to the audit
+      // trail" (handleConcurrencyConflict in sharedHookTypes.ts covers the
+      // detection/blocked half).
+      auditService.logEvent({
+        type: 'user',
+        event: 'Concurrency conflict overridden',
+        detail: `Save Mine Anyway: this session's draft overwrote version ${concurrencyConflict.actualVersion}`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
       knownVersionRef.current = concurrencyConflict.actualVersion + 1;
       clearDirty();
       showToast('Draft saved — your version overwrote the other change');
@@ -451,6 +481,22 @@ const SynopticReportPage: React.FC = () => {
   // ── Fixation-time signout gate ──────────────────────────────────────────────
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
   const [fixativeGateSpecimens, setFixativeGateSpecimens] = useState<FixativeGateSpecimen[] | null>(null);
+  // Real, per PS-289/PS-292's own Gating Strategy — see
+  // checkStainQcGate.ts's own header for the full reasoning.
+  const [stainQcGateBlocking, setStainQcGateBlocking] = useState<StainQcGateBlockingItem[] | null>(null);
+  // Real, per direct follow-up: "Begin AutopsyAuthorizationCompletionForm.tsx
+  // persistence — hands back updated data, nothing saves it." Investigation
+  // found a deeper, real gap this closes: neither this form nor
+  // resolveAutopsyGrossExaminationGate.ts had any real UI caller
+  // anywhere in the app — the whole completion workflow (gate check,
+  // form, persistence) was built and unit-tested but never actually
+  // mounted. This is that real mounting point.
+  const [showAutopsyAuthCompletion, setShowAutopsyAuthCompletion] = useState(false);
+  // Real, per direct follow-up: "AutopsyBodyReleaseForm.tsx's
+  // mounting" — same real, previously-unmounted gap as the
+  // authorization completion form above, now closed the same way.
+  const [showAutopsyBodyRelease, setShowAutopsyBodyRelease] = useState(false);
+  const [signingAutopsyTier, setSigningAutopsyTier] = useState<'PAD' | 'FAD' | null>(null);
   // ── Pre-analytic date (collection/receipt) signout gate — real, per
   // direct guidance's own cross-jurisdiction compliance research. Same
   // real "own state, threaded through the sign-out hook" shape as
@@ -3308,6 +3354,13 @@ const SynopticReportPage: React.FC = () => {
     showMissingWarning, setShowMissingWarning,
     reviewFields,
     showAiReview, setShowAiReview,
+    handleSuggestSynopticFromNarrative,
+    isSuggestingSynoptic,
+    handleGenerateNarrativeFromSynoptic,
+    isGeneratingNarrative,
+    showNarrativeReview, setShowNarrativeReview,
+    generatedNarrativeText,
+    handleAcceptGeneratedNarrative,
     finalizeAndNextPending,
     showPreFinalise, setShowPreFinalise,
     preFinalSynoptics,
@@ -3323,7 +3376,7 @@ const SynopticReportPage: React.FC = () => {
     knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
     generateReportPdfSnapshot, isOrchestrationMode, orchSections,
     setCaseSigned, setShowSignOutModal, setPendingReconciliation,
-    countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
+    countersignFeedback, specimenDictionary, setFixativeGateSpecimens, setStainQcGateBlocking,
     setPreAnalyticDateGateSpecimens, setPendingActionIsSignOut,
     setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
     setActiveSpecimenId, setActiveReportType,
@@ -3417,7 +3470,127 @@ const SynopticReportPage: React.FC = () => {
     })();
   }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setFixativeGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, pendingActionIsSignOut, setPendingActionIsSignOut, finalizeCase, handleSignOutConfirm, releasePendingAmendmentOrAddendum]);
 
-  // Real, per direct guidance's own cross-jurisdiction pre-analytic
+  // Real, per PS-289/PS-292's own Gating Strategy — simpler than
+  // handleFixativeGateContinue above, since the real confirmation
+  // itself (mockBatchService.confirmQcVisualRead()) already persisted
+  // inside StainQcGateModal directly, rather than being handed back
+  // here as data still needing to be saved.
+  const handleStainQcGateContinue = useCallback(() => {
+    setStainQcGateBlocking(null);
+    const args = pendingFinalizeArgs;
+    const isSignOut = pendingActionIsSignOut;
+    setPendingFinalizeArgs([]);
+    setPendingActionIsSignOut(false);
+    (async () => {
+      if (isSignOut) {
+        await handleSignOutConfirm();
+        return;
+      }
+      const succeeded = await finalizeCase(args);
+      if (succeeded) await releasePendingAmendmentOrAddendum();
+    })();
+  }, [setStainQcGateBlocking, pendingFinalizeArgs, setPendingFinalizeArgs, pendingActionIsSignOut, setPendingActionIsSignOut, finalizeCase, handleSignOutConfirm, releasePendingAmendmentOrAddendum]);
+
+  // Real, per direct follow-up: "Begin AutopsyAuthorizationCompletionForm.tsx
+  // persistence — hands back updated data, nothing saves it." The
+  // form itself is a real, deliberately presentational component
+  // (per its own header comment) — it hands back a real, updated
+  // AutopsyCaseDetails and leaves persistence to the caller. This is
+  // that real caller, same real caseRouter.updateCase() +
+  // knownVersionRef pattern as handleFixativeGateContinue above.
+  const handleAutopsyAuthCompletionSubmit = useCallback(async (updatedDetails: AutopsyCaseDetails) => {
+    if (!caseData) return;
+    try {
+      await caseRouter.updateCase(caseData.id, { autopsy: updatedDetails } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, autopsy: updatedDetails } as typeof prev) : prev);
+      setShowAutopsyAuthCompletion(false);
+      showToast('Authorization recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[AutopsyAuthCompletion] Failed to persist authorization:', err);
+      showToast('Could not save authorization — please try again');
+    }
+  }, [caseData, knownVersionRef, setCaseData, showToast, setConcurrencyConflict]);
+
+  // Real, per direct follow-up: "it all needs to be wired" —
+  // AutopsyCaseDetails.organRetentionTier had no real UI anywhere to
+  // set it at all (confirmed via a full-codebase search before
+  // adding this), meaning resolveHtaApplicability.ts's own real gate
+  // had nothing real to gate. Same real persistence pattern as
+  // handleAutopsyAuthCompletionSubmit above, kept as its own,
+  // separate handler since the two real actions have genuinely
+  // different success messaging and neither should touch the
+  // other's modal state.
+  const handleOrganRetentionTierChange = useCallback(async (tier: AutopsyCaseDetails['organRetentionTier']) => {
+    if (!caseData?.autopsy) return;
+    const updatedDetails: AutopsyCaseDetails = { ...caseData.autopsy, organRetentionTier: tier };
+    try {
+      await caseRouter.updateCase(caseData.id, { autopsy: updatedDetails } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, autopsy: updatedDetails } as typeof prev) : prev);
+      showToast('Organ retention tier recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[AutopsyOrganRetention] Failed to persist organ retention tier:', err);
+      showToast('Could not save organ retention tier — please try again');
+    }
+  }, [caseData, knownVersionRef, setCaseData, showToast, setConcurrencyConflict]);
+
+  // Real, per direct follow-up ("let's get that signing") — the real
+  // UI trigger for signAutopsyReport.ts, this codebase's first real
+  // PAD/FAD signing action. Thin: calls and renders only, same
+  // "no inline logic" posture as every other real Autopsy handler in
+  // this file — the actual countersign/gate/persist logic all lives
+  // in signAutopsyReport.ts itself.
+  const handleSignAutopsyReport = useCallback(async (tier: 'PAD' | 'FAD') => {
+    if (!caseData?.id || !signingUser?.id) return;
+    setSigningAutopsyTier(tier);
+    try {
+      // Real, deliberate: persist any unsaved orchSections edits first
+      // — signAutopsyReport.ts snapshots Case.orchSections directly
+      // (per direct correction: "the Final Diagnosis... that data
+      // exist" — no separate content model needed), so the pathologist's
+      // latest, actually-written diagnosis text must be on the real
+      // case before the sign action reads it, not left behind in
+      // local, unsaved component state.
+      await writeCaseDraft(caseData, caseData.id, orchSections, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+
+      const result = await signAutopsyReport(caseData.id, tier, {
+        id: signingUser.id, name: signingUser.name ?? signingUser.id, isPathologist: true,
+      }, generateReportPdfSnapshot);
+      if (!result.ok) {
+        showToast(result.error ?? `Could not sign the ${tier}.`);
+        return;
+      }
+      // Real, deliberate re-fetch rather than an optimistic local
+      // patch: a countersign release changes CaseStatus only, while a
+      // direct sign changes both CaseStatus (FAD only) and the real
+      // autopsy snapshot — re-fetching the real, authoritative case
+      // keeps both paths correct without duplicating
+      // signAutopsyReport.ts's own real branching logic here too.
+      const refreshed = await caseRouter.getCase(caseData.id);
+      if (refreshed) {
+        setCaseData(refreshed);
+        knownVersionRef.current = knownVersionRef.current + 1;
+      }
+      showToast(result.outcome === 'released_for_countersign'
+        ? `${tier} released for attending countersign`
+        : `${tier} signed`);
+    } catch (err) {
+      console.error('[AutopsySign] Failed to sign report:', err);
+      showToast(`Could not sign the ${tier} — please try again`);
+    } finally {
+      setSigningAutopsyTier(null);
+    }
+  }, [caseData, signingUser, orchSections, knownVersionRef, setCaseData, showToast, generateReportPdfSnapshot]);
   // compliance research — same shape as handleFixativeGateContinue
   // above, for PreAnalyticDateGateModal. Genuinely different in one
   // way: a specimen resolved via administrative override raises a
@@ -4251,6 +4424,134 @@ const SynopticReportPage: React.FC = () => {
                 <AmendmentDraftBanner caseData={caseData} activeReportInstanceId={activeReportInstanceId} onEdit={handleRequestAmendment} />
                 <AmendmentStatusBanner caseId={caseData?.id} synopticReports={caseData?.synopticReports} specimens={caseData?.specimens} />
 
+                {/* Real, per direct follow-up: "it all needs to be
+                    wired" \u2014 resolveAutopsyAccessionStatus.ts had
+                    zero real UI callers anywhere; the gate-blocking
+                    banner below only ever fires the 'temporary' case
+                    (when blocked), so the positive 'fully_authorized'
+                    state had no visible confirmation anywhere on the
+                    case. This is that real, always-visible read \u2014
+                    same real ps-autopsy-status-badge--* classes
+                    AutopsyAuthorizationCompletionForm.tsx already
+                    established, deliberately the same status
+                    function the gate itself is built on top of, per
+                    that function's own doc comment ("never a second,
+                    separate definition of authorized"). */}
+                {caseData?.autopsy && (
+                  <div className="ps-autopsy-intake-status">
+                    <span className={`ps-autopsy-status-badge ps-autopsy-status-badge--${resolveAutopsyAccessionStatus(caseData.autopsy)}`} data-phi="accession">{resolveAutopsyAccessionStatus(caseData.autopsy) === 'fully_authorized' ? 'Autopsy \u2014 Fully Authorized' : 'Autopsy \u2014 Temporary Accession'}</span>
+                    {/* Real, per direct follow-up: "it all needs to
+                        be wired" \u2014 resolveAutopsyTatSlaMatrix.ts
+                        had zero real UI callers; this is that real
+                        surfacing, right alongside the status badge
+                        above rather than a separate, easy-to-miss
+                        screen. */}
+                    <p className="ps-conf-section-subtitle ps-conf-section-subtitle--form-gap">
+                      {formatAutopsyTatSlaSummary(resolveAutopsyTatSlaMatrix(caseData.autopsy.jurisdiction))}
+                    </p>
+                  </div>
+                )}
+
+                {/* Real, per direct follow-up: "it all needs to be
+                    wired" — organRetentionTier had no real UI
+                    anywhere to set it; resolveHtaApplicability.ts is
+                    the real, deliberate gate on whether it means
+                    anything at all for this case's own jurisdiction
+                    (UK HTA 2004/2006, NZ Coroners Act 2006 only —
+                    never shown for a real jurisdiction the spec
+                    didn't name). */}
+                {caseData?.autopsy && resolveHtaApplicability(caseData.autopsy.jurisdiction) && (
+                  <div className="ps-conf-form-field" style={{ maxWidth: 420 }}>
+                    <label className="ps-conf-label">Organ Retention Tier</label>
+                    <select
+                      className="ps-conf-select"
+                      value={caseData.autopsy.organRetentionTier ?? ''}
+                      onChange={e => handleOrganRetentionTierChange((e.target.value || undefined) as AutopsyCaseDetails['organRetentionTier'])}
+                    >
+                      <option value="">— not yet recorded —</option>
+                      <option value="tier_0_no_retention">Tier 0 — No Retention</option>
+                      <option value="tier_1_diagnostic_tissue_only">Tier 1 — Diagnostic Tissue Only</option>
+                      <option value="tier_2_full_organ_retention">Tier 2 — Full Organ Retention</option>
+                      <option value="tier_3_education_research_genomic">Tier 3 — Education / Research / Genomic</option>
+                    </select>
+                  </div>
+                )}
+
+                {caseData?.autopsy && (() => {
+                  const gate = resolveAutopsyGrossExaminationGate(caseData.autopsy);
+                  if (gate.allowed) return null;
+                  return (
+                    <div className="ps-lis-triage-banner">
+                      <div>
+                        <div className="ps-lis-triage-title">⚠ Autopsy — Temporary Accession, Written Authorization Pending</div>
+                        <p className="ps-lis-triage-summary">{gate.blockedReasons.join(' ')}</p>
+                      </div>
+                      <button className="ps-conf-btn-primary" onClick={() => setShowAutopsyAuthCompletion(true)}>
+                        Complete Authorization
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Real, per direct follow-up ("let's get that signing") —
+                    the real Sign PAD / Sign FAD triggers. PAD becomes
+                    available once authorization is complete (the gate
+                    above allows); FAD only once a real, signed PAD
+                    already exists — same real ordering
+                    signAutopsyReport.ts itself enforces server-side,
+                    never trusted from this UI check alone. */}
+                {caseData?.autopsy && resolveAutopsyGrossExaminationGate(caseData.autopsy).allowed && !caseData.autopsy.padSnapshot && (
+                  <div className="ps-lis-triage-banner">
+                    <div>
+                      <div className="ps-lis-triage-title">Autopsy — Ready to Sign PAD</div>
+                      <p className="ps-lis-triage-summary">Gross findings and preliminary diagnosis list are ready for the Provisional Anatomic Diagnosis.</p>
+                    </div>
+                    <button className="ps-conf-btn-primary" disabled={signingAutopsyTier === 'PAD'} onClick={() => handleSignAutopsyReport('PAD')}>
+                      {signingAutopsyTier === 'PAD' ? 'Signing…' : 'Sign PAD'}
+                    </button>
+                  </div>
+                )}
+
+                {caseData?.autopsy?.padSnapshot && !caseData.autopsy.fadSnapshot && (
+                  <div className="ps-lis-triage-banner">
+                    <div>
+                      <div className="ps-lis-triage-title">Autopsy — Ready to Sign FAD</div>
+                      <p className="ps-lis-triage-summary">PAD signed {new Date(caseData.autopsy.padSnapshot.signedAt).toLocaleDateString()} by {caseData.autopsy.padSnapshot.signedBy.name}. Complete microscopic and ancillary findings to finalize.</p>
+                    </div>
+                    <button className="ps-conf-btn-primary" disabled={signingAutopsyTier === 'FAD'} onClick={() => handleSignAutopsyReport('FAD')}>
+                      {signingAutopsyTier === 'FAD' ? 'Signing…' : 'Sign FAD'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Real, per direct follow-up: "AutopsyBodyReleaseForm.tsx's
+                    mounting," then further centralized per a real,
+                    later follow-up ("a quick helper like
+                    getMainBodySpecimen... could provide a central
+                    place to update that logic system-wide") \u2014
+                    getMainBodySpecimen.ts (services/autopsy/) is now
+                    that one, real place; see its own header comment
+                    for the current index-0 heuristic and where an
+                    explicit designation check would slot in first,
+                    if Specimen ever gains one. */}
+                {caseData?.autopsy && getMainBodySpecimen(caseData.specimens) && (() => {
+                  const bodySpecimen = getMainBodySpecimen(caseData.specimens)!;
+                  if (resolveAutopsyBodyAlreadyReleased(bodySpecimen.locationHistory)) return null;
+                  const gate = resolveAutopsyBodyReleaseGate(caseData.autopsy);
+                  if (!gate.allowed) return null;
+                  return (
+                    <div className="ps-lis-triage-banner">
+                      <div>
+                        <div className="ps-lis-triage-title">Autopsy — Ready for Body Release</div>
+                        <p className="ps-lis-triage-summary">PAD is signed and no ancillary hold is active — the body may now be released.</p>
+                      </div>
+                      <button className="ps-conf-btn-primary" onClick={() => setShowAutopsyBodyRelease(true)}>
+                        Release Body
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <ReleaseBufferBanner
                   caseData={caseData}
                   currentUserId={signingUser?.id}
@@ -4352,15 +4653,66 @@ const SynopticReportPage: React.FC = () => {
           {/* Right panel — hidden in orchestration draft mode (Sequencer provides synoptic access) */}
           <div className={`ps-syn-right-panel${isOrchestrationMode && leftTab === 'draft' ? ' ps-syn-right-panel--collapsed' : ''}`}>
             <div className="ps-syn-right-panel-scroll">
-              {isOrchestrationMode && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px 0' }}>
-                  <button
-                    className={activeReportType === 'billing' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'}
-                    style={{ fontSize: 11, padding: '4px 10px' }}
-                    onClick={() => setActiveReportType(activeReportType === 'billing' ? 'synoptic' : 'billing')}
-                  >
-                    {activeReportType === 'billing' ? '← Back to Synoptic' : '$ Billing Review'}
-                  </button>
+              {(isOrchestrationMode || caseData?.reportingMode === 'assist') && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 12px 0' }}>
+                  {(() => {
+                    const availability = resolveBuildReportAvailability({
+                      caseText: {
+                        gross: caseData?.diagnostic?.grossDescription ?? '',
+                        microscopic: caseData?.diagnostic?.microscopicDescription ?? '',
+                        ancillary: caseData?.diagnostic?.ancillaryStudies ?? '',
+                      },
+                      synopticAnswers:
+                        (activeReportInstanceId
+                          ? caseData?.synopticReports?.find(r => r.instanceId === activeReportInstanceId)?.answers
+                          : caseData?.synopticReports?.[0]?.answers
+                        ) ?? caseData?.synopticAnswers ?? {},
+                    });
+                    return (
+                      <>
+                        {/* Real, per direct guidance's own confirmed
+                            direction: available in BOTH assist/LIS
+                            mode and orchestrator mode — PathScribe
+                            reading an externally-authored narrative
+                            and suggesting synoptic answers makes sense
+                            regardless of who owns the report lifecycle. */}
+                        <button
+                          className="ps-btn-ghost-dark"
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                          disabled={!availability.canSuggestSynopticFromNarrative || isSuggestingSynoptic}
+                          title={availability.canSuggestSynopticFromNarrative ? 'Suggest synoptic answers from the current Gross/Microscopic/Ancillary text' : 'Enter a Gross, Microscopic, or Ancillary narrative first'}
+                          onClick={handleSuggestSynopticFromNarrative}
+                        >
+                          {isSuggestingSynoptic ? 'Suggesting…' : '✨ Suggest Synoptic from Narrative'}
+                        </button>
+                        {/* Real, per direct guidance's own confirmed
+                            direction: orchestrator-mode only — in
+                            assist/LIS mode, the external LIS owns the
+                            narrative, so PathScribe generating and
+                            writing back narrative text doesn't apply. */}
+                        {isOrchestrationMode && (
+                          <button
+                            className="ps-btn-ghost-dark"
+                            style={{ fontSize: 11, padding: '4px 10px' }}
+                            disabled={!availability.canGenerateNarrativeFromSynoptic || isGeneratingNarrative}
+                            title={availability.canGenerateNarrativeFromSynoptic ? 'Generate narrative text from the current synoptic answers' : 'Answer some synoptic fields first'}
+                            onClick={handleGenerateNarrativeFromSynoptic}
+                          >
+                            {isGeneratingNarrative ? 'Generating\u2026' : '\u2728 Generate Narrative from Synoptic'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {isOrchestrationMode && (
+                    <button
+                      className={activeReportType === 'billing' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'}
+                      style={{ fontSize: 11, padding: '4px 10px' }}
+                      onClick={() => setActiveReportType(activeReportType === 'billing' ? 'synoptic' : 'billing')}
+                    >
+                      {activeReportType === 'billing' ? '← Back to Synoptic' : '$ Billing Review'}
+                    </button>
+                  )}
                 </div>
               )}
               {activeReportType === 'billing' && isOrchestrationMode ? (
@@ -4434,6 +4786,22 @@ const SynopticReportPage: React.FC = () => {
           onFinalize={() => handleRequestFinalize(false)}
           onFinalizeAndNext={() => handleRequestFinalize(true)}
           onSignOut={() => { if (caseData?.reportingMode !== 'assist') handleSignOutClick(); }}
+          onReleasePreliminary={caseData?.id ? async () => {
+            const result = await releasePreliminaryReport(caseData.id!, {
+              id: signingUser?.id ?? 'unknown', name: signingUser?.name ?? signingUser?.id ?? 'unknown', role: 'Pathologist',
+            }, generateReportPdfSnapshot);
+            if (!result.ok) {
+              showToast(result.error ?? 'Could not release the Preliminary report.');
+              return;
+            }
+            if (result.dispatchedCount === 0) {
+              showToast('Nothing to release yet — no specimen instances on this case.');
+              return;
+            }
+            const refreshed = await caseRouter.getCase(caseData.id!);
+            if (refreshed) setCaseData(refreshed);
+            showToast(`Preliminary report released (${result.dispatchedCount} ${result.dispatchedCount === 1 ? 'specimen' : 'specimens'})`);
+          } : undefined}
           onRequestAmendment={handleRequestAmendment}
           onPrint={openCopilotReportView}
           onOpenReprints={() => setShowReprintModal(true)}
@@ -4572,6 +4940,15 @@ const SynopticReportPage: React.FC = () => {
             setShowFinalizeModal(true);
           }}
           onCancel={() => setShowAiReview(false)}
+        />
+      )}
+
+      {showNarrativeReview && (
+        <AiNarrativeReviewModal
+          narrativeText={generatedNarrativeText}
+          defaultTargetField="gross"
+          onAccept={handleAcceptGeneratedNarrative}
+          onCancel={() => setShowNarrativeReview(false)}
         />
       )}
 
@@ -4949,6 +5326,57 @@ const SynopticReportPage: React.FC = () => {
           onContinue={handleFixativeGateContinue}
         />
       )}
+
+      {stainQcGateBlocking && caseData && (
+        <StainQcGateModal
+          blocking={stainQcGateBlocking}
+          signingUserId={signingUser?.id ?? 'unknown'}
+          signingUserName={signingUser?.name ?? 'Unknown User'}
+          onCancel={() => { setStainQcGateBlocking(null); setPendingFinalizeArgs([]); setPendingActionIsSignOut(false); }}
+          onContinue={handleStainQcGateContinue}
+        />
+      )}
+
+      {showAutopsyAuthCompletion && caseData?.autopsy && (
+        <div className="ps-overlay" onClick={() => setShowAutopsyAuthCompletion(false)}>
+          <div onClick={e => e.stopPropagation()}>
+            <AutopsyAuthorizationCompletionForm
+              caseDetails={caseData.autopsy}
+              onSubmit={handleAutopsyAuthCompletionSubmit}
+            />
+          </div>
+        </div>
+      )}
+
+      {showAutopsyBodyRelease && caseData?.autopsy && getMainBodySpecimen(caseData.specimens) && (() => {
+        const bodySpecimen = getMainBodySpecimen(caseData.specimens)!;
+        return (
+          <div className="ps-overlay" onClick={() => setShowAutopsyBodyRelease(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <AutopsyBodyReleaseForm
+                caseId={caseData.id}
+                specimenId={bodySpecimen.id}
+                autopsyDetails={caseData.autopsy}
+                onReleased={() => {
+                  setShowAutopsyBodyRelease(false);
+                  showToast('Body released');
+                  // Real, same established refresh pattern as the
+                  // MATERIAL_SCAN_UPDATED_EVENT listener above \u2014
+                  // releaseAutopsyBody.ts persists directly via its
+                  // own caseRouter.updateCase() call, so local
+                  // caseData needs a real re-fetch to pick up the new
+                  // locationHistory entry, not a second, separate
+                  // patch that could drift from what was actually
+                  // persisted.
+                  caseRouter.getCase(caseData.id).then(refreshed => {
+                    if (refreshed) setCaseData(refreshed);
+                  });
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {preAnalyticDateGateSpecimens && caseData && (
         <PreAnalyticDateGateModal

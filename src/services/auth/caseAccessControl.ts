@@ -70,6 +70,8 @@
 
 import { resolveTenantFacility } from './resolveTenantFacility';
 import type { Facility } from '../facilities/IFacilityService';
+import type { ParticipationTypeRecord } from '../participationTypes/IParticipationTypeService';
+import { resolveParticipationTypeAuthority } from '../participationTypes/IParticipationTypeService';
 
 const SESSION_STORAGE_KEY = 'pathscribe-user';
 
@@ -241,6 +243,16 @@ export function resolveCaseAccess(
 // every case write (draft edits, comments, etc. legitimately involve
 // people who aren't yet a formal participant — a resident drafting
 // before an attending is even assigned, for instance).
+//
+// REAL ENFORCEMENT WIRING (this pass, per explicit go-ahead — see
+// IParticipationTypeService.ts's own authorityOverrides doc comment for
+// the gap this closes): eligibility used to be a hardcoded literal,
+// completely disconnected from the Participation Types admin screen's
+// own "Can Finalise" checkbox — that checkbox had genuinely zero effect
+// on real sign-out. It's now resolved from the real
+// ParticipationTypeRecord.canFinalize flag (per-performing-lab via
+// resolveParticipationTypeAuthority()) — see resolveFinalizeEligibleTypeIds
+// below.
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface CaseFinalizeParticipant {
@@ -249,22 +261,64 @@ export interface CaseFinalizeParticipant {
   participationTypeIds: string[];
 }
 
-const FINALIZE_ELIGIBLE_PARTICIPATION_TYPES = ['primary', 'attending'];
+/**
+ * Fallback ONLY — used when the real ParticipationTypeRecord[] data isn't
+ * supplied by the caller (an older/uninstrumented call site, or a unit
+ * test exercising this function in isolation). Deliberately identical to
+ * this app's own real, seeded default (mockParticipationTypeService.ts's
+ * SEED: 'primary' and 'attending' are the only two system types with
+ * canFinalize:true out of the box), so a caller that can't yet supply
+ * real participationTypes sees EXACTLY the same behavior as before this
+ * data-driven lookup existed — never a silent widening or narrowing of
+ * who can sign out.
+ */
+const FINALIZE_ELIGIBLE_PARTICIPATION_TYPES_FALLBACK = ['primary', 'attending'];
+
+/**
+ * The real, data-driven replacement for the fallback list above —
+ * resolves which participation-type ids actually confer finalize/sign-out
+ * authority TODAY, per each real ParticipationTypeRecord.canFinalize flag,
+ * resolved per-performing-lab via resolveParticipationTypeAuthority() (see
+ * that function's own doc comment, IParticipationTypeService.ts) so a
+ * lab's own authorityOverrides genuinely take effect here, not just
+ * decorate the admin screen.
+ *
+ * `participationTypes` null/undefined/empty means a caller hasn't been
+ * updated to fetch and pass it yet — falls back to the constant above
+ * rather than granting nobody or everybody. `performingLabFacilityId`
+ * omitted resolves every type to its platform-default flags (no lab has
+ * overridden anything for this case), same as
+ * resolveParticipationTypeAuthority()'s own contract.
+ */
+export function resolveFinalizeEligibleTypeIds(
+  participationTypes: ParticipationTypeRecord[] | null | undefined,
+  performingLabFacilityId?: string | null,
+): string[] {
+  if (!participationTypes || participationTypes.length === 0) {
+    return FINALIZE_ELIGIBLE_PARTICIPATION_TYPES_FALLBACK;
+  }
+  return participationTypes
+    .filter(t => resolveParticipationTypeAuthority(t, performingLabFacilityId ?? undefined).canFinalize === true)
+    .map(t => t.id);
+}
 
 export function canFinalizeCase(
   session: SessionUser | null,
-  participants: CaseFinalizeParticipant[] | null | undefined
+  participants: CaseFinalizeParticipant[] | null | undefined,
+  participationTypes?: ParticipationTypeRecord[] | null,
+  performingLabFacilityId?: string | null,
 ): CaseAccessDecision {
   if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
   if (session.role === 'superadmin' || session.role === 'admin' || session.role === 'pathologist-admin') {
     return { granted: true, dimension: 'admin-override', reason: 'Administrative role — supervisor override.' };
   }
 
+  const eligibleTypeIds = resolveFinalizeEligibleTypeIds(participationTypes, performingLabFacilityId);
   const activeParticipants = participants ?? [];
   const isEligibleParticipant = activeParticipants.some(p =>
     p.status === 'active' &&
     p.staffId === session.id &&
-    p.participationTypeIds.some(t => FINALIZE_ELIGIBLE_PARTICIPATION_TYPES.includes(t))
+    p.participationTypeIds.some(t => eligibleTypeIds.includes(t))
   );
 
   if (!isEligibleParticipant) {
@@ -278,15 +332,34 @@ export function canFinalizeCase(
 }
 
 /**
- * The real denormalization this dimension's server-side enforcement
- * depends on. Firestore security rules have no way to ask "does any
- * element of this array of objects satisfy this predicate" —
- * CaseParticipant.staffId/participationTypeIds live inside an array of
- * objects, and rules' array operators (in, hasAny, hasAll) only work
- * against flat value lists. This derives that flat list — the exact
- * same eligibility logic canFinalizeCase() above already uses for the
- * client-side check, reused rather than re-implemented, so the two can
- * never independently drift apart.
+ * The real denormalization this dimension's server-side enforcement is
+ * meant to depend on. A real Firestore-rules-backed deployment has no way
+ * to ask "does any element of this array of objects satisfy this
+ * predicate" — CaseParticipant.staffId/participationTypeIds live inside
+ * an array of objects, and rules' array operators (in, hasAny, hasAll)
+ * only work against flat value lists. This derives that flat list — the
+ * same eligibility resolution canFinalizeCase() above uses, reused rather
+ * than re-implemented, so the two can never independently drift apart.
+ *
+ * IMPORTANT, flagged directly rather than silently assumed: this project
+ * has no real backend yet — there is no `firestore.rules` file anywhere
+ * in this codebase (confirmed directly), only PRODUCTION_MIGRATION.md's
+ * own forward-looking "Set Firestore security rules..." step. This
+ * denormalization is real and data-driven (see below), ready for
+ * whoever writes that real rules file, but nothing server-side consults
+ * it today — the actual, live enforcement for this app is the client-side
+ * canFinalizeCase() check above.
+ *
+ * Also deliberately NOT lab-scoped, unlike canFinalizeCase() above:
+ * CaseRouter.ts calls this from a chokepoint (updateCase/createCase) that
+ * often only has a partial Case patch, and Case itself carries no cheap,
+ * always-present performing-lab id to key an override off without an
+ * extra fetch on every single participant write. Resolved using each
+ * type's PLATFORM-DEFAULT canFinalize flag only (no authorityOverrides
+ * applied) — real and data-driven, a major improvement on the old fully
+ * hardcoded list, just not lab-precise. The client-side gate above, which
+ * always has the full case + order context, is where lab-scoped
+ * precision actually matters and is fully wired.
  *
  * Called automatically by CaseRouter.ts whenever a write includes
  * participants, not something every caller has to remember to invoke
@@ -296,10 +369,12 @@ export function canFinalizeCase(
  * class of risk this sidesteps by making it structural instead).
  */
 export function deriveEligibleFinalizerIds(
-  participants: CaseFinalizeParticipant[] | null | undefined
+  participants: CaseFinalizeParticipant[] | null | undefined,
+  participationTypes?: ParticipationTypeRecord[] | null,
 ): string[] {
+  const eligibleTypeIds = resolveFinalizeEligibleTypeIds(participationTypes);
   return (participants ?? [])
-    .filter(p => p.status === 'active' && p.participationTypeIds.some(t => FINALIZE_ELIGIBLE_PARTICIPATION_TYPES.includes(t)))
+    .filter(p => p.status === 'active' && p.participationTypeIds.some(t => eligibleTypeIds.includes(t)))
     .map(p => p.staffId);
 }
 

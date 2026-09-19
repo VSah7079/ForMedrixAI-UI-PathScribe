@@ -4703,14 +4703,26 @@ async function getCaseAnyMode(caseId: string): Promise<Case | undefined> {
   return CASES.find((c: any) => c.id === caseId);
 }
 
-async function updateCaseAnyMode(caseId: string, updates: Partial<Case>): Promise<void> {
+// Real, direct follow-up (PS-71): this used to silently drop expectedVersion
+// on the Orchestration-mode path — mockOrchestratorCaseService.updateCase()
+// independently implements the identical ConcurrencyConflictError mechanism
+// and would honor it if passed, but had nothing to check against since this
+// function never forwarded it. Neither of this function's own two current
+// callers (acceptPoolCase, and the delegation-acceptance path below) track a
+// version to pass today — this is real, available plumbing for whichever
+// future caller does, not a behavior change for the callers that exist now.
+async function updateCaseAnyMode(caseId: string, updates: Partial<Case>, expectedVersion?: number): Promise<void> {
   if (isOrchCaseId(caseId)) {
-    await mockOrchestratorCaseService.updateCase(caseId, updates);
+    await mockOrchestratorCaseService.updateCase(caseId, updates, expectedVersion);
     return;
   }
   const idx = CASES.findIndex((c: any) => c.id === caseId);
   if (idx >= 0) {
-    CASES[idx] = { ...CASES[idx], ...updates, updatedAt: new Date().toISOString() } as any;
+    const currentVersion = (CASES[idx] as any).version ?? 0;
+    if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+      throw new ConcurrencyConflictError(caseId, expectedVersion, currentVersion);
+    }
+    CASES[idx] = { ...CASES[idx], ...updates, updatedAt: new Date().toISOString(), version: currentVersion + 1 } as any;
     storageSet(STORAGE_KEY, CASES);
   }
 }

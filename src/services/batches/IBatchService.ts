@@ -140,6 +140,22 @@ export type BatchProcessingNode = typeof BATCH_PROCESSING_NODES[number];
  *  vendor-reported statuses that only ever arrive inbound. */
 export type CytologyInstrumentStatus = 'Loaded to Instrument' | 'In Process' | 'Cell Transfer' | 'Slide Prep Complete';
 
+/** Real, additive — per 'Staining' (automated stainer rack batch),
+ *  same real reporting mechanism as CytologyInstrumentStatus above
+ *  (inbound via StainingInstrumentStatusEvent,
+ *  services/hl7/processInboundStainingInstrumentStatusEvent.ts).
+ *  'Loaded to Instrument' is set by PathScribe itself, same real
+ *  convention as CytologyInstrumentStatus's own. Real, deliberate
+ *  divergence from Cytology's own shape: a stainer run genuinely can
+ *  fail mid-run (reagent fault, mechanical error) — CytologyInstrumentStatus
+ *  models only an always-successful linear sequence with no failure
+ *  state, which would misrepresent a real stainer's own reporting.
+ *  'Run Completed'/'Run Failed' are the real, terminal outcomes the
+ *  Gating Strategy work (per direct research) will read to decide
+ *  auto-resolution — captured honestly here regardless of whether
+ *  anything downstream consumes them yet. */
+export type StainingInstrumentStatus = 'Loaded to Instrument' | 'In Process' | 'Run Completed' | 'Run Failed';
+
 export type BatchPriority = 'STAT' | 'Routine';
 
 /**
@@ -315,6 +331,33 @@ export interface Batch {
    *  same real FK-not-free-text reasoning as PathwayTask.stainTypeIds.
    *  Only meaningful when processingNode === 'Cytology Staining'. */
   cytologyStainTypeId?: string;
+  /** Real, per direct requirements ("PathScribe Stain & Quality
+   *  Control Module" §2.1/§2.2) — the real reagent/solution lots
+   *  actually used for this run, real FKs to ReagentLot.id
+   *  (services/reagentLots/IReagentLotService.ts), never free text.
+   *  An array, not a single id — unlike Cytology Staining's own
+   *  single cytologyStainTypeId above, a routine H&E line or an IHC
+   *  run genuinely draws on several real reagent lots at once (e.g.
+   *  hematoxylin + eosin + bluing reagent, or an antibody lot +
+   *  detection kit lot), not one. Only meaningful when
+   *  processingNode === 'Staining'. */
+  stainingReagentLotIds?: string[];
+  /** Real, additive — per 'Staining'. See StainingInstrumentStatus's
+   *  own doc comment above for the full reasoning. */
+  stainingInstrumentStatus?: StainingInstrumentStatus;
+  /** Real, per PS-289/PS-292's own Gating Strategy research — the
+   *  real audit object recording a human's completion of PathScribe's
+   *  own internal visual read checklist for this batch, under
+   *  'Enforced' (or 'Hybrid' with no conclusive external signal)
+   *  QcEnforcementMode. Same real {userId, userName, confirmedAt}
+   *  shape as this app's other established confirmation audit
+   *  objects (e.g. SpecimenProcessing.fixativeToTissueRatioConfirmation)
+   *  — presence of this object IS the confirmation; there's no real,
+   *  separate "confirmed: false" state. Lives on the batch (a real
+   *  stainer run covering many slides at once), not on any individual
+   *  specimen, since one confirmation covers the whole run. Only
+   *  meaningful when processingNode === 'Staining'. */
+  qcVisualReadConfirmation?: { userId: string; userName: string; confirmedAt: string };
   /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL Reference
    *  Laboratory Sensor & Cold-Chain Integration gap — "workflow hold
    *  triggers if transit temperature exceeds defined parameters."
@@ -416,6 +459,9 @@ export interface IBatchService {
      *  processingNode === 'Cytology Staining' — see
      *  Batch.cytologyStainTypeId's own doc comment. */
     cytologyStainTypeId?: string;
+    /** Only meaningful when processingNode === 'Staining' — see
+     *  Batch.stainingReagentLotIds's own doc comment. */
+    stainingReagentLotIds?: string[];
   }): Promise<ServiceResult<Batch>>;
   /** Real, central add-item path — resolves `scannedValue` against
    *  this app's own real material tree (via resolveMaterialFromScan.ts,
@@ -480,6 +526,17 @@ export interface IBatchService {
    *  genuinely a 'Cytology Processing' batch — this instrument-status
    *  field means nothing on any other node. */
   setCytologyInstrumentStatus(batchId: ID, status: CytologyInstrumentStatus): Promise<ServiceResult<Batch>>;
+  /** Real, additive — per 'Staining'. Called by
+   *  processInboundStainingInstrumentStatusEvent.ts the moment an
+   *  automated stainer reports a real status transition for the
+   *  batch it's currently running. Fails honestly if the batch isn't
+   *  genuinely a 'Staining' batch. */
+  setStainingInstrumentStatus(batchId: ID, status: StainingInstrumentStatus): Promise<ServiceResult<Batch>>;
+  /** Real, per PS-289/PS-292's own Gating Strategy research — records
+   *  a human's completion of the visual read checklist for this
+   *  batch. Fails honestly if the batch isn't genuinely a 'Staining'
+   *  batch, same posture as setStainingInstrumentStatus. */
+  confirmQcVisualRead(batchId: ID, userId: string, userName: string): Promise<ServiceResult<Batch>>;
   abort(batchId: ID, byUserId: string, byUserName: string, reason: string): Promise<ServiceResult<Batch>>;
   /** The spec's own FR-3.1 "[ 🔓 Release Rack ]" action pill — a real,
    *  explicit, manual release of a semi-permanent batch's own rack

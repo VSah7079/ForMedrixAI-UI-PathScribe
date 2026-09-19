@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { physicianService, facilityService } from '../../../services';
 import type { Physician } from '../../../services';
@@ -390,10 +390,7 @@ const PhysiciansSection: React.FC = () => {
       Facilities: p.clientIds.map(id => facilities.find(c => c.id === id)?.name ?? id).join('; '),
       Status: p.status,
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Physicians');
-    XLSX.writeFile(wb, 'Physicians.xlsx');
+    downloadCsv('Physicians.csv', toCsv(rows));
   };
 
   // Next sequential PHY-#### code, matching the seed data's own
@@ -414,19 +411,18 @@ const PhysiciansSection: React.FC = () => {
     return code;
   };
 
-  const handlePhysicianFileUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const handlePhysicianFileUpload = async (file: File) => {
+    if (!isCsvFile(file)) {
+      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows: any[] = parseCsv(text);
 
-      const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
-      const takenCodes = new Set(physicians.map(p => p.physicianCode));
+    const get = (row: any, ...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
+    const takenCodes = new Set(physicians.map(p => p.physicianCode));
 
-      const preview: PhysImportRow[] = rows.map(row => {
+    const preview: PhysImportRow[] = rows.map(row => {
         const givenNames  = get(row, 'GivenNames', 'Given Names', 'FirstName', 'First Name');
         const familyNames = get(row, 'FamilyNames', 'Family Names', 'LastName', 'Last Name');
         const npi = get(row, 'NPI', 'npi');
@@ -468,11 +464,9 @@ const PhysiciansSection: React.FC = () => {
           preferredContact, clientIds, status,
           existingId: existing?.id, codeWasGenerated,
         };
-      }).filter(r => r.givenNames || r.familyNames);
+    }).filter(r => r.givenNames || r.familyNames);
 
-      setPhysImportPreview(preview);
-    };
-    reader.readAsBinaryString(file);
+    setPhysImportPreview(preview);
   };
 
   const handleApplyPhysicianImport = async () => {
@@ -499,7 +493,7 @@ const PhysiciansSection: React.FC = () => {
       <div className="ps-conf-form-row">
         <button className="ps-conf-btn-secondary" onClick={handleDownloadPhysicians}>Export</button>
         <button className="ps-conf-btn-secondary" onClick={() => physImportFileInputRef.current?.click()}>Import Spreadsheet</button>
-        <input ref={physImportFileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) handlePhysicianFileUpload(e.target.files[0]); e.target.value = ''; }} />
+        <input ref={physImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handlePhysicianFileUpload(e.target.files[0]); e.target.value = ''; }} />
       </div>
 
       {physImportPreview && (

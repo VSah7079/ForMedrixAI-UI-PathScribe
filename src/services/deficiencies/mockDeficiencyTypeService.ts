@@ -4,6 +4,33 @@ import type { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type { DeficiencyType, IDeficiencyTypeService } from './IDeficiencyService';
 
+// Real, per direct guidance's own established re-seed convention (see
+// mockContainerTypeService.ts's own header for the full reasoning) —
+// this file never had one despite several prior sessions adding new
+// seed types (def-block-lost, def-cassette-dispatch-failure, etc.),
+// a real, longstanding gap fixed here rather than left for the next
+// new type to also silently miss.
+//
+// Real, honest tradeoff, same as every other version-gated mock
+// service in this app: a version bump wipes the ENTIRE stored list
+// and reseeds from SEED_DEFICIENCY_TYPES below, not just the changed
+// entries — this includes any custom deficiency type a site added of
+// its own via the real admin UI (components/Config/System/
+// DeficienciesSection.tsx). Accepted here for the same reason it's
+// accepted everywhere else this pattern is used in a mock/demo data
+// layer: the alternative (a genuinely missing new type, silently and
+// permanently, for anyone with existing localStorage data) is worse.
+const DEFICIENCY_TYPE_VERSION = '3'; // bumped: added def-stain-batch-failed
+const DEFICIENCY_TYPE_VERSION_KEY = 'pathscribe_deficiency_types_version';
+if (typeof localStorage !== 'undefined') {
+  try {
+    if (localStorage.getItem(DEFICIENCY_TYPE_VERSION_KEY) !== DEFICIENCY_TYPE_VERSION) {
+      localStorage.removeItem('pathscribe_deficiency_types');
+      localStorage.setItem(DEFICIENCY_TYPE_VERSION_KEY, DEFICIENCY_TYPE_VERSION);
+    }
+  } catch { /* SSR / sandboxed env — ignore */ }
+}
+
 // Starter set — one concrete type this session actually needs
 // ("Could Not Match Specimen to Dictionary"), plus a handful of the more
 // common CoPathPlus-equivalent categories so the dictionary isn't empty
@@ -67,6 +94,35 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
     id: 'def-missing-fixation-time', name: 'Missing Fixation Time', status: 'Active', level: 'specimen',
     description: 'Specimen type requires cold-ischemia/fixation timing (CAP/ASCO biomarker guidance, e.g. breast ER/PR/HER2) but no fixative-added time has been documented. Blocks case sign-out until resolved — see Resolution Types for the three legitimate ways to resolve it (documented, estimated, or confirmed unrecoverable).',
   },
+  // Real, per direct request — genuinely distinct from
+  // def-missing-fixation-time above: that one covers the real, existing
+  // hard gate on fixation START (processedAt) at sign-out. This one
+  // covers the real, record-only fixation END time and fixative:tissue
+  // ratio confirmation (update-244) — neither of which has any gate at
+  // all. Per direct decision, this is raised manually by a human who
+  // notices the gap (Grossing Screen or the QA Deficiencies tab), never
+  // automatically — see mockSpecimenDeficiencyService.raise() call
+  // sites for the real distinction between an auto-detected deficiency
+  // and a manually-raised one (SpecimenDeficiency.raisedBy).
+  {
+    id: 'def-missing-fixation-completion', name: 'Missing Fixation Completion Data', status: 'Active', level: 'specimen',
+    description: 'Specimen reached grossing without a documented fixation end time and/or a confirmed fixative:tissue ratio (ISO 15189 traceability). Unlike Missing Fixation Time, this is never auto-raised by a gate — a reviewer identifies the gap and raises it manually.',
+  },
+  // Real, per the original Stain QC Module spec's own §2.4 ("a
+  // control run or routine stain batch fails, PathScribe shall flag
+  // the entire run, prevent clinical reporting, and trigger a
+  // troubleshooting, re-stain, or solution-change workflow") — unlike
+  // def-missing-fixation-completion above, this one IS auto-raised,
+  // by resolveStainQcGate.ts's own real 'blocked-failed' outcome, the
+  // moment a real inbound 'Run Failed' instrument status is received
+  // — never left for a human to notice and raise by hand, since a
+  // known instrument failure is a real, conclusive signal already in
+  // hand, not a gap requiring a reviewer to first spot it.
+  {
+    id: 'def-stain-batch-failed', name: 'Stain Batch Failed', status: 'Active', level: 'specimen',
+    description: 'An automated stainer reported a real run failure for a batch this specimen\u2019s own material was in. Blocks sign-out in every real QC enforcement mode until resolved — see resolveStainQcGate.ts\u2019s own "blocked-failed" outcome.',
+  },
+
   // Real, per direct guidance's own cross-jurisdiction pre-analytic
   // compliance research (UKAS ISO 15189 Clause 7.2, CAP/CLIA
   // Sec 493.1241, RCPath, EU IVDR/ISO 15189, IANZ AS ISO 15189:2022,

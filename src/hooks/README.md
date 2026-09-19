@@ -187,7 +187,16 @@ audit logging, and a few smaller single-purpose hooks.
   keyboard-emulating pedals (a common, simpler approach many pedal
   vendors use instead of true HID). Bindings are captured live from
   whatever hardware is actually connected — never a hardcoded guess
-  at a specific pedal model's button index or keycode.
+  at a specific pedal model's button index or keycode. Originally
+  wired only into `SynopticReportPage.tsx`'s dictation controls.
+  **Real fix (Sep 2026):** the same hook is now also called from
+  `MicrotomyWorkstationPage.tsx` (Pedal 2 → Print/Etch Next) and
+  `EmbeddingStationPage.tsx` (Pedal 1 → piece-count confirmation) —
+  both pages had previously (incorrectly) disclaimed foot-pedal
+  support as unreachable from a browser; each call site passes only
+  the `actions` it actually uses, since a physical pedal is bound
+  once per workstation, not per page. See
+  `types/footPedal/README.md` for the full per-page action mapping.
 - **`useAudioSegmentRecorder.ts`** — real feature, Foot Pedal 3
   ("Pause Audio / Replay Last Segment"). The existing dictation system
   (`VoiceProvider`, via the Web Speech API's `SpeechRecognition`) only

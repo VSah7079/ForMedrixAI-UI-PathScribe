@@ -175,7 +175,7 @@ const LoginPage: React.FC = () => {
               ForMedrixAI sits in the colophon at the foot of the card. */}
           <div className="ps-login-brand">
             <img
-              src="/pathscribe-logo-clean.svg"
+              src="/pathscribe-logo-clean.png"
               alt="PathScribe"
               className="ps-login-hero"
             />
@@ -291,15 +291,11 @@ const LoginPage: React.FC = () => {
           <div className="ps-login-colophon">
             <img
               src="/formedrix-logo-capM-dark.png"
-              alt="ForMedrixAI"
+              alt="ForMedrixAI — Precision, Care, Innovation"
               width={175}
-              height={41}
+              height={44}
               className="ps-login-colophon-logo"
             />
-            <div className="ps-login-colophon-tagline">
-              Precision <span className="ps-login-tagline-sep">&bull;</span> Care{' '}
-              <span className="ps-login-tagline-sep">&bull;</span> Innovation
-            </div>
             {APP_VERSION && (
               <span className="ps-login-colophon-meta">v{APP_VERSION}</span>
             )}

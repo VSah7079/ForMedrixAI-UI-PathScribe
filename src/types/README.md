@@ -1,14 +1,16 @@
 # src/types/
 
-Pure TypeScript type/interface definitions — no runtime logic. 12
+Pure TypeScript type/interface definitions — no runtime logic. 14
 subfolders (each with its own `README.md`, linked below) plus 13
-root-level files. 38 files total.
+root-level files. 40 files total.
 
 ## Folder index
 
 | Folder | What it is |
 |---|---|
 | [access/](./access/README.md) | Real, tracked access-request tickets (Pediatric, Pool, Orchestration) |
+| [assetLocation/](./assetLocation/README.md) | **NEW (Sep 2026)** — governed physical/asset location dictionary entry shape (mortuary storage, workstations, archive shelves) |
+| [autopsy/](./autopsy/README.md) | **NEW (Sep 2026)** — Autopsy Pathology Module core data model: case authority, forensic/consent records, PAD/FAD snapshots, organ retention, ancillary holds |
 | [case/](./case/README.md) | **Central folder** — the core case domain model (`Case`, `Specimen`, `RetentionHold`, `CaseHold`, `MatrixBlock`, and more) |
 | [config/](./config/README.md) | Org-hierarchy config shapes (CaseMask, Enterprise, Hospital tier) |
 | [events/](./events/README.md) | PathScribe-owned internal event contracts for the LIS/middleware integration seam |

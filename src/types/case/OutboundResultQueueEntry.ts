@@ -35,7 +35,7 @@
  *   'ADDENDUM'  — a new, additional real instance finalized on a case
  *                 that already has at least one prior finalized
  *                 result (OBR-25/OBX-11 = A/F). */
-export type OruResultState = 'FINAL' | 'CORRECTED' | 'ADDENDUM';
+export type OruResultState = 'PRELIMINARY' | 'FINAL' | 'CORRECTED' | 'ADDENDUM';
 
 export interface OutboundResultQueueEntry {
   /** Real UUID — the external "TransactionID" a downstream interface

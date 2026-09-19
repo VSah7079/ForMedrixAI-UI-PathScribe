@@ -212,7 +212,7 @@ const DismissConfirmationModal: React.FC<{ request: ActiveIntraopRequest; onClos
             <h2 className="ps-orboard-modal-title">{t('orSuiteDashboard.confirmDismissalTitle')}</h2>
             <div className="ps-orboard-safety-redisplay">
               <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.patient')}</span> {request.patientName}</div>
-              <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.mrn')}</span> {request.mrn}</div>
+              <div><span className="ps-orboard-safety-label" data-phi="mrn">{t('orSuiteDashboard.mrn')}</span> {request.mrn}</div>
               <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.orRoom')}</span> {request.locationDisplay ?? request.orNumber}</div>
               <div className="ps-orboard-safety-diagnosis">
                 <span className="ps-orboard-safety-label">{t('orSuiteDashboard.preliminaryDiagnosis')}</span>

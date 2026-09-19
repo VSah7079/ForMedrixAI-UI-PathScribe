@@ -26,6 +26,25 @@ const SEED_RULES: CassetteRoutingRule[] = [
     createdAt: '2026-06-01T00:00:00.000Z',
     updatedAt: '2026-06-01T00:00:00.000Z',
   },
+  // Real, per direct follow-up: "it all needs to be wired" —
+  // proto-autopsy-cardiac-sectioning (mockProtocolService.ts) had no
+  // real cassette routing rule at all, so blocks it generates got no
+  // color, unlike the Renal Protocol's own rule right above. White,
+  // not one of the urgency/type-specific colors already claimed
+  // (STAT/Rush/CellBlock/Small Biopsy) — a real, neutral, routine
+  // choice, since autopsy blocks aren't themselves a STAT/Rush
+  // category the way a live surgical specimen can be.
+  {
+    id: 'route-autopsy-cardiac-protocol',
+    name: 'Autopsy Cardiac Sectioning — White',
+    description: 'Blocks generated from the Autopsy Cardiac Sectioning protocol (coronary vessels and myocardium) route to white cassette stock — a real, neutral, routine choice distinct from every other urgency/type-specific color already in use.',
+    conditions: { protocolId: 'proto-autopsy-cardiac-sectioning' },
+    colorId: 'color-white',
+    priorityWeight: 10,
+    active: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
   {
     id: 'route-stat-override',
     name: 'STAT Override',

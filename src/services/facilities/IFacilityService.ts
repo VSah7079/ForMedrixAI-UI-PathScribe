@@ -487,6 +487,54 @@ export interface Facility {
     bypassForStat: boolean;
   } | null;
 
+  /** Real, per direct follow-up ("keep track of these settings so the
+   *  customer can control this concordance review behavior") — same
+   *  real inheritSystemDefault shape as releaseBufferOverride above,
+   *  for the same real reason (one clear switch an admin can see and
+   *  flip, not an implicit "leave it blank" convention).
+   *  aiComparisonEnabled/reviewScreenEnabled are only meaningful when
+   *  inheritSystemDefault is false. Governs the frozen-vs-final
+   *  concordance flag/review screen decided this session (and any
+   *  future PAD-vs-FAD equivalent, once Autopsy's own report-content
+   *  model exists to support one) — never Autopsy-specific on its
+   *  own. */
+  concordanceReviewSettingsOverride?: {
+    inheritSystemDefault: boolean;
+    aiComparisonEnabled: boolean;
+    reviewScreenEnabled: boolean;
+  } | null;
+
+  /** Real, per direct spec ("Decoupled Dispatch & Print Management
+   *  System") — the minimal, per-facility config Component B (the
+   *  Print Queue Engine) actually needs to route a print job:
+   *  whether this facility wants report printing at all, and which
+   *  of the two real modes (types/printing/PrintJob.ts's own
+   *  PrintDeliveryMode) to use. Deliberately NOT the full Delivery
+   *  Configuration Rules Engine from the same spec (provider/
+   *  location/report-type action matrix — Electronic Only/Print
+   *  Only/Dual/Suppress) — that's real, separate, larger work,
+   *  explicitly deferred. This is just enough real config to make
+   *  Component B itself testable and usable today. `undefined`
+   *  (never configured) means printing is off for this facility —
+   *  never a silent, surprise print job for a site that never opted
+   *  in. */
+  printDeliveryConfig?: {
+    enabled: boolean;
+    mode: 'NATIVE_QZ_TRAY' | 'INTERFACE_ENGINE_HANDOFF';
+    /** Real, only meaningful for NATIVE_QZ_TRAY — see
+     *  PrintJob.printerName's own doc comment for the same real
+     *  reasoning. */
+    printerName?: string;
+    /** Real, per direct follow-up ("we need to be able to define what
+     *  kind of printer paper we are using... UK uses A4") — see
+     *  types/printing/PrintJob.ts's own PaperSize/
+     *  PAPER_SIZE_DIMENSIONS_MM for the real, standard dimensions this
+     *  resolves to. Defaults to 'LETTER' when unset (this app's own
+     *  existing, established US-market default), never silently
+     *  assumed A4 for a site that never configured it. */
+    paperSize?: import('@/types/printing/PrintJob').PaperSize;
+  };
+
   status: 'Active' | 'Inactive' | 'Unverified';
   /** TRANSITIONAL BRIDGE FIELD — real, per direct guidance, Phase 1 of
    *  the Organisation/Site -> Facility migration ("fix auth/tenant-

@@ -106,8 +106,10 @@ other consumers of the root-level file, deleted it. Full detail in
 | [ai/](./ai/README.md) | Core AI provider abstraction (Claude/GPT/Bedrock swap layer) |
 | [aiBehavior/](./aiBehavior/README.md) | Admin AI behavior settings (confidence thresholds etc.) |
 | [aiIntegration/](./aiIntegration/README.md) | Higher-level AI features: transcript refine, suggestions, spellcheck |
+| [assetLocation/](./assetLocation/README.md) | **NEW (Sep 2026)** — governed physical/asset location dictionary (mortuary storage, workstations, archive shelves), following the exact Department/Physician `findOrCreateByName` governance pattern; built to address `MaterialLocation.location`'s own free-text drift risk without losing its real external-system tolerance |
 | [auditlog/](./auditlog/README.md) | System-wide audit log |
 | [auth/](./auth/README.md) | Case access control + institution/session resolution (not login) |
+| [autopsy/](./autopsy/README.md) | **NEW (Sep 2026)** — Autopsy Pathology Module (PS-261, RFP-APLIS-2026-GLOBAL §3.1.C): case authority (forensic/hospital-consented), the real legal hard-stop gross-examination gate, temporary accession, mortuary storage occupancy (via `Specimen.locationHistory`, not a parallel mechanism), and jurisdiction-specific consent/HTA rules |
 | [batches/](./batches/README.md) | **NEW (August 2026)** — cassette/slide chain-of-custody through histology processing nodes via container barcode scanning, plus the real, computed pending-batch-load queue |
 | [billing/](./billing/README.md) | **NEW (August 2026)** — real CPT-to-work-RVU mapping table and calculation, workload/productivity tracking only (not a billing system) |
 | [biometric/](./biometric/README.md) | WebAuthn e-signature |
@@ -123,6 +125,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [codes/](./codes/README.md) | Terminology system CONFIG (which SNOMED/ICD variants are enabled) |
 | [coldChain/](./coldChain/README.md) | **NEW (Sep 2026)** — RFP-APLIS-2026-GLOBAL Reference Laboratory Sensor & Cold-Chain Integration gap: real telemetry ingestion, excursion detection against an admin-editable threshold dictionary, and a real workflow hold on `batches/`'s own Batch entity |
 | [communications/](./communications/README.md) | Email/notification transport |
+| [consultAccess/](./consultAccess/README.md) | **NEW (Sep 2026)** — PS-290, External Consult / Second-Opinion Access — scoped, revocable opaque access tokens and Phase 1 Hybrid opinion capture. NOT real token security; read the folder's own README/`IConsultTokenService.ts` header before touching this |
 | [containerTypes/](./containerTypes/README.md) | Specimen container-type dictionary |
 | [cytology/](./cytology/README.md) | **NEW (Sep 2026)** — Phase 1 of the Cytology & Cervical Screening module: real, standard 2014 Bethesda System category dictionary (adequacy, general categorization, interpretation/result) |
 | [deficiencies/](./deficiencies/README.md) | Specimen/requisition deficiency tracking |
@@ -134,6 +137,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [events/](./events/README.md) | **NEW (August 2026)** — real-time event distribution layer for critical patient state changes (Patient/Encounter Management Subsystem Phase 4) |
 | [externalResources/](./externalResources/README.md) | **NEW (July 2026)** — admin-managed reference links (CAP protocols, WHO classification, lab systems), org-scoped with real per-viewer relevance filtering |
 | [facilities/](./facilities/README.md) | **NEW (August 2026)** — canonical `Facility` entity, replaces the old `clients/` (`Client`) entirely |
+| [facilityOpsDashboard/](./facilityOpsDashboard/README.md) | **NEW (Sep 2026)** — PS-288, fifth of the PS-284→285→286→287→288 workstation-build sequence: the Display Profile/device registry plus five real, pure aggregation functions (one per department dashboard view) over `batches/`, `referral/`, and `digitalPathology/`'s own existing data — no new parallel data model |
 | [flags/](./flags/README.md) | Case/specimen flag dictionary |
 | [fonts/](./fonts/README.md) | Editor font dictionary |
 | [governingBodies/](./governingBodies/README.md) | **NEW (August 2026)** — real persistence for the Governing Bodies list (CAP, RCPath, ICCR, RCPA, + custom) |

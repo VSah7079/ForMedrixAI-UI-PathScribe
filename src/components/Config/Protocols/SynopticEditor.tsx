@@ -35,14 +35,44 @@ import { useTerminologyAlerts } from '../../../hooks/useTerminologyAlerts';
 
 export type FieldType = 'dropdown' | 'radio' | 'checkboxes' | 'numeric' | 'text' | 'longtext';
 
-export interface VisibilityCondition { fieldId: string; answerId: string; }
+/** Real, per direct guidance's own confirmed decision (PS-272): extended
+ *  for real, multi-value OR-logic (e.g. a real section revealed for
+ *  Whole Body, Head-and-Neck, AND Thoraco-Abdominal specimen
+ *  containers alike) — the real Autopsy Grossing Synoptic's own Part B
+ *  rules genuinely need this; a single answerId alone can't express
+ *  it. Kept additive: answerIds is optional and checked first when
+ *  present; every real, existing single-value condition (answerId
+ *  alone) keeps working completely unchanged. */
+export interface VisibilityCondition { fieldId: string; answerId: string; answerIds?: string[]; }
 
-export interface FieldOption { id: string; label: string; snomed: string; icd: string; }
+/** Real, per direct guidance's own confirmed decision (PS-272):
+ *  `lexiconTermKey` added alongside — never replacing — the real,
+ *  existing `snomed`/`icd` fields, the same additive-migration-seam
+ *  pattern already used elsewhere in this codebase. References a
+ *  real PathologyLexiconEntry.termKey (types/cytology/PathologyLexicon.ts)
+ *  whenever this option represents a real, specialized diagnostic/
+ *  clinical term warranting the Managed Pathology Lexicon's own
+ *  narrative/validation treatment — undefined for every real option
+ *  that doesn't. */
+export interface FieldOption { id: string; label: string; snomed: string; icd: string; lexiconTermKey?: string; }
 
 export interface EditorField {
   id: string; label: string; type: FieldType; required: boolean;
   snomed: string; icd: string; options: FieldOption[];
   hint?: string; visibleWhen?: VisibilityCondition;
+  /** Real, per direct guidance's own confirmed tiered-validation
+   *  architecture: "Tier 2: Conditional Requirements... Make
+   *  downstream fields required ONLY when triggered by a parent
+   *  selection." Reuses the real, existing VisibilityCondition shape
+   *  rather than inventing a second one — genuinely independent of
+   *  `visibleWhen` on purpose: a real field can be visible but only
+   *  softly validated (Tier 3), or required only under a specific
+   *  parent answer that differs from whatever made it visible in the
+   *  first place. `required` above stays real, unconditional Tier 1
+   *  ("Section Status / Examiner Confirmation... Specimen/Organ
+   *  Status") — never overloaded to also mean "required once
+   *  visible." */
+  requiredIf?: VisibilityCondition;
   /** Groups related fields under one marker card in the Biomarkers display
    *  (e.g. "ER Status", "ER % Positivity", "ER Intensity" all tagged
    *  markerGroup: "ER" render as one card with those details listed
@@ -377,10 +407,18 @@ function allChoiceFields(template: EditorTemplate): { id: string; label: string;
   );
 }
 
-function isVisible(condition: VisibilityCondition | undefined, answers: Record<string, string | string[]>): boolean {
+export function isVisible(condition: VisibilityCondition | undefined, answers: Record<string, string | string[]>): boolean {
   if (!condition) return true;
   const val = answers[condition.fieldId];
   if (!val) return false;
+  // Real, per PS-272's own confirmed multi-value extension — checked
+  // first, before falling back to the original, real single-value
+  // answerId check below, so every real, existing condition keeps
+  // working completely unchanged.
+  if (condition.answerIds && condition.answerIds.length > 0) {
+    if (Array.isArray(val)) return val.some(v => condition.answerIds!.includes(v));
+    return condition.answerIds.includes(val);
+  }
   if (Array.isArray(val)) return val.includes(condition.answerId);
   return val === condition.answerId;
 }

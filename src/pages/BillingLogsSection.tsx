@@ -412,7 +412,7 @@ const BillingLogsSection: React.FC = () => {
                   <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient Name" /></div>
                   <input className="ps-searchpage-filter-input" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Last, First" />
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient Name Range (A\u2013Z)" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient Name Range (A–Z)" /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
                       <div className="ps-searchpage-date-label">From</div>
@@ -556,7 +556,7 @@ const BillingLogsSection: React.FC = () => {
                           {results.map(e => (
                             <tr key={e.id} className="ps-conf-tr">
                               <td className="ps-conf-td">{e.caseNumber}</td>
-                              <td className="ps-conf-td">{e.patientName}</td>
+                              <td className="ps-conf-td" data-phi="name">{e.patientName}</td>
                               <td className="ps-conf-td">{e.patientId}</td>
                               <td className="ps-conf-td">{formatDateTime(e.timestamp)}</td>
                               <td className="ps-conf-td">{BILLING_AUDIT_LOG_KIND_LABEL[e.kind]}</td>

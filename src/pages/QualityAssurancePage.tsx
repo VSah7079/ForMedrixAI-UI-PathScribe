@@ -64,6 +64,7 @@ import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundC
 import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
 import { correctServiceCharge } from '@/services/billing/correctServiceCharge';
 import { mockCaseService } from '@/services/cases/mockCaseService';
+import type { Case } from '@/types/case/Case';
 import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
 import { isCaseSignedOutForBilling } from '@/services/billing/isCaseSignedOutForBilling';
 import type { ReasonDictionaryEntry } from '@/types/reasons/ReasonDictionaryEntry';
@@ -233,6 +234,98 @@ const ContainModal: React.FC<{
             onClick={() => onContain(resolutionTypeId, resolutionComment)}
             disabled={!resolutionTypeId || !resolutionComment.trim()}>
             Close — Contained
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Raise modal — real, per direct decision ("should be raised to a ────────
+// ── CAPA by a human"): a human picks a case/specimen and a real ─────────────
+// ── DeficiencyType and raises an open deficiency by hand. This is the ──────
+// ── real DETECTION step, distinct from Escalate to CAPA (resolve()) — ──────
+// ── raising here never itself constitutes a CAPA; a reviewer decides ───────
+// ── Contain/Escalate/Leave on the open item afterward, same as any other ───
+// ── deficiency this page already lists. ─────────────────────────────────────
+const RaiseDeficiencyModal: React.FC<{
+  deficiencyTypes: DeficiencyType[];
+  onRaise: (input: { caseId: string; specimenId?: string; specimenLabel?: string; deficiencyTypeId: string; comment: string }) => void;
+  onClose: () => void;
+}> = ({ deficiencyTypes, onRaise, onClose }) => {
+  const [caseId, setCaseId] = useState('');
+  const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not-found'>('idle');
+  const [foundCase, setFoundCase] = useState<Case | null>(null);
+  const [specimenId, setSpecimenId] = useState('');
+  const [deficiencyTypeId, setDeficiencyTypeId] = useState('');
+  const [comment, setComment] = useState('');
+
+  const handleLookup = () => {
+    if (!caseId.trim()) return;
+    setLookupState('loading');
+    mockCaseService.getCase(caseId.trim()).then(c => {
+      setFoundCase(c ?? null);
+      setLookupState(c ? 'found' : 'not-found');
+      setSpecimenId('');
+    });
+  };
+
+  const selectedSpecimen = (foundCase?.specimens ?? []).find((sp: any) => sp.id === specimenId);
+  const activeTypes = deficiencyTypes.filter(t => t.status === 'Active');
+  // Real — a specimen-only type genuinely requires picking a real
+  // specimen from the found case; a case-level type doesn't. 'both'
+  // is offered either way, matching this app's own real, existing
+  // "safe, permissive default" convention for an unclassified level.
+  const eligibleTypes = activeTypes.filter(t => t.level !== 'specimen' || !!specimenId);
+
+  return (
+    <div className="ps-ms-overlay">
+      <div className="ps-ms-modal">
+        <div className="ps-ms-header">Raise Deficiency</div>
+        <div className="ps-ms-body">
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="raise-def-case-id">Case ID / Accession <span className="ps-conf-required">*</span></label>
+            <div className="ps-qa-tab-toolbar">
+              <input id="raise-def-case-id" className="ps-conf-input" value={caseId}
+                onChange={e => { setCaseId(e.target.value); setLookupState('idle'); }} placeholder="Case ID" />
+              <button className="ps-conf-btn-secondary" onClick={handleLookup} disabled={!caseId.trim()}>Look up</button>
+            </div>
+            {lookupState === 'not-found' && <span className="ps-conf-error-text">No case found with that ID.</span>}
+          </div>
+
+          {foundCase && (
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="raise-def-specimen">Specimen (optional \u2014 leave blank for a case-level issue)</label>
+              <select id="raise-def-specimen" className="ps-conf-select" value={specimenId} onChange={e => setSpecimenId(e.target.value)}>
+                <option value="">\u2014 Whole case \u2014</option>
+                {(foundCase.specimens ?? []).map((sp: any) => <option key={sp.id} value={sp.id}>{sp.label}{sp.description ? ` \u2014 ${sp.description}` : ''}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="raise-def-type">Deficiency Type <span className="ps-conf-required">*</span></label>
+            <select id="raise-def-type" className="ps-conf-select" value={deficiencyTypeId} onChange={e => setDeficiencyTypeId(e.target.value)}>
+              <option value="">Select a type\u2026</option>
+              {eligibleTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label" htmlFor="raise-def-comment">What was observed <span className="ps-conf-required">*</span></label>
+            <textarea id="raise-def-comment" className="ps-conf-input ps-conf-textarea" value={comment} onChange={e => setComment(e.target.value)}
+              placeholder="Describe the specific issue observed" />
+          </div>
+        </div>
+        <div className="ps-ms-footer">
+          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-primary"
+            onClick={() => onRaise({
+              caseId: foundCase!.id, specimenId: specimenId || undefined,
+              specimenLabel: selectedSpecimen?.label, deficiencyTypeId, comment: comment.trim(),
+            })}
+            disabled={!foundCase || !deficiencyTypeId || !comment.trim()}>
+            Raise Deficiency
           </button>
         </div>
       </div>
@@ -558,6 +651,7 @@ const QualityAssurancePage: React.FC = () => {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [containingId, setContainingId] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [showRaiseDeficiencyModal, setShowRaiseDeficiencyModal] = useState(false);
   const [managementReviews, setManagementReviews] = useState<ManagementReview[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [billingDeficiencies, setBillingDeficiencies] = useState<BillingDeficiencyRecord[]>([]);
@@ -647,7 +741,7 @@ const QualityAssurancePage: React.FC = () => {
       'Verification Due': d.verificationDueDate ?? '',
       'Reopen Count': d.reopenCount ?? 0,
     }));
-    exportQaReportRows(rows, `quality-assurance-active-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `quality-assurance-active-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const exportClosed = () => {
@@ -661,7 +755,7 @@ const QualityAssurancePage: React.FC = () => {
       'Reopen Count': d.reopenCount ?? 0,
       'Management Review': d.managementReviewId ?? 'not yet reviewed',
     }));
-    exportQaReportRows(rows, `quality-assurance-closed-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `quality-assurance-closed-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const exportManagementReviews = () => {
@@ -671,7 +765,7 @@ const QualityAssurancePage: React.FC = () => {
       'Items in Scope': r.deficiencyIds.length,
       'Findings': r.findings,
     }));
-    exportQaReportRows(rows, `quality-assurance-management-reviews-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `quality-assurance-management-reviews-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   // 'closed' stays its own simple status filter, sorted by when raised
@@ -888,6 +982,18 @@ const QualityAssurancePage: React.FC = () => {
     specimenDeficiencyService.containImmediately(containingId, {
       resolutionTypeId, resolutionComment, resolvedBy,
     }).then(done);
+  };
+
+  // Real, per direct decision — a human raises this manually; never
+  // an automatic capaTriggerRule-style detection. Reuses the real,
+  // existing raise() a manually-raised deficiency always goes
+  // through, same call site AccessionPage.tsx's own manual flow
+  // already uses — no new backend/storage mechanism.
+  const handleRaiseDeficiency = (input: { caseId: string; specimenId?: string; specimenLabel?: string; deficiencyTypeId: string; comment: string }) => {
+    specimenDeficiencyService.raise({
+      caseId: input.caseId, specimenId: input.specimenId, specimenLabel: input.specimenLabel,
+      deficiencyTypeId: input.deficiencyTypeId, comment: input.comment, raisedBy: user?.id ?? 'unknown',
+    }).then(() => { setShowRaiseDeficiencyModal(false); loadAll(); });
   };
 
   const handleVerify = (outcome: 'effective' | 'recurred', comment: string) => {
@@ -1115,7 +1221,7 @@ const QualityAssurancePage: React.FC = () => {
               'Resolution': d.resolutionReasonCode ?? '',
               'Resolved': d.resolvedAt ?? '',
             })),
-            `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.xlsx`
+            `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.csv`
           )}>Export</button>
         </div>
         <div className="ps-conf-table-wrap">
@@ -1192,6 +1298,9 @@ const QualityAssurancePage: React.FC = () => {
       {(tab === 'case-specimen' || tab === 'escalated' || tab === 'closed') && (
         <div className="ps-qa-tab-toolbar">
           <button className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>Export</button>
+          {tab === 'case-specimen' && (
+            <button className="ps-conf-btn-primary" onClick={() => setShowRaiseDeficiencyModal(true)}>Raise Deficiency</button>
+          )}
         </div>
       )}
 
@@ -1322,6 +1431,9 @@ const QualityAssurancePage: React.FC = () => {
       )}
       {verifyingItem && (
         <VerifyModal deficiency={verifyingItem} onVerify={handleVerify} onClose={() => setVerifyingId(null)} />
+      )}
+      {showRaiseDeficiencyModal && (
+        <RaiseDeficiencyModal deficiencyTypes={deficiencyTypes} onRaise={handleRaiseDeficiency} onClose={() => setShowRaiseDeficiencyModal(false)} />
       )}
       {resolvingBillingDeficiency && (
         <ResolveBillingDeficiencyModal deficiency={resolvingBillingDeficiency} onResolve={handleResolveBillingDeficiency} onClose={() => setResolvingBillingDeficiencyId(null)} />

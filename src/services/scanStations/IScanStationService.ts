@@ -49,6 +49,20 @@ export interface ScanStation {
   facilityId: string;
   /** Guided free text — see SCAN_STATION_WORKFLOW_STAGES. */
   workflowStage?: string;
+  /** Real, per PS-289 — real FK to WorkstationGroup.id
+   *  (services/workstationGroups/), replacing workflowStage's own
+   *  guided-free-text posture with a real, queryable group identity.
+   *  Deliberately additive, not a replacement: workflowStage stays
+   *  untouched and un-migrated — no automatic mapping is attempted
+   *  from its own free text, since that text isn't a reliable enough
+   *  source to auto-assign a real group membership from. Undefined
+   *  means genuinely unassigned, not "inherits some other group by
+   *  default." When set, the referenced group's own
+   *  performingLabFacilityId must match this station's own facilityId
+   *  — enforced at assignment time (see
+   *  mockScanStationService.ts's own update() logic), not merely
+   *  documented here. */
+  workstationGroupId?: string;
   status: 'Active' | 'Inactive';
   /** Real feature, per direct follow-up: "network printer IP
    *  assignment per station." Optional — most stations (any that

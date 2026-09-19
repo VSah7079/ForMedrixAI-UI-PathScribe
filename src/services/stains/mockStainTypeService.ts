@@ -5,28 +5,28 @@ import type { IStainTypeService, StainType } from './IStainService';
 
 let STAIN_TYPES: StainType[] = [
   { id: 'st-he',    name: 'H&E',                     category: 'Routine',       version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-pas',   name: 'PAS',                     category: 'Special Stain', description: 'Periodic acid–Schiff — fungal elements, basement membranes, glycogen.', defaultBillingCode: 'SPECIAL-STAIN', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-gms',   name: 'GMS',                     category: 'Special Stain', description: 'Grocott\u2019s methenamine silver — fungal organisms.', defaultBillingCode: 'SPECIAL-STAIN', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-trichrome', name: 'Trichrome',           category: 'Special Stain', description: 'Collagen/fibrosis assessment.', defaultBillingCode: 'SPECIAL-STAIN', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-ki67',  name: 'Ki-67',                   category: 'IHC', antibodyClone: '30-9', vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-er',    name: 'ER',                      category: 'IHC', antibodyClone: 'SP1',  vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-pr',    name: 'PR',                       category: 'IHC', antibodyClone: '1E2',  vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-her2',  name: 'HER2',                     category: 'IHC', antibodyClone: '4B5',  vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-pas',   name: 'PAS',                     category: 'Special Stain', description: 'Periodic acid–Schiff — fungal elements, basement membranes, glycogen.', defaultBillingCode: 'SPECIAL-STAIN', requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Liver (glycogen) / Kidney (basement membrane)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-gms',   name: 'GMS',                     category: 'Special Stain', description: 'Grocott\u2019s methenamine silver — fungal organisms.', defaultBillingCode: 'SPECIAL-STAIN', requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Known fungal-positive tissue', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-trichrome', name: 'Trichrome',           category: 'Special Stain', description: 'Collagen/fibrosis assessment.', defaultBillingCode: 'SPECIAL-STAIN', requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Liver (fibrosis)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-ki67',  name: 'Ki-67',                   category: 'IHC', antibodyClone: '30-9', vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Tonsil', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-er',    name: 'ER',                      category: 'IHC', antibodyClone: 'SP1',  vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Breast', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-pr',    name: 'PR',                       category: 'IHC', antibodyClone: '1E2',  vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Breast', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-her2',  name: 'HER2',                     category: 'IHC', antibodyClone: '4B5',  vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Breast', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Real, demo-labeled 88344 (multiplex antibody stain) - a genuine,
   // defensible case for a per-stain override, not the generic rule:
   // "Dual Stain" means p63 and CK5/6 are two separately identifiable
   // antibodies applied to the SAME slide, which real CPT guidance
   // (verified via direct search) codes as 88344 rather than as two
   // separate 88342/88341 charges.
-  { id: 'st-p63-ck56', name: 'p63/CK5/6 Dual Stain', category: 'IHC', description: 'Myoepithelial/basal marker dual stain — invasive vs. in-situ breast lesions.', defaultBillingCode: 'P63-CK56-DUAL', excludeFromIhcSequenceCounting: true, defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-pdl1',  name: 'PD-L1',                    category: 'IHC', antibodyClone: 'SP142', vendor: 'Ventana', defaultTurnaroundHours: 48, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-p63-ck56', name: 'p63/CK5/6 Dual Stain', category: 'IHC', description: 'Myoepithelial/basal marker dual stain — invasive vs. in-situ breast lesions.', defaultBillingCode: 'P63-CK56-DUAL', excludeFromIhcSequenceCounting: true, defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Breast', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-pdl1',  name: 'PD-L1',                    category: 'IHC', antibodyClone: 'SP142', vendor: 'Ventana', defaultTurnaroundHours: 48, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Tonsil', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Real, distinct entry - NOT a rename of the SP142 entry above. 22C3
   // (Dako/Agilent PD-L1 IHC 22C3 pharmDx) and SP142 (Ventana) are
   // genuinely different, separately FDA-approved companion diagnostic
   // assays used for different indications (22C3: NSCLC/CPS scoring;
   // SP142: triple-negative breast) - real, different vendors, real,
   // different clones, not the same test under two names.
-  { id: 'st-pdl1-22c3', name: 'PD-L1 (22C3)',         category: 'IHC', antibodyClone: '22C3', vendor: 'Dako/Agilent', defaultTurnaroundHours: 48, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-pdl1-22c3', name: 'PD-L1 (22C3)',         category: 'IHC', antibodyClone: '22C3', vendor: 'Dako/Agilent', defaultTurnaroundHours: 48, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Tonsil', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Real, per direct guidance's own worked example - "HER2 FISH...
   // typically targets ERBB2 and CEP17 as a 2-probe dual-color set."
   // 2 real, default targets -> billingRule resolves to 1 unit base +
@@ -61,6 +61,13 @@ let STAIN_TYPES: StainType[] = [
   // duplicated here.
   { id: 'st-pap-conventional', name: 'Pap Smear, Conventional', category: 'Cytology', description: 'Conventional (direct) Pap smear, Bethesda system reporting.', defaultBillingCode: 'PAP-CONVENTIONAL', defaultTurnaroundHours: 48, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   { id: 'st-pap-thinprep', name: 'Pap Smear, Liquid-Based (ThinPrep)', category: 'Cytology', description: 'Liquid-based Pap using the ThinPrep method - requires a ThinPrep/PreservCyt Vial at collection (Container Type dictionary).', defaultBillingCode: 'PAP-THINPREP', defaultTurnaroundHours: 48, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  // Real, per PS-284 (Microtomy Workstation)'s own Cytology & Decanting
+  // panel: "Stain Quick-Toggle: Pap Stain, Diff-Quik/Wright-Giemsa,
+  // H&E." Pap (both methods) and H&E (st-he, Routine) already existed
+  // in this dictionary; Diff-Quik/Wright-Giemsa (the standard rapid,
+  // air-dried Romanowsky stain used for on-site adequacy checks and
+  // non-GYN cytology) was the one genuinely missing entry.
+  { id: 'st-diffquik', name: 'Diff-Quik / Wright-Giemsa', category: 'Cytology', description: 'Rapid Romanowsky-type stain for air-dried cytology smears — on-site adequacy assessment, non-GYN cytology.', defaultTurnaroundHours: 4, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Real, per direct guidance's own HPV test suite. Molecular/
   // PCR_SINGLE - a real, nucleic-acid-based test, the same
   // generalized methodology this dictionary was built to support
@@ -88,10 +95,10 @@ let STAIN_TYPES: StainType[] = [
   // other IHC panel with more than one antibody (e.g. ER/PR/HER2
   // above), not a single bundled multiplex code the way a genuine
   // one-slide dual stain (p63/CK5/6 below) gets.
-  { id: 'st-mlh1',  name: 'MLH1',                     category: 'IHC', antibodyClone: 'M1',        vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-msh2',  name: 'MSH2',                     category: 'IHC', antibodyClone: 'G219-1129', vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-msh6',  name: 'MSH6',                     category: 'IHC', antibodyClone: 'SP93',      vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
-  { id: 'st-pms2',  name: 'PMS2',                     category: 'IHC', antibodyClone: 'EPR3947',   vendor: 'Ventana', defaultTurnaroundHours: 24, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-mlh1',  name: 'MLH1',                     category: 'IHC', antibodyClone: 'M1',        vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Colon (normal mucosa)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-msh2',  name: 'MSH2',                     category: 'IHC', antibodyClone: 'G219-1129', vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Colon (normal mucosa)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-msh6',  name: 'MSH6',                     category: 'IHC', antibodyClone: 'SP93',      vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Colon (normal mucosa)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
+  { id: 'st-pms2',  name: 'PMS2',                     category: 'IHC', antibodyClone: 'EPR3947',   vendor: 'Ventana', defaultTurnaroundHours: 24, requiresTargetControl: true, allowControlAutoAppend: true, defaultControlTissueType: 'Colon (normal mucosa)', version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(), active: true },
   // Immunofluorescence conjugates — the standard renal biopsy IF panel.
   // Genuinely different technique from IHC (fluorescent-conjugated,
   // not chromogenic), hence the separate category rather than folding

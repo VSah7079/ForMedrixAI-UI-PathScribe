@@ -100,7 +100,9 @@
     "itemCount_one": "{{count}} élément",
     "itemCount_other": "{{count}} éléments",
     "rackCheckedOutError": "Le portoir « {{value}} » est déjà affecté à un autre lot actif.",
-    "notFoundError": "Aucun lot ni contenant enregistré trouvé pour « {{value}} »."
+    "notFoundError": "Aucun lot ni contenant enregistré trouvé pour « {{value}} ».",
+    "disposalReportTile": "Rapport de traitement des déchets",
+    "disposalReportTitle": "Rapport de traitement des déchets — un journal filtrable et exportable de tout ce qui a déjà été éliminé, pour les audits CAP/CLIA/ISO 15189"
   },
   "newContainerModal": {
     "title": "Nouveau contenant",
@@ -551,5 +553,585 @@
       "GI_PANCREATIC": "GI/Pancréatique",
       "OTHER_NGYN": "Autre"
     }
+  },
+  "autopsyIntake": {
+    "title": "Admission d’autopsie — Accession temporaire",
+    "subtitle": "Le corps peut être reçu et réfrigéré immédiatement, même avant que l’autorisation légale complète ne soit au dossier. Complétez ce qui est connu maintenant ; le reste pourra suivre.",
+    "validationError": "Veuillez compléter les champs requis avant de soumettre.",
+    "selectPlaceholder": "Sélectionner...",
+    "jurisdictionLabel": "Juridiction",
+    "caseAuthorityLabel": "Autorité du dossier",
+    "caseAuthority": {
+      "medicolegal_forensic": "Médico-légal / Judiciaire",
+      "hospital_consented": "Consentement hospitalier"
+    },
+    "forensicSectionTitle": "Autorisation judiciaire",
+    "forensicSectionSubtitle": "Un ordre verbal urgent suffit pour recevoir le corps maintenant. L’autorisation écrite est requise avant que l’examen macroscopique ne puisse commencer.",
+    "authorityTypeLabel": "Type d’autorité",
+    "authorityTypePlaceholder": "ex. Coroner, Médecin légiste, Procureur",
+    "authorityNameLabel": "Nom de l’autorité",
+    "authorityNamePlaceholder": "Facultatif",
+    "verbalOrderAtLabel": "Ordre verbal reçu le",
+    "verbalOrderFromLabel": "Ordre verbal reçu de",
+    "verbalOrderFromPlaceholder": "ex. Coroner adjoint de garde",
+    "hospitalSectionTitle": "Consentement hospitalier",
+    "hospitalSectionSubtitle": "Le corps peut être reçu pendant que la famille décide. Notez la personne-ressource si elle est déjà connue.",
+    "relativeNameLabel": "Nom du proche consentant",
+    "relativeNamePlaceholder": "Facultatif, si déjà connu",
+    "relativeRelationshipLabel": "Lien de parenté",
+    "relativeRelationshipPlaceholder": "ex. conjoint, enfant adulte, parent",
+    "accessionStatus": {
+      "temporary": "Accession temporaire",
+      "fully_authorized": "Pleinement autorisé"
+    },
+    "grossExamPendingNote": "L’examen macroscopique ne peut commencer tant que l’autorisation complète n’est pas au dossier.",
+    "submitBtn": "Recevoir le corps"
+  },
+  "autopsyAuthCompletion": {
+    "title": "Compléter l’autorisation",
+    "subtitle": "Saisissez l’autorisation écrite dès qu’elle arrive. L’examen macroscopique reste bloqué tant qu’elle n’est pas au dossier.",
+    "onFileSectionTitle": "Déjà au dossier",
+    "verbalOrderOnFile": "Ordre verbal reçu de {{authority}} le {{at}}.",
+    "writtenOrderSectionTitle": "Ordre écrit",
+    "orderReferenceLabel": "Référence de l’ordre",
+    "orderReferencePlaceholder": "ex. numéro de référence du Coroner / Formulaire 6",
+    "orderDateLabel": "Date de l’ordre",
+    "relativeOnFile": "Personne-ressource au dossier : {{name}} ({{relationship}}).",
+    "consentGrantSectionTitle": "Octroi du consentement",
+    "consentGivenAtLabel": "Consentement donné le",
+    "consentScopeLabel": "Portée du consentement",
+    "consentScopePlaceholder": "ex. complet, sans prélèvement d’organes (séparés par des virgules)",
+    "validationError": "Veuillez compléter les champs requis avant de soumettre.",
+    "willUnblockNote": "La soumission permettra à l’examen macroscopique de procéder.",
+    "submitBtn": "Enregistrer l’autorisation",
+    "unknownValue": "inconnu"
+  },
+  "autopsyBodyRelease": {
+    "title": "Libération du corps",
+    "subtitle": "Enregistrez la destination de la libération du corps. Ceci fait partie de l’historique de localisation permanent du spécimen.",
+    "releasedToLabel": "Libéré vers",
+    "releasedToPlaceholder": "ex. Maison funéraire Smith",
+    "releasedByLabel": "Libéré par",
+    "releasedByPlaceholder": "ex. Technicien : M. Davis",
+    "validationError": "Veuillez remplir les deux champs avant de soumettre.",
+    "submitBtn": "Confirmer la libération",
+    "submittingBtn": "Libération en cours…",
+    "genericError": "Une erreur est survenue. Veuillez réessayer."
+  },
+  "disposalReport": {
+    "pageTitle": "Rapport de traitement des déchets",
+    "pageSubtitle": "Un rapport réel et calculé de chaque spécimen, bloc, lame, décantat et bloc/lame matriciel qui a réellement été éliminé — filtrable par établissement, type de matériau et date d'élimination, et exportable pour l'audit réglementaire.",
+    "stats": {
+      "total": "Total éliminé"
+    },
+    "materialType": {
+      "block": "Bloc tissulaire",
+      "slide": "Lame",
+      "wet_tissue": "Tissu humide"
+    },
+    "filters": {
+      "facilityLabel": "Filtrer par établissement",
+      "allFacilities": "Tous les établissements",
+      "materialTypeLabel": "Filtrer par type de matériau",
+      "allMaterialTypes": "Tous les types de matériau",
+      "dateFromLabel": "Date de début",
+      "dateTo": "à",
+      "dateToLabel": "Date de fin"
+    },
+    "columns": {
+      "disposedAt": "Éliminé",
+      "materialType": "Type",
+      "itemId": "ID de l'élément",
+      "caseAccession": "Dossier",
+      "specimen": "Spécimen",
+      "disposedBy": "Éliminé par",
+      "location": "Emplacement"
+    },
+    "export": {
+      "button": "Exporter",
+      "disposedAt": "Date d'élimination",
+      "materialType": "Type de matériau",
+      "itemId": "ID de l'élément",
+      "caseAccession": "Numéro de dossier",
+      "specimen": "Spécimen",
+      "disposedBy": "Éliminé par",
+      "location": "Emplacement"
+    },
+    "loading": "Calcul du rapport en cours…",
+    "empty": "Rien n'a encore été éliminé correspondant à ces filtres.",
+    "unknownLocation": "Inconnu"
+  },
+  "home": {
+    "addOnOrderTile": {
+      "title": "Commandes complémentaires",
+      "description": "Passer des commandes complémentaires à l'initiative du pathologiste — recoupes, colorations spéciales, IHC et biologie moléculaire — avec suivi en temps réel"
+    },
+    "pathologyWorkspaceTile": {
+      "title": "Espace de travail Pathologie",
+      "description": "Dépistage cytologique, diagnostic moléculaire, et postes de microtomie, d'inclusion et de distribution des lames"
+    },
+    "qualityComplianceTile": {
+      "title": "Qualité et conformité",
+      "description": "Journaux d'activité système et piste d'audit, et la file de travail de l'assurance qualité — non-conformités, réconciliation et gestion CAPA"
+    }
+  },
+  "qualityComplianceHub": {
+    "pageTitle": "Qualité et conformité",
+    "pageSubtitle": "Journaux système et piste d'audit, et la file de travail de l'assurance qualité — non-conformités, liaison peropératoire, discordance et réconciliation, et gestion CAPA",
+    "backToHome": "← Retour à l'accueil",
+    "auditTile": {
+      "title": "Audit",
+      "description": "Journaux d'activité système, journaux d'erreurs et d'exceptions d'interface, et piste d'audit financière"
+    },
+    "qualityAssuranceTile": {
+      "title": "Assurance qualité",
+      "description": "Non-conformités, liaison peropératoire, et rapports de discordance et réconciliation"
+    }
+  },
+  "pathologyWorkspace": {
+    "pageTitle": "Espace de travail Pathologie",
+    "pageSubtitle": "Dépistage cytologique, diagnostic moléculaire, et postes de microtomie, d'inclusion et de distribution des lames",
+    "backToHome": "← Retour à l'accueil",
+    "cytologyTile": {
+      "title": "Espace de travail Cytologie",
+      "description": "Centre principal de dépistage pour les frottis GYN, le triage non-GYN, le suivi des blocs cellulaires et le contrôle qualité obligatoire"
+    },
+    "microtomyTile": {
+      "title": "Espace de travail Microtomie",
+      "description": "Impression d'étiquettes de lames à la demande ou par lot en temps réel, gestion des colorations et préparation cytologie/décantation au poste du microtome"
+    },
+    "embeddingTile": {
+      "title": "Espace de travail Inclusion",
+      "description": "Scan/vérification des cassettes, confirmation du nombre de fragments, sélection du moule et signalement des écarts au poste d'inclusion"
+    },
+    "slideDistributionTile": {
+      "title": "Espace de travail Distribution des lames",
+      "description": "Sortie en scan continu vers les pathologistes ou vers un scanner numérique, avec alertes de destination divisée et gestion des exceptions"
+    },
+    "molecularTile": {
+      "title": "Espace de travail Moléculaire",
+      "description": "Gestion des lots et des plaques, suivi des analyses actives, et association CQ/échantillon pour le diagnostic moléculaire (VPH, CT/NG, PCR respiratoire)"
+    }
+  },
+  "microtomyWorkstation": {
+    "pageTitle": "Poste de microtomie",
+    "scanPrompt": "Scannez un code-barres de bloc ou de récipient de décantation/liquide pour commencer",
+    "scanPlaceholder": "Scannez ou saisissez un code-barres…",
+    "scanSubmit": "Valider",
+    "context": {
+      "accession": "Accession :",
+      "patient": "Patient :",
+      "dob": "Date de naissance :",
+      "specimenBlock": "Prélèvement/Bloc :",
+      "specimenType": "Type :",
+      "scanNext": "Scanner le bloc/décantation suivant →",
+      "title": "Résumé du bloc",
+      "flag": {
+        "tinyTissue": "Tissu minuscule",
+        "fragile": "Fragile",
+        "requiresDecal": "Décalcification requise"
+      },
+      "status": "Statut : ",
+      "pieceCount": "Nombre de fragments : ",
+      "tissueDescription": "Tissu : ",
+      "blockComments": "Commentaires du bloc",
+      "priorHistory": "Historique des lames",
+      "noHistory": "Aucune lame encore imprimée pour ce bloc."
+    },
+    "slideGrid": {
+      "title": "Grille des lames",
+      "slideComments": "Commentaires de la lame",
+      "col": {
+        "level": "Niveau",
+        "stain": "Coloration",
+        "status": "Statut d'impression",
+        "actions": "Actions"
+      },
+      "control": "Contrôle",
+      "commentOnLabelTitle": "Le commentaire de cette lame s'imprime sur l'étiquette physique",
+      "onLabel": "Sur l'étiquette",
+      "reprintedCount": "Réimprimé {{count}}×",
+      "print": "Imprimer",
+      "reprintReasonPrompt": "Motif…",
+      "reprint": "Réimprimer",
+      "addLevelTitle": "Couper un autre niveau de cette même coloration",
+      "addLevel": "+ Niveau",
+      "searchStains": "Rechercher une coloration…",
+      "selectStain": "Sélectionner une coloration…",
+      "duplicateCount": "×",
+      "levelDepth": "µm",
+      "pairControl": "Associer une lame contrôle"
+    },
+    "printStatus": {
+      "Pending": "En attente",
+      "Printing": "Impression…",
+      "Printed": "Imprimé",
+      "Failed": "Échec",
+      "Canceled": "Annulé"
+    },
+    "hardware": {
+      "printMode": "Mode d'impression",
+      "onDemand": "À la demande",
+      "batch": "Par lot",
+      "nextUnprinted": "Prochaine lame non imprimée :",
+      "printNext": "Imprimer/Graver la suivante",
+      "allPrinted": "Toutes les lames de ce bloc ont été imprimées.",
+      "selectedCount": "{{count}} lame(s) sélectionnée(s)",
+      "printBatch": "Imprimer le lot",
+      "deviceStatus": "État de l'appareil",
+      "noPrinter": "Aucune imprimante configurée",
+      "status": {
+        "ready": "Prêt",
+        "error": "Erreur d'impression",
+        "offline": "Hors ligne"
+      },
+      "labelPreview": "Aperçu de l'étiquette",
+      "noPreview": "Sélectionnez ou imprimez une lame pour prévisualiser son étiquette.",
+      "noStation": "Aucun poste de scan sélectionné pour cet appareil — configurez-en un depuis l'indicateur de poste de la barre de navigation.",
+      "notConfigured": "Ce poste n'est pas configuré pour l'impression réelle d'étiquettes de lames.",
+      "profileMissing": "Le profil d'imprimante configuré n'existe plus."
+    },
+    "cytology": {
+      "title": "Panneau liquide de prélèvement / décantation",
+      "volume": "Volume total (mL)",
+      "appearance": "Aspect",
+      "appearanceOption": {
+        "Clear": "Clair",
+        "Bloody": "Sanglant",
+        "Turbid": "Trouble"
+      },
+      "yield": "Rendement du culot de décantation",
+      "yieldOption": {
+        "Low": "Faible",
+        "Moderate": "Modéré",
+        "High": "Élevé"
+      },
+      "suggestionIntro": "Préparation suggérée :",
+      "prepMethod": {
+        "ThinPrepLiquidBased": "ThinPrep (en milieu liquide)",
+        "DirectSmearAirDried": "Frottis direct (séché à l'air)",
+        "DirectSmearFixed": "Frottis direct (fixé)",
+        "Cytospin": "Cytospin",
+        "CellBlock": "Bloc cellulaire"
+      },
+      "acceptSuggestion": "Accepter la suggestion"
+    },
+    "comments": {
+      "empty": "Aucun commentaire pour le moment.",
+      "placeholder": "Ajouter un commentaire…",
+      "printOnLabel": "Imprimer ce commentaire sur l'étiquette physique",
+      "add": "Ajouter le commentaire"
+    },
+    "removeReason": {
+      "title": "Motif requis",
+      "body": "Cette lame a déjà été imprimée — sélectionnez un motif pour l'annuler.",
+      "select": "Sélectionner un motif…"
+    },
+    "batchProgress": {
+      "title": "Progression de l'impression par lot",
+      "status": {
+        "pending": "En attente",
+        "printing": "Impression…",
+        "printed": "Imprimé",
+        "failed": "Échec"
+      },
+      "inProgress": "Impression…"
+    }
+  },
+  "embeddingStation": {
+    "pageTitle": "Poste d'inclusion",
+    "scanPrompt": "Scannez un code-barres de cassette pour commencer",
+    "scanPlaceholder": "Scannez ou saisissez un code-barres…",
+    "scanSubmit": "Valider",
+    "context": {
+      "accession": "Accession :",
+      "patient": "Patient :",
+      "dob": "Naissance :",
+      "specimenBlock": "Prélèvement/Bloc :",
+      "specimenType": "Type :",
+      "scanNext": "Scanner la cassette suivante →",
+      "title": "Résumé du bloc",
+      "flag": {
+        "tinyTissue": "Tissu minuscule",
+        "fragile": "Fragile",
+        "requiresDecal": "Décalcification requise"
+      },
+      "derivedBadge": {
+        "biopsy": "Biopsie",
+        "needleCore": "Carotte biopsique"
+      },
+      "status": "Statut : ",
+      "tissueDescription": "Tissu : ",
+      "blockComments": "Commentaires du bloc"
+    },
+    "pieceCount": {
+      "title": "Vérification du nombre de fragments",
+      "expected": "Attendu (à la macroscopie) : ",
+      "confirm": "Confirmer",
+      "observed": "Observé à l'inclusion : "
+    },
+    "discrepancy": {
+      "title": "Signalement d'un écart",
+      "reason": {
+        "missingTissue": "Tissu manquant/Cassette vide",
+        "extraTissue": "Tissu supplémentaire trouvé",
+        "unopenedCassette": "Cassette non ouverte/Tissu non traité",
+        "damagedCassette": "Cassette endommagée/Charnière cassée"
+      },
+      "lastFlagged": "Dernier signalement : {{reason}} (par {{by}})"
+    },
+    "mold": {
+      "title": "Taille de moule de base"
+    },
+    "orientation": {
+      "title": "Instructions d'orientation",
+      "placeholder": "Notes d'orientation libres…"
+    },
+    "splitBlock": {
+      "title": "Multi-cassette / Bloc scindé",
+      "none": "Aucun autre bloc non groupé sur ce prélèvement à associer.",
+      "pickPrompt": "Sélectionnez la ou les autre(s) cassette(s) sur lesquelles ce prélèvement a été scindé :",
+      "group": "Grouper comme cassettes scindées",
+      "pending": "Scindé sur {{labels}} — toutes les cassettes ne sont pas encore incluses.",
+      "allEmbedded": "Scindé sur {{labels}} — toutes les cassettes sont incluses."
+    },
+    "specimenSummary": {
+      "title": "Blocs du prélèvement",
+      "current": "actuel"
+    },
+    "hardware": {
+      "deviceStatus": "État de l'appareil",
+      "noPrinter": "Aucune imprimante configurée",
+      "status": {
+        "ready": "Prêt",
+        "error": "Erreur d'impression",
+        "offline": "Hors ligne"
+      },
+      "reprint": "Réimpression de cassette",
+      "reprintCassette": "Réimprimer la cassette",
+      "reprintCount": "Réimprimé {{count}} fois, dernière raison : ",
+      "reprintFailed": "Échec de la réimpression — voir le message ci-dessus.",
+      "labelPreview": "Aperçu de l'étiquette",
+      "noStation": "Aucun poste de scan sélectionné pour cet appareil — définissez-en un depuis l'indicateur de poste de la barre de navigation.",
+      "notConfigured": "Ce poste n'est pas configuré pour une impression réelle d'étiquettes de cassette.",
+      "profileMissing": "Le profil d'imprimante configuré n'existe plus."
+    },
+    "reprintReason": {
+      "title": "Raison requise",
+      "body": "La réimpression d'une étiquette de cassette nécessite une raison, à des fins d'audit de conformité.",
+      "select": "Sélectionnez une raison…"
+    },
+    "comments": {
+      "empty": "Aucun commentaire pour le moment.",
+      "placeholder": "Ajouter un commentaire…",
+      "add": "Ajouter un commentaire"
+    }
+  },
+  "slideDistribution": {
+    "pageTitle": "Poste de distribution des lames",
+    "scanPrompt": "Scannez une lame ou un code-barres de bloc/cassette — la file s'allonge en continu",
+    "scanPlaceholder": "Scannez ou saisissez un code-barres…",
+    "scanSubmit": "Valider",
+    "context": {
+      "queueCount": "Lames en file :",
+      "mode": "Mode de destination :",
+      "carrierOrScanner": "Support / Scanner :",
+      "tech": "Technicien :"
+    },
+    "queue": {
+      "title": "File de travail",
+      "count": "{{count}}",
+      "empty": "Aucune lame scannée pour le moment.",
+      "remove": "Retirer de la file",
+      "unrouted": "Pas encore orientée",
+      "unassigned": "Non assignée",
+      "pool": "Pool de sous-spécialité"
+    },
+    "slots": {
+      "title": "Progression du lot",
+      "empty": "Rien en file pour le moment — scannez une lame pour commencer."
+    },
+    "activeSlide": {
+      "title": "Lame active",
+      "slide": "Lame :",
+      "status": "Statut :",
+      "none": "Sélectionnez une lame dans la file ou la grille ci-dessus.",
+      "reprintLabel": "Déclencher une étiquette de remplacement",
+      "reprintFailed": "Échec de la réimpression — voir le message ci-dessus.",
+      "history": "Chaîne de traçabilité"
+    },
+    "destination": {
+      "title": "Destination et affectation",
+      "physical": "Sortie physique",
+      "digital": "Scanner numérique",
+      "searchPlaceholder": "Rechercher un pathologiste ou un pool…",
+      "slideFolderId": "ID du dossier de lames",
+      "trayNumber": "Numéro de plateau",
+      "courierBagId": "Sac de transport coursier",
+      "confirmPhysical": "Confirmer l'orientation physique",
+      "scannerInstrument": "Instrument scanner",
+      "rackId": "ID du portoir",
+      "slotPosition": "Position de l'emplacement",
+      "confirmDigital": "Confirmer l'orientation vers le scanner",
+      "assignFailed": "Impossible d'enregistrer cette orientation — voir le message ci-dessus.",
+      "selectFirst": "Sélectionnez d'abord une lame dans la file."
+    },
+    "exceptions": {
+      "title": "Journal des exceptions de scan",
+      "scanLogTitle": "Scans non résolus",
+      "resolve": "Résoudre",
+      "reason": {
+        "unreadableBarcode": "Code-barres illisible",
+        "unassignedAccession": "Accession non assignée",
+        "missingGlass": "Lame manquante",
+        "other": "Autre"
+      }
+    }
+  },
+  "addOnOrder": {
+    "pageTitle": "Constructeur de commandes complémentaires",
+    "search": {
+      "placeholder": "Rechercher ou scanner un numéro d'accession…",
+      "open": "Ouvrir le dossier"
+    },
+    "context": {
+      "caseStatus": "Statut du dossier",
+      "primaryPathologist": "Pathologiste principal",
+      "noPerformingLab": "Impossible de déterminer le laboratoire exécutant pour ce dossier — le routage affichera toutes les stations correspondantes, sans limitation à un seul laboratoire."
+    },
+    "blockContext": {
+      "title": "Contexte du bloc et du tissu",
+      "empty": "Ce dossier ne comporte aucun prélèvement.",
+      "specimen": "Prélèvement {{label}} {{description}}",
+      "noBlocks": "Aucun bloc pour ce prélèvement.",
+      "exhausted": "Épuisé",
+      "lost": "Perdu",
+      "damaged": "Endommagé",
+      "cancelled": "Annulé",
+      "levelsCut": "{{count}} niveau(x) déjà coupé(s)",
+      "tinyTissue": "Tissu minuscule",
+      "fragile": "Fragile"
+    },
+    "builder": {
+      "title": "Constructeur de commande complémentaire",
+      "kind": {
+        "recut": "Recoupe / niveau profond",
+        "special_stain": "Coloration spéciale",
+        "ihc": "IHC",
+        "molecular": "Moléculaire / envoi externe"
+      },
+      "panelPicker": "Panel IHC",
+      "searchStain": "Rechercher une coloration…",
+      "noStains": "Aucune coloration correspondante.",
+      "levelDepth": "Profondeur du niveau (µm)",
+      "controlPairing": "Appariement du contrôle",
+      "controlMode": {
+        "none": "Aucun contrôle",
+        "on_slide": "Contrôle sur la même lame",
+        "separate_slide": "Lame de contrôle séparée"
+      },
+      "addToCart": "Ajouter au panier"
+    },
+    "summary": {
+      "title": "Récapitulatif et routage de la commande",
+      "blocksSelected": "{{count}} bloc(s) sélectionné(s)",
+      "emptyCart": "Aucune ligne de commande ajoutée.",
+      "microns": "Niveaux de {{count}} µm",
+      "routesTo": "Acheminé vers : {{stations}}",
+      "routesToQueueOnly": "Aucune station correspondante configurée pour ce laboratoire — la commande est tout de même acheminée vers la file d'attente.",
+      "remove": "Retirer",
+      "noPerformingLab": "Le laboratoire exécutant de ce dossier n'a pas pu être déterminé — les commandes seront tout de même créées, sans correspondance de station propre à un laboratoire.",
+      "priority": "Priorité",
+      "slideMedia": "Support de lame et charge",
+      "cuttingInstructions": "Instructions pour le poste de microtomie",
+      "sendOutLab": "Laboratoire de référence / envoi externe",
+      "selectLab": "Sélectionner un laboratoire de référence…",
+      "submit": "Soumettre la commande complémentaire",
+      "submitted": "Commande soumise."
+    },
+    "priority": {
+      "STAT_Urgent": "STAT / Urgent",
+      "Routine_Sign_Out": "Signature de routine",
+      "Research_Protocol": "Recherche / protocole"
+    },
+    "slideMedia": {
+      "Standard_Charged": "Standard chargée",
+      "Uncharged": "Non chargée",
+      "Plus_Glass": "Verre Plus"
+    },
+    "tracking": {
+      "title": "Suivi des commandes",
+      "count": "{{count}}",
+      "empty": "Aucune commande complémentaire n'a encore été passée pour ce dossier.",
+      "stage": {
+        "Requested": "Demandée",
+        "BlockRetrieved": "Bloc récupéré",
+        "CutPendingStain": "Coupe / en attente de coloration",
+        "StainedQC": "Colorée / CQ",
+        "CheckedOutScanned": "Sortie / numérisée",
+        "Exception": "Exception",
+        "Cancelled": "Annulée"
+      },
+      "orderedBy": "Commandée par {{name}}",
+      "markRetrieved": "Marquer le bloc comme récupéré",
+      "exceptionNote": "Remarque facultative…",
+      "confirmFlag": "Signaler l'exception",
+      "cancelFlag": "Annuler",
+      "flagException": "Signaler une exception",
+      "flaggedBy": "Signalée par {{name}}",
+      "responseNote": "Remarque de réponse…",
+      "approveDestructive": "Approuver la coupe destructive",
+      "modify": "Modifier et soumettre à nouveau",
+      "cancelOrder": "Annuler la commande"
+    }
+  },
+  "facilityOpsDashboard": {
+    "bindDisplayTitle": "Associer cet écran",
+    "bindDisplayDescription": "Sélectionnez le profil d’affichage que cet écran mural doit afficher.",
+    "selectProfile": "— sélectionner un profil d’affichage —",
+    "noProfilesConfigured": "Aucun profil d’affichage n’est encore configuré. Ajoutez-en un dans Configuration → Système → Profils d’affichage.",
+    "loadingProfile": "Chargement du profil d’affichage…",
+    "loadingData": "Chargement des données du tableau de bord…",
+    "offlineStaleBadge": "Hors ligne / Données obsolètes",
+    "lastUpdated": "Mis à jour {{time}}",
+    "confirmTokenTitle": "Confirmer le jeton de l'appareil",
+    "confirmTokenDescription": "Saisissez le jeton d'appareil enregistré pour « {{name}} » pour terminer l'association de cet affichage.",
+    "confirmTokenPlaceholder": "Saisir le jeton d'appareil",
+    "confirmTokenError": "Ce jeton ne correspond pas à celui enregistré pour cet affichage. Vérifiez auprès de votre administrateur et réessayez.",
+    "confirmTokenNote": "Cela confirme que vous disposez du jeton enregistré par un administrateur pour cet affichage — cela ne vérifie pas le matériel physique réel.",
+    "queueEmpty": "Rien dans la file d’attente pour le moment.",
+    "statPill": "STAT",
+    "overdueBy": "En retard de {{duration}}",
+    "ageLabel": "il y a {{duration}}",
+    "views": {
+      "grossingIntake": "Réception et découpe",
+      "embeddingMicrotomy": "Inclusion et microtomie",
+      "stainingIhc": "Coloration et IHC",
+      "sendoutReference": "Envoi et laboratoire de référence",
+      "diagnosticSignout": "Validation diagnostique / Numériseur"
+    }
+  },
+  "displayProfiles": {
+    "sectionTitle": "Profils d’affichage (tableaux de bord des opérations)",
+    "sectionSubtitle": "Registre réel, données uniquement, pour les cinq écrans muraux des tableaux de bord des opérations — chaque profil associe un écran physique à un laboratoire exécutant et à une ou plusieurs vues de service. Aucune liaison matérielle physique n’est vérifiée ni appliquée ; le jeton d’appareil est purement informatif.",
+    "addButton": "+ Ajouter un profil d’affichage",
+    "launchDashboardButton": "🖥️ Ouvrir le tableau de bord des opérations",
+    "addTitle": "Ajouter un profil d’affichage",
+    "editTitle": "Modifier le profil d’affichage",
+    "nameLabel": "Nom de l’affichage",
+    "namePlaceholder": "ex. Paillasse d’histologie 3 — Écran mural",
+    "facilityLabel": "Laboratoire exécutant",
+    "selectFacility": "— sélectionner un établissement —",
+    "assignedViewsLabel": "Vue(s) de tableau de bord assignée(s)",
+    "carouselIntervalLabel": "Intervalle du carrousel (secondes)",
+    "carouselIntervalPlaceholder": "ex. 20",
+    "deviceTokenLabel": "Jeton d’appareil / MAC / IP (facultatif)",
+    "deviceTokenPlaceholder": "ex. AA:BB:CC:DD:EE:FF",
+    "deviceTokenNote": "Purement informatif — enregistré pour votre propre suivi d’actifs. Jamais validé par rapport au matériel réel.",
+    "showInactive": "Afficher les inactifs",
+    "inactive": "Inactif",
+    "deactivate": "Désactiver",
+    "reactivate": "Réactiver",
+    "emptyRow": "Aucun profil d’affichage enregistré."
   }
 }

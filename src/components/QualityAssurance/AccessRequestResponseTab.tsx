@@ -104,7 +104,7 @@ export const AccessRequestResponseTab: React.FC = () => {
       'Turnaround Hours': r.resolvedAt ? hoursBetween(r.requestedAt, r.resolvedAt).toFixed(1) : '',
       'Resolved By': r.resolvedByUserName ?? '',
     }));
-    exportQaReportRows(rows, `access-request-response-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `access-request-response-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading access request data…</div>;

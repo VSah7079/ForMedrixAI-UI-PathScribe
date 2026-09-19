@@ -45,6 +45,18 @@ export async function processInboundWsiScanStatusUpdateEvent(
     scanStatus: payload.scanStatus,
     scanCompletedAt: payload.scanStatus === 'completed' ? payload.timestamp : undefined,
     failureReason: payload.failureReason,
+    // Real, per direct guidance's own confirmed Digital Readiness
+    // spec — passed through exactly as the real IMS's own inbound
+    // event reports it, same "never infer, never default" posture
+    // as failureReason right above.
+    qcPassed: payload.qcPassed,
+    // Real, per direct guidance's own confirmed Surgical Pathology
+    // vs. Cytology DP technical breakdown — passed through exactly
+    // as the real interface engine's own inbound event reports them,
+    // same "never infer, never default" posture as failureReason
+    // right above.
+    acquisitionMode: payload.acquisitionMode,
+    focalPlaneCount: payload.focalPlaneCount,
   });
   if (!updateRes.ok) {
     return { messageId: payload.messageId, outcome: 'slide-not-found', reason: 'error' in updateRes ? updateRes.error : 'Unknown error.' };

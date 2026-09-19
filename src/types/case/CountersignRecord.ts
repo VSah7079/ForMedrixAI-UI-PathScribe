@@ -67,5 +67,16 @@ export interface CountersignRecord {
    *  carrying real attendingFeedback (required for this transition,
    *  unlike the optional feedback a real countersign can carry) so
    *  the resident knows what to fix. */
+  /** Real, per direct follow-up ("let's get that signing") — present
+   *  only when this release came from Autopsy's own PAD/FAD signing
+   *  flow (signAutopsyReport.ts), never from the generic Surg
+   *  Path/Cytology countersign gate. Without this, the attending's
+   *  eventual countersign completion would have no way to know
+   *  whether to produce a padSnapshot or an fadSnapshot — an Autopsy
+   *  case can genuinely have two, separate countersign releases many
+   *  weeks apart (PAD, then later FAD), never conflated with each
+   *  other or with a regular synoptic release. */
+  autopsyReportTier?: 'PAD' | 'FAD';
+
   status: 'pending' | 'countersigned' | 'returned';
 }

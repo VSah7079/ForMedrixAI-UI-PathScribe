@@ -5,7 +5,6 @@ import '../pathscribe.css';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { caseRouter } from '../services/cases/CaseRouter';
-import { useLogout } from '@hooks/useLogout';
 import WorklistTable from '../components/Worklist/WorklistTable';
 import { ReassignCasePatientPanel } from '../components/Search/ReassignCasePatientPanel';
 import { codeService, flagService, userService, physicianService, facilityService, subspecialtyService } from '../services';
@@ -819,7 +818,6 @@ const CodeLookupContent: React.FC<{
 
 const SearchPage: React.FC = () => {
   const navigate     = useNavigate();
-  const handleLogout = useLogout();
   const { user }      = useAuth();
   const { pushCrumb } = useBreadcrumb();
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
@@ -902,9 +900,7 @@ const SearchPage: React.FC = () => {
   const canViewOrchestration = user?.canViewOrchestration ?? false;
 
   const [isLoaded,        setIsLoaded]        = useState(false);
-  const [isProfileOpen,   setIsProfileOpen]   = useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Lookup modals
   const [snomedModal,    setSnomedModal]    = useState(false);
@@ -2102,16 +2098,6 @@ const SearchPage: React.FC = () => {
         </LookupModalX>
       )}
 
-      {/* â”€â”€ Profile modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {isProfileOpen&&(
-        <div className="ps-modal-overlay" onClick={()=>setIsProfileOpen(false)}>
-          <div className="ps-searchpage-profile-modal" onClick={e=>e.stopPropagation()}>
-            <div className="ps-searchpage-modal-title">User Preferences</div>
-            <button onClick={()=>setIsProfileOpen(false)} className="ps-searchpage-modal-close-btn">Close</button>
-          </div>
-        </div>
-      )}
-
       {/* â”€â”€ Resources modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {isResourcesOpen&&(
         <div className="ps-modal-overlay" onClick={()=>setIsResourcesOpen(false)}>
@@ -2131,21 +2117,6 @@ const SearchPage: React.FC = () => {
         </div>
       )}
 
-
-      {/* â”€â”€ Logout modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {showLogoutModal&&(
-        <div className="ps-modal-overlay">
-          <div className="ps-searchpage-logout-modal">
-            <div className="ps-searchpage-logout-icon">⚠️</div>
-            <h2 className="ps-searchpage-logout-title">Sign out?</h2>
-            <p className="ps-searchpage-logout-body">You'll be signed out of PathScribeAI.</p>
-            <div className="ps-searchpage-logout-actions">
-              <button onClick={()=>setShowLogoutModal(false)} className="ps-searchpage-logout-stay-btn">← Stay on Search</button>
-              <button onClick={handleLogout} className="ps-searchpage-logout-signout-btn">Sign Out</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

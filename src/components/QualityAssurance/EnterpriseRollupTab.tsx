@@ -98,7 +98,7 @@ export const EnterpriseRollupTab: React.FC = () => {
       'Total Case Avg (hrs)': r.totalCaseAvgHrs,
       'On-Target %': r.onTargetPct,
     }));
-    exportQaReportRows(rows, `enterprise-rollup-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `enterprise-rollup-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-page">Loading…</div>;

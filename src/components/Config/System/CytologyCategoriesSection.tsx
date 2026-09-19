@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { mockCytologyCategoryService } from '../../../services/cytology/mockCytologyCategoryService';
 import type {
@@ -217,10 +217,11 @@ const CytologyCategoriesSection: React.FC = () => {
   };
 
   // Real, per direct guidance ("is there a mechanism to update them...
-  // via CSV file?") — mirrors the same real, established XLSX
-  // import/export pattern already used by StainDictionarySection.tsx
-  // and other admin dictionaries in this app, not a new, invented
-  // mechanism. Deliberately scoped to just the French text fields
+  // via CSV file?") — mirrors the same real, established CSV
+  // import/export pattern (utils/csv.ts, PS-48) already used by
+  // StainDictionarySection.tsx and other admin dictionaries in this
+  // app, not a new, invented mechanism. Deliberately scoped to just
+  // the French text fields
   // (id + English label/description for real, human context + the
   // two French fields to fill in), not a general bulk category
   // editor — the real, stated need here is translating Bethesda's own
@@ -234,35 +235,29 @@ const CytologyCategoriesSection: React.FC = () => {
       Id: e.id, Section: e.section, EnglishLabel: e.label, EnglishDescription: e.description ?? '',
       FrenchLabel: e.labelFr ?? '', FrenchDescription: e.descriptionFr ?? '',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'SFCC French Translations');
-    XLSX.writeFile(wb, 'BethesdaFrenchTranslations.xlsx');
+    downloadCsv('BethesdaFrenchTranslations.csv', toCsv(rows));
   };
 
-  const handleImportFrenchTranslations = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      // Real, matched by Id — never by label text, which could
-      // legitimately change independently of the row's own identity.
-      for (const row of rows) {
-        const id = String(row['Id'] ?? '').trim();
-        if (!id) continue;
-        const labelFr = String(row['FrenchLabel'] ?? '').trim();
-        const descriptionFr = String(row['FrenchDescription'] ?? '').trim();
-        await mockCytologyCategoryService.update(id, {
-          labelFr: labelFr || undefined,
-          descriptionFr: descriptionFr || undefined,
-        });
-      }
-      refresh();
-    };
-    reader.readAsBinaryString(file);
+  const handleImportFrenchTranslations = async (file: File) => {
+    if (!isCsvFile(file)) {
+      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows: any[] = parseCsv(text);
+    // Real, matched by Id — never by label text, which could
+    // legitimately change independently of the row's own identity.
+    for (const row of rows) {
+      const id = String(row['Id'] ?? '').trim();
+      if (!id) continue;
+      const labelFr = String(row['FrenchLabel'] ?? '').trim();
+      const descriptionFr = String(row['FrenchDescription'] ?? '').trim();
+      await mockCytologyCategoryService.update(id, {
+        labelFr: labelFr || undefined,
+        descriptionFr: descriptionFr || undefined,
+      });
+    }
+    refresh();
   };
 
   const visible = entries
@@ -304,7 +299,7 @@ const CytologyCategoriesSection: React.FC = () => {
           style={{ marginLeft: 8, padding: '9px 14px', fontSize: 12, fontWeight: 600, color: '#e5e7eb', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
           ⬆ Import French Translations
         </button>
-        <input ref={importFileInputRef} type="file" hidden accept=".csv,.xlsx"
+        <input ref={importFileInputRef} type="file" hidden accept=".csv,text/csv"
           onChange={e => { if (e.target.files?.[0]) handleImportFrenchTranslations(e.target.files[0]); e.target.value = ''; }} />
       </div>
 

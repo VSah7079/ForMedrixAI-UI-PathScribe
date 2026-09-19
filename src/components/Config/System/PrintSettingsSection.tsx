@@ -41,6 +41,7 @@ import { CONTAINER_TYPES } from '@/services/hardwareContainers/IHardwareContaine
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import type { Facility } from '@/services';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
+import CassetteLabelLayoutEditor from './CassetteLabelLayoutEditor';
 
 const SYMBOLOGY_LABEL: Record<LabelBarcodeSymbology, string> = {
   code128: 'Code 128 (1D)',
@@ -395,6 +396,15 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           maxLength={14}
         />
       </div>
+
+      {/* Real, per direct follow-up: "I'm not sure the cassette label
+          size is correct... allow the admin to enter/edit the
+          parameters in order for them to ensure safety." */}
+      <CassetteLabelLayoutEditor
+        value={effective.cassetteLabelLayout}
+        readOnly={readOnly}
+        onChange={changes => update({ cassetteLabelLayout: { ...effective.cassetteLabelLayout, ...changes } })}
+      />
 
       {/* ── Container Type Codes ── */}
       <div className="ps-conf-card ps-conf-card--spaced">

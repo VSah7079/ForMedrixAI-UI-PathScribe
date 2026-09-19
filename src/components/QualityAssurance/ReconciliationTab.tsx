@@ -138,7 +138,7 @@ export const ReconciliationTab: React.FC = () => {
       'Recorded At': r.recordedAt,
       'Recorded By': r.recordedBy.userName,
     }));
-    exportQaReportRows(rows, `reconciliation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `reconciliation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading reconciliation data…</div>;

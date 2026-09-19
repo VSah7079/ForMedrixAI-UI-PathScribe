@@ -173,6 +173,20 @@ export interface Decant {
    *  lastKnownLocation cache. */
   locationHistory?: MaterialLocation[];
   /**
+   * Real, per PS-284 (Microtomy Workstation)'s own "Specimen Fluid/
+   * Decant Panel: Total Volume (mL), Appearance (Clear/Bloody/
+   * Turbid), Decant Yield/Pellet Size (Low/Moderate/High)." 100%
+   * greenfield — confirmed directly before adding these that Decant
+   * had no volume/appearance/yield concept anywhere in this app.
+   * Drives computeCytologyPrepSuggestions.ts's own dynamic
+   * preparation-rule logic; all three stay optional since an older
+   * decant, or one from a lab that doesn't track this level of detail,
+   * genuinely may not have them recorded.
+   */
+  totalVolumeMl?: number;
+  appearance?: 'Clear' | 'Bloody' | 'Turbid';
+  yieldPelletSize?: 'Low' | 'Moderate' | 'High';
+  /**
    * Real feature, per direct follow-up on unique material
    * identification, which explicitly named "decant, fluid" as
    * material needing this: decantIdentifier() from

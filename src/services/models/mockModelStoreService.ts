@@ -124,7 +124,10 @@ export const mockModelStoreService: IModelStoreService = {
   async getAvailable(): Promise<ServiceResult<StoreListing[]>> {
     await delay();
     const authRes = await checkStoreAuthorization();
-    if (authRes.ok === false) return err((authRes as { ok: false; error: string }).error);
+    // Real, direct follow-up (PS-69): this used to need
+    // `as { ok: false; error: string }` here — confirmed unnecessary, see
+    // services/types.ts's own header comment on ServiceResult.
+    if (authRes.ok === false) return err(authRes.error);
     const localRes = await modelService.getAll();
     const local = localRes.ok ? localRes.data : [];
     const available = STORE_CATALOG.filter(listing =>
@@ -141,7 +144,7 @@ export const mockModelStoreService: IModelStoreService = {
   async download(storeId: ID): Promise<ServiceResult<AIModel>> {
     await delay();
     const authRes = await checkStoreAuthorization();
-    if (authRes.ok === false) return err((authRes as { ok: false; error: string }).error);
+    if (authRes.ok === false) return err(authRes.error);
     const listing = STORE_CATALOG.find(l => l.storeId === storeId);
     if (!listing) return err<AIModel>(`Store listing ${storeId} not found`);
     const createRes = await modelService.create({

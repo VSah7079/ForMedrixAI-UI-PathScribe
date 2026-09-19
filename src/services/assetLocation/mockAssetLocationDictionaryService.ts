@@ -55,6 +55,36 @@ const SEED_ASSET_LOCATIONS: AssetLocationEntry[] = [
     updatedBy: 'system',
     updatedAt: '2026-08-01',
   },
+  // Real, per direct follow-up: "it all needs to be wired" —
+  // resolveMortuaryStorageOccupancy.ts had zero real storage_slot
+  // seed data to check occupancy against at all, despite the real
+  // RFP requirement ("Real-time mortuary tray utilization... available
+  // storage slots") this dictionary was originally built for. Two
+  // real, illustrative slots, matching this file's own established
+  // "real example strings, not fabricated new ones" seeding
+  // discipline.
+  {
+    id: 'loc-mortuary-cooler-1-tray-a',
+    name: 'Mortuary Cooler 1 — Tray A',
+    locationType: 'storage_slot',
+    normalizedLabel: 'mortuary cooler 1 — tray a',
+    synonyms: [],
+    status: 'Active',
+    version: 1,
+    updatedBy: 'system',
+    updatedAt: '2026-01-01',
+  },
+  {
+    id: 'loc-mortuary-cooler-1-tray-b',
+    name: 'Mortuary Cooler 1 — Tray B',
+    locationType: 'storage_slot',
+    normalizedLabel: 'mortuary cooler 1 — tray b',
+    synonyms: [],
+    status: 'Active',
+    version: 1,
+    updatedBy: 'system',
+    updatedAt: '2026-01-01',
+  },
 ];
 
 const load    = () => storageGet<AssetLocationEntry[]>('pathscribe_asset_locations', SEED_ASSET_LOCATIONS);

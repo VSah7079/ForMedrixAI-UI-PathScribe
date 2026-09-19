@@ -30,6 +30,14 @@ import { useMessaging } from '../../contexts/MessagingContext';
 import NavBar, { SystemInfoModal } from '../NavBar/NavBar';
 import ScanStationPrompt from '../ScanStationPrompt';
 import StationSwitchGuardModal from '../StationSwitchGuardModal';
+// Real fix, per direct report: the real Sign Out button (below) used to
+// call handleLogout() directly, with no unsaved-changes check at all —
+// while Home.tsx separately carried its own copy of this exact modal,
+// wired to a showWarning flag nothing ever set to true. That old
+// Home.tsx copy is now deleted; this is the one, real, live instance,
+// gated by the same DirtyStateContext.isDirty this file's own
+// guardedNavigate() already uses for breadcrumb/logo navigation.
+import LogoutWarningModal from '../Common/LogoutWarningModal';
 import { useBreadcrumb } from '../../contexts/BreadcrumbContext';
 import { useDirtyState } from '../../contexts/DirtyStateContext';
 import '../../pathscribe.css';
@@ -762,7 +770,24 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
   const handleLogout = useLogout();
   const location = useLocation();
   const { crumbs, pushCrumb } = useBreadcrumb();
-  const { requestNavigate } = useDirtyState();
+  // Real, aliased on the way in — this file already has its own,
+  // unrelated local `isDirty` further below (the messaging drawer's own
+  // unsaved-draft flag, a genuinely separate concern), so the shared
+  // DirtyStateContext's real isDirty (case/report unsaved changes) is
+  // renamed here to avoid colliding with it.
+  const { requestNavigate, isDirty: hasUnsavedCaseData } = useDirtyState();
+  const [showLogoutWarning, setShowLogoutWarning] = useState(false);
+
+  // Real fix, per direct report: the Sign Out button used to call
+  // handleLogout() unconditionally — no check at all against real,
+  // in-progress unsaved case/report data (AccessionPage.tsx/
+  // SynopticReportPage.tsx, the only two real setDirty(true) callers).
+  // Same real isDirty this file's own guardedNavigate() already checks
+  // for breadcrumb/logo navigation, applied here too.
+  const handleLogoutClick = React.useCallback(() => {
+    if (hasUnsavedCaseData) { setShowLogoutWarning(true); return; }
+    handleLogout();
+  }, [hasUnsavedCaseData, handleLogout]);
 
   const guardedNavigate = React.useCallback((path: string) => {
     // Tell SearchPage to restore its previous results/filters when
@@ -1054,7 +1079,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     const openTestingFeedback    = () => window.dispatchEvent(new CustomEvent('PATHSCRIBE_HOME_OPEN_TESTING_FEEDBACK'));
     const viewHelp               = () => window.open('/help/documentation.pdf', '_blank');
     const openResources          = () => window.dispatchEvent(new CustomEvent('PATHSCRIBE_PAGE_OPEN_RESOURCES'));
-    const systemLogout           = () => handleLogout();
+    const systemLogout           = () => handleLogoutClick();
 
     // ── Messages: navigation ─────────────────────────────────────────────────
     const msgNext = () => {
@@ -1218,7 +1243,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     filterType, isComposing, isEditing,
     handleMarkRead, handleSoftDelete, handlePermanentDelete, handleRestore,
     handleBulkMarkRead, handleBulkDelete, handleEmptyDeleted,
-    handleSend, handleSendNew, handleCloseDrawer, handleLogout,
+    handleSend, handleSendNew, handleCloseDrawer, handleLogoutClick,
   ]);
 
  // Real, per direct UI-review follow-up ("Fix the root"): this
@@ -1241,10 +1266,18 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
       {!hideNav && (
         <NavBar
           onLogoClick={() => guardedNavigate('/')}
-          onLogout={handleLogout}
+          onLogout={handleLogoutClick}
           onProfileClick={() => setAboutOpen(true)}
         />
       )}
+
+      {/* Real, live "unsaved changes" guard on Sign Out — see
+          handleLogoutClick's own comment above for what this replaces. */}
+      <LogoutWarningModal
+        isOpen={showLogoutWarning}
+        onClose={() => setShowLogoutWarning(false)}
+        onLogout={handleLogout}
+      />
 
       {/* Real fix, per direct follow-up: "the Current station...
           should be identified at login." Mounted unconditionally

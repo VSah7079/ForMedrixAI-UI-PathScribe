@@ -345,11 +345,11 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
         <div className="ps-hb-compact-left">
           <span className="ps-hb-compact-acc" data-phi="accession">{accession}</span>
           <span className="ps-hb-compact-sep">·</span>
-          <span className="ps-hb-compact-patient">{patient}</span>
+          <span className="ps-hb-compact-patient" data-phi="name">{patient}</span>
           {caseData?.patient?.dateOfBirth && (
             <>
               <span className="ps-hb-compact-sep">·</span>
-              <span className="ps-hb-compact-meta">
+              <span className="ps-hb-compact-meta" data-phi="dob">
                 DOB {dob} · {sex}
               </span>
             </>
@@ -357,7 +357,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           {caseData?.patient?.mrn && (
             <>
               <span className="ps-hb-compact-sep">·</span>
-              <span className="ps-hb-compact-meta">MRN {mrn}</span>
+              <span className="ps-hb-compact-meta" data-phi="mrn">MRN {mrn}</span>
             </>
           )}
           {(caseData?.order as any)?.priority && (
@@ -557,7 +557,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           <div className="ps-hb-patient-fields">
             <div className="ps-hb-field">
               <div className="ps-hb-field-label">Patient</div>
-              <div className="ps-hb-field-value ps-hb-field-value--lg">{patient}</div>
+              <div className="ps-hb-field-value ps-hb-field-value--lg" data-phi="name">{patient}</div>
             </div>
             <div className="ps-hb-field">
               <div className="ps-hb-field-label">Sex</div>

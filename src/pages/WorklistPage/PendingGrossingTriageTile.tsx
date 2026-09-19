@@ -79,7 +79,7 @@ export const PendingGrossingTriageTile: React.FC<{ cases: Case[] }> = ({ cases }
               onClick={() => navigate(`/case/${item.caseId}/synoptic`)}
             >
               <span className="ps-triage-tile-badge ps-triage-tile-badge--pending_triage">{t('pendingTriageTile.badge')}</span>
-              <span className="ps-triage-tile-case">{item.accession}</span>
+              <span className="ps-triage-tile-case" data-phi="accession">{item.accession}</span>
               <span className="ps-triage-tile-label">{t('pendingTriageTile.specimenLabel', { specimenLabel: item.specimenLabel })}</span>
               <span className="ps-triage-tile-detail">{t('pendingTriageTile.progress', { confirmed: item.confirmedCount, total: item.totalCount })}</span>
             </button>

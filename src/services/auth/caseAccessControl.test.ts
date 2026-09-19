@@ -1,7 +1,8 @@
 // src/services/auth/caseAccessControl.test.ts
 import { describe, it, expect } from 'vitest';
-import { resolveCaseAccess, canFinalizeCase, deriveEligibleFinalizerIds, resolvePediatricAccess, resolveOrchestrationAccess, type SessionUser, type CaseAccessSubspecialty, type CaseFinalizeParticipant, type CaseAccessFacility } from './caseAccessControl';
+import { resolveCaseAccess, canFinalizeCase, deriveEligibleFinalizerIds, resolveFinalizeEligibleTypeIds, resolvePediatricAccess, resolveOrchestrationAccess, type SessionUser, type CaseAccessSubspecialty, type CaseFinalizeParticipant, type CaseAccessFacility } from './caseAccessControl';
 import type { Facility } from '../facilities/IFacilityService';
+import type { ParticipationTypeRecord } from '../participationTypes/IParticipationTypeService';
 
 const ORG_A = 'ORG-DVMC'; // real seeded org id, resolvable via resolveTenantFacility against ENTERPRISES below
 const HOSP_A = 'HOSP-001'; // its real seeded originHospitalId — same real tenant, different legacy string
@@ -152,6 +153,92 @@ describe('canFinalizeCase — dimension 4 (case relationship) as a real write gu
   });
 });
 
+// Real, per direct guidance ("Yes, complete the work" — wiring real
+// enforcement for canFinalizeCase/deriveEligibleFinalizerIds to the
+// ParticipationTypeRecord.canFinalize data model added in the prior
+// pass). Deliberately mirrors mockParticipationTypeService.ts's own real
+// SEED shape/values for 'primary'/'attending'/'resident' — the whole
+// point of this suite is proving the real, data-driven lookup produces
+// IDENTICAL default behavior to the old hardcoded literal, not a
+// hand-picked fixture that happens to pass.
+const PRIMARY_TYPE: ParticipationTypeRecord = {
+  id: 'primary', label: 'Attending / Primary Pathologist', description: '', color: '#8AB4F8',
+  allowsMultiple: false, requiresNote: false, active: true, isSystem: true, sortOrder: 1,
+  canFinalize: true, requiresCountersign: false,
+};
+const ATTENDING_TYPE: ParticipationTypeRecord = {
+  id: 'attending', label: 'Co-Signer / Supervisor', description: '', color: '#818cf8',
+  allowsMultiple: false, requiresNote: false, active: true, isSystem: true, sortOrder: 3,
+  canFinalize: true, requiresCountersign: false,
+};
+const RESIDENT_TYPE: ParticipationTypeRecord = {
+  id: 'resident', label: 'Resident / Fellow', description: '', color: '#60a5fa',
+  allowsMultiple: true, requiresNote: false, active: true, isSystem: true, sortOrder: 2,
+  canFinalize: false, requiresCountersign: true,
+};
+const REAL_TYPES = [PRIMARY_TYPE, ATTENDING_TYPE, RESIDENT_TYPE];
+const LAB_A = 'fac-lab-a';
+const LAB_B = 'fac-lab-b';
+
+describe('resolveFinalizeEligibleTypeIds — the real data-driven lookup replacing the old hardcoded literal', () => {
+  it('falls back to the historic primary/attending default when no participationTypes are supplied at all', () => {
+    expect(resolveFinalizeEligibleTypeIds(undefined)).toEqual(['primary', 'attending']);
+    expect(resolveFinalizeEligibleTypeIds(null)).toEqual(['primary', 'attending']);
+    expect(resolveFinalizeEligibleTypeIds([])).toEqual(['primary', 'attending']);
+  });
+
+  it('real, seeded data reproduces the exact same default — proves this is a genuine no-op upgrade for every existing customer', () => {
+    expect(resolveFinalizeEligibleTypeIds(REAL_TYPES).sort()).toEqual(['attending', 'primary']);
+  });
+
+  it('a lab override that revokes canFinalize for a normally-eligible type excludes it, only for that lab', () => {
+    const overridden: ParticipationTypeRecord = { ...PRIMARY_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: false } } };
+    const types = [overridden, ATTENDING_TYPE, RESIDENT_TYPE];
+    expect(resolveFinalizeEligibleTypeIds(types, LAB_A)).not.toContain('primary');
+    expect(resolveFinalizeEligibleTypeIds(types, LAB_B)).toContain('primary');
+    expect(resolveFinalizeEligibleTypeIds(types)).toContain('primary'); // no lab given → platform default
+  });
+
+  it('a lab override that GRANTS canFinalize to a normally-ineligible type includes it, only for that lab — the real feature this closes the loop on', () => {
+    const overridden: ParticipationTypeRecord = { ...RESIDENT_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: true } } };
+    const types = [PRIMARY_TYPE, ATTENDING_TYPE, overridden];
+    expect(resolveFinalizeEligibleTypeIds(types, LAB_A)).toContain('resident');
+    expect(resolveFinalizeEligibleTypeIds(types, LAB_B)).not.toContain('resident');
+  });
+});
+
+describe('canFinalizeCase — end-to-end with real ParticipationTypeRecord data (lab-scoped authority actually governs sign-out)', () => {
+  it('a resident is denied by default, even with real participationTypes supplied — same outcome as the hardcoded-fallback tests above', () => {
+    const resident: CaseFinalizeParticipant = { staffId: 'resident-1', status: 'active', participationTypeIds: ['resident'] };
+    const result = canFinalizeCase(session({ id: 'resident-1' }), [resident], REAL_TYPES, LAB_A);
+    expect(result.granted).toBe(false);
+  });
+
+  it('a resident IS granted at the one lab that overrode canFinalize:true for residents — the real, live effect of the admin screen this pass wires up', () => {
+    const overriddenResident: ParticipationTypeRecord = { ...RESIDENT_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: true } } };
+    const types = [PRIMARY_TYPE, ATTENDING_TYPE, overriddenResident];
+    const resident: CaseFinalizeParticipant = { staffId: 'resident-1', status: 'active', participationTypeIds: ['resident'] };
+    expect(canFinalizeCase(session({ id: 'resident-1' }), [resident], types, LAB_A).granted).toBe(true);
+    expect(canFinalizeCase(session({ id: 'resident-1' }), [resident], types, LAB_B).granted).toBe(false);
+  });
+
+  it('a primary IS denied at the one lab that revoked canFinalize for primaries, but still granted everywhere else', () => {
+    const overriddenPrimary: ParticipationTypeRecord = { ...PRIMARY_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: false } } };
+    const types = [overriddenPrimary, ATTENDING_TYPE, RESIDENT_TYPE];
+    const primary: CaseFinalizeParticipant = { staffId: 'primary-1', status: 'active', participationTypeIds: ['primary'] };
+    expect(canFinalizeCase(session({ id: 'primary-1' }), [primary], types, LAB_A).granted).toBe(false);
+    expect(canFinalizeCase(session({ id: 'primary-1' }), [primary], types, LAB_B).granted).toBe(true);
+  });
+
+  it('an admin/supervisor override still bypasses everything, lab-scoped authority included', () => {
+    const overriddenPrimary: ParticipationTypeRecord = { ...PRIMARY_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: false } } };
+    const primary: CaseFinalizeParticipant = { staffId: 'primary-1', status: 'active', participationTypeIds: ['primary'] };
+    const result = canFinalizeCase(session({ id: 'someone-else', role: 'admin' }), [primary], [overriddenPrimary], LAB_A);
+    expect(result.granted).toBe(true);
+    if (result.granted) expect(result.dimension).toBe('admin-override');
+  });
+});
+
 describe('deriveEligibleFinalizerIds — the real denormalization dimension 4 server-side enforcement depends on', () => {
   it('includes an active primary participant', () => {
     const ids = deriveEligibleFinalizerIds([
@@ -191,6 +278,23 @@ describe('deriveEligibleFinalizerIds — the real denormalization dimension 4 se
       { staffId: 'multi-1', status: 'active', participationTypeIds: ['resident', 'attending'] },
     ]);
     expect(ids).toContain('multi-1');
+  });
+
+  it('with real participationTypes supplied, still reproduces the exact same default set — a genuine no-op upgrade', () => {
+    const ids = deriveEligibleFinalizerIds([
+      { staffId: 'primary-1', status: 'active', participationTypeIds: ['primary'] },
+      { staffId: 'resident-1', status: 'active', participationTypeIds: ['resident'] },
+      { staffId: 'attending-1', status: 'active', participationTypeIds: ['attending'] },
+    ], REAL_TYPES);
+    expect(ids.sort()).toEqual(['attending-1', 'primary-1']);
+  });
+
+  it('a per-lab authorityOverride does NOT affect this chokepoint — deliberately platform-default only, per its own doc comment (no performingLabFacilityId parameter exists here)', () => {
+    const overriddenResident: ParticipationTypeRecord = { ...RESIDENT_TYPE, authorityOverrides: { [LAB_A]: { canFinalize: true } } };
+    const ids = deriveEligibleFinalizerIds([
+      { staffId: 'resident-1', status: 'active', participationTypeIds: ['resident'] },
+    ], [PRIMARY_TYPE, ATTENDING_TYPE, overriddenResident]);
+    expect(ids).not.toContain('resident-1');
   });
 
   it('real, end-to-end agreement: canFinalizeCase grants exactly the people deriveEligibleFinalizerIds includes', () => {

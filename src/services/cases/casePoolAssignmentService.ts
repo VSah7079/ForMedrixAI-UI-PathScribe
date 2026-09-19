@@ -389,6 +389,12 @@ export async function applyPoolRouting(
   poolId:   string,
   poolName: string,
 ): Promise<void> {
+  // Real, direct follow-up (PS-71): this used to omit expectedVersion
+  // entirely, even though the whole caseData (including its own real
+  // .version) is already the caller's — re-assignment back to a pool can
+  // race with a pathologist's own in-progress clinical edit, so this write
+  // should honor the same optimistic-concurrency check every other real
+  // case write does, not silently overwrite whatever version is current.
   await mockCaseService.updateCase(caseData.id, {
     status:   'pool' as CaseStatus,
     poolId,
@@ -398,7 +404,7 @@ export async function applyPoolRouting(
       assignedTo: undefined,  // explicitly unassigned — in the pool
     },
     updatedAt: new Date().toISOString(),
-  } as any);
+  } as any, (caseData as any).version);
 }
 
 // ─── Batch routing ────────────────────────────────────────────────────────────

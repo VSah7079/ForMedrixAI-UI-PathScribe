@@ -1,0 +1,5 @@
+Files removed since update-212 (delete these manually when applying this update):
+
+src/services/cytology/IWsiScanBatchService.ts
+src/services/cytology/mockWsiScanBatchService.test.ts
+src/services/cytology/mockWsiScanBatchService.ts

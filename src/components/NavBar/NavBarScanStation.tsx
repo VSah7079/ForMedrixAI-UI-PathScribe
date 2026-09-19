@@ -31,14 +31,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
 import type { ScanStation } from '@/services/scanStations/IScanStationService';
+import { mockActionRegistryService } from '@/services/actionRegistry/mockActionRegistryService';
+import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWorkstationGroupService';
+import { mockActionGroupService } from '@/services/actionGroups/mockActionGroupService';
 
 export function NavBarScanStation() {
   const { effectiveStationId, isDeviceLocked, isUserDefault, setStationId } = useEffectiveScanStation();
   const [stations, setStations] = useState<ScanStation[]>([]);
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  // Real fix, per PS-289's own comment thread — the one piece its own
+  // addendum named and never actually delivered: "dedicatedPageRoute"
+  // was captured by the admin CRUD screen but nothing ever consumed
+  // it to deep-link a tech anywhere. Now that PS-284/285/286's real
+  // bench pages exist (/workstations/microtomy, /workstations/
+  // embedding, /workstations/slide-distribution), this has real
+  // destinations to point to. Resolved in the same effect that
+  // already resolves the station's WorkstationGroup below — no
+  // second fetch.
+  const [benchRoute, setBenchRoute] = useState<string | undefined>(undefined);
 
   const loadStations = () => {
     mockScanStationService.getAll().then(res => {
@@ -47,6 +62,56 @@ export function NavBarScanStation() {
   };
 
   useEffect(() => { loadStations(); }, []);
+
+  // Real, per PS-289's own comment thread — the actual runtime
+  // payoff of the whole WorkstationGroup design: the moment the
+  // real, effective station changes (selected here, or resolved from
+  // a device lock / user default at login), resolve its own
+  // WorkstationGroup and push that group's real functionalArea into
+  // the Action Registry, so getEligibleActions() picks up real,
+  // station-scoped actions automatically — no separate step, no
+  // action from the technician beyond picking their station.
+  //
+  // Real, per PS-289's own comment thread's "loading a specific
+  // action group" piece — also resolves the group's own real
+  // defaultActionGroupId + allowedActionGroupIds into their actual
+  // ActionGroup records, flattens their actionIds, and pushes that
+  // into setCurrentActionGroupActionIds. A real, curated bundle
+  // (e.g. "Log Slide/Block") becomes eligible the same automatic,
+  // zero-step way functionalArea tagging already does.
+  useEffect(() => {
+    if (!effectiveStationId) {
+      mockActionRegistryService.setCurrentStationProfile(undefined);
+      mockActionRegistryService.setCurrentActionGroupActionIds(undefined);
+      setBenchRoute(undefined);
+      return;
+    }
+    mockScanStationService.getById(effectiveStationId).then(stationRes => {
+      if (!stationRes.ok || !stationRes.data.workstationGroupId) {
+        mockActionRegistryService.setCurrentStationProfile(undefined);
+        mockActionRegistryService.setCurrentActionGroupActionIds(undefined);
+        setBenchRoute(undefined);
+        return;
+      }
+      mockWorkstationGroupService.getById(stationRes.data.workstationGroupId).then(groupRes => {
+        mockActionRegistryService.setCurrentStationProfile(groupRes.ok ? groupRes.data.functionalArea : undefined);
+        // Real, deliberately honest: only a real, non-blank route is
+        // ever surfaced — an inactive group's route is never offered
+        // either, since deep-linking to a bench that's been
+        // deactivated is the wrong default.
+        setBenchRoute(groupRes.ok && groupRes.data.status === 'Active' ? groupRes.data.dedicatedPageRoute : undefined);
+        if (!groupRes.ok) { mockActionRegistryService.setCurrentActionGroupActionIds(undefined); return; }
+
+        const actionGroupIds = [groupRes.data.defaultActionGroupId, ...(groupRes.data.allowedActionGroupIds ?? [])].filter((id): id is string => !!id);
+        if (actionGroupIds.length === 0) { mockActionRegistryService.setCurrentActionGroupActionIds(undefined); return; }
+
+        Promise.all(actionGroupIds.map(id => mockActionGroupService.getById(id))).then(results => {
+          const flattened = results.filter(r => r.ok).flatMap(r => r.ok ? r.data.actionIds : []);
+          mockActionRegistryService.setCurrentActionGroupActionIds(flattened);
+        });
+      });
+    });
+  }, [effectiveStationId]);
 
   // Real bug found and fixed while live-verifying the new admin CRUD
   // screen: this NavBar control is long-lived — mounted once for the
@@ -70,6 +135,16 @@ export function NavBarScanStation() {
 
   return (
     <div className="ps-navbar-station-wrap">
+      {benchRoute && (
+        <button
+          type="button"
+          className="ps-navbar-bench-btn"
+          onClick={() => navigate(benchRoute)}
+          title={`Go to your bench for ${current?.name ?? 'this station'}`}
+        >
+          🔬 Go to Bench
+        </button>
+      )}
       <button
         type="button"
         className="ps-navbar-station-btn"

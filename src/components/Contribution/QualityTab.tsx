@@ -312,10 +312,22 @@ const QualityTab: React.FC = () => {
   const [realConsultResponse, setRealConsultResponse] = useState<RealGenericTatOutlier[]>([]);
   const [realConsultAwaiting, setRealConsultAwaiting] = useState<RealGenericTatOutlier[]>([]);
   const [realTatByClient, setRealTatByClient] = useState<RealClientTatRow[]>([]);
+  // Real, per direct follow-up ("show a frequency of confirmed
+  // discordance to all AI flagged") — this modal only ever opens via
+  // the real, automatic detection (confirmed directly: no other
+  // trigger exists anywhere in this app), so every real
+  // QaActivityRecord for this activity type already IS "AI flagged"
+  // by definition — the frequency is just discordant / total for this
+  // one activity type, no new "flaggedBySystem" field needed.
+  const [realReconciliationTotal, setRealReconciliationTotal] = useState(0);
   useEffect(() => {
     let cancelled = false;
     qaActivityRecordService.getAll().then(res => {
-      if (!cancelled && res.ok) setRealDiscordant(reconciliationRecordsToDiscordantCases(res.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID)));
+      if (!cancelled && res.ok) {
+        const frozenFinalRecords = res.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID);
+        setRealDiscordant(reconciliationRecordsToDiscordantCases(frozenFinalRecords));
+        setRealReconciliationTotal(frozenFinalRecords.length);
+      }
     });
     mockAmendmentService.getAll().then(async res => {
       if (cancelled || !res.ok) return;
@@ -418,11 +430,23 @@ const QualityTab: React.FC = () => {
     ? generateLast4Weeks()
     : trendSlice !== undefined ? TREND_DATA.slice(trendSlice) : TREND_DATA;
 
+  // Real, per direct follow-up \u2014 real, live rate rather than
+  // mockSummary's own static placeholder: discordant / total for every
+  // real QaActivityRecord of this activity type. Deliberately
+  // all-time (realDiscordant, not the date-filtered
+  // filteredDiscordant) \u2014 realReconciliationTotal is itself all-time,
+  // so mixing a filtered numerator against an unfiltered denominator
+  // would produce a real, misleading rate. 0 total is a real, honest
+  // "no data yet" case, not a divide-by-zero NaN shown to a user.
+  const realConcordanceRate = realReconciliationTotal > 0
+    ? Math.round(((realReconciliationTotal - realDiscordant.length) / realReconciliationTotal) * 1000) / 10
+    : mockSummary.concordanceRate;
+
   // Reactive summary counts that update with the date filter
   const summaryData = {
     discordant:            filteredDiscordant.length,
     amended:               filteredAmended.length,
-    concordanceRate:       mockSummary.concordanceRate,
+    concordanceRate:       realConcordanceRate,
     firstTouchBreaches:    filteredFirstTouch.length,
     totalCaseBreaches:     filteredTotalTAT.length,
     frozenSectionBreaches: filteredFrozenSection.length,

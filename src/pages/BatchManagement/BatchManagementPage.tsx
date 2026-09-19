@@ -236,6 +236,30 @@ const BatchManagementPage: React.FC = () => {
                 {'\u00A0'}
               </div>
             </button>
+            {/* Real feature — Stain QC Module §2.5 waste
+                tracking/reporting. Same real, distinct-tile-navigates-
+                to-its-own-page pattern as Disposal immediately above
+                — this one is read-only reporting on already-disposed
+                items (DisposalReportPage.tsx), never the disposal
+                action itself. */}
+            <button
+              className="ps-wl-filter-tile"
+              title={t('batchManagement.disposalReportTitle')}
+              onClick={() => navigate('/batch-management/disposal-report')}
+              style={{
+                '--tile-bg': '#8B5CF60d', '--tile-border': '#8B5CF62e', '--tile-shadow': 'none',
+              } as React.CSSProperties}
+            >
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+                {t('batchManagement.disposalReportTile')}
+              </div>
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#8B5CF6' } as React.CSSProperties}>
+                📊
+              </div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#8B5CF6', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+                {' '}
+              </div>
+            </button>
             {/* Real feature, per direct follow-up: "the pending batch
                 queue has no UI at all... the natural place for this
                 is a new tab/section [in Batch Management]." Same

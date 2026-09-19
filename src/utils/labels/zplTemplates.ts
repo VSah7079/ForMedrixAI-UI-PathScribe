@@ -32,6 +32,8 @@
 
 import { GS1_SEPARATOR } from './gs1DataMatrix';
 import type { Gs1BuildResult } from './gs1DataMatrix';
+import { mmToDots } from './simpleZplTemplate';
+import type { CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 
 // Real, third correction found while verifying the spec's own ZPL
 // against Zebra's real, documented ^BX syntax (^BXo,h,s,c,r,f,g —
@@ -69,45 +71,86 @@ export interface CassetteZplFields {
   specimenDesignator: string;
   blockId: string;
   patientName: string;
+  /** Real, per direct follow-up flagging this as a real, confirmed
+   *  gap: HistologyBlock.tissueDescription (types/case/Specimen.ts)
+   *  existed and was editable via BlockStainEditorModal.tsx, but this
+   *  template never rendered it \u2014 a real "built but never wired"
+   *  case, same class already caught elsewhere in this project. Only
+   *  a 4th text line when present. */
+  tissueDescription?: string;
+  /** Real, per direct correction: the real, physical cassette face
+   *  this label prints onto is nothing like the 50.8\u00d725.4mm CLSI
+   *  container preset this function was, until now, never actually
+   *  validated against \u2014 every coordinate below is now computed
+   *  from this real, admin-configured layout (services/printSettings/)
+   *  at the real printer's own dpi, the same real pattern
+   *  simpleZplTemplate.ts's own mmToDots already established
+   *  elsewhere in this file's sibling functions. */
+  layout: CassetteLabelLayoutConfig;
+  dpi: number;
 }
 
 /** Real, corrected version of PS-51 Section 6.2's own "ZPL Template
- *  (Optimized)" — same real layout (DataMatrix top-left, three lines
- *  of human-readable text to its right), but with the real ^FH + "_1"
- *  FNC1 escape the spec's own template was missing, and every
- *  free-text field sanitized per this file's own header. */
+ *  (Optimized)" \u2014 same real layout intent (DataMatrix at left,
+ *  human-readable text stacked to its right), but with the real ^FH +
+ *  "_1" FNC1 escape the spec's own template was missing, every free-
+ *  text field sanitized per this file's own header, and \u2014 per
+ *  direct, real-world correction \u2014 every coordinate computed from
+ *  a real, admin-configured physical face size and module size (mm)
+ *  rather than the hardcoded, never-validated dot literals this
+ *  function used before. */
 export function buildCassetteZplTemplate(fields: CassetteZplFields): string {
+  const { layout, dpi } = fields;
   const escapedGs1 = zplEscapeGs1(fields.gs1);
   const accession = sanitizeZplText(fields.accessionNumber);
   const specimenAndBlock = sanitizeZplText(`${fields.specimenDesignator} - ${fields.blockId}`);
   const patientName = sanitizeZplText(fields.patientName);
+  const tissue = fields.tissueDescription?.trim();
+
+  // Real, deliberate small margin (0.5mm) between the label's own
+  // real edge and its content, and between the barcode's own real
+  // right edge and where the text column starts \u2014 a real cassette
+  // face this small has no real room for a generous gap.
+  const marginMm = 0.5;
+  const moduleDots = Math.max(1, mmToDots(layout.moduleSizeMm, dpi));
+  // Real, same conservative module-count estimate the admin's own
+  // safety check (resolveCassetteLabelFitWarning.ts) uses \u2014 kept
+  // as one, real, shared number rather than two, independently-
+  // guessed ones that could silently drift apart.
+  const barcodeSizeMm = 26 * layout.moduleSizeMm;
+  const textColumnXDots = mmToDots(barcodeSizeMm + marginMm * 2, dpi);
+  const fontDots = Math.max(1, mmToDots(layout.fontHeightMm, dpi));
+  const marginDots = mmToDots(marginMm, dpi);
+
+  const textLines = [accession, specimenAndBlock, patientName, ...(tissue ? [sanitizeZplText(tissue)] : [])];
+  const textFieldLines = textLines.map((line, i) =>
+    `^FO${textColumnXDots},${marginDots + i * fontDots}^A0N,${fontDots},${fontDots}^FD${line}^FS`
+  );
 
   return [
     '^XA',
     '^CI28',
-    '^FO30,30',
+    `^FO${marginDots},${marginDots}`,
     '^BY2',
     // Real, direct correction, per real visual verification via
     // Labelary: 0 for columns/rows is real, valid Zebra spec ("auto"),
     // confirmed against a real, working example from actual Zebra
-    // hardware — but Labelary's own interpreter rejects an explicit 0
-    // here ("Value 0 is less than minimum value 1 and was ignored").
+    // hardware \u2014 but Labelary's own interpreter rejects an explicit
+    // 0 here ("Value 0 is less than minimum value 1 and was ignored").
     // Omitting the fields (blank, not 0) is a real, working pattern on
     // both. A real accession number/block id's own length genuinely
     // varies label to label, which is exactly why these were left to
-    // auto-size in the first place — that reasoning is unchanged,
+    // auto-size in the first place \u2014 that reasoning is unchanged,
     // only the real syntax for expressing "auto" is corrected.
-    `^BXN,4,${GS1_RECOMMENDED_ECC_LEVEL},,,1`,
+    `^BXN,${moduleDots},${GS1_RECOMMENDED_ECC_LEVEL},,,1`,
     // Real, load-bearing fix vs. the spec's own template: ^FH here
     // tells the printer to interpret "_1" (and any other "_NN"
-    // sequence) as an escape rather than literal text — without it,
+    // sequence) as an escape rather than literal text \u2014 without it,
     // the FNC1 separator gs1DataMatrix.ts computed would print as the
     // two visible characters "_1", not a real, invisible GS1
     // separator, and the barcode would fail real scanner tests.
     `^FH^FD${escapedGs1}^FS`,
-    `^FO150,30^A0N,28,28^FD${accession}^FS`,
-    `^FO150,65^A0N,22,22^FD${specimenAndBlock}^FS`,
-    `^FO150,95^A0N,20,20^FD${patientName}^FS`,
+    ...textFieldLines,
     '^XZ',
   ].join('\n');
 }

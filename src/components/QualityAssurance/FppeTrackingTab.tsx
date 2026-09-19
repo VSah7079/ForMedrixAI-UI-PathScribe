@@ -53,7 +53,7 @@ export const FppeTrackingTab: React.FC = () => {
       'Completion Reason': a.completedReason ?? '',
       'Progress %': progressPercent(a)?.toFixed(0) ?? '',
     }));
-    exportQaReportRows(rows, `fppe-tracking-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportQaReportRows(rows, `fppe-tracking-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   if (loading) return <div className="ps-conf-loading">Loading FPPE assignments…</div>;

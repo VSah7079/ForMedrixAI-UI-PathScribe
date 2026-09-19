@@ -723,6 +723,7 @@ export const TemplateInspector: React.FC<Props> = ({ node, onUpdate }) => {
           <Toggle checked={node.required ?? false}        onChange={v => u({ ...node, required: v })}        label="Required" />
           <Toggle checked={node.hideIfEmpty ?? false}     onChange={v => u({ ...node, hideIfEmpty: v })}     label="Hide if empty" />
           <Toggle checked={node.fhirExport ?? false}      onChange={v => u({ ...node, fhirExport: v })}      label="FHIR export" />
+          <Toggle checked={node.isFinalDiagnosisField ?? false} onChange={v => u({ ...node, isFinalDiagnosisField: v })} label="Final Diagnosis field" />
           <Toggle checked={node.pageBreakBefore ?? false} onChange={v => u({ ...node, pageBreakBefore: v })} label="Page break before" />
         </div>
 

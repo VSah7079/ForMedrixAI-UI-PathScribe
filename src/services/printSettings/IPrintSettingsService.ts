@@ -21,6 +21,72 @@ import type { ServiceResult } from '../types';
 import type { LabelBarcodeSymbology } from '@/types/labels/LabelSizePreset';
 import type { ContainerType } from '@/services/hardwareContainers/IHardwareContainerRegistryService';
 
+export interface CassetteLabelLayoutConfig {
+  /** Real, per direct correction: a real cassette's own angled front
+   *  face is genuinely tiny — nothing like the 50.8×25.4mm CLSI
+   *  container preset this label template was, until now, silently
+   *  never actually validated against at all. Admin-editable because
+   *  this genuinely varies by real cassette vendor (Leica, Sakura,
+   *  Primera) and by the real 35°/45° face angle a given model
+   *  uses — never a single, hardcoded assumption serving every lab. */
+  faceWidthMm: number;
+  faceHeightMm: number;
+  /** Real DataMatrix module size, in millimeters — directly trades
+   *  off against real scannability (too small a module is a real,
+   *  common cause of unreadable barcodes) vs. how much of the real,
+   *  tiny face the barcode itself consumes. Admin-editable per direct
+   *  follow-up: "allow the admin to enter/edit the parameters in
+   *  order for them to ensure safety" — this is exactly the tradeoff
+   *  that request is about. */
+  moduleSizeMm: number;
+  /** Shared height, in millimeters, for every text line on this
+   *  label — kept as one value rather than one per line, since a
+   *  real face this small has no real room for a deliberately varied
+   *  type hierarchy the way a full-size container label does. */
+  fontHeightMm: number;
+}
+
+/** Real, conservative default — the 45° angle variant from direct,
+ *  real-world correction (~28.2mm × 8.0mm), chosen over the 35°
+ *  variant (~28.5×7.0mm) specifically because it has more real
+ *  vertical room for the barcode + text stack this label needs; an
+ *  admin using 35° cassettes should size this down accordingly. */
+export const DEFAULT_CASSETTE_LABEL_LAYOUT: CassetteLabelLayoutConfig = {
+  faceWidthMm: 28.2,
+  faceHeightMm: 8.0,
+  moduleSizeMm: 0.25,
+  fontHeightMm: 1.4,
+};
+
+/** Real, per PS-284 (Microtomy Workstation) — "a slide-label
+ *  equivalent may be worth the same treatment" as
+ *  CassetteLabelLayoutConfig above. A slide's own printable face is a
+ *  genuinely different real shape from a cassette's angled face (the
+ *  frosted end of a standard 25×75mm glass slide, not a 3D cassette
+ *  clip) — a separate config, not a reuse of the cassette one, same
+ *  real "don't force two different physical surfaces to share one
+ *  admin-edited shape" reasoning as this file's own cassette/
+ *  requisition preset split elsewhere. */
+export interface SlideLabelLayoutConfig {
+  /** Real, standard frosted-end printable area on a 25×75mm glass
+   *  slide — most real slide printers (Leica, Sakura, Primera) treat
+   *  this as roughly 20mm of usable width along the frosted band. */
+  faceWidthMm: number;
+  faceHeightMm: number;
+  moduleSizeMm: number;
+  fontHeightMm: number;
+}
+
+/** Real, conservative default — a standard glass slide's frosted
+ *  writing area, per direct research into common slide-printer
+ *  specs (Leica IPS/Cerebro, Sakura Tissue-Tek AutoWrite). */
+export const DEFAULT_SLIDE_LABEL_LAYOUT: SlideLabelLayoutConfig = {
+  faceWidthMm: 20.0,
+  faceHeightMm: 8.0,
+  moduleSizeMm: 0.2,
+  fontHeightMm: 1.2,
+};
+
 export interface PrintSettingsConfig {
   /** "On-Demand" (per-block/container, as each cassette is logged) vs
    *  "Batch" (explicit, per-case bulk action) — real, per direct
@@ -117,6 +183,22 @@ export interface PrintSettingsConfig {
    *  Execution Module's own labels (specimen/plate/rack/deck location)
    *  — same real reasoning as containerLabelPrinterProfileId above. */
   molecularLabelPrinterProfileId?: string;
+  /** Real, per direct follow-up ("I'm not sure the cassette label
+   *  size is correct... allow the admin to enter/edit the parameters
+   *  in order for them to ensure safety") — see
+   *  CassetteLabelLayoutConfig's own doc comment above for the real
+   *  reasoning. buildCassetteZplTemplate.ts reads this instead of the
+   *  hardcoded, unvalidated dot coordinates it used before. */
+  cassetteLabelLayout: CassetteLabelLayoutConfig;
+  /** Real, per PS-284 — see SlideLabelLayoutConfig's own doc comment
+   *  above. Read by resolveSlideLabelFitWarnings.ts (utils/labels/)
+   *  the same way cassetteLabelLayout is read by
+   *  resolveCassetteLabelFitWarnings.ts; not yet consumed by
+   *  buildSlideZplTemplate.ts's own dot coordinates (that template
+   *  still uses its own hardcoded layout) — flagged as a real,
+   *  honest, separate follow-up in that file's own header rather than
+   *  silently left unmentioned. */
+  slideLabelLayout: SlideLabelLayoutConfig;
 }
 
 export const DEFAULT_PRINT_SETTINGS_CONFIG: PrintSettingsConfig = {
@@ -136,6 +218,8 @@ export const DEFAULT_PRINT_SETTINGS_CONFIG: PrintSettingsConfig = {
     'Ad-Hoc Batch': 'ADHOC',
   },
   gs1Gtin: '',
+  cassetteLabelLayout: DEFAULT_CASSETTE_LABEL_LAYOUT,
+  slideLabelLayout: DEFAULT_SLIDE_LABEL_LAYOUT,
 };
 
 export interface IPrintSettingsService {

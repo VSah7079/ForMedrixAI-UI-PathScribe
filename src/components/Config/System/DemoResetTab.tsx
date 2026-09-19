@@ -8,6 +8,7 @@
 // Both paths require a confirmation step before executing.
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../../../pathscribe.css';
 import { IS_MOCK_BACKEND } from '@/services/index';
 
@@ -83,6 +84,9 @@ export const VERSIONED_KEYS = [
 export const SETTINGS_KEYS = [
   'specimen_dictionary',
   'container_types',
+  'reagent_lots',
+  'workstation_groups',
+  'action_groups',
   'pathscribe_delegation_types_v2',
   'pathscribe_internal_notes_v2',
   'pathscribe_subspecialties',
@@ -135,7 +139,7 @@ export const SETTINGS_KEYS = [
   // MPI (Master Patient Index) demo records
   'pathscribe_mpi_identifiers', 'pathscribe_mpi_links', 'pathscribe_mpi_records',
   // Template/case routing config
-  'pathscribe_routing_rules_v1', 'pathscribe_routing_config', 'pathscribe_routing_rules',
+  'pathscribe_routing_rules_v1', 'pathscribe_routing_config', 'pathscribe_routing_rules', 'delivery_rules_v1',
   'ps_registry_overrides_v1', 'ps_case_registries_v1', 'ps_case_number_series_v1',
   // Validation studies, research feed
   'pathscribe_validation_studies_v1',
@@ -192,7 +196,7 @@ export const SETTINGS_KEYS = [
   'facilityCytologyNomenclatureOverrides', 'facilityCytologyQcOverrides',
   'facilityCytologyRegistryOverrides', 'facilityCytologyRoutingOverrides',
   'facilityCytologyScreeningStrategyOverrides', 'facilityCytologyWorkloadCapOverrides',
-  'staffCytologyQcOverrides', 'staffCytologyWorkloadCapOverrides',
+  'staffCytologyQcOverrides', 'staffCytologyWorkloadCapOverrides', 'staffConcordanceReviewOverrides',
   // Cancer registry settings + facility overrides.
   'cancerRegistrySettings', 'facilityCancerRegistryOverrides', 'registrySettings', 'facilityRegistryOverrides',
   // Equipment/hardware dictionaries — real seed data confirmed for
@@ -225,6 +229,11 @@ export const SETTINGS_KEYS = [
   // DELIBERATELY_NOT_RESET now that the real, underlying cause is
   // fixed, not just documented around.
   'orSuiteTerminals',
+  // PS-288 — same real reasoning as orSuiteTerminals just above:
+  // mockDisplayProfileService.ts has a real SEED_PROFILES fallback
+  // from the start, so a Full Reset restores a ready-to-bind display
+  // profile rather than leaving zero profiles to bind to.
+  'displayProfiles',
   // Real, per direct follow-up ("why not a synthetic SNOMED... it's
   // fake and just there to show customers"). Now has real,
   // structurally-safe synthetic seed data (mockSnomedCervicalHistology
@@ -243,7 +252,17 @@ export const SETTINGS_KEYS = [
   // admin-configurable rule set itself. Has real, international seed
   // data (7 real rules) — confirmed safe to reset, same pattern as
   // every other real, seeded dictionary in this file.
+  // Real, per direct guidance's own confirmed vitest alias-resolution
+  // fix — DemoResetTab.coverage.test.ts couldn't even run before that
+  // fix (blocked on an unrelated @/ import failure), so this real gap
+  // was invisible until the test suite could finally execute. Real,
+  // admin-configured dictionary (Asset Location Dictionary, used by
+  // the Autopsy mortuary-storage-occupancy work), with a real,
+  // confirmed-safe seed fallback (SEED_ASSET_LOCATIONS in
+  // mockAssetLocationDictionaryService.ts) before adding it here,
+  // same discipline as every other entry in this list.
   'cytologyQcRules',
+  'pathscribe_asset_locations',
 ];
 
 export const CASE_KEYS = [
@@ -292,7 +311,7 @@ export const CASE_KEYS = [
   'accession_outbound_queue_v1', 'cancer_registry_outbound_queue_v1',
   'cytology_outbound_result_queue_v1', 'cytology_registry_outbound_queue_v1',
   'molecular_order_outbound_queue_v1', 'outbound_charge_queue_v1', 'outbound_lis_sync_queue_v1',
-  'outbound_patient_adt_queue_v1', 'outbound_result_queue_v1', 'referral_outbound_queue_v1',
+  'outbound_patient_adt_queue_v1', 'outbound_result_queue_v1', 'referral_outbound_queue_v1', 'print_queue_v1', 'reportReleasedEventLog',
   // Real, per-case/per-tester records, requests, and assignments —
   // all genuinely accumulate during demo/test usage; none of these
   // are admin-configured dictionaries.
@@ -352,6 +371,12 @@ export const STATE_KEYS = [
   // genuine preference worth surviving a reset. Missed here only
   // because it postdates this file's own last full audit.
   'pathscribe_current_or_terminal_id',
+  // PS-288 — same real reasoning immediately above, for the Facility
+  // Ops Dashboard's own analogous kiosk binding
+  // (useCurrentDisplayProfile.ts): which wall display a tester's
+  // browser is bound to right now, not a genuine preference worth
+  // surviving a reset.
+  'pathscribe_current_display_profile_id',
   // Real, per the same follow-up as SETTINGS_KEYS/CASE_KEYS above.
   // Matches the exact real "_requested" pattern already several lines
   // up (pathscribe_ped_requested/pathscribe_orch_requested) — real,
@@ -525,6 +550,7 @@ type UIState = 'idle' | 'confirm-full' | 'confirm-user' | 'done';
 interface ResetResult { mode: Mode; cleared: string[]; }
 
 const DemoResetTab: React.FC = () => {
+  const navigate = useNavigate();
   const [uiState,    setUiState]    = useState<UIState>('idle');
   const [result,     setResult]     = useState<ResetResult | null>(null);
   const [userId,     setUserId]     = useState<string | null>(null);
@@ -732,6 +758,41 @@ const DemoResetTab: React.FC = () => {
             onCancel={() => setUiState('idle')}
           />
         )}
+      </div>
+
+      {/* ── Testing & Demo Tools — real, direct follow-up (Sep 2026):
+          "Molecular Order Queue" used to be a flat top-level Home tile;
+          per direct guidance ("seems like a Testing tool"), it's a
+          real demo/simulation surface (see its own page header —
+          simulates ordering and inbound HPV results against a fixed
+          seed case, never a production ordering workflow with a real
+          staff operator), so it moved here — same roof as this tab's
+          own reset tools, rather than a Home tile aimed at every
+          user. Same real /molecular-order-queue route underneath. ── */}
+      <div style={{ marginTop: 28 }}>
+        <div style={{ marginBottom: 12 }}>
+          <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700 }}>Testing &amp; Demo Tools</h2>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
+            Other real, testing-only surfaces — never linked from Home, since they simulate or fake real behavior rather than performing it.
+          </p>
+        </div>
+        <div className="comp-reset-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+            <div>
+              <div className="comp-reset-card-title">Molecular Order Queue (Demo)</div>
+              <div className="comp-reset-card-desc">
+                Simulate outbound molecular assay/instrument orders and inbound results — including HPV reflex genotyping — against a fixed demo seed case.
+              </div>
+            </div>
+            <button
+              className="ps-conf-btn-secondary"
+              onClick={() => navigate('/molecular-order-queue')}
+              style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+            >
+              🧬 Open Molecular Order Queue
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>

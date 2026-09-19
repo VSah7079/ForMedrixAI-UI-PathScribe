@@ -23,7 +23,9 @@
 import { describe, it, expect } from 'vitest';
 import { generateDefaultMaterial } from '@/utils/generateDefaultMaterial';
 import type { Protocol, ProtocolPathway } from '@/services/protocols/IProtocolService';
+import { mockProtocolService } from '@/services/protocols/mockProtocolService';
 import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
+import { mockSpecimenDictionaryService } from '@/services/specimenDictionary/mockSpecimenDictionaryService';
 import type { StainType } from '@/services/stains/IStainService';
 
 const stainType = (id: string, name: string): StainType =>
@@ -37,6 +39,12 @@ const pathway = (overrides: Partial<ProtocolPathway>): ProtocolPathway => ({
   requiresDecal: overrides.requiresDecal ?? false,
   processingFormat: overrides.processingFormat ?? 'Standard',
   tasks: overrides.tasks ?? [],
+  // Real, per direct follow-up: "test a protocol" — this file's own
+  // existing tests never exercised defaultCount (every prior pathway
+  // implicitly produced exactly one block/decant), so it was never
+  // passed through here. Genuinely additive: undefined behaves
+  // exactly as before for every existing test above.
+  defaultCount: overrides.defaultCount,
 });
 
 const protocolWith = (pathways: ProtocolPathway[]): Protocol => ({
@@ -150,5 +158,60 @@ describe('generateDefaultMaterial — real Hybrid Model: ProtocolPathway.materia
     const entry = { id: 'entry-stat', name: 'Urgent Specimen' } as unknown as SpecimenEntry;
     const result = await generateDefaultMaterial(entry, 'sp1', 'alpha-specimen', [], [], 'S26-0001', 'A', 'STAT');
     expect(result.blocks[0].cassetteColorId).toBe('color-red');
+  });
+});
+
+// Real, per direct follow-up: "add tissue descriptions on
+// cassettes... then test a protocol." Exercises the real, seeded
+// Autopsy Cardiac Sectioning protocol and its paired Heart, Autopsy
+// specimen dictionary entry (both in the real mock services, not a
+// synthetic test fixture) — proving the actual seed data produces
+// the actual blocks a real accessioner would see, not just that the
+// underlying defaultCount mechanism works in the abstract.
+describe('generateDefaultMaterial \u2014 real seeded Autopsy Cardiac Sectioning protocol', () => {
+  it('the real Heart, Autopsy specimen entry resolves to the real Cardiac Sectioning protocol and produces 6 real blocks (4 coronary vessels + 2 myocardial), sequentially labeled', async () => {
+    const dictResult = await mockSpecimenDictionaryService.getAll();
+    expect(dictResult.ok).toBe(true);
+    const heartEntry = (dictResult as any).data.find((e: SpecimenEntry) => e.id === 'sp-heart-autopsy');
+    expect(heartEntry).toBeDefined();
+    expect(heartEntry.specimenCategory).toBe('AUTOPSY');
+
+    const protocolResult = await mockProtocolService.getAll();
+    expect(protocolResult.ok).toBe(true);
+    const protocols = (protocolResult as any).data;
+    const cardiacProtocol = protocols.find((p: Protocol) => p.id === 'proto-autopsy-cardiac-sectioning');
+    expect(cardiacProtocol).toBeDefined();
+
+    const result = await generateDefaultMaterial(heartEntry, 'sp-heart-1', 'alpha-specimen', [], protocols, 'S26-0001', 'C');
+    expect(result.blocks).toHaveLength(6);
+    expect(result.decants).toHaveLength(0);
+    // Real, per Part B's own Rule Set 4 example ("Specimen Container
+    // C: Heart... Cassettes prefix with 'C'") \u2014 block numbering is
+    // sequential within the specimen regardless of pathway boundary,
+    // so the coronary vessels take C1\u2013C4 and myocardium continues
+    // C5\u2013C6, never restarting at 1 for the second pathway.
+    expect(result.blocks.map(b => b.label)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(result.blocks.map(b => b.displayId)).toEqual([
+      'S26-0001-C1', 'S26-0001-C2', 'S26-0001-C3', 'S26-0001-C4', 'S26-0001-C5', 'S26-0001-C6',
+    ]);
+    expect(result.blocks.slice(0, 4).every(b => b.sourcePathwayName === 'Coronary Arteries')).toBe(true);
+    expect(result.blocks.slice(4, 6).every(b => b.sourcePathwayName === 'Myocardium')).toBe(true);
+    expect(result.protocolSnapshot?.id).toBe('proto-autopsy-cardiac-sectioning');
+    // Real, per direct follow-up: "it all needs to be wired" — the
+    // real, seeded route-autopsy-cardiac-protocol cassette routing
+    // rule now resolves for every block this protocol generates,
+    // same real mechanism the Renal Protocol's own "Blue Mesh" rule
+    // already proved above — no longer left unresolved.
+    expect(result.blocks.every(b => b.cassetteColorId === 'color-white')).toBe(true);
+  });
+
+  it('every real generated block carries the real H&E stain the protocol\u2019s own tasks specify', async () => {
+    const dictResult = await mockSpecimenDictionaryService.getAll();
+    const heartEntry = (dictResult as any).data.find((e: SpecimenEntry) => e.id === 'sp-heart-autopsy');
+    const protocolResult = await mockProtocolService.getAll();
+    const protocols = (protocolResult as any).data;
+
+    const result = await generateDefaultMaterial(heartEntry, 'sp-heart-1', 'alpha-specimen', [], protocols, 'S26-0001', 'C');
+    expect(result.blocks.every(b => b.stains.length === 1 && b.stains[0].stainName === 'st-he')).toBe(true);
   });
 });

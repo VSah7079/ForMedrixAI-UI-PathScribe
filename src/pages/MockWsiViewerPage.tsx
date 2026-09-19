@@ -63,8 +63,8 @@ const MockWsiViewerPage: React.FC = () => {
       ) : (
         <>
           <div style={{ marginBottom: 16, color: '#e5e7eb', fontSize: 14 }}>
-            <strong>{accessionNumber}</strong>{specimenLabel ? ` — Specimen ${specimenLabel}` : ''}
-            {patientName && <span style={{ marginLeft: 12, color: '#9ca3af' }}>{patientName}</span>}
+            <strong data-phi="accession">{accessionNumber}</strong>{specimenLabel ? ` — Specimen ${specimenLabel}` : ''}
+            {patientName && <span style={{ marginLeft: 12, color: '#9ca3af' }} data-phi="name">{patientName}</span>}
           </div>
           <div style={{ flex: 1, borderRadius: 8, border: '1px dashed #374151', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: 13 }}>
             [ Real WSI slide surface — pan/zoom would render here ]

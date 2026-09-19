@@ -9,6 +9,7 @@ vi.mock('./dispatchNetworkPrintJob', async () => {
   return { ...actual, dispatchNetworkPrintJob: vi.fn(actual.dispatchNetworkPrintJob) };
 });
 
+import { DEFAULT_CASSETTE_LABEL_LAYOUT } from '@/services/printSettings/IPrintSettingsService';
 import { printCassetteLabel, printSlideLabel } from './printCassetteSlideLabel';
 import type { PrintCassetteSlideLabelError } from './printCassetteSlideLabel';
 import { printZplViaQzTray } from './qzTrayBridge';
@@ -35,39 +36,39 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
 
   describe('printCassetteLabel', () => {
     it('refuses cleanly, with a real, specific message, when no GTIN is configured — never encodes a fabricated value', async () => {
-      const result = await printCassetteLabel(cassetteInput, basePrinter, '');
+      const result = await printCassetteLabel(cassetteInput, basePrinter, '', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(false);
       if (!result.ok) expect((result as PrintCassetteSlideLabelError).message).toContain('No GS1 GTIN configured');
       expect(printZplViaQzTray).not.toHaveBeenCalled();
     });
 
     it('refuses cleanly on invalid GS1 fields (e.g. an illegal character) before ever attempting dispatch', async () => {
-      const result = await printCassetteLabel({ ...cassetteInput, cassetteId: 'A_1' }, basePrinter, '00850000000000');
+      const result = await printCassetteLabel({ ...cassetteInput, cassetteId: 'A_1' }, basePrinter, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(false);
       expect(printZplViaQzTray).not.toHaveBeenCalled();
     });
 
     it('real, working qz_tray dispatch — the already-built ZPL template is passed straight through', async () => {
       (printZplViaQzTray as any).mockResolvedValue({ ok: true, data: undefined });
-      const result = await printCassetteLabel(cassetteInput, basePrinter, '00850000000000');
+      const result = await printCassetteLabel(cassetteInput, basePrinter, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(true);
       expect(printZplViaQzTray).toHaveBeenCalledTimes(1);
       const [printerId, zpl] = (printZplViaQzTray as any).mock.calls[0];
       expect(printerId).toBe('ZEBRA-TEST');
       expect(zpl).toContain('^XA');
-      expect(zpl).toContain('^BXN,4,200,,,1'); // real, corrected ECC200 value; columns/rows blank (auto), not 0 — see zplTemplates.ts's own real Labelary-verified fix
+      expect(zpl).toContain('^BXN,3,200,,,1'); // real, corrected ECC200 level; module dots now computed from the real, admin-configured layout
     });
 
     it('a real qz_tray dispatch failure is reported, not swallowed', async () => {
       (printZplViaQzTray as any).mockResolvedValue({ ok: false, message: 'QZ Tray does not appear to be running.' });
-      const result = await printCassetteLabel(cassetteInput, basePrinter, '00850000000000');
+      const result = await printCassetteLabel(cassetteInput, basePrinter, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(false);
       if (!result.ok) expect((result as PrintCassetteSlideLabelError).message).toContain('does not appear to be running');
     });
 
     it('real, working direct_interface_engine dispatch — routes through the real, already-tested NetworkPrintPayload contract', async () => {
       const printer: PrinterProfile = { ...basePrinter, bridgeType: 'direct_interface_engine' };
-      const result = await printCassetteLabel(cassetteInput, printer, '00850000000000');
+      const result = await printCassetteLabel(cassetteInput, printer, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(true);
       expect(dispatchNetworkPrintJob).toHaveBeenCalledTimes(1);
       expect(printZplViaQzTray).not.toHaveBeenCalled();
@@ -75,14 +76,14 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
 
     it('real, honest refusal for a bridge type with no implementation yet — never silently no-ops', async () => {
       const printer: PrinterProfile = { ...basePrinter, bridgeType: 'zebra_browser_print' };
-      const result = await printCassetteLabel(cassetteInput, printer, '00850000000000');
+      const result = await printCassetteLabel(cassetteInput, printer, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(false);
       if (!result.ok) expect((result as PrintCassetteSlideLabelError).message).toContain('zebra_browser_print');
     });
 
     it('real feature, per direct follow-up (cell block spec): a real cellBlockNumber applies the -CB{n} suffix (not the spec\'s own literal underscore) to both the GS1-encoded id and the visible label text', async () => {
       (printZplViaQzTray as any).mockResolvedValue({ ok: true, data: undefined });
-      const result = await printCassetteLabel({ ...cassetteInput, cellBlockNumber: 1 }, basePrinter, '00850000000000');
+      const result = await printCassetteLabel({ ...cassetteInput, cellBlockNumber: 1 }, basePrinter, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       expect(result.ok).toBe(true);
       const [, zpl] = (printZplViaQzTray as any).mock.calls[0];
       expect(zpl).toContain('1-CB1'); // suffixed block label, visible text
@@ -91,7 +92,7 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
 
     it('with no cellBlockNumber, an ordinary tissue block cassette is never suffixed', async () => {
       (printZplViaQzTray as any).mockResolvedValue({ ok: true, data: undefined });
-      await printCassetteLabel(cassetteInput, basePrinter, '00850000000000');
+      await printCassetteLabel(cassetteInput, basePrinter, '00850000000000', DEFAULT_CASSETTE_LABEL_LAYOUT);
       const [, zpl] = (printZplViaQzTray as any).mock.calls[0];
       expect(zpl).not.toContain('-CB');
     });

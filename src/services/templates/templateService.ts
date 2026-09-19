@@ -709,6 +709,7 @@ import KIDNEY_RESECTION_JSON    from '../../data/templates/generic/kidney_resect
 import KIDNEY_BIOPSY_JSON       from '../../data/templates/generic/kidney_biopsy.json';
 import WILMS_RESECTION_JSON     from '../../data/templates/generic/wilms_resection.json';
 import WILMS_BIOPSY_JSON        from '../../data/templates/generic/wilms_biopsy.json';
+import AUTOPSY_GROSS_EXAM_JSON  from '../../data/templates/Autopsy/autopsy_gross_examination.json';
 
 // Seed all generic templates (see comment block above)
 editorStore.set('breast_invasive',        BREAST_INVASIVE_JSON   as any);
@@ -721,6 +722,7 @@ editorStore.set('kidney_resection',    KIDNEY_RESECTION_JSON    as unknown as Ed
 editorStore.set('kidney_biopsy',       KIDNEY_BIOPSY_JSON       as unknown as EditorTemplate);
 editorStore.set('wilms_resection',     WILMS_RESECTION_JSON     as unknown as EditorTemplate);
 editorStore.set('wilms_biopsy',        WILMS_BIOPSY_JSON        as unknown as EditorTemplate);
+editorStore.set('autopsy_gross_examination', AUTOPSY_GROSS_EXAM_JSON as unknown as EditorTemplate);
 editorStore.set('prostate_resection',        PROSTATE_RESECTION_JSON  as any);
 editorStore.set('lung_resection',            LUNG_RESECTION_JSON      as any);
 // Alias — internal protocol ID used by the generic seed template above

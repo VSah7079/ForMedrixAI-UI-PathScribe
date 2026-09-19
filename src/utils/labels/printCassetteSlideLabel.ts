@@ -31,6 +31,7 @@ import { buildCassetteZplTemplate, buildSlideZplTemplate } from './zplTemplates'
 import { dispatchZplLabel } from './dispatchZplLabel';
 import { buildNetworkPrintPayload, dispatchNetworkPrintJob } from './dispatchNetworkPrintJob';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
+import type { CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 
 export interface PrintCassetteSlideLabelResult {
   ok: true;
@@ -66,6 +67,17 @@ export interface PrintCassetteLabelInput {
    *  own doc comment for the real, deliberate underscore-to-hyphen
    *  substitution this app makes vs. the spec's own literal example. */
   cellBlockNumber?: number;
+  /** Real, per direct follow-up flagging a real, confirmed gap: this
+   *  field existed on HistologyBlock and was editable, but never
+   *  actually reached the printed label — see buildCassetteZplTemplate's
+   *  own doc comment. Only carried through on the qz_tray/ZPL path
+   *  below; the direct_interface_engine path's own payload shape
+   *  (NetworkPrintLabelData) is Section 5.1's externally-specified
+   *  contract field-for-field and doesn't have a slot for this — a
+   *  real, honest, documented gap on that one path, not silently
+   *  patched by repurposing an unrelated field.
+   */
+  tissueDescription?: string;
 }
 
 /** Real, deliberate correction to the spec's own literal example
@@ -93,6 +105,7 @@ export async function printCassetteLabel(
   input: PrintCassetteLabelInput,
   printer: PrinterProfile,
   gtin: string,
+  cassetteLabelLayout: CassetteLabelLayoutConfig,
 ): Promise<PrintCassetteSlideLabelResult | PrintCassetteSlideLabelError> {
   if (!gtin.trim()) {
     return { ok: false, message: 'No GS1 GTIN configured — set one in Print Settings before printing a real GS1 cassette label.' };
@@ -135,7 +148,8 @@ export async function printCassetteLabel(
 
   const zpl = buildCassetteZplTemplate({
     gs1, accessionNumber: input.fullAccession, specimenDesignator: input.specimenLabel,
-    blockId: blockLabel, patientName: input.patientName,
+    blockId: blockLabel, patientName: input.patientName, tissueDescription: input.tissueDescription,
+    layout: cassetteLabelLayout, dpi: printer.dpi,
   });
   return dispatchZplLabel(printer, zpl, input.copies ?? 1);
 }

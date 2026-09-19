@@ -164,7 +164,8 @@ context, and renders real charts/tables client-side.
      carries no organisation field to filter on directly) and a
      cross-tenant-permitted viewer still sees the full, untruncated list.
 - **`qaReportUtils.ts`** — Shared `QaScope` type, `caseMatchesScope()`,
-  and `exportQaReportRows()` (the real XLSX export every tab uses).
+  and `exportQaReportRows()` (the real CSV export every tab uses, via
+  `utils/csv.ts` — PS-48 moved this off the `xlsx` package).
   `caseMatchesScope()` is where the organisation-level check above
   actually lives — resolves `Case.originHospitalId` through
   `getOrganisationByHospitalId()` (`services/organisation/`), the same

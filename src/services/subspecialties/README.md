@@ -15,6 +15,11 @@ Pathology subspecialty dictionary — pools, workgroups, member/physician/client
   fix. Nothing in this folder's own files changed — worth knowing this
   data has a real, new consumer now, even though the change lives
   elsewhere.
+- **Real, another new consumer (PS-286, Sep 2026):** `getAll()`, filtered
+  to `active`, is now how `pages/SlideDistributionStationPage/`'s own
+  Pathologist/Subspecialty quick-picker grid offers pool-level routing
+  (Dermpath, GI, Cytopathology) as an alternative to a named individual —
+  read-only, nothing in this folder's own files changed.
 - `isWorkgroup` (a separate flag — is this record a pool at all) is off
   for every subspecialty except `oncology-pool` in the current seed
   data, and no routing rule currently targets that one either — which

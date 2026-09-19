@@ -210,6 +210,12 @@ export let PROTOCOL_REGISTRY: Protocol[] = [
     lastModified: '2026-07-25', owner: 'System',
   },
   {
+    id: 'autopsy_gross_examination', name: 'Autopsy Gross Examination \u2014 Whole Body / Multi-Cavity',
+    category: 'AUTOPSY', version: '0.4.0-draft', source: 'Custom', type: 'Base template',
+    status: 'in_review', fields: 98, snomedPct: 0, icdPct: 0,
+    lastModified: '2026-09-13', owner: 'System',
+  },
+  {
     id: 'prostate_resection', name: 'Generic Template — Prostate Resection',
     category: 'PROSTATE', version: '0.1.0-generic', source: 'Custom', type: 'Base template',
     status: 'published', fields: 28, snomedPct: 0, icdPct: 0,

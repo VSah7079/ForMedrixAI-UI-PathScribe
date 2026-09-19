@@ -93,6 +93,9 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
   { id: 'sys-or-suite-terminals', label: 'OR Suite Terminals', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'or_suite_terminals',
     description: 'Real, per-OR "Station Identity" wall-display terminals for the Intraoperative/Frozen Section Dashboard, each bound to one specific Location.',
     synonyms: ['or dashboard', 'intraoperative dashboard', 'frozen section', 'or suite', 'station identity', 'operating room terminal'] },
+  { id: 'sys-display-profiles', label: 'Display Profiles (Facility Ops Dashboards)', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'display_profiles',
+    description: 'Real, data-only device registry for the five Facility Ops Dashboard wall displays (Grossing & Intake, Embedding & Microtomy, Staining & IHC, Send-Out & Reference, Diagnostic Sign-Out/Scanner) — each profile bound to one performing lab and one or more views.',
+    synonyms: ['facility ops dashboard', 'department dashboard', 'wall display', 'kiosk', 'display profile', 'grossing dashboard', 'staining dashboard', 'lab operations dashboard'] },
   { id: 'sys-migration-field-mappings', label: 'Migration Field Mappings', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'migration_field_mappings',
     description: 'Real, admin-editable mapping from a legacy LIS\'s own source field names to this app\'s migration target fields, for the Historical Data Migration Engine.',
     synonyms: ['data migration', 'legacy import', 'field mapping', 'legacy lis', 'bulk import'] },
@@ -124,7 +127,18 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
     synonyms: ['snomed', 'icd', 'cap', 'rcpath', 'region'] },
   { id: 'sys-specimens', label: 'Specimens', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'specimens',
     description: 'The specimen dictionary that drives autocomplete in Case Search and case creation.',
-    synonyms: ['specimen dictionary', 'specimen types'] },
+    synonyms: ['specimen dictionary', 'specimen types', 'autopsy specimen category'] },
+  // Real, per direct follow-up: "it all needs to be wired" — neither
+  // the Protocol Dictionary nor the (newly-built) Asset Location
+  // Dictionary had any real entry here at all, meaning searching
+  // "autopsy" or "mortuary" in Config found nothing, even though the
+  // real configuration itself exists.
+  { id: 'sys-protocols', label: 'Protocol Dictionary', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'protocols',
+    description: 'The standalone processing-workflow dictionary (fixative, pathways, block/decant counts) referenced by Specimen Dictionary entries, including the Autopsy Cardiac Sectioning protocol.',
+    synonyms: ['protocol', 'pathway', 'processing workflow', 'autopsy cardiac sectioning'] },
+  { id: 'sys-asset-locations', label: 'Asset Location Dictionary', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'asset_locations',
+    description: 'The governed reference list for physical/asset locations, including mortuary storage slots and their real-time occupancy.',
+    synonyms: ['mortuary', 'storage slot', 'autopsy storage', 'tray utilization', 'occupancy'] },
   { id: 'sys-subspecialties', label: 'Subspecialties', tabId: 'system', tabLabel: 'System', confidence: 'verified', section: 'subspecialties',
     description: 'Subspecialty pools for the delegation workflow.',
     synonyms: ['subspecialty pools', 'delegation routing'] },
@@ -225,6 +239,12 @@ export const CONFIG_SEARCH_INDEX: ConfigSearchEntry[] = [
   { id: 'demo-reset', label: 'Demo Reset', tabId: 'demo', tabLabel: 'Demo Reset', confidence: 'verified',
     description: 'Reset mock data for your hospital only, or a full reset across all testers (development/staging only).',
     synonyms: ['reset data', 'full reset', 'staging only'] },
+  // Real, direct follow-up (Sep 2026): moved here from a flat top-level
+  // Home tile, per direct guidance ("seems like a Testing tool") — see
+  // DemoResetTab.tsx's own "Testing & Demo Tools" section.
+  { id: 'demo-molecular-order-queue', label: 'Molecular Order Queue (Demo)', tabId: 'demo', tabLabel: 'Demo Reset', confidence: 'verified',
+    description: 'Simulate outbound molecular assay/instrument orders and inbound results, including HPV reflex genotyping, against a fixed demo seed case.',
+    synonyms: ['molecular order queue', 'hpv simulation', 'reflex genotyping', 'outbound queue demo'] },
 
   // ── Voice tab ──────────────────────────────────────────────────────────────
   { id: 'voice-profile', label: 'Voice Profile', tabId: 'voice', tabLabel: 'Voice', confidence: 'verified',

@@ -5,7 +5,7 @@ import { caseRouter } from '../cases/CaseRouter';
 import { mockAuditService } from '../auditlog/mockAuditService';
 import { facilityService } from '../index';
 import { resolvePerformingLabFacilityId } from '../facilities/IFacilityService';
-import { dispatchCaseInstances } from '../reports/dispatchCaseInstances';
+import { publishReportReleasedEvent } from '../reports/publishReportReleasedEvent';
 
 /** Real, sensible fallback if no org config has been saved yet — matches
  *  direct specification's own stated default (10 minutes, 1-30 range),
@@ -225,7 +225,15 @@ export const mockReportReleaseService: IReportReleaseService = {
       // never delay this function's own, more time-sensitive job —
       // flipping the real UI state from "buffered" to "released" for
       // whoever's watching the countdown.
-      dispatchCaseInstances(caseId).catch(e =>
+      publishReportReleasedEvent({
+        caseId,
+        reportType: 'FINAL',
+        releasedAt: new Date().toISOString(),
+        // Real, deliberate: no releasedBy here — this is the release
+        // buffer's own automatic expiry, with no human actor at this
+        // specific moment (the signing pathologist's own real action
+        // already happened earlier, when the buffer itself started).
+      }).catch(e =>
         console.error('[reportRelease] Real, non-blocking failure dispatching case instances after release:', e)
       );
 

@@ -156,7 +156,7 @@ const MolecularWorkcenterPage: React.FC = () => {
     <div className="ps-app-root ps-page-container ps-page-container--medium">
       <div className="ps-page-header-row">
         <div>
-          <h1 className="ps-page-title">Molecular Workcenter</h1>
+          <h1 className="ps-page-title">Molecular Workspace</h1>
           <p className="ps-page-subtitle">
             Batch and plate management for molecular diagnostics runs (HPV, CT/NG, respiratory PCR panels, targeted NGS).
           </p>

@@ -42,6 +42,7 @@ import { getSessionUser, canAccessCaseWithPools, filterAccessibleCasesWithPools,
 import { mockSubspecialtyService as subspecialtyService } from '../subspecialties/mockSubspecialtyService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
 import type { Facility } from '../facilities/IFacilityService';
+import { getParticipationTypeLookup } from '../../utils/participationTypeLookup';
 import { isOrchCaseId } from './reportingModeRouting';
 import { mergeDualSourcePages } from './caseFilterUtils';
 import { getEffectiveScanStationId } from '../../utils/effectiveScanStation';
@@ -96,6 +97,19 @@ async function getEnterpriseFacilityLookup(): Promise<Facility[]> {
   return enterpriseFacilityLookupPromise;
 }
 
+// Real, per direct guidance ("Yes, complete the work" — wiring real
+// enforcement for deriveEligibleFinalizerIds() to match canFinalizeCase()):
+// getParticipationTypeLookup() (utils/participationTypeLookup.ts) is the
+// same real caching pattern as getSubspecialtyLookup/
+// getEnterpriseFacilityLookup above — admin-managed data (the
+// Participation Types Config screen), changes rarely, memoizes the
+// in-flight promise so concurrent writes share one fetch rather than
+// firing several. Extracted to a shared util rather than duplicated here,
+// since useSignOutWorkflow.ts's canFinalizeCase() gate needs the exact
+// same lookup. Deliberately NOT lab-scoped here — see
+// deriveEligibleFinalizerIds()'s own updated doc comment
+// (caseAccessControl.ts) for why this chokepoint resolves each type's
+// platform-default canFinalize flag only, not a per-lab override.
 
 // ── Router ────────────────────────────────────────────────────────────────────
 class CaseRouter implements ICaseService {
@@ -331,7 +345,7 @@ class CaseRouter implements ICaseService {
     // mapping), so deriving from it here is always correct, not a
     // partial/stale computation.
     const patchedUpdates: Partial<Case> = 'participants' in updates
-      ? { ...updates, eligibleFinalizerIds: deriveEligibleFinalizerIds(updates.participants as any) }
+      ? { ...updates, eligibleFinalizerIds: deriveEligibleFinalizerIds(updates.participants as any, await getParticipationTypeLookup()) }
       : updates;
     // Real feature, per direct follow-up: "Stamp every saved draft...
     // with... station_id captured at the exact moment of saving."
@@ -383,7 +397,7 @@ class CaseRouter implements ICaseService {
     // case can be created with participants already populated (e.g. a
     // primary pathologist assigned at accession time).
     const patchedCaseData: Case = caseData.participants
-      ? { ...caseData, eligibleFinalizerIds: deriveEligibleFinalizerIds(caseData.participants) }
+      ? { ...caseData, eligibleFinalizerIds: deriveEligibleFinalizerIds(caseData.participants, await getParticipationTypeLookup()) }
       : caseData;
 
     const [service, audit] = isOrchCaseId(caseData.id)

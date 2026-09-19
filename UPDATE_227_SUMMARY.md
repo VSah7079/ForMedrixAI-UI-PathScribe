@@ -1,0 +1,20 @@
+# PathScribe Update 227 — Summary
+
+The manual "Release as Preliminary" trigger — per your own research identifying the manual pathologist action as the primary real trigger in over 80% of cases (a bone marrow biopsy showing acute leukemia, a transplant kidney showing acute rejection — released immediately, case left open for special stains/IHC/flow). Built first, deliberately, ahead of the automatic event-hook triggers (ROSE completion, gross-only release, delayed-ancillary prompts) from the same research — those would all dispatch through this exact mechanism, just from a different trigger point, so this is the one real foundation they'd need underneath them.
+
+## What was investigated first
+
+Checked `buildOruR01Payload.ts` directly before building anything new. Found it was already mostly generic, not finalization-gated — `narrative`, `patient`, `accessionNumber` all come from real, always-available case-level data. Only `structuredDiagnosisAnswers` hardcoded `status === 'finalized'`. Also found an existing comment in that file already anticipating this exact next step: "Wiring a real ORU^R01 dispatch trigger from within SynopticReportPage.tsx itself is real, separate, next-step work" — confirming this wasn't a new idea, just never built.
+
+## What changed
+
+- **`OutboundResultQueueEntry.ts`**: added `'PRELIMINARY'` to `OruResultState` (was `'FINAL' | 'CORRECTED' | 'ADDENDUM'` only).
+- **`buildOruR01Payload.ts`**: added `narrative.preliminaryImpression` (populated only for a genuine `PRELIMINARY` dispatch, from the real `Case.diagnostic.preliminaryImpression` field added in update-224); `structuredDiagnosisAnswers` now includes every real instance on the case when building a Preliminary payload, not just finalized ones — sharing partial, in-progress answers is the whole point.
+- **New: `releasePreliminaryReport.ts`** — the real service function. Refuses cleanly on a non-orchestration case or a case that's already genuinely final (reuses `resolveIsFinalStatus` from update-226, never a second, separate definition). Dispatches one real `PRELIMINARY` message per real specimen instance on the case. Deliberately has no dedup guard, unlike the strict one-time `FINAL` dispatch — a pathologist may legitimately release more than one Preliminary report as findings develop. Writes the real Preliminary Reviewer Attestation fields the templates already render (`reviewerRole`, `preliminaryRecordedAt` — existed since the templates shipped, nothing ever wrote to them until now). **Never touches `CaseStatus`** — per direct instruction, the case stays in whatever in-progress/unverified state it was already in. 9 tests.
+- **`BottomActionBar.tsx` / `SynopticReportPage.tsx`**: new "📤 Release as Preliminary" button, visible whenever the case genuinely isn't final yet (`!resolveIsFinalStatus`) — deliberately not gated on all-fields-complete the way Sign Out Case is, since the entire point is releasing a partial finding early.
+
+## Verification
+`tsc` clean. Full suite: 433 files, 3763 tests, all passing (up from 432/3754 — 1 new test file, 9 new tests). Verified live in the running app: the button appears correctly on a real, `intraoperative-complete` (not yet final) case, and clicking it produces an accurate, honest result — this particular case has no real specimen instances yet, so it correctly reports "Nothing to release yet" rather than a false success — and the case status stayed unchanged throughout, confirmed via the same on-screen status badge before and after.
+
+## What this doesn't cover — scoped deliberately, per your own design recommendation
+This is only the manual trigger (#1 of the three you researched). The event-hook layer (#2 — ROSE completion, gross-only release, delayed-ancillary prompts) and the consultation/send-out trigger (#3) are real, separate, configurable-rule work on top of this same dispatch mechanism, not attempted here. Also Surg Path only — Cytology's own sign-out page hasn't been wired to this button, consistent with its already-flagged, separate disconnection from this app's broader template/reporting infrastructure.

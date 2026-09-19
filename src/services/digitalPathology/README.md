@@ -51,7 +51,30 @@ its primary reason to exist.
   `processInboundWsiScanStatusUpdateEvent.ts`, and their own test
   files, including dynamic `await import(...)` calls a simple
   `from '...'` pattern match wouldn't have caught) updated to the new
-  path; confirmed zero stray references anywhere afterward.
+  path. **Real, honest correction (per direct follow-up, "it all
+  needs to be wired"):** the relocation's own earlier claim of
+  "confirmed zero stray references anywhere afterward" only checked
+  that every real *consumer* pointed at the new path — the old
+  `services/cytology/IWsiScanBatchService.ts` /
+  `mockWsiScanBatchService.ts` source files themselves were never
+  actually deleted, and sat as genuine, verified-unused dead code
+  until now. Deleted for real this time, confirmed via a full
+  before/after `tsc --noEmit` and full test-suite pass, not just a
+  reference search.
+- **`WsiScanSlide.acquisitionMode` / `.focalPlaneCount`** — real, per
+  direct guidance's own confirmed Surgical Pathology vs. Cytology DP
+  technical breakdown: surgical pathology's flat, 2-to-5-micron tissue
+  sections scan at a single fixed focal plane; cytology's non-flat, 3D
+  fluid suspensions/smears genuinely require either full Z-stack
+  capture across multiple focal depths or dynamic focus-fusion
+  compositing. Both fields optional and additive — `undefined` for
+  every existing/surgical-pathology slide, populated only when the
+  real interface engine's own inbound event
+  (`WsiScanStatusUpdateEventPayload.ts`, extended to match) actually
+  reports them. PathScribe never talks to the scanner instrument
+  itself and never infers or defaults either field — same "ingest our
+  own specification, the interface engine owns the real instrument
+  protocol" posture as every other real inbound event in this app.
 
 ## Story 10 (Sep 2026) — Cytology Assist FOV Ingestion
 
@@ -190,6 +213,10 @@ scan-batch status; nothing launched a real vendor's actual viewer.
   component rather than converting that 1,300+-line host file
   wholesale, same boundary already established for `GrossingReleasePanel.tsx`
   and the OR Suite Live Board's own nav button.
+
+## Real, new consumer (PS-288, Sep 2026)
+
+`services/facilityOpsDashboard/computeDiagnosticSignOutSummary.ts` reads `mockWsiScanBatchService.getAll()` for the Diagnostic Sign-Out/Scanner department dashboard's real pending/scanning/completed/failed slide counts, plus a real "Scan QC Failed" alert whenever a completed slide's own `qcPassed` is `false`. Confirmed directly before building: `WsiScanBatch` carries no direct `facilityId` — only each real slide has a `caseId` — so facility scoping joins per-slide through `Case.originHospitalId`, the same real pattern `services/facilityOpsDashboard/resolveBatchFacilityId.ts` uses for `Batch`. Read-only; nothing in this folder's own files changed.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

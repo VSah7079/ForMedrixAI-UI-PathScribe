@@ -3,17 +3,21 @@
 // Real, per direct guidance: the real, intended mechanism for NCCI PTP
 // edit data is a genuine customer-driven quarterly import - whoever
 // holds the real AMA license downloads the current quarter's real
-// "PTP Edits - Practitioner.xlsx" from CMS.gov and uploads it here.
-// PathScribe never ships with real, current NCCI data baked in - see
-// types/billing/NcciPtpEdit.ts's own header for why. Mirrors the same
-// real bulk-upload pattern RvuCodeMapSection.tsx already established
-// for its own generic CMS RVU spreadsheet import - not a new pattern
-// invented here. Wholesale replace on import, not versioned/append-only
-// - see mockNcciEditService.ts's own comment for why.
+// "PTP Edits - Practitioner.xlsx" from CMS.gov, re-saves it as .csv in
+// their spreadsheet editor (PS-48 standardized every manual-maintenance
+// upload on strict CSV — CMS's own file still ships as .xlsx, so this is
+// a one extra "Save As" step per quarter, not a blocker), and uploads
+// the .csv here. PathScribe never ships with real, current NCCI data
+// baked in - see types/billing/NcciPtpEdit.ts's own header for why.
+// Mirrors the same real bulk-upload pattern RvuCodeMapSection.tsx
+// already established for its own generic CMS RVU spreadsheet import -
+// not a new pattern invented here. Wholesale replace on import, not
+// versioned/append-only - see mockNcciEditService.ts's own comment for
+// why.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import { parseNcciUploadRows } from '@/services/billing/ncciEditUtils';
@@ -114,28 +118,24 @@ const NcciEditRulesSection: React.FC = () => {
     loadAll();
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      const { pairs: parsed, problems } = parseNcciUploadRows(rows);
-      setUploadPreview(parsed);
-      setUploadProblems(problems);
-    };
-    reader.readAsBinaryString(file);
     e.target.value = '';
+    if (!file) return;
+    if (!isCsvFile(file)) {
+      setUploadPreview(null);
+      setUploadProblems([`"${file.name}" isn't a CSV file. Save CMS's file as .csv from your spreadsheet editor before importing.`]);
+      return;
+    }
+    const text = await readFileAsText(file);
+    const rows = parseCsv(text);
+    const { pairs: parsed, problems } = parseNcciUploadRows(rows);
+    setUploadPreview(parsed);
+    setUploadProblems(problems);
   };
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet(TEMPLATE_EXAMPLE_ROWS);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'NCCI PTP Edits');
-    XLSX.writeFile(wb, 'NcciPtpEditTemplate.xlsx');
+    downloadCsv('NcciPtpEditTemplate.csv', toCsv(TEMPLATE_EXAMPLE_ROWS));
   };
 
   const handleApplyUpload = () => {
@@ -154,9 +154,9 @@ const NcciEditRulesSection: React.FC = () => {
           Real, procedure-to-procedure bundling checks — flags a warning when two codes on the same specimen are a
           genuine, never-bypassable NCCI conflict. PathScribe does not ship with real, current CMS data; whoever
           holds the real AMA license downloads the current quarter's real file from CMS.gov → National Correct
-          Coding Initiative → PTP Edits → Practitioner, and imports it below. A single pair can also be corrected
-          directly (Edit, below) without a full re-upload — like every change here, it goes through the same real
-          Four-Eyes approval process before it takes effect.
+          Coding Initiative → PTP Edits → Practitioner, saves it as .csv from their spreadsheet editor, and imports
+          it below. A single pair can also be corrected directly (Edit, below) without a full re-upload — like
+          every change here, it goes through the same real Four-Eyes approval process before it takes effect.
         </p>
       </div>
 
@@ -183,7 +183,7 @@ const NcciEditRulesSection: React.FC = () => {
       <div className="ps-conf-row-actions">
         <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
         <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
-        <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx" onChange={handleFileSelect} />
+        <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv" onChange={handleFileSelect} />
       </div>
 
       {uploadPreview && (

@@ -49,12 +49,13 @@ import { getSessionUser, canFinalizeCase } from '@/services/auth/caseAccessContr
 import { countersignService, userService, fppeAssignmentService, qaSupervisionAssignmentService } from '@/services';
 import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { intraoperativeService } from '@/services';
+import { concordanceReviewSettingsService } from '@/services';
 import { dispatchCancerRegistryReportIfApplicable } from '@/services/cancerRegistry/dispatchCancerRegistryReportIfApplicable';
 import { amendmentService, reportVersionService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { syncPrimaryAssignee } from '@/services/cases/caseAssignmentSync';
 import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
-import { dispatchCaseInstances } from '@/services/reports/dispatchCaseInstances';
+import { publishReportReleasedEvent } from '@/services/reports/publishReportReleasedEvent';
 import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
 import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
@@ -77,6 +78,8 @@ import { shouldRandomlySampleForCodeReview } from '@/services/billing/shouldRand
 import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
 import { facilityService } from '@/services';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
+import { getParticipationTypeLookup } from '@/utils/participationTypeLookup';
+import type { ParticipationTypeRecord } from '@/services/participationTypes/IParticipationTypeService';
 import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox';
 import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
 import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
@@ -86,6 +89,9 @@ import type { PreAnalyticDateGateSpecimen } from '../modals/PreAnalyticDateGateM
 import { PreFinalisationModal, type SynopticForReview } from '../modals/PreFinalisationModal';
 import { getFieldLabel, type ReportingStandard } from '@/utils/synopticFieldLabels';
 import { getTemplate } from '@/services/templates/templateService';
+import { PathScribeAIService } from '@/services/aiIntegration/PathScribeAIService';
+import type { EditorTemplate } from '@/components/Config/Protocols/SynopticEditor';
+import { buildReviewFieldsFromAiSuggestions } from './buildReviewFieldsFromAiSuggestions';
 import { evaluateMicroscopicFinalizeGate, type MicroscopicNarrativeStatus } from '@/utils/evaluateMicroscopicFinalizeGate';
 import { isVisible } from '../components/RightSynopticPanel';
 import type { Case, SynopticReportInstance, CaseParticipant } from '@/types/case/Case';
@@ -98,6 +104,8 @@ import type { RightSynopticPanelHandle } from '../components/RightSynopticPanel'
 import type { OrchestratorSection } from '../components/OrchestratorSectionEditor';
 import type { SigningUser, SetConcurrencyConflict, SendSynopticReportToLisFn, GenerateReportPdfSnapshotFn } from './sharedHookTypes';
 import { handleConcurrencyConflict } from './sharedHookTypes';
+import { checkStainQcGate } from './checkStainQcGate';
+import type { StainQcGateBlockingItem } from './checkStainQcGate';
 
 // PreFinalisationModal imported only for its co-located SynopticForReview
 // type re-export — not rendered from this hook.
@@ -128,6 +136,11 @@ interface UseSignOutWorkflowParams {
   countersignFeedback: string;
   specimenDictionary: SpecimenEntry[];
   setFixativeGateSpecimens: (specs: FixativeGateSpecimen[] | null) => void;
+  /** Real, per PS-289/PS-292's own Gating Strategy — see
+   *  checkStainQcGate.ts's own header for the full reasoning. Same
+   *  real "hard block, own gate-resolution modal" shape as the
+   *  fixative/pre-analytic gates above. */
+  setStainQcGateBlocking: (items: StainQcGateBlockingItem[] | null) => void;
   setPreAnalyticDateGateSpecimens: (specs: PreAnalyticDateGateSpecimen[] | null) => void;
   setPendingFinalizeArgs: (args: string[]) => void;
   /** Real, per direct guidance (retiring Finalize for Orchestration
@@ -195,6 +208,39 @@ const BILLING_DEFICIENCY_SEVERITY: Record<BillingDeficiencyType, BillingDeficien
 // Case, which now also needs these same real, hard-block gates since
 // Finalize is being retired there). Same real gate logic either way,
 // never two independently-maintained copies that could quietly drift.
+// Real, per direct guidance ("Yes, complete the work" — wiring real
+// enforcement for the per-performing-lab sign-out-authority flags added
+// in the prior pass): resolves the two real facts canFinalizeCase() needs
+// to make a data-driven decision instead of the old hardcoded literal —
+// every real ParticipationTypeRecord (so .canFinalize/.authorityOverrides
+// are actually read, not just displayed on the admin screen) and this
+// case's own real performing-lab facility id (so a lab's own override
+// actually takes effect) — same real resolvePerformingLabFacilityId()
+// resolution already used elsewhere in this file (fetchCriticalFindings
+// above, fetchBillingDeficiencyFindings below), reused rather than
+// re-derived.
+//
+// Best-effort by design: a failed fetch resolves to an empty
+// participationTypes array / undefined lab id rather than throwing —
+// canFinalizeCase()'s own FINALIZE_ELIGIBLE_PARTICIPATION_TYPES_FALLBACK
+// still applies in that case, so a transient service hiccup can never
+// silently lock out every legitimate finalizer, only fall back to the
+// pre-existing hardcoded behavior for that one attempt.
+async function resolveFinalizeAuthorityContext(
+  caseData: Case | null | undefined
+): Promise<{ participationTypes: ParticipationTypeRecord[]; performingLabFacilityId: string | undefined }> {
+  const orderingFacilityId = caseData?.order?.facilityId;
+  const [participationTypes, labId] = await Promise.all([
+    getParticipationTypeLookup().catch(() => []),
+    (async () => {
+      if (!orderingFacilityId) return undefined;
+      const facilityRes = await facilityService.getById(orderingFacilityId).catch(() => null);
+      return facilityRes?.ok ? resolvePerformingLabFacilityId(facilityRes.data) : undefined;
+    })(),
+  ]);
+  return { participationTypes, performingLabFacilityId: labId };
+}
+
 function checkPreAnalyticAndFixativeGates(
   caseData: Case,
   specimenDictionary: SpecimenEntry[],
@@ -227,7 +273,7 @@ export function useSignOutWorkflow({
   knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
   generateReportPdfSnapshot, isOrchestrationMode, orchSections,
   setCaseSigned, setShowSignOutModal, setPendingReconciliation,
-  countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
+  countersignFeedback, specimenDictionary, setFixativeGateSpecimens, setStainQcGateBlocking,
   setPreAnalyticDateGateSpecimens, setPendingActionIsSignOut,
   setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
   setActiveSpecimenId, setActiveReportType,
@@ -613,7 +659,9 @@ export function useSignOutWorkflow({
     // release-for-countersign above; this guard only needs to catch
     // whoever isn't covered by either that routing or a genuine
     // primary/attending/admin relationship.
-    const signOutFinalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants);
+    const { participationTypes: signOutParticipationTypes, performingLabFacilityId: signOutLabId } =
+      await resolveFinalizeAuthorityContext(caseData);
+    const signOutFinalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, signOutParticipationTypes, signOutLabId);
     if (!signOutFinalizeDecision.granted) {
       showToast(signOutFinalizeDecision.reason);
       setShowSignOutModal(false);
@@ -640,6 +688,18 @@ export function useSignOutWorkflow({
       }
       if (fixativeBlocking.length > 0) {
         setFixativeGateSpecimens(fixativeBlocking);
+        setPendingActionIsSignOut(true);
+        setShowSignOutModal(false);
+        return;
+      }
+      // Real, per PS-289/PS-292's own Gating Strategy — checked after
+      // the two more foundational gates above, same real ordering
+      // principle ("basic accession date/time is more foundational
+      // than biomarker-specific fixation timing") extended one step
+      // further: stain QC is a later-stage concern than either.
+      const stainQcBlocking = await checkStainQcGate(caseData);
+      if (stainQcBlocking.length > 0) {
+        setStainQcGateBlocking(stainQcBlocking);
         setPendingActionIsSignOut(true);
         setShowSignOutModal(false);
         return;
@@ -706,19 +766,37 @@ export function useSignOutWorkflow({
     // frozen category (not 'deferred' — no real call was made at
     // frozen, so there's nothing to reconcile). Everything else signs
     // out exactly as it always did.
+    //
+    // Real, per direct follow-up ("wire them [the concordance review
+    // settings]"): gated by the real, persisted settings this session
+    // decided (concordanceReviewSettingsService) rather than always
+    // running unconditionally as before. aiComparisonEnabled off
+    // skips this whole check — the case signs out exactly as if this
+    // feature didn't exist. reviewScreenEnabled off still runs the
+    // real detection (a site may still want the comparison to happen)
+    // but never blocks sign-out on it — the same, real "still needs
+    // reconciling" state simply remains open for later, manual
+    // completion via the existing DiscordanceReconciliationModal
+    // trigger, exactly as it would for a case signed out before this
+    // feature existed at all.
     if (caseData?.id) {
-      const res = await intraoperativeService.getAll();
-      if (res.ok) {
-        const mergedSession = res.data.find(e => e.status === 'merged' && e.mergedIntoCaseId === caseData.id);
-        const specimenNeedingReconciliation = mergedSession?.specimens.find(s => s.frozenCategory && s.frozenCategory !== 'deferred');
-        if (mergedSession && specimenNeedingReconciliation) {
-          setPendingReconciliation({
-            specimenId: specimenNeedingReconciliation.id,
-            caseType: specimenNeedingReconciliation.specimenLabel,
-            frozenCategory: specimenNeedingReconciliation.frozenCategory!,
-            frozenDx: specimenNeedingReconciliation.frozenSectionDiagnosis ?? '',
-          });
-          return; // hold sign-out until the reconciliation modal resolves
+      const concordanceSettingsRes = await concordanceReviewSettingsService.resolveEffectiveConfigForFacility(caseData.originHospitalId, signingUser?.id).catch(() => null);
+      const concordanceSettings = concordanceSettingsRes?.ok ? concordanceSettingsRes.data : { aiComparisonEnabled: true, reviewScreenEnabled: true };
+
+      if (concordanceSettings.aiComparisonEnabled) {
+        const res = await intraoperativeService.getAll();
+        if (res.ok) {
+          const mergedSession = res.data.find(e => e.status === 'merged' && e.mergedIntoCaseId === caseData.id);
+          const specimenNeedingReconciliation = mergedSession?.specimens.find(s => s.frozenCategory && s.frozenCategory !== 'deferred');
+          if (mergedSession && specimenNeedingReconciliation && concordanceSettings.reviewScreenEnabled) {
+            setPendingReconciliation({
+              specimenId: specimenNeedingReconciliation.id,
+              caseType: specimenNeedingReconciliation.specimenLabel,
+              frozenCategory: specimenNeedingReconciliation.frozenCategory!,
+              frozenDx: specimenNeedingReconciliation.frozenSectionDiagnosis ?? '',
+            });
+            return; // hold sign-out until the reconciliation modal resolves
+          }
         }
       }
     }
@@ -780,7 +858,12 @@ export function useSignOutWorkflow({
           // was never going to fire. Dispatches immediately,
           // fire-and-forget — a real, external network dispatch
           // attempt must never delay this function's own return.
-          dispatchCaseInstances(caseData.id).catch(e =>
+          publishReportReleasedEvent({
+            caseId: caseData.id,
+            reportType: 'FINAL',
+            releasedAt: new Date().toISOString(),
+            releasedBy: signingUser?.id ? { id: signingUser.id, name: signingUser.name ?? signingUser.id } : undefined,
+          }).catch(e =>
             console.error('[useSignOutWorkflow] Real, non-blocking failure dispatching case instances at sign-out (no buffer applied):', e)
           );
         }
@@ -860,6 +943,10 @@ export function useSignOutWorkflow({
   const [showMissingWarning,     setShowMissingWarning]     = useState(false);
   const [reviewFields,           setReviewFields]           = useState<ReviewField[]>([]);
   const [showAiReview,           setShowAiReview]           = useState(false);
+  const [isSuggestingSynoptic,   setIsSuggestingSynoptic]   = useState(false);
+  const [isGeneratingNarrative,  setIsGeneratingNarrative]  = useState(false);
+  const [showNarrativeReview,    setShowNarrativeReview]    = useState(false);
+  const [generatedNarrativeText, setGeneratedNarrativeText] = useState('');
   const [finalizeAndNextPending, setFinalizeAndNextPending] = useState(false);
 
   // ── Pre-finalisation + protocol review state ───────────────────────
@@ -1170,7 +1257,9 @@ export function useSignOutWorkflow({
     // fixative-time gate below — there's no reason to walk someone
     // through resolving a data-completeness gate for a case they were
     // never going to be allowed to sign out anyway.
-    const finalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants);
+    const { participationTypes: finalizeParticipationTypes, performingLabFacilityId: finalizeLabId } =
+      await resolveFinalizeAuthorityContext(caseData);
+    const finalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, finalizeParticipationTypes, finalizeLabId);
     if (!finalizeDecision.granted) {
       showToast(finalizeDecision.reason);
       return false;
@@ -1208,6 +1297,17 @@ export function useSignOutWorkflow({
     // through.
     if (fixativeBlocking.length > 0) {
       setFixativeGateSpecimens(fixativeBlocking);
+      setPendingFinalizeArgs(excludedInstanceIds);
+      setPendingActionIsSignOut(false);
+      return false; // abort — do not finalize until the gate is resolved
+    }
+
+    // Real, per PS-289/PS-292's own Gating Strategy — same real
+    // ordering principle as the sibling call site above (checked
+    // after the two more foundational gates).
+    const stainQcBlockingFinalize = await checkStainQcGate(caseData);
+    if (stainQcBlockingFinalize.length > 0) {
+      setStainQcGateBlocking(stainQcBlockingFinalize);
       setPendingFinalizeArgs(excludedInstanceIds);
       setPendingActionIsSignOut(false);
       return false; // abort — do not finalize until the gate is resolved
@@ -1388,7 +1488,7 @@ export function useSignOutWorkflow({
       showToast('Finalization failed — please try again');
       return false;
     }
-  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
+  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setStainQcGateBlocking, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
 
   // Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
   // into handleRequestFinalize." Genuinely case-wide, unlike
@@ -1713,6 +1813,161 @@ export function useSignOutWorkflow({
     })();
   }, [setShowFinalizeModal, caseData, activeReportInstanceId, setAmendmentMode, setShowAmendmentModal, isOrchestrationMode, orchSections, finalizeCase, releasePendingAmendmentOrAddendum, signingUser, synopticPanelRef, openAmendmentDraft]);
 
+  // Real, per direct guidance's own confirmed, foundational gap (PS-274):
+  // suggestSynopticFields() and AiReviewModal were both already real
+  // and live, but nothing ever connected them. This is that missing
+  // connection — reuses the exact same real getTemplate()/PathScribeAIService
+  // patterns already established elsewhere in this same file, rather
+  // than inventing new ones. Real, confirmed direction: an orchestrator-
+  // mode option (a user can dictate/enter the narrative and let AI fill
+  // the synoptic) — assist/LIS mode's own real trigger for this same
+  // underlying call is real, separate UI work, not built here.
+  // Real, per direct guidance's own confirmed correction: "Gross
+  // Complete" was the wrong trigger point (it implies the narrative or
+  // synoptic was already reviewed — too late to offer AI help). Real,
+  // second confirmed correction: a single, auto-detecting action was
+  // also the wrong shape — it silently does nothing when both sides
+  // already have content, and gives the user no way to explicitly ask
+  // for one direction regardless of current state. Two separate,
+  // explicitly user-triggered actions instead — each always attempts
+  // its own real direction when called, regardless of whether the
+  // other side already has content (a real user re-running
+  // suggestions after editing the narrative further is a legitimate,
+  // real use, not an error state).
+  const handleSuggestSynopticFromNarrative = useCallback(async () => {
+    if (!caseData?.id) return;
+    const activeInstance = activeReportInstanceId
+      ? caseData.synopticReports?.find(r => r.instanceId === activeReportInstanceId)
+      : caseData.synopticReports?.[0];
+
+    const caseText = {
+      gross: caseData.diagnostic?.grossDescription ?? '',
+      microscopic: caseData.diagnostic?.microscopicDescription ?? '',
+      ancillary: caseData.diagnostic?.ancillaryStudies ?? '',
+    };
+
+    if (!caseText.gross.trim() && !caseText.microscopic.trim() && !caseText.ancillary.trim()) {
+      showToast('Enter a Gross, Microscopic, or Ancillary narrative before requesting AI suggestions.');
+      return;
+    }
+    if (!activeInstance?.templateId) {
+      showToast('No synoptic template is assigned to this report yet.');
+      return;
+    }
+
+    setIsSuggestingSynoptic(true);
+    try {
+      let template: EditorTemplate | undefined;
+      try {
+        const detail = await getTemplate(activeInstance.templateId);
+        template = detail.template;
+      } catch (e) {
+        showToast('Could not load the synoptic template for AI suggestion.');
+        return;
+      }
+      if (!template) return;
+
+      const fields = template.sections.flatMap((s: any) => s.fields.map((f: any) => ({
+        id: f.id, label: f.label, options: (f.options ?? []).map((o: any) => ({ id: o.id, label: o.label })),
+      })));
+
+      const aiService = new PathScribeAIService();
+      const result = await aiService.suggestSynopticFields(caseText, fields);
+      if (!result.success || !result.data) {
+        showToast('AI suggestion failed. Please try again.');
+        return;
+      }
+
+      const newReviewFields = buildReviewFieldsFromAiSuggestions(result.data, template, caseData);
+      if (newReviewFields.length === 0) {
+        showToast('AI did not find any fields to suggest from the current narrative.');
+        return;
+      }
+      setReviewFields(newReviewFields);
+      setShowAiReview(true);
+    } finally {
+      setIsSuggestingSynoptic(false);
+    }
+  }, [caseData, activeReportInstanceId, showToast, setReviewFields, setShowAiReview]);
+
+  // Real, per direct guidance's own confirmed PS-275 scope (Phase 2,
+  // the reverse of PS-274's own Narrative -> Synoptic direction).
+  // Builds the real prompt from the case's own current synoptic
+  // answers (PathScribeAIService.generateNarrativeFromSynopticAnswers,
+  // which itself reuses buildSynopticNarrativePrompt.ts \u2014 never
+  // duplicated here), then opens AiNarrativeReviewModal.tsx \u2014 the
+  // real, deliberately separate review surface PS-275 itself called
+  // for, since generated prose has no per-field confidence score the
+  // way AiReviewModal's own discrete field values do.
+  const handleGenerateNarrativeFromSynoptic = useCallback(async () => {
+    if (!caseData?.id) return;
+    const activeInstance = activeReportInstanceId
+      ? caseData.synopticReports?.find(r => r.instanceId === activeReportInstanceId)
+      : caseData.synopticReports?.[0];
+    const synopticAnswers = activeInstance?.answers ?? caseData.synopticAnswers ?? {};
+
+    if (Object.keys(synopticAnswers).length === 0) {
+      showToast('Answer some synoptic fields before generating narrative text.');
+      return;
+    }
+    if (!activeInstance?.templateId) {
+      showToast('No synoptic template is assigned to this report yet.');
+      return;
+    }
+
+    setIsGeneratingNarrative(true);
+    try {
+      let template: EditorTemplate | undefined;
+      try {
+        const detail = await getTemplate(activeInstance.templateId);
+        template = detail.template;
+      } catch (e) {
+        showToast('Could not load the synoptic template for narrative generation.');
+        return;
+      }
+      if (!template) return;
+
+      const aiService = new PathScribeAIService();
+      const result = await aiService.generateNarrativeFromSynopticAnswers(template, synopticAnswers);
+      if (!result.success || !result.data) {
+        showToast('Narrative generation failed. Please try again.');
+        return;
+      }
+
+      setGeneratedNarrativeText(result.data);
+      setShowNarrativeReview(true);
+    } finally {
+      setIsGeneratingNarrative(false);
+    }
+  }, [caseData, activeReportInstanceId, showToast]);
+
+  /** Real, per direct guidance's own confirmed PS-275 review step:
+   *  the pathologist's own final, possibly-edited text — never the
+   *  raw AI output unconditionally — lands in the real diagnostic
+   *  field they chose in AiNarrativeReviewModal.tsx. Persists via the
+   *  same real caseRouter.updateCase() + knownVersionRef pattern this
+   *  file already uses elsewhere for diagnostic field writes. */
+  const handleAcceptGeneratedNarrative = useCallback(async (
+    finalText: string,
+    targetField: 'gross' | 'microscopic' | 'ancillary',
+  ) => {
+    if (!caseData?.id) return;
+    const diagnosticKey = targetField === 'gross' ? 'grossDescription'
+      : targetField === 'microscopic' ? 'microscopicDescription'
+      : 'ancillaryStudies';
+
+    const updatedDiagnostic = { ...caseData.diagnostic, [diagnosticKey]: finalText };
+    setCaseData({ ...caseData, diagnostic: updatedDiagnostic, updatedAt: new Date().toISOString() } as any);
+    setShowNarrativeReview(false);
+
+    try {
+      await caseRouter.updateCase(caseData.id, { diagnostic: updatedDiagnostic } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+    } catch (e) {
+      showToast('Narrative inserted, but saving to the case failed — please retry or copy the text manually.');
+    }
+  }, [caseData, setCaseData, knownVersionRef, showToast]);
+
   return {
     finalizeSignOut,
     handleSignOutConfirm,
@@ -1723,6 +1978,13 @@ export function useSignOutWorkflow({
     showMissingWarning, setShowMissingWarning,
     reviewFields, setReviewFields,
     showAiReview, setShowAiReview,
+    handleSuggestSynopticFromNarrative,
+    isSuggestingSynoptic,
+    handleGenerateNarrativeFromSynoptic,
+    isGeneratingNarrative,
+    showNarrativeReview, setShowNarrativeReview,
+    generatedNarrativeText,
+    handleAcceptGeneratedNarrative,
     finalizeAndNextPending, setFinalizeAndNextPending,
     showPreFinalise, setShowPreFinalise,
     preFinalSynoptics,

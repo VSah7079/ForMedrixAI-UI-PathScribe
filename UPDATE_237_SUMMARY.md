@@ -1,0 +1,26 @@
+# PathScribe Update 237 — Summary
+
+A real, explicitly-declared Final Diagnosis field, per direct correction: "a text field on the report should be declared as the final diagnosis." Nothing about which field holds the real diagnosis is inferred, guessed, or assumed anymore — a template author declares it, and everything downstream (the audit trail, the outbound CORRECTED dispatch, the existing diagnosisComment narrative field) reads from that one, real declaration.
+
+## The real finding that started this
+
+Investigating why "previously reported as" (last update) could come back blank, direct search across the entire sign-out flow turned up no real, dedicated UI that ever edits `SynopticReportInstance.comment` — the field last update's mechanism relied on. The real diagnosis text a pathologist actually writes lives in `answers['specimen.diagnosis']`, inside a per-specimen repeating group (`diagnosisPart`, used by all 5 real Final templates). `.comment` was never a reliable source — this update replaces it with a real declaration instead of a different guess.
+
+## What changed
+
+- **`types/template.ts`**: new `isFinalDiagnosisField?: boolean` on `BaseNode`, mirroring the existing `fhirExport` precedent — same real pattern, not a new one invented for this.
+- **`TemplateInspector.tsx`**: a toggle for it, one line, matching the existing toggle pattern exactly.
+- **`mockReportPartService.ts`**: the shared `diagnosisPart`'s own `specimen.diagnosis` field is now marked `isFinalDiagnosisField: true`. Since all 5 real Final templates reference this exact part by ID, one edit covers all of them — confirmed directly with a real integration test running against the actual, unmocked seed templates.
+- **New: `resolveFinalDiagnosisText.ts`** — the real resolver. Walks a template's actual live structure (`assembly` -> resolved `ReportPart`s -> each part's real `.nodes` tree — confirmed `ReportTemplate.nodes` itself is documented legacy, unused for assembly-mode templates) to find the designated field, wherever it lives, including inside a repeat-group. Per direct guidance ("concatenate all real diagnosis entries"), every real specimen's own non-empty value is collected and joined — never just the first, never a fabricated `[Specimen N]` label (per direct guidance: a template's own text may already embed its own specimen identifier, and index-based labels can be clinically wrong when specimens are lettered or named by site — that's a template-layout decision, not something a value resolver should invent). Returns undefined honestly when nothing is designated — no fallback to `.comment` or anything else. 7 tests.
+- **New: `validateFinalDiagnosisDesignation.ts`** — enforces at most one designated field, scoped to Final-category templates only (per direct guidance: "on Final reports yes"). Caught and fixed a real bug in my own first draft — the Preliminary short-circuit was ordered after an unnecessary fetch, not before. 7 tests, including a genuine integration check with mocks off against all 5 real seed templates.
+- **`useAmendmentWorkflow.ts`**: the correction-release path now resolves both "before" (against the real `originalReportSnapshot.answers`, captured before any editing) and "after" (the current, live answers) through this same resolver, for both the audit log and the outbound dispatch.
+- **`buildOruR01Payload.ts`**: `narrative.diagnosisComment` — used on every dispatch, not just corrections — had the exact same `.comment` problem. Fixed the same way for consistency; leaving it unfixed would have been a real inconsistency in the same payload. Removed the now-dead `stripHtml` import as a result. 2 new tests close a real, pre-existing gap — no prior test ever actually asserted on this field's value at all.
+
+## A note on external suggestions raised mid-build
+Two proposed additions were evaluated and declined, both for real, substantive reasons rather than reflexively: a suggestion to keep a `.comment` fallback "just in case" was rejected because it would have reintroduced the exact silent-blank-text risk this whole update exists to close, and directly contradicted the explicit decision to fix real templates instead of guessing at runtime. A suggestion to auto-prefix each concatenated entry with a `[Specimen N]` label was also declined — per direct guidance, that's a real, template-layout decision that shouldn't be baked into a low-level resolver, and an inferred index label can be clinically wrong when real specimens are lettered or named by site.
+
+## Verification
+`tsc` clean throughout. Full suite: 443 files, 3866 tests, all passing (up from 441/3850 — 16 new tests across 4 new/extended files). Includes two genuine integration tests running with mocks disabled against this app's own real, live seed data (all 5 Final templates individually confirmed to have exactly one correctly designated field).
+
+## Honest scope
+There's still no real "save/publish template" UI flow in this app — `validateFinalDiagnosisDesignation.ts` is real and callable the moment one exists, but nothing calls it automatically today. Custom, non-system templates that never designate a field will honestly resolve to `undefined` for both `diagnosisComment` and `previouslyReportedAs` — a deliberate, honest absence, not a guess.

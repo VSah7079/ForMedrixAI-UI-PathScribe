@@ -17,6 +17,7 @@ import type { OutsidePatientFinancialData } from "@/types/billing/OutsidePatient
 import { CaseStatus } from "./CaseStatus";
 import type { FieldLineageEntry } from '@/types/reports/FieldLineage';
 import type { RevisionType } from '@/types/reports/AmendmentRecord';
+import type { AutopsyCaseDetails } from '@/types/autopsy/AutopsyCaseDetails';
 
 export interface CaseCoding {
   icd10?: string[];
@@ -217,6 +218,36 @@ export interface DiagnosticMetadata {
   grossDescription?: string;
   microscopicDescription?: string;
   ancillaryStudies?: string;
+  /** Real, per direct follow-up ("does a Preliminary Diagnosis Text
+   *  Field exist?") — it didn't. Added here, matching the exact same
+   *  case-level shape as grossDescription/microscopicDescription
+   *  above, rather than the per-specimen repeat-group binding the
+   *  Preliminary template originally (incorrectly) used — that
+   *  binding had no real field behind it anywhere. The provisional,
+   *  pre-ancillary-studies diagnostic impression recorded on a
+   *  Preliminary report, distinct from primaryDiagnosis above (the
+   *  Final report's own, later, fully-substantiated diagnosis). */
+  preliminaryImpression?: string;
+  /** Real, per the same follow-up — status text for pending ancillary
+   *  studies, backing prelim_body_ancillary_status
+   *  (services/reportParts/mockReportPartService.ts). Case-level,
+   *  matching grossDescription/microscopicDescription's own shape —
+   *  a case with multiple specimens shares one status line per study
+   *  type, same as it already shares one grossDescription. */
+  specialStainsStatus?: string;
+  ihcStatus?: string;
+  decalcificationStatus?: string;
+  molecularStatus?: string;
+  recutStatus?: string;
+  /** Real, per the same follow-up — backing prelim_body_signoff's own
+   *  reviewer-attestation and critical-value/verbal-notification log
+   *  fields. */
+  reviewerRole?: string;
+  preliminaryRecordedAt?: string;
+  criticalValueCommunicated?: string;
+  criticalValueRecipient?: string;
+  criticalValueNotifiedAt?: string;
+  criticalValueNotes?: string;
 }
 
 export interface AccessionMetadata {
@@ -583,6 +614,19 @@ export interface Case {
    *  results. */
   proficiencyTestContext?: { provider: string; challengeReferenceId: string };
 
+  /** Real, per PS-289/PS-292's own "batch-manifest scanning with
+   *  automatic control-slide appending" piece — same real "synthetic
+   *  case, accessioned the exact same real way as any real patient
+   *  case" pattern proficiencyTestContext above already establishes,
+   *  applied to a different real purpose: a lab-owned positive
+   *  control slide for a specific reagent lot, auto-created by
+   *  shouldAutoAppendControl.ts's own real consumer
+   *  (mockBatchService.ts) when a stain requiring one
+   *  (StainType.requiresTargetControl) is added to a real 'Staining'
+   *  batch with no real control for that same lot already in its own
+   *  manifest. Undefined for every real, genuine patient case. */
+  controlSlideContext?: { reagentLotId: string; stainTypeId: string };
+
   /** Real, per direct guidance (PS-105): the case's own real, confirmed
    *  abnormal-detection status — set only when a pathologist actually
    *  confirms a suggestion (records a real notification via
@@ -718,6 +762,21 @@ export interface Case {
    *  field) genuinely has no encounter to reference. */
   encounterId?: string;
   specimens: Specimen[];
+  /** Real, per direct guidance's own confirmed Autopsy Pathology
+   *  Module work (PS-261, RFP-APLIS-2026-GLOBAL §3.1.C) — the real,
+   *  missing link between Phase 1's own AutopsyCaseDetails type
+   *  (case authority, forensic/consent records, PAD/FAD snapshots,
+   *  organ retention, ancillary holds) and this app's own real,
+   *  central Case entity. Undefined for every real, non-autopsy
+   *  case. A real "temporary accession" — receiving and refrigerating
+   *  a body before full legal paperwork exists — is simply a real
+   *  Case created with a minimal, partial autopsy record (e.g. only
+   *  jurisdiction + caseAuthority + a real, logged verbal order on
+   *  forensicAuthorization) — the same real "the form already IS the
+   *  draft accession the moment any field is filled" pattern already
+   *  established elsewhere, never a separate, parallel accession
+   *  mechanism of its own. */
+  autopsy?: AutopsyCaseDetails;
   order: OrderMetadata;
   assignmentHistory?: AssignmentEvent[];
   diagnostic?: DiagnosticMetadata;

@@ -8,6 +8,15 @@
 // (this is the "Voice" config area a pathologist would actually think
 // to look in for a voice-adjacent hardware setting), not because it's
 // the same kind of setting.
+//
+// Real, per direct follow-up ("these foot pedals are ubiquitous and we
+// must support them"): the 3 bindings below are no longer
+// sign-out-dictation-only. Pedal 1 also confirms piece count on
+// EmbeddingStationPage.tsx (PS-285's own "hands-free triggers for
+// piece-count confirmation"); Pedal 2 also fires "Print/Etch Next" on
+// MicrotomyWorkstationPage.tsx (PS-284's own named trigger). Pedal 3
+// stays sign-out-dictation-only — see FOOT_PEDAL_ACTION_LABELS's own
+// doc comment for the full, real per-page mapping.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
@@ -44,13 +53,14 @@ export const FootPedalSection: React.FC = () => {
       <div className="config-section-header">
         <h2 className="config-section-title">🦶 Foot Pedal (This Workstation)</h2>
         <p className="config-section-description">
-          Bind a real, connected foot pedal's buttons to the 3 real Grossing
-          actions below. Works with both true HID-class pedals and the more
-          common keyboard-emulating kind — press the real pedal you want to
-          bind and PathScribe learns whatever it actually sends, no manual
-          keycode entry needed. Bound to this browser/workstation, not your
-          account — the physical pedal doesn't change when a different
-          pathologist logs in on the same machine.
+          Bind a real, connected foot pedal's buttons to the 3 real actions
+          below. Works with both true HID-class pedals and the more common
+          keyboard-emulating kind — press the real pedal you want to bind and
+          PathScribe learns whatever it actually sends, no manual keycode
+          entry needed. Bound to this browser/workstation, not your account —
+          the physical pedal doesn't change when a different pathologist or
+          tech logs in on the same machine. Each pedal's real action depends
+          on which page is open when you press it — see each label below.
         </p>
       </div>
 
@@ -98,8 +108,9 @@ export const FootPedalSection: React.FC = () => {
           fontSize: '12px', color: '#64748b', lineHeight: 1.6,
         }}>
           <strong style={{ color: '#94a3b8', fontWeight: 600 }}>Pedal 3 note:</strong>{' '}
-          "Pause" always works once bound. "Replay" additionally needs microphone
-          access — the first Grossing session after binding may prompt for it.
+          Sign-out dictation only. "Pause" always works once bound. "Replay"
+          additionally needs microphone access — the first sign-out session
+          after binding may prompt for it.
         </div>
       </div>
     </div>

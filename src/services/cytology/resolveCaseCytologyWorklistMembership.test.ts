@@ -2,12 +2,14 @@
 import { describe, it, expect } from 'vitest';
 import { resolveCaseCytologyWorklistMembership } from './resolveCaseCytologyWorklistMembership';
 
-const DICTIONARY = [
-  { id: 'sp-cyto-pap', type: 'Cytology', isGynCytology: true },
-  { id: 'sp-cyto-nongyn', type: 'Cytology', isGynCytology: undefined },
-  { id: 'sp-fna-thyroid', type: 'FNA', isGynCytology: undefined },
-  { id: 'sp-breast-core-biopsy', type: 'Biopsy', isGynCytology: undefined },
-  { id: 'sp-cyto-hpv-self', type: 'Cytology', isGynCytology: true, isSelfCollected: true },
+import type { SpecimenEntry } from '../specimenDictionary/specimenTypes';
+
+const DICTIONARY: Pick<SpecimenEntry, 'id' | 'type' | 'isSelfCollected' | 'specimenCategory'>[] = [
+  { id: 'sp-cyto-pap', type: 'Cytology', specimenCategory: 'GYN_CYTOLOGY' },
+  { id: 'sp-cyto-nongyn', type: 'Cytology', specimenCategory: undefined },
+  { id: 'sp-fna-thyroid', type: 'FNA', specimenCategory: undefined },
+  { id: 'sp-breast-core-biopsy', type: 'Biopsy', specimenCategory: undefined },
+  { id: 'sp-cyto-hpv-self', type: 'Cytology', specimenCategory: 'GYN_CYTOLOGY', isSelfCollected: true },
 ];
 
 describe('resolveCaseCytologyWorklistMembership', () => {

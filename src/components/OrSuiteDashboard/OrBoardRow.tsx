@@ -62,7 +62,7 @@ const OrBoardRow: React.FC<OrBoardRowProps> = ({ req, hasFlashed, isDismissing, 
   return (
     <div className={rowClass} onAnimationEnd={() => isFlashing && onFlashed(req.specimenId)}>
       <div className="ps-orboard-row-context">
-        <div className="ps-orboard-row-patient">{req.patientName}</div>
+        <div className="ps-orboard-row-patient" data-phi="name">{req.patientName}</div>
         <div className="ps-orboard-row-meta">
           {t('orSuiteDashboard.rowMeta', { specimenLabel: req.specimenLabel, surgeon: req.surgeon, pathologist: req.pathologistName })}
         </div>

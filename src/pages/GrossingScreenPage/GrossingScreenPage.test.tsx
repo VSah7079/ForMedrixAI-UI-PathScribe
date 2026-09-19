@@ -55,6 +55,8 @@ vi.mock('./hooks/useGrossingScreen', () => ({
     handleAddStain: vi.fn(), handleRemoveStain: vi.fn().mockResolvedValue({ ok: true }),
     pendingStainRemoval: null, confirmPendingStainRemoval: vi.fn(), cancelPendingStainRemoval: vi.fn(),
     handleUpdatePieceCount: vi.fn(),
+    handleRecordFixationEnded: vi.fn(), handleConfirmFixativeRatio: vi.fn(),
+    handleRaiseFixationDeficiency: vi.fn(), specimensWithOpenFixationDeficiency: new Set<string>(),
   }),
 }));
 

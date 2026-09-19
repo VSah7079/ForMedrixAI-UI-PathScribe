@@ -549,7 +549,16 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
         });
         const patchedBlocks = (firstSpecimen.blocks ?? []).map(b => b.id === firstBlock.id ? { ...firstBlock, stains: patchedStains } : b);
         const patchedSpecimens = (afterEvents.specimens ?? []).map(sp => sp.id === firstSpecimen.id ? { ...firstSpecimen, blocks: patchedBlocks } : sp);
-        await caseRouter.updateCase(afterEvents.id, { specimens: patchedSpecimens });
+        // Real, direct follow-up (PS-71): reviewed against this ticket's
+        // own "context-dependent, validate purpose" question — this is a
+        // dev-only material-tree scan simulation, not a real clinical write
+        // competing with a user's own edits, so force-writing regardless of
+        // version would be a legitimate, documented choice. Passing it
+        // anyway costs nothing here specifically: afterEvents was fetched
+        // fresh 12 lines above, so its own version is as current as this
+        // write can possibly know, closing the gap for free rather than
+        // leaving it undocumented.
+        await caseRouter.updateCase(afterEvents.id, { specimens: patchedSpecimens }, (afterEvents as any).version);
       }
     }
 

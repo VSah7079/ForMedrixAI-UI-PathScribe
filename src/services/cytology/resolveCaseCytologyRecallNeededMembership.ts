@@ -14,6 +14,7 @@
 
 import type { Specimen } from '@/types/case/Specimen';
 import type { SpecimenEntry } from '../specimenDictionary/specimenTypes';
+import { resolveSpecimenEntryMatchesCategory } from '../specimenDictionary/resolveSpecimenEntryMatchesCategory';
 import { resolveCytologyWorklistRouting } from './resolveCytologyWorklistRouting';
 import type { NonGynCytologyRouting } from './ICytologyRoutingSettingsService';
 import type { CytologyScreeningStrategy } from './ICytologyScreeningStrategyService';
@@ -25,7 +26,7 @@ function isCytologySpecimenType(type: string): boolean {
 
 export function resolveCaseCytologyRecallNeededMembership(
   specimens: (Pick<Specimen, 'specimenDictionaryEntryId'> & { cytologyScreening?: { hpvResult?: string } })[] | undefined,
-  specimenDictionary: Pick<SpecimenEntry, 'id' | 'type' | 'isGynCytology' | 'isSelfCollected'>[],
+  specimenDictionary: Pick<SpecimenEntry, 'id' | 'type' | 'specimenCategory' | 'isSelfCollected'>[],
   nonGynRoutingSetting: NonGynCytologyRouting,
   screeningStrategy: CytologyScreeningStrategy,
 ): boolean {
@@ -37,7 +38,7 @@ export function resolveCaseCytologyRecallNeededMembership(
     if (!sp.specimenDictionaryEntryId) return false;
     const entry = byId.get(sp.specimenDictionaryEntryId);
     if (!entry || !isCytologySpecimenType(entry.type)) return false;
-    const destination = resolveCytologyWorklistRouting(entry.isGynCytology === true, nonGynRoutingSetting);
+    const destination = resolveCytologyWorklistRouting(resolveSpecimenEntryMatchesCategory(entry, ['GYN_CYTOLOGY']), nonGynRoutingSetting);
     if (destination !== 'cytology_worklist') return false;
     return resolveCytologyTriageState(screeningStrategy, sp.cytologyScreening?.hpvResult, entry.isSelfCollected === true) === 'reflex_requires_new_specimen';
   });

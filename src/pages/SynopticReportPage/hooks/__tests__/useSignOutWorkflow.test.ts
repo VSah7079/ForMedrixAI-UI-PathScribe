@@ -44,6 +44,7 @@ vi.mock('@/services', () => ({
   abnormalDetectionSignalService: { recordSignal: vi.fn().mockResolvedValue({ ok: true, data: {} }), getByCaseId: vi.fn().mockResolvedValue({ ok: true, data: [] }), getStats: vi.fn().mockResolvedValue({ ok: true, data: {} }) },
   qaActivityRecordService: { create: vi.fn().mockResolvedValue({ ok: true, data: {} }), getAll: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
   facilityService: { getById: vi.fn().mockResolvedValue({ ok: false, error: 'not mocked' }) },
+  concordanceReviewSettingsService: { resolveEffectiveConfigForFacility: vi.fn().mockResolvedValue({ ok: true, data: { aiComparisonEnabled: true, reviewScreenEnabled: true } }) },
 }));
 vi.mock('@/services/communications/notificationService', () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
@@ -97,6 +98,7 @@ function baseParams(overrides: Partial<Parameters<typeof useSignOutWorkflow>[0]>
     countersignFeedback: '',
     specimenDictionary: [],
     setFixativeGateSpecimens: vi.fn(),
+    setStainQcGateBlocking: vi.fn(),
     setPreAnalyticDateGateSpecimens: vi.fn(),
     setPendingFinalizeArgs: vi.fn(),
     setPendingActionIsSignOut: vi.fn(),
@@ -467,6 +469,43 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
 
     expect(setPendingReconciliation).toHaveBeenCalledWith(expect.objectContaining({ specimenId: 'ISP-1' }));
     expect(setCaseSigned).not.toHaveBeenCalled(); // finalizeSignOut must NOT have run
+});
+
+  it('skips the reconciliation check entirely when aiComparisonEnabled is off \u2014 signs out immediately, never calling setPendingReconciliation', async () => {
+    const { intraoperativeService, concordanceReviewSettingsService } = await import('@/services');
+    vi.mocked(concordanceReviewSettingsService.resolveEffectiveConfigForFacility).mockResolvedValue({
+      ok: true, data: { aiComparisonEnabled: false, reviewScreenEnabled: true },
+    } as any);
+    vi.mocked(intraoperativeService.getAll).mockResolvedValueOnce({
+      ok: true,
+      data: [{ status: 'merged', mergedIntoCaseId: 'TEST-CASE-SIGNOUT', specimens: [{ id: 'ISP-1', specimenLabel: 'A', frozenCategory: 'benign', frozenSectionDiagnosis: 'Benign tissue' }] }],
+    } as any);
+    const setPendingReconciliation = vi.fn();
+    const setCaseSigned = vi.fn();
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ setPendingReconciliation, setCaseSigned })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(setPendingReconciliation).not.toHaveBeenCalledWith(expect.objectContaining({ specimenId: expect.anything() }));
+    expect(intraoperativeService.getAll).not.toHaveBeenCalled(); // real detection itself never runs
+  });
+
+  it('detects a real, unreconciled frozen category but never blocks sign-out when reviewScreenEnabled is off, even with aiComparisonEnabled on', async () => {
+    const { intraoperativeService, concordanceReviewSettingsService } = await import('@/services');
+    vi.mocked(concordanceReviewSettingsService.resolveEffectiveConfigForFacility).mockResolvedValue({
+      ok: true, data: { aiComparisonEnabled: true, reviewScreenEnabled: false },
+    } as any);
+    vi.mocked(intraoperativeService.getAll).mockResolvedValueOnce({
+      ok: true,
+      data: [{ status: 'merged', mergedIntoCaseId: 'TEST-CASE-SIGNOUT', specimens: [{ id: 'ISP-1', specimenLabel: 'A', frozenCategory: 'benign', frozenSectionDiagnosis: 'Benign tissue' }] }],
+    } as any);
+    const setPendingReconciliation = vi.fn();
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ setPendingReconciliation })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(intraoperativeService.getAll).toHaveBeenCalled();
+    expect(setPendingReconciliation).not.toHaveBeenCalledWith(expect.objectContaining({ specimenId: expect.anything() }));
   });
 });
 

@@ -20,7 +20,7 @@
 //     needing a second trip back to this screen.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import '../../../pathscribe.css';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
 import type { RvuTableVersion, BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
@@ -267,37 +267,34 @@ const RvuCodeMapSection: React.FC = () => {
 
   // ── Spreadsheet upload ────────────────────────────────────────────────────
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = async (file: File) => {
     setUploadError(null);
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      try {
-        const workbook = XLSX.read(data, { type: 'binary' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (!isCsvFile(file)) {
+      setUploadError(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      return;
+    }
+    try {
+      const text = await readFileAsText(file);
+      const rows = parseCsv(text);
 
-        const { entries, problems, skippedNonPayable } = parseRvuUploadRows(rows);
+      const { entries, problems, skippedNonPayable } = parseRvuUploadRows(rows);
 
-        if (entries.length === 0 && problems.length === 0) {
-          setUploadError('No real rows found in this file - check it has Code and WorkRVU columns.');
-          return;
-        }
-        if (problems.length > 0) {
-          setUploadError(problems.slice(0, 5).join(' '));
-        }
-        if (skippedNonPayable > 0) {
-          setToast(`${entries.length} real, payable codes found — ${skippedNonPayable} non-payable/modifier rows skipped automatically.`);
-        }
-        setUploadPreview(entries);
-        setUploadFileName(file.name);
-        if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.(xlsx|csv)$/i, '')}`);
-      } catch {
-        setUploadError('Could not read this file - make sure it\'s a real .xlsx or .csv spreadsheet.');
+      if (entries.length === 0 && problems.length === 0) {
+        setUploadError('No real rows found in this file - check it has Code and WorkRVU columns.');
+        return;
       }
-    };
-    reader.readAsBinaryString(file);
+      if (problems.length > 0) {
+        setUploadError(problems.slice(0, 5).join(' '));
+      }
+      if (skippedNonPayable > 0) {
+        setToast(`${entries.length} real, payable codes found — ${skippedNonPayable} non-payable/modifier rows skipped automatically.`);
+      }
+      setUploadPreview(entries);
+      setUploadFileName(file.name);
+      if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.csv$/i, '')}`);
+    } catch {
+      setUploadError("Could not read this file - make sure it's a real .csv file.");
+    }
   };
 
   const handleApplyUpload = async () => {
@@ -357,10 +354,7 @@ const RvuCodeMapSection: React.FC = () => {
   };
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet(TEMPLATE_EXAMPLE_ROWS);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'RVU Codes');
-    XLSX.writeFile(wb, 'RvuCodeMapTemplate.xlsx');
+    downloadCsv('RvuCodeMapTemplate.csv', toCsv(TEMPLATE_EXAMPLE_ROWS));
   };
 
   if (loading) return <div className="ps-conf-section-subtitle">Loading…</div>;
@@ -381,7 +375,7 @@ const RvuCodeMapSection: React.FC = () => {
           <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setEntryModalState({})}>+ Add Code</button>
           <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
           <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
-          <input ref={fileInputRef} type="file" hidden accept=".csv,.xlsx"
+          <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv"
             onChange={e => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
         </div>
       </div>

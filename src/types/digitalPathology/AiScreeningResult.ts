@@ -40,6 +40,27 @@ export interface AiScreeningFinding {
   spatialRegion?: AiSpatialRegion;
 }
 
+/** Real, per direct guidance's own confirmed Digital Readiness spec
+ *  — a real, quantitative computational-pathology output (e.g.
+ *  "Ki-67", "HER2", "PD-L1 TPS"), genuinely distinct in kind from the
+ *  more qualitative/spatial findings[] list above — surgical
+ *  pathology AI's own real focus on "tissue quantification (biomarker
+ *  percentages)" per direct guidance's own confirmed Surgical
+ *  Pathology vs. Cytology DP breakdown. */
+export interface AiBiomarkerReadout {
+  /** Real, vendor-reported biomarker name, exactly as reported — free
+   *  text, since no two real vendors necessarily name the same real
+   *  biomarker identically. */
+  name: string;
+  /** Real, vendor-reported value, exactly as reported — free text,
+   *  since the real, meaningful format genuinely varies by biomarker
+   *  (a percentage, a real IHC intensity score like "2+", a real TPS
+   *  percentage) and no single numeric type/unit could honestly
+   *  represent all of them without losing real, vendor-specific
+   *  meaning. */
+  value: string;
+}
+
 export interface AiScreeningResult {
   id: string;
   caseId: string;
@@ -52,6 +73,13 @@ export interface AiScreeningResult {
   orderedAt: string;
   completedAt?: string;
   findings: AiScreeningFinding[];
+  /** Real, per direct guidance's own confirmed Digital Readiness spec
+   *  — real, quantitative biomarker readouts, exactly as the real
+   *  vendor's own product reports them. Undefined/empty for a real
+   *  vendor (e.g. BD FocalPoint, Hologic Genius) whose own product
+   *  reports no real, quantitative biomarker output at all — never a
+   *  fabricated readout. */
+  biomarkers?: AiBiomarkerReadout[];
   /** Real, per direct follow-up confirming this app's own established
    *  architecture ("PathScribe publishes/ingests its own
    *  specification; the real interface engine owns the actual
@@ -79,6 +107,14 @@ export interface AiScreeningResult {
   humanConcordant?: boolean;
 }
 
+/** Real, per direct guidance's own confirmed Digital Readiness spec
+ *  — a real, three-level triage classification a real prostate/
+ *  surgical-pathology vendor (Paige, Ibex) reports, genuinely
+ *  distinct from BD FocalPoint's own binary reviewRecommended gate
+ *  above. Vendor-agnostic naming, same reasoning as
+ *  AiSlideTriageSummary's own header comment. */
+export type AiTriageLevel = 'high_risk' | 'equivocal_review' | 'unremarkable';
+
 /** Real, per AiScreeningResult.slideTriage's own doc comment — a
  *  genuinely vendor-agnostic shape (never named after one vendor's
  *  own terminology) so the real interface engine has a real, honest
@@ -98,4 +134,23 @@ export interface AiSlideTriageSummary {
    *  real, graduated rank behind it. */
   rankGroup?: number;
   totalRankGroups?: number;
+  /** Real, per direct guidance's own confirmed Digital Readiness
+   *  spec — a real, three-level classification exactly as the real
+   *  vendor's own product reports it, never inferred from
+   *  reviewRecommended or from parsing a finding's own text label
+   *  (the same real, unreliable-heuristic risk
+   *  recordAiHumanConcordance.ts's own header comment already warns
+   *  against). Undefined for a real vendor (e.g. BD FocalPoint) whose
+   *  own product reports only the binary gate above, with no real,
+   *  three-level classification behind it. */
+  triageLevel?: AiTriageLevel;
+  /** Real, per direct guidance's own confirmed Digital Readiness
+   *  spec — the real vendor's own headline finding label for this
+   *  slide (e.g. "Malignancy Detected", "Atypical Crypts Flagged",
+   *  "Pre-screened Unremarkable"), distinct from the per-object
+   *  findings[] list on AiScreeningResult itself: this is the one,
+   *  real, slide-level summary label a worklist row would show, not
+   *  every individual finding. Undefined for a real vendor that
+   *  reports only findings[] with no separate, real headline label. */
+  primaryFinding?: string;
 }

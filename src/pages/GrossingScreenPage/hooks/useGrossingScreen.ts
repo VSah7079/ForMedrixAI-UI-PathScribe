@@ -7,8 +7,9 @@
 // with the actual real persistence.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { specimenDeficiencyService } from '@/services';
 import type { Case } from '@/types/case/Case';
 import type { Specimen } from '@/types/case/Specimen';
 import type { ProtocolPathway } from '@/services/protocols/IProtocolService';
@@ -29,6 +30,25 @@ interface UseGrossingScreenParams {
 
 export function useGrossingScreen({ caseData, setCaseData, signingUser, knownVersionRef, setConcurrencyConflict }: UseGrossingScreenParams) {
   const [pendingStainRemoval, setPendingStainRemoval] = useState<{ specimenId: string; blockId: string; stainId: string } | null>(null);
+  // Real, per direct request — tracks which specimens already have a
+  // real, OPEN def-missing-fixation-completion deficiency, so the
+  // "Raise Deficiency" action can show its own real, recorded state
+  // instead of silently doing something with no visible feedback,
+  // same real convention as the fixation fields themselves above.
+  // Multiple deficiencies per specimen are genuinely allowed (see
+  // services/deficiencies/README.md's own real fix on this) — this
+  // only reflects whether at least one open one already exists, it
+  // never blocks raising another.
+  const [specimensWithOpenFixationDeficiency, setSpecimensWithOpenFixationDeficiency] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!caseData?.id) return;
+    specimenDeficiencyService.getByCaseId(caseData.id).then(res => {
+      if (!res.ok) return;
+      const open = res.data.filter(d => d.deficiencyTypeId === 'def-missing-fixation-completion' && d.status !== 'closed');
+      setSpecimensWithOpenFixationDeficiency(new Set(open.map(d => d.specimenId).filter((id): id is string => !!id)));
+    });
+  }, [caseData?.id]);
 
   const persistSpecimen = useCallback(async (updatedSpecimen: Specimen) => {
     if (!caseData?.id) return;
@@ -109,9 +129,72 @@ export function useGrossingScreen({ caseData, setCaseData, signingUser, knownVer
     if (result.ok) await persistSpecimen(result.specimen);
   }, [caseData, signingUser, persistSpecimen]);
 
+  // Real, per direct request (ISO 15189 traceability — "duration of
+  // fixation... from specimen collection to grossing") — grossing is
+  // the real, natural moment tissue actually leaves the fixative, so
+  // this is where fixationEndedAt gets recorded. Record only, per
+  // direct decision — no gating on this yet.
+  const handleRecordFixationEnded = useCallback(async (specimenId: string) => {
+    if (!caseData) return;
+    const specimen = (caseData.specimens ?? []).find((sp: Specimen) => sp.id === specimenId);
+    if (!specimen) return;
+    await persistSpecimen({
+      ...specimen,
+      processing: { ...specimen.processing, fixationEndedAt: new Date().toISOString() },
+    });
+  }, [caseData, persistSpecimen]);
+
+  // Real, per direct guidance's own follow-up ("timestamp and user ID
+  // associated with the... check to satisfy laboratory accreditation
+  // traceability requirements") — a real audit object, not a bare
+  // boolean. No real, structured tissue volume/weight field exists to
+  // compute an actual ratio against (confirmed directly before this
+  // was built), so this records a grossing tech's own direct,
+  // qualitative confirmation instead.
+  const handleConfirmFixativeRatio = useCallback(async (specimenId: string) => {
+    if (!caseData || !signingUser?.id) return;
+    const specimen = (caseData.specimens ?? []).find((sp: Specimen) => sp.id === specimenId);
+    if (!specimen) return;
+    await persistSpecimen({
+      ...specimen,
+      processing: {
+        ...specimen.processing,
+        fixativeToTissueRatioConfirmation: {
+          userId: signingUser.id, userName: signingUser.name ?? signingUser.id, confirmedAt: new Date().toISOString(),
+        },
+      },
+    });
+  }, [caseData, signingUser, persistSpecimen]);
+
+  // Real, per direct decision — a human, not a gate, raises this. No
+  // capaTriggerRule/automatic-detection mechanism at all, unlike
+  // def-ai-discordance/def-confirmed-high-risk-finding elsewhere in
+  // this app; whoever is grossing and notices the gap raises it on
+  // the spot. Reuses the real, existing specimenDeficiencyService.raise()
+  // — a SpecimenDeficiency IS the real CAPA record in this app (see
+  // services/deficiencies/README.md's own "Firestore-backed CAPA
+  // foundation" section) — never a new, parallel CAPA entity.
+  const handleRaiseFixationDeficiency = useCallback(async (specimenId: string) => {
+    if (!caseData?.id || !signingUser?.id) return;
+    const specimen = (caseData.specimens ?? []).find((sp: Specimen) => sp.id === specimenId);
+    if (!specimen) return;
+    const result = await specimenDeficiencyService.raise({
+      caseId: caseData.id,
+      specimenId: specimen.id,
+      specimenLabel: specimen.label,
+      deficiencyTypeId: 'def-missing-fixation-completion',
+      comment: 'Flagged manually at grossing — fixation end time and/or fixative:tissue ratio confirmation missing.',
+      raisedBy: signingUser.id,
+    });
+    if (result.ok) {
+      setSpecimensWithOpenFixationDeficiency(prev => new Set(prev).add(specimenId));
+    }
+  }, [caseData, signingUser]);
+
   return {
     handleAddBlock, handleRemoveBlock, handleAddStain, handleRemoveStain,
     pendingStainRemoval, confirmPendingStainRemoval, cancelPendingStainRemoval,
-    handleUpdatePieceCount,
+    handleUpdatePieceCount, handleRecordFixationEnded, handleConfirmFixativeRatio,
+    handleRaiseFixationDeficiency, specimensWithOpenFixationDeficiency,
   };
 }

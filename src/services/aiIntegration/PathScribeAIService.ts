@@ -11,6 +11,8 @@ import { resolveAiConfigOverrideForClient } from '../../components/Config/AI/res
 import { ServiceResult, VoiceMacro } from '../../types';
 import { spellLangForJurisdiction } from '../../utils/formatDate';
 import type { Jurisdiction } from '../../types/systemConfig';
+import type { EditorTemplate } from '../../components/Config/Protocols/SynopticEditor';
+import { buildSynopticNarrativePrompt } from '../../pages/SynopticReportPage/hooks/buildSynopticNarrativePrompt';
 
 // ── Spelling check types ────────────────────────────────────────────────────
 
@@ -130,6 +132,22 @@ Rules:
     } catch (error: any) {
       return { success: false, error: error.message };
     }
+  }
+
+  /** Real, per direct guidance's own confirmed PS-275 scope (Phase 2,
+   *  the reverse of PS-274's own Narrative -> Synoptic direction):
+   *  builds the real, structured prompt from the case's own current
+   *  synoptic answers (buildSynopticNarrativePrompt.ts \u2014 kept as its
+   *  own pure, testable function, never inlined here) and reuses this
+   *  class's own real generateNarrative(), never a second, duplicate
+   *  callAi() call. */
+  async generateNarrativeFromSynopticAnswers(
+    template: EditorTemplate,
+    answers: Record<string, string | string[]>,
+    facilityId?: string,
+  ): Promise<ServiceResult<string>> {
+    const { system, prompt } = buildSynopticNarrativePrompt(template, answers);
+    return this.generateNarrative(system, prompt, facilityId);
   }
 
   // ── Spelling check — Accept-time pass ───────────────────────

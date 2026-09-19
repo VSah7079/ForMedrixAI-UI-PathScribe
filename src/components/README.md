@@ -7,7 +7,7 @@ cross-linked to that folder's own `README.md` for real detail.
 folder's own `README.md`. Only touch *this* file if a folder's *purpose*
 changes, or a folder is added/removed/split/merged.
 
-## Folder index (23 folders, all reviewed)
+## Folder index (24 folders, all reviewed)
 
 | Folder | What it is |
 |---|---|
@@ -35,6 +35,8 @@ changes, or a folder is added/removed/split/merged.
 | [AppShell/](./AppShell/README.md) | Global layout shell + the real internal user directory |
 | [SpecimenPicker/](./SpecimenPicker/README.md) | Specimen Dictionary lookup modal (AccessionPage) |
 | [Synoptic/](./Synoptic/README.md) | Synoptic page sidebar wrapper |
+| [Autopsy/](./Autopsy/README.md) | **NEW (Sep 2026)** — Autopsy Pathology Module UI. Real, presentational form components only — no case-creation/routing wiring yet |
+| [ExternalConsult/](./ExternalConsult/README.md) | **NEW (Sep 2026)** — PS-290, the internal pathologist-facing issuance/management modal for External Consult / Second-Opinion Access — NOT real token security, see the folder's own README |
 
 ## Loose files at `components/` root (Aug 2026)
 

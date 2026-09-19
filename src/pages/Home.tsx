@@ -1,10 +1,9 @@
 // src/pages/Home.tsx
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from "@contexts/AuthContext";
-import { useLogout } from '@hooks/useLogout';
-import LogoutWarningModal from '@/components/Common/LogoutWarningModal';
 import PubMedTicker from '@/components/Common/PubMedTicker';
 
 interface Card {
@@ -16,14 +15,13 @@ interface Card {
 }
 
 export default function Home() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const handleLogout = useLogout();
 
   // --- UI State ---
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoaded(true), 100);
@@ -69,11 +67,47 @@ export default function Home() {
     { title: 'Worklist', description: 'View and manage pending pathology cases', route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
     { title: 'Configuration', description: 'System settings and AI preferences', route: '/configuration', color: '#F0E442', image: '/config.webp' },
     { title: 'Search', description: 'Search completed and in-progress cases', route: '/search', color: '#CC79A7', image: '/search.webp' },
-    { title: 'Audit', description: 'Review System Activities, Audit Trail, and Quality Assurance', route: '/audit', color: '#D55E00', image: '/logs.webp' },
-    { title: 'Quality Assurance', description: 'Deficiencies, Intraoperative Linkage, and Discordance & Reconciliation reporting', route: '/quality-assurance', color: '#E69F00', image: '/deficiencies.webp' },
+    // Real, direct follow-up (Sep 2026): "Audit" and "Quality Assurance"
+    // used to be two flat top-level tiles here — folded into one
+    // "Quality & Compliance" hub (QualityComplianceHubPage.tsx), per
+    // direct request to reduce cognitive load. Real, considered
+    // reasoning, not just tidiness: both are genuinely the same
+    // domain/audience (a quality manager or compliance officer, not a
+    // pathologist's or tech's daily-frequency tool) — Audit is System
+    // Logs (incl. its own real, permanent QA historical-archive tab,
+    // per AuditLogPage.tsx's own header) and Quality Assurance is the
+    // active CAPA working queue for that same record — complementary
+    // halves of one compliance domain, exactly the kind of grouping
+    // already used for Pathology Workspace above. Two other candidates
+    // were considered and deliberately NOT grouped here: Cytology QC
+    // Peer Review Queue (its own header comment: a real, near-daily
+    // pathologist queue explicitly meant to eventually live inside the
+    // main Worklist itself — burying it under a Compliance hub would
+    // slow down its real, frequent users) and Batch Management (its
+    // own processing-node scope is genuinely broader than the five
+    // pathology-bench domains already grouped in Pathology Workspace —
+    // folding it in would blur what that hub means). #D55E00 is the
+    // real color the removed Audit tile used to carry — reused here
+    // rather than left orphaned, same real precedent as Pathology
+    // Workspace reusing Cytology's old color.
+    {
+      title: t('home.qualityComplianceTile.title'),
+      description: t('home.qualityComplianceTile.description'),
+      route: '/quality-compliance',
+      color: '#D55E00',
+      image: '/logs.webp'
+    },
     { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#38BDF8', image: '/worklist.webp' },
-    { title: 'Molecular Order Queue', description: 'Outbound molecular assay and instrument orders, including HPV reflex genotyping', route: '/molecular-order-queue', color: '#7F77DD', image: '/worklist.webp' },
     { title: 'Cytology QC Peer Review Queue', description: 'Unified QC assignment queue for pathologist peer review — escalations, discrepancies, and routine random sampling', route: '/cytology-qc-queue', color: '#5B8DEF', image: '/worklist.webp' },
+    // Real, direct follow-up (Sep 2026): "Molecular Order Queue" removed
+    // from here — per direct guidance ("seems like a Testing tool"),
+    // it's explicitly a demo/simulation tool (see its own page header
+    // and services/molecularOrders/README.md), never a production
+    // ordering workflow with a real staff operator. Moved to
+    // Configuration → ⟳ Demo Reset, alongside this app's other
+    // real, testing-only utilities — same real /molecular-order-queue
+    // route, just a real, discoverable Configuration entry point
+    // instead of a flat top-level Home tile aimed at every user.
 
     // ⭐ New tile
     {
@@ -93,49 +127,65 @@ export default function Home() {
       image: '/batch_management.webp'
     },
 
-    // ⭐ New tile — real, per direct guidance: a dedicated Cytotech
-    // entry point, opening their own assigned cases and pool
-    // worklist (Cytology & Cervical Screening module). Deliberately
-    // NOT a second worklist destination for Pathologists — per direct
-    // guidance's own explicit constraint ("I do not want to send the
-    // Pathologist to multiple worklist"), cytology cases needing
-    // pathologist review surface within their existing, real
-    // /worklist instead; this tile is a real, separate later piece.
-    // Real, honest color-choice caveat: every other tile's color was
-    // computationally, pairwise-verified against protanopia/
-    // deuteranopia/tritanopia simulation (see this file's own header
-    // comment) — #009E73 is drawn from the real, published Wong
-    // (2011, Nature Methods) colorblind-safe palette and not yet
-    // used by any existing tile, but has NOT been through that same
-    // full, pairwise verification against all 9 others. Worth a real
-    // pass before considering this tile's color final.
+    // ⭐ New tile — real, per "Homepage Changes part 1" (direct
+    // request): Cytology Workspace, Microtomy Workstation (renamed
+    // "Microtomy Workspace"), Embedding Station (renamed "Embedding
+    // Workspace"), and Slide Distribution Station (renamed "Slide
+    // Distribution Workspace") were each their own flat top-level tile
+    // (PS-284/285/286 respectively) — all four now live one level
+    // deeper, behind this single hub tile (PathologyWorkspacePage.tsx),
+    // per the direct instruction to move them into it. #009E73 is the
+    // real color the removed Cytology Workspace tile used to carry —
+    // reused here rather than left orphaned, and still genuinely
+    // distinct from every other tile remaining on this page.
+    //
+    // ⭐ Real, direct follow-up (Sep 2026): the former standalone
+    // "Molecular" tile (→ /molecular, MolecularWorkcenterPage.tsx,
+    // itself the product of an earlier Molecular Testing + Molecular
+    // Batch Management merge — see that merge's own reasoning still
+    // documented in PathologyWorkspacePage.tsx) is ALSO folded into
+    // this hub now, as "Molecular Workspace" — same real page
+    // underneath (renamed from "Molecular Workcenter" to match), same
+    // real /molecular route, just one level deeper. Per direct
+    // guidance: grouped here by domain ("pathology"), not by shared
+    // audience — Molecular Workspace's own molecular-tech bench
+    // workflow is genuinely distinct from the other four tiles' own
+    // histology-bench/cytology-screening audiences, same real
+    // reasoning already true of e.g. Cytology vs. Microtomy within
+    // this same hub. Molecular Order Queue (/molecular-order-queue)
+    // deliberately NOT moved — per direct guidance, only "Molecular"
+    // itself was named for this move.
     {
-      title: 'Cytology Workspace',
-      description: 'Primary screening hub for GYN Paps, Non-GYN triage, cell block tracking, and mandatory QC',
-      route: '/cytology-worklist',
+      title: t('home.pathologyWorkspaceTile.title'),
+      description: t('home.pathologyWorkspaceTile.description'),
+      route: '/pathology-workspace',
       color: '#009E73',
       image: '/cytology.webp'
     },
-    // ⭐ Real, direct correction (Sep 2026), per direct follow-up
-    // ("I'm not sure it makes sense to have Molecular Testing and
-    // Molecular Batch Management as separate tiles"): the two former,
-    // separate tiles ('Molecular Testing' → /molecular-batch,
-    // 'Molecular Batch Management' → /molecular-batch-management,
-    // removed above) are now one real, single tile, opening into
-    // MolecularWorkcenterPage.tsx's own real, tab-based
-    // sub-navigation (Worklist & Plate Builder / Active Runs &
-    // Batches / History & Archive / QC & Specimen Association) —
-    // confirmed directly (services/molecular/README.md) that the two
-    // former pages are genuinely related real, downstream pipelines
-    // off the same real molecular-instrument-run lifecycle, not an
-    // arbitrary merge.
+    // ⭐ New tile — real, per PS-287 (Pathologist-Initiated Add-On
+    // Orders), fourth sibling workstation in the series. Genuinely
+    // case-scoped (search/open an accession), not scan-to-open like its
+    // three siblings — see AddOnOrderPage.tsx's own header. Color
+    // checked against every other tile's own color above — a genuinely
+    // new rose/red, distinct from both D55E00 (burnt orange) and
+    // CC79A7/B24592 (mauve/pink), same distinct-color discipline the
+    // real regression test (below) checks for.
     {
-      title: 'Molecular',
-      description: 'Batch and plate management, active runs, and QC/specimen association for molecular diagnostics (HPV, CT/NG, respiratory PCR)',
-      route: '/molecular',
-      color: '#7C3AED',
-      image: '/batch_management.webp'
+      title: t('home.addOnOrderTile.title'),
+      description: t('home.addOnOrderTile.description'),
+      route: '/add-on-orders',
+      color: '#F43F5E',
+      image: '/worklist.webp'
     }
+    // Real, per "Homepage Changes part 1" (direct request): "Move
+    // Facilities Ops Dashboards under Configuration." The former
+    // Facility Ops Dashboards tile (PS-288, #84CC16 lime) that used to
+    // sit here is gone — its entry point now lives in Configuration →
+    // System → Display Profiles (DisplayProfilesSection.tsx's own
+    // "Open Facility Ops Dashboard" button), not on Home. The route
+    // itself (/facility-ops-dashboard) is unchanged and still the
+    // same real, public/unauthenticated kiosk page — only its
+    // discovery path moved.
   ];
 
   return (
@@ -215,12 +265,6 @@ export default function Home() {
           </div>
         </footer>
       </div>
-
-      <LogoutWarningModal
-        isOpen={showWarning}
-        onClose={() => setShowWarning(false)}
-        onLogout={handleLogout}
-      />
     </div>
   );
 }

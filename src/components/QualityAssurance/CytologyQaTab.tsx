@@ -95,7 +95,7 @@ const ComparisonDetailTable: React.FC<{ comparisons: CytologyQaAggregateReport['
             const level = LEVEL_LABEL[c.level] ?? { text: c.level, color: '#9ca3af' };
             return (
               <tr key={`${c.caseId}-${i}`} className="ps-conf-tr">
-                <td className="ps-conf-td">{c.caseId}</td>
+                <td className="ps-conf-td" data-phi="accession">{c.caseId}</td>
                 <td className="ps-conf-td">
                   <div>{c.initialInterpretationLabel}</div>
                   <div style={{ fontSize: 11, color: '#6b7280' }}>{c.initialReviewerName ?? '—'}</div>
@@ -310,7 +310,7 @@ const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = 
         <tbody>
           {records.map(r => (
             <tr key={r.id} className="ps-conf-tr">
-              <td className="ps-conf-td">{r.caseId}</td>
+              <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
               <td className="ps-conf-td">{String(r.fieldValues.trigger ?? '—')}</td>
               <td className="ps-conf-td">
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: r.outcome === 'concordant' ? '#10B98118' : '#ef444418', color: r.outcome === 'concordant' ? '#10B981' : '#ef4444', border: `1px solid ${r.outcome === 'concordant' ? '#10B98133' : '#ef444433'}` }}>
@@ -425,7 +425,7 @@ const UnscreenedBacklogTable: React.FC<{ rows: CytologyUnscreenedBacklogRow[] }>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className="ps-conf-tr">
-              <td className="ps-conf-td">{r.caseId}</td>
+              <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
               <td className="ps-conf-td">{r.accessionId ?? '—'}</td>
               <td className="ps-conf-td">{r.collectionDate ? new Date(r.collectionDate).toLocaleDateString() : '—'}</td>
               <td className="ps-conf-td">{r.receivedDate ? new Date(r.receivedDate).toLocaleDateString() : '—'}</td>
@@ -695,7 +695,7 @@ const ApacProficiencyTestTable: React.FC<{ report: CytologyApacProficiencyTestRe
             {report.rows.map((r, i) => (
               <tr key={i} className="ps-conf-tr">
                 <td className="ps-conf-td">{new Date(r.receivedAt).toLocaleDateString()}</td>
-                <td className="ps-conf-td">{r.accessionNumber}</td>
+                <td className="ps-conf-td" data-phi="accession">{r.accessionNumber}</td>
                 <td className="ps-conf-td">{r.provider}</td>
                 <td className="ps-conf-td">{r.challengeReferenceId}</td>
                 <td className="ps-conf-td">
@@ -746,7 +746,7 @@ const TransmissionAuditTable: React.FC<{ rows: CytologyRegistryTransmissionAudit
               const status = STATUS_LABEL[r.transmissionStatus];
               return (
                 <tr key={`${r.caseId}-${i}`} className="ps-conf-tr">
-                  <td className="ps-conf-td">{r.accessionNumber}</td>
+                  <td className="ps-conf-td" data-phi="accession">{r.accessionNumber}</td>
                   <td className="ps-conf-td">{r.patientMrn ?? '—'}</td>
                   <td className="ps-conf-td">{r.hpvResultCode ?? '—'}</td>
                   <td className="ps-conf-td">{r.cytologyResultCode}</td>
@@ -957,7 +957,7 @@ export const CytologyQaTab: React.FC = () => {
                   'Hist Diagnosis': r.histDiagnosis, 'Days to Biopsy': r.daysToBiopsy ?? '',
                   'Correlation Category': CATEGORY_LABEL[r.correlationCategory].text,
                 }));
-                exportQaReportRows(rows, `cyto-histo-correlation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+                exportQaReportRows(rows, `cyto-histo-correlation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
               }}
               onPrint={() => setShowHistologyCorrelationPrint(true)}
             />

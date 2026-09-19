@@ -1,0 +1,2844 @@
+{
+  "id": "autopsy_gross_examination",
+  "name": "Autopsy Gross Examination — Whole Body / Multi-Cavity",
+  "source": "Custom",
+  "version": "0.4.0-draft",
+  "category": "AUTOPSY",
+  "sections": [
+    {
+      "id": "external_examination",
+      "title": "External Examination",
+      "fields": [
+        {
+          "id": "body_weight_kg",
+          "label": "Body Weight (kg)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "body_length_cm",
+          "label": "Body Length / Height (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "body_mass_index",
+          "label": "Body Mass Index (kg/m²)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Auto-calculated from Body Weight and Body Length/Height once a rendering layer wires in calculateAutopsyBodyMassIndex.ts — not yet computed automatically by the Synoptic Library apparatus itself.",
+          "options": []
+        },
+        {
+          "id": "rigor_mortis",
+          "label": "Rigor Mortis",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "rigor_mortis_absent",
+              "label": "Absent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.rigor_mortis.absent"
+            },
+            {
+              "id": "rigor_mortis_minimal",
+              "label": "Minimal / Slight",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.rigor_mortis.minimal_slight"
+            },
+            {
+              "id": "rigor_mortis_moderate",
+              "label": "Moderate",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.rigor_mortis.moderate"
+            },
+            {
+              "id": "rigor_mortis_complete",
+              "label": "Complete / Fully Established",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.rigor_mortis.complete_fully_established"
+            },
+            {
+              "id": "rigor_mortis_passing",
+              "label": "Passing / Post-Rigidity",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.rigor_mortis.passing_post_rigidity"
+            }
+          ]
+        },
+        {
+          "id": "livor_mortis",
+          "label": "Livor Mortis",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Pattern and color.",
+          "options": [
+            {
+              "id": "livor_mortis_posterior_unfixed",
+              "label": "Posterior — Unfixed (Blanches under pressure)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.posterior_unfixed"
+            },
+            {
+              "id": "livor_mortis_posterior_fixed",
+              "label": "Posterior — Fixed (Does not blanch)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.posterior_fixed"
+            },
+            {
+              "id": "livor_mortis_anterior_unfixed",
+              "label": "Anterior — Unfixed",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.anterior_unfixed"
+            },
+            {
+              "id": "livor_mortis_anterior_fixed",
+              "label": "Anterior — Fixed",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.anterior_fixed"
+            },
+            {
+              "id": "livor_mortis_mixed_shifted",
+              "label": "Mixed / Shifted (Suggests postmortem position change)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.mixed_shifted"
+            },
+            {
+              "id": "livor_mortis_cherry_red",
+              "label": "Cherry-Red / Pink (Suggests CO poisoning, cyanide, or cold exposure)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.cherry_red_pink"
+            },
+            {
+              "id": "livor_mortis_absent_obscured",
+              "label": "Absent / Obscured by Decomposition",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.livor_mortis.absent_obscured"
+            }
+          ]
+        },
+        {
+          "id": "medical_intervention_devices",
+          "label": "Medical Intervention Devices",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "options": [
+            {
+              "id": "devices_none",
+              "label": "None",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "devices_ett_trach",
+              "label": "Endotracheal / Tracheostomy Tube",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.device.endotracheal_tracheostomy_tube"
+            },
+            {
+              "id": "devices_iv_lines",
+              "label": "Peripheral / Central IV Lines",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.device.iv_lines"
+            },
+            {
+              "id": "devices_intracardiac",
+              "label": "Intracardiac Lines / Pacemaker / AICD",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.device.intracardiac_lines_pacemaker_aicd"
+            },
+            {
+              "id": "devices_chest_tubes",
+              "label": "Chest Tubes / Surgical Drains",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.device.chest_tubes_surgical_drains"
+            },
+            {
+              "id": "devices_urinary_catheter",
+              "label": "Urinary Catheter",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.device.urinary_catheter"
+            }
+          ]
+        },
+        {
+          "id": "surface_injuries_trauma",
+          "label": "Surface Injuries / Trauma",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present. Selecting any trauma type here is intended to launch a Spatial Injury Mapping Tool — not yet built; out of scope for this pass.",
+          "options": [
+            {
+              "id": "trauma_none",
+              "label": "No significant external trauma identified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "trauma_blunt_force",
+              "label": "Blunt Force Trauma (Abrasions, Contusions, Lacerations)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.trauma.blunt_force"
+            },
+            {
+              "id": "trauma_sharp_force",
+              "label": "Sharp Force Trauma (Incisional, Stab wounds)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.trauma.sharp_force"
+            },
+            {
+              "id": "trauma_gunshot",
+              "label": "Gunshot / Projectile Wounds",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.trauma.gunshot_projectile"
+            },
+            {
+              "id": "trauma_thermal_electrical",
+              "label": "Thermal / Electrical Burns",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.trauma.thermal_electrical_burns"
+            },
+            {
+              "id": "trauma_asphyxial",
+              "label": "Asphyxial Signs (Conjunctival petechiae, Ligature marks, Fingernail impressions)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.trauma.asphyxial_signs"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "head_and_neck",
+      "title": "Head & Neck (Cranial & Cervical)",
+      "fields": [
+        {
+          "id": "scalp_subgaleal_tissues",
+          "label": "Scalp & Subgaleal Tissues",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "subgaleal_intact",
+              "label": "Intact, no subgaleal hemorrhage identified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "subgaleal_localized",
+              "label": "Subgaleal hemorrhage present — Localized",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subgaleal_hemorrhage.localized"
+            },
+            {
+              "id": "subgaleal_diffuse",
+              "label": "Subgaleal hemorrhage present — Diffuse",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subgaleal_hemorrhage.diffuse"
+            }
+          ]
+        },
+        {
+          "id": "subgaleal_region_detail",
+          "label": "Specify Region",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "scalp_subgaleal_tissues",
+            "answerId": "subgaleal_localized"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "scalp_subgaleal_tissues",
+            "answerId": "subgaleal_localized"
+          }
+        },
+        {
+          "id": "cranial_vault_skull_base",
+          "label": "Cranial Vault & Skull Base",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "skull_intact",
+              "label": "Intact, no fractures identified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "skull_fracture_linear",
+              "label": "Linear Skull Fracture",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skull_fracture.linear"
+            },
+            {
+              "id": "skull_fracture_depressed_comminuted",
+              "label": "Depressed / Comminuted Skull Fracture",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skull_fracture.depressed_comminuted"
+            },
+            {
+              "id": "skull_fracture_basilar",
+              "label": "Basilar Skull Fracture (\"Hinge\" / Ring fracture pattern)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skull_fracture.basilar_hinge_ring"
+            }
+          ]
+        },
+        {
+          "id": "skull_fracture_location_detail",
+          "label": "Specify Location",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "cranial_vault_skull_base",
+            "answerId": "skull_fracture_linear",
+            "answerIds": [
+              "skull_fracture_linear",
+              "skull_fracture_depressed_comminuted"
+            ]
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "cranial_vault_skull_base",
+            "answerId": "skull_fracture_linear",
+            "answerIds": [
+              "skull_fracture_linear",
+              "skull_fracture_depressed_comminuted"
+            ]
+          }
+        },
+        {
+          "id": "intracranial_hemorrhage",
+          "label": "Intracranial Hemorrhage",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "options": [
+            {
+              "id": "ich_none",
+              "label": "No intracranial hemorrhage identified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "ich_epidural",
+              "label": "Epidural Hemorrhage present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.intracranial_hemorrhage.epidural"
+            },
+            {
+              "id": "ich_subdural",
+              "label": "Subdural Hemorrhage present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.intracranial_hemorrhage.subdural"
+            },
+            {
+              "id": "ich_subarachnoid",
+              "label": "Subarachnoid Hemorrhage present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.intracranial_hemorrhage.subarachnoid"
+            },
+            {
+              "id": "ich_intraparenchymal_intraventricular",
+              "label": "Intraparenchymal / Intraventricular Hemorrhage present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.intracranial_hemorrhage.intraparenchymal_intraventricular"
+            }
+          ]
+        },
+        {
+          "id": "epidural_hemorrhage_volume_ml",
+          "label": "Epidural Hemorrhage Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_epidural"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_epidural"
+          }
+        },
+        {
+          "id": "subdural_hemorrhage_chronicity",
+          "label": "Subdural Hemorrhage Chronicity",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subdural"
+          },
+          "options": [
+            {
+              "id": "subdural_acute",
+              "label": "Acute",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subdural_hemorrhage.acute"
+            },
+            {
+              "id": "subdural_subacute",
+              "label": "Subacute",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subdural_hemorrhage.subacute"
+            },
+            {
+              "id": "subdural_chronic",
+              "label": "Chronic",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subdural_hemorrhage.chronic"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subdural"
+          }
+        },
+        {
+          "id": "subdural_hemorrhage_volume_ml",
+          "label": "Subdural Hemorrhage Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subdural"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subdural"
+          }
+        },
+        {
+          "id": "subarachnoid_hemorrhage_distribution",
+          "label": "Subarachnoid Hemorrhage Distribution",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subarachnoid"
+          },
+          "options": [
+            {
+              "id": "subarachnoid_localized",
+              "label": "Localized",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subarachnoid_hemorrhage.localized"
+            },
+            {
+              "id": "subarachnoid_diffuse",
+              "label": "Diffuse",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subarachnoid_hemorrhage.diffuse"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "intracranial_hemorrhage",
+            "answerId": "ich_subarachnoid"
+          }
+        },
+        {
+          "id": "fresh_brain_weight_g",
+          "label": "Fresh Brain Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Normative range displayed by a future rendering layer — not itself computed by the Synoptic Library apparatus.",
+          "options": []
+        },
+        {
+          "id": "meninges_circle_of_willis",
+          "label": "Meninges & Circle of Willis Patency",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "cow_patent",
+              "label": "Clear, intact meninges; Circle of Willis patent without aneurysm/thrombus",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "cow_atherosclerosis_mild",
+              "label": "Atherosclerosis of Circle of Willis — Mild (<20%)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.circle_of_willis_arteriolosclerosis.mild"
+            },
+            {
+              "id": "cow_atherosclerosis_moderate",
+              "label": "Atherosclerosis of Circle of Willis — Moderate (20-50%)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.circle_of_willis_arteriolosclerosis.moderate"
+            },
+            {
+              "id": "cow_atherosclerosis_severe",
+              "label": "Atherosclerosis of Circle of Willis — Severe (>50%)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.circle_of_willis_arteriolosclerosis.severe"
+            }
+          ]
+        },
+        {
+          "id": "parenchyma_herniation_features",
+          "label": "Parenchyma & Herniation Features",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "options": [
+            {
+              "id": "parenchyma_normal",
+              "label": "Normal symmetrical architecture, no herniation or focal lesions",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "parenchyma_cerebral_edema",
+              "label": "Cerebral Edema (Gyral flattening / Sulcal effacement)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.brain.cerebral_edema"
+            },
+            {
+              "id": "herniation_uncal_left",
+              "label": "Uncal Herniation present — Left",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.herniation.uncal_left"
+            },
+            {
+              "id": "herniation_uncal_right",
+              "label": "Uncal Herniation present — Right",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.herniation.uncal_right"
+            },
+            {
+              "id": "herniation_uncal_bilateral",
+              "label": "Uncal Herniation present — Bilateral",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.herniation.uncal_bilateral"
+            },
+            {
+              "id": "herniation_tonsillar",
+              "label": "Tonsillar Herniation present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.herniation.tonsillar"
+            },
+            {
+              "id": "parenchyma_focal_lesion",
+              "label": "Focal Lesion / Infarct / Mass identified",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.brain.focal_lesion_infarct_mass"
+            }
+          ]
+        },
+        {
+          "id": "hyoid_laryngeal_skeleton",
+          "label": "Hyoid Bone & Laryngeal Skeleton",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "options": [
+            {
+              "id": "hyoid_laryngeal_intact",
+              "label": "Hyoid bone intact; Thyroid and Cricoid cartilages intact",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "hyoid_fracture_left_horn",
+              "label": "Hyoid bone fracture — Left horn",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hyoid_fracture.left_horn"
+            },
+            {
+              "id": "hyoid_fracture_right_horn",
+              "label": "Hyoid bone fracture — Right horn",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hyoid_fracture.right_horn"
+            },
+            {
+              "id": "thyroid_cartilage_fracture_left_superior_horn",
+              "label": "Thyroid cartilage fracture — Left superior horn",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.thyroid_cartilage_fracture.left_superior_horn"
+            },
+            {
+              "id": "thyroid_cartilage_fracture_right_superior_horn",
+              "label": "Thyroid cartilage fracture — Right superior horn",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.thyroid_cartilage_fracture.right_superior_horn"
+            },
+            {
+              "id": "cricoid_cartilage_fracture",
+              "label": "Cricoid cartilage fracture",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.cricoid_cartilage_fracture"
+            }
+          ]
+        },
+        {
+          "id": "cervical_strap_muscle_hemorrhage",
+          "label": "Cervical Strap Muscle Hemorrhages",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "strap_muscles_intact",
+              "label": "Strap muscles intact, no hemorrhage",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "strap_muscle_hemorrhage_present",
+              "label": "Anterior cervical strap muscle hemorrhage present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.cervical_strap_muscle_hemorrhage"
+            }
+          ]
+        },
+        {
+          "id": "strap_muscle_hemorrhage_region_detail",
+          "label": "Specify Region",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "cervical_strap_muscle_hemorrhage",
+            "answerId": "strap_muscle_hemorrhage_present"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "cervical_strap_muscle_hemorrhage",
+            "answerId": "strap_muscle_hemorrhage_present"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cardiovascular_system",
+      "title": "Cardiovascular System",
+      "fields": [
+        {
+          "id": "heart_weight_fresh_g",
+          "label": "Heart Weight (Fresh, g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "lv_wall_thickness_mm",
+          "label": "Left Ventricular Wall Thickness (mm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "rv_wall_thickness_mm",
+          "label": "Right Ventricular Wall Thickness (mm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "ivs_thickness_mm",
+          "label": "Interventricular Septum Thickness (mm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "lad_stenosis",
+          "label": "Left Anterior Descending (LAD) — Luminal Stenosis",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "lad_stenosis_lt20",
+              "label": "Less than 20%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.lt20"
+            },
+            {
+              "id": "lad_stenosis_20_49",
+              "label": "20–49%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.20_49"
+            },
+            {
+              "id": "lad_stenosis_50_74",
+              "label": "50–74%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.50_74"
+            },
+            {
+              "id": "lad_stenosis_ge75",
+              "label": "75% or greater",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.ge75"
+            },
+            {
+              "id": "lad_stenosis_occluded",
+              "label": "Occluded",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.occluded"
+            }
+          ]
+        },
+        {
+          "id": "lcx_stenosis",
+          "label": "Left Circumflex (LCx) — Luminal Stenosis",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "lcx_stenosis_lt20",
+              "label": "Less than 20%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.lt20"
+            },
+            {
+              "id": "lcx_stenosis_20_49",
+              "label": "20–49%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.20_49"
+            },
+            {
+              "id": "lcx_stenosis_50_74",
+              "label": "50–74%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.50_74"
+            },
+            {
+              "id": "lcx_stenosis_ge75",
+              "label": "75% or greater",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.ge75"
+            },
+            {
+              "id": "lcx_stenosis_occluded",
+              "label": "Occluded",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.occluded"
+            }
+          ]
+        },
+        {
+          "id": "rca_stenosis",
+          "label": "Right Coronary Artery (RCA) — Luminal Stenosis",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "rca_stenosis_lt20",
+              "label": "Less than 20%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.lt20"
+            },
+            {
+              "id": "rca_stenosis_20_49",
+              "label": "20–49%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.20_49"
+            },
+            {
+              "id": "rca_stenosis_50_74",
+              "label": "50–74%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.50_74"
+            },
+            {
+              "id": "rca_stenosis_ge75",
+              "label": "75% or greater",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.ge75"
+            },
+            {
+              "id": "rca_stenosis_occluded",
+              "label": "Occluded",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.occluded"
+            }
+          ]
+        },
+        {
+          "id": "pda_stenosis",
+          "label": "Posterior Descending (PDA) — Luminal Stenosis",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "pda_stenosis_lt20",
+              "label": "Less than 20%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.lt20"
+            },
+            {
+              "id": "pda_stenosis_20_49",
+              "label": "20–49%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.20_49"
+            },
+            {
+              "id": "pda_stenosis_50_74",
+              "label": "50–74%",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.50_74"
+            },
+            {
+              "id": "pda_stenosis_ge75",
+              "label": "75% or greater",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.ge75"
+            },
+            {
+              "id": "pda_stenosis_occluded",
+              "label": "Occluded",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary_stenosis.occluded"
+            }
+          ]
+        },
+        {
+          "id": "myocardium_valvular_apparatus",
+          "label": "Myocardium & Valvular Apparatus",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "options": [
+            {
+              "id": "myocardium_homogeneous",
+              "label": "Homogeneous brown-red, no focal lesions or scarring",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "myocardium_acute_infarction",
+              "label": "Acute Infarction present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.myocardium.acute_infarction"
+            },
+            {
+              "id": "myocardium_healed_infarction",
+              "label": "Healed Infarction / Fibrotic Scarring",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.myocardium.healed_infarction_fibrotic_scarring"
+            },
+            {
+              "id": "myocardium_concentric_lvh",
+              "label": "Concentric Left Ventricular Hypertrophy",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.myocardium.concentric_lv_hypertrophy"
+            },
+            {
+              "id": "valve_lesions_vegetation_calcification",
+              "label": "Valvular Lesions / Vegetation / Calcification present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.valve.lesions_vegetation_calcification"
+            },
+            {
+              "id": "prior_stent_cabg_patent",
+              "label": "Previous Coronary Stent / CABG Graft present and patent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.coronary.prior_stent_cabg_patent"
+            }
+          ]
+        },
+        {
+          "id": "myocardial_infarction_location_detail",
+          "label": "Specify Location",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "myocardium_valvular_apparatus",
+            "answerId": "myocardium_acute_infarction",
+            "answerIds": [
+              "myocardium_acute_infarction",
+              "myocardium_healed_infarction"
+            ]
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "myocardium_valvular_apparatus",
+            "answerId": "myocardium_acute_infarction",
+            "answerIds": [
+              "myocardium_acute_infarction",
+              "myocardium_healed_infarction"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "respiratory_system",
+      "title": "Respiratory System",
+      "fields": [
+        {
+          "id": "right_lung_weight_g",
+          "label": "Right Lung Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "left_lung_weight_g",
+          "label": "Left Lung Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "lung_parenchyma_appearance",
+          "label": "Parenchyma Appearance",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "lung_parenchyma_normal",
+              "label": "Spongy, crepitant, pink-red; no consolidation or congestion",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lung_parenchyma_edema_congestion",
+              "label": "Pulmonary Edema & Congestion (Frothy fluid exudes on sectioning)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lung.pulmonary_edema_congestion"
+            },
+            {
+              "id": "lung_parenchyma_consolidation",
+              "label": "Consolidation / Pneumonic Infiltrate present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lung.consolidation_pneumonic_infiltrate"
+            },
+            {
+              "id": "lung_parenchyma_emphysematous",
+              "label": "Emphysematous changes / Bullae present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lung.emphysematous_changes_bullae"
+            }
+          ]
+        },
+        {
+          "id": "tracheobronchial_mucosa",
+          "label": "Tracheobronchial Mucosa",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "tracheobronchial_clear",
+              "label": "Clear, patulous, no foreign body obstruction",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "tracheobronchial_purulent",
+              "label": "Purulent exudate / Mucous plugging present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.tracheobronchial.purulent_exudate_mucous_plugging"
+            },
+            {
+              "id": "tracheobronchial_foreign_body",
+              "label": "Foreign body / Aspiration material present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.tracheobronchial.foreign_body_aspiration"
+            }
+          ]
+        },
+        {
+          "id": "pulmonary_arterial_system",
+          "label": "Pulmonary Arterial System",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "pulmonary_artery_free_of_emboli",
+              "label": "Free of emboli or thrombi",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "pulmonary_artery_saddle_embolus",
+              "label": "Saddle Embolus present at pulmonary bifurcation",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pulmonary_artery.saddle_embolus"
+            },
+            {
+              "id": "pulmonary_artery_peripheral_emboli",
+              "label": "Peripheral Pulmonary Emboli present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pulmonary_artery.peripheral_emboli"
+            }
+          ]
+        },
+        {
+          "id": "right_pleural_cavity_volume_ml",
+          "label": "Right Pleural Cavity Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "right_pleural_fluid_character",
+          "label": "Right Fluid Character",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "right_pleural_fluid_serous",
+              "label": "Serous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.serous"
+            },
+            {
+              "id": "right_pleural_fluid_sanguineous",
+              "label": "Sanguineous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.sanguineous"
+            },
+            {
+              "id": "right_pleural_fluid_purulent",
+              "label": "Purulent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.purulent"
+            },
+            {
+              "id": "right_pleural_fluid_chylous",
+              "label": "Chylous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.chylous"
+            }
+          ]
+        },
+        {
+          "id": "left_pleural_cavity_volume_ml",
+          "label": "Left Pleural Cavity Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "left_pleural_fluid_character",
+          "label": "Left Fluid Character",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "left_pleural_fluid_serous",
+              "label": "Serous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.serous"
+            },
+            {
+              "id": "left_pleural_fluid_sanguineous",
+              "label": "Sanguineous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.sanguineous"
+            },
+            {
+              "id": "left_pleural_fluid_purulent",
+              "label": "Purulent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.purulent"
+            },
+            {
+              "id": "left_pleural_fluid_chylous",
+              "label": "Chylous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.pleural_fluid.chylous"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gastrointestinal_hepatobiliary",
+      "title": "Gastrointestinal & Hepatobiliary",
+      "fields": [
+        {
+          "id": "gastric_content_volume_ml",
+          "label": "Gastric Content Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "gastric_content_description",
+          "label": "Gastric Content Description",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "gastric_content_empty_minimal",
+              "label": "Empty / Minimal mucosal fluid (<50 mL)",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "gastric_content_partially_digested",
+              "label": "Partially digested food particles",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "gastric_content_intact_food",
+              "label": "Intact food items recognizable",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "gastric_content_pill_fragments",
+              "label": "Pill fragments / Medication residue identified",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.gastric_content.pill_fragments_medication_residue"
+            },
+            {
+              "id": "gastric_content_sanguineous_coffee_ground",
+              "label": "Sanguineous / \"Coffee-ground\" material present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.gastric_content.sanguineous_coffee_ground"
+            }
+          ]
+        },
+        {
+          "id": "liver_weight_fresh_g",
+          "label": "Liver Weight (Fresh, g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "liver_parenchymal_appearance",
+          "label": "Parenchymal Appearance",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "liver_parenchyma_homogeneous",
+              "label": "Homogeneous brown, intact architecture",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "liver_parenchyma_fatty_change",
+              "label": "Fatty change (Steatosis / Yellow-tan)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.liver.fatty_change_steatosis"
+            },
+            {
+              "id": "liver_parenchyma_cirrhotic",
+              "label": "Cirrhotic / Nodular surface",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.liver.cirrhotic_nodular"
+            },
+            {
+              "id": "liver_parenchyma_congestive_nutmeg",
+              "label": "Congestive (\"Nutmeg\" liver)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.liver.congestive_nutmeg"
+            }
+          ]
+        },
+        {
+          "id": "gallbladder_status",
+          "label": "Gallbladder Status",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "gallbladder_normal",
+              "label": "Normal; no mucosal lesions or calculi",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "gallbladder_cholelithiasis",
+              "label": "Cholelithiasis present (Gallstones identified)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.gallbladder.cholelithiasis"
+            },
+            {
+              "id": "gallbladder_absent_cholecystectomy",
+              "label": "Cholecystectomy status (Gallbladder surgically absent)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.gallbladder.cholecystectomy_absent"
+            }
+          ]
+        },
+        {
+          "id": "gallbladder_bile_volume_ml",
+          "label": "Bile Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "gallbladder_status",
+            "answerId": "gallbladder_normal",
+            "answerIds": [
+              "gallbladder_normal",
+              "gallbladder_cholelithiasis"
+            ]
+          },
+          "options": []
+        }
+      ]
+    },
+    {
+      "id": "genitourinary_endocrine",
+      "title": "Genitourinary & Endocrine",
+      "fields": [
+        {
+          "id": "right_kidney_weight_g",
+          "label": "Right Kidney Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "left_kidney_weight_g",
+          "label": "Left Kidney Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "renal_cortical_surface",
+          "label": "Cortical Surface & Corticomedullary Junction",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "renal_cortical_smooth_sharp",
+              "label": "Smooth cortical surface, sharp corticomedullary junction",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "renal_cortical_granular",
+              "label": "Granular cortical surface (Arteriolosclerosis)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.renal.granular_cortical_arteriolosclerosis"
+            },
+            {
+              "id": "renal_cortical_cysts",
+              "label": "Cortical cysts present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.renal.cortical_cysts"
+            },
+            {
+              "id": "renal_hydronephrosis_calculi",
+              "label": "Hydronephrosis / Renal calculi present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.renal.hydronephrosis_calculi"
+            }
+          ]
+        },
+        {
+          "id": "bladder_content_volume_ml",
+          "label": "Urinary Bladder Content Volume (mL)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": []
+        },
+        {
+          "id": "bladder_content_character",
+          "label": "Urinary Bladder Content Character",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "bladder_content_clear_yellow",
+              "label": "Clear yellow urine",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bladder_content_hematuria",
+              "label": "Hematuria",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bladder_content.hematuria"
+            },
+            {
+              "id": "bladder_content_empty",
+              "label": "Empty",
+              "snomed": "",
+              "icd": ""
+            }
+          ]
+        },
+        {
+          "id": "adrenal_glands",
+          "label": "Adrenal Glands",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "adrenal_unremarkable",
+              "label": "Unremarkable",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "adrenal_cortical_hyperplasia",
+              "label": "Cortical Hyperplasia",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.adrenal.cortical_hyperplasia"
+            },
+            {
+              "id": "adrenal_hemorrhage_autolysis",
+              "label": "Hemorrhage / Autolysis",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.adrenal.hemorrhage_autolysis"
+            }
+          ]
+        },
+        {
+          "id": "thyroid_gland",
+          "label": "Thyroid Gland",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "thyroid_gland_unremarkable",
+              "label": "Unremarkable",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "thyroid_gland_goiter_nodular",
+              "label": "Goiter / Nodular",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.thyroid_gland.goiter_nodular"
+            },
+            {
+              "id": "thyroid_gland_surgical_absence",
+              "label": "Surgical absence",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.thyroid_gland.surgical_absence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "musculoskeletal_hematopoietic",
+      "title": "Musculoskeletal & Hematopoietic",
+      "fields": [
+        {
+          "id": "spleen_status",
+          "label": "Spleen Status",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "spleen_status_present",
+              "label": "Present and examined",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_status_resected_absent",
+              "label": "Previously resected / Absent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen.previously_resected_absent"
+            },
+            {
+              "id": "spleen_status_autolyzed",
+              "label": "Autolyzed / Not evaluable",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen.autolyzed_not_evaluable"
+            }
+          ]
+        },
+        {
+          "id": "spleen_weight_status",
+          "label": "Spleen Weight Status",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [
+            {
+              "id": "spleen_weight_weighed",
+              "label": "Weighed",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_weight_unweighed",
+              "label": "Unweighed (fragmented / disrupted)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen.unweighed_fragmented_disrupted"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_weight_g",
+          "label": "Spleen Weight (g)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_weight_status",
+            "answerId": "spleen_weight_weighed"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "spleen_weight_status",
+            "answerId": "spleen_weight_weighed"
+          }
+        },
+        {
+          "id": "spleen_dimension_length_cm",
+          "label": "Spleen Length (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_dimension_width_cm",
+          "label": "Spleen Width (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_dimension_depth_cm",
+          "label": "Spleen Depth (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_capsule_appearance",
+          "label": "Capsule Appearance",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [
+            {
+              "id": "spleen_capsule_intact",
+              "label": "Intact, smooth, slate-gray",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_capsule_thickened_hyalinized",
+              "label": "Thickened / Hyalinized (\"sugar-coated\" / sugar-icing)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_capsule.thickened_hyalinized_sugar_icing"
+            },
+            {
+              "id": "spleen_capsule_lacerated_ruptured",
+              "label": "Lacerated / Ruptured",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_capsule.lacerated_ruptured"
+            },
+            {
+              "id": "spleen_capsule_adherent",
+              "label": "Adherent / Fibrous adhesions present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_capsule.adherent_fibrous_adhesions"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_cut_surface_parenchyma",
+          "label": "Cut Surface Parenchyma",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [
+            {
+              "id": "spleen_parenchyma_normal",
+              "label": "Normal dark red/purple, firm",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_parenchyma_congested_soft",
+              "label": "Congested / Soft / Diffluent",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_parenchyma.congested_soft_diffluent"
+            },
+            {
+              "id": "spleen_parenchyma_white_pulp",
+              "label": "Prominent white pulp (reactive lymphoid hyperplasia)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_parenchyma.reactive_lymphoid_hyperplasia"
+            },
+            {
+              "id": "spleen_parenchyma_pale_infarcted",
+              "label": "Pale / Infarcted",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_parenchyma.pale_infarcted"
+            },
+            {
+              "id": "spleen_parenchyma_focal_lesions",
+              "label": "Focal lesions present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_parenchyma.focal_lesions_present"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_focal_parenchymal_lesions",
+          "label": "Focal Parenchymal Lesions",
+          "type": "checkboxes",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "visibleWhen": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          },
+          "options": [
+            {
+              "id": "spleen_lesion_none",
+              "label": "None identified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_lesion_infarct",
+              "label": "Infarct(s)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_lesion.infarct"
+            },
+            {
+              "id": "spleen_lesion_granuloma",
+              "label": "Granuloma(s)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_lesion.granuloma"
+            },
+            {
+              "id": "spleen_lesion_mass_tumor",
+              "label": "Mass / Tumor",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_lesion.mass_tumor"
+            },
+            {
+              "id": "spleen_lesion_abscess",
+              "label": "Abscess(es)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.spleen_lesion.abscess"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_status",
+            "answerId": "spleen_status_present"
+          }
+        },
+        {
+          "id": "spleen_infarct_chronicity",
+          "label": "Infarct Chronicity",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_focal_parenchymal_lesions",
+            "answerId": "spleen_lesion_infarct"
+          },
+          "options": [
+            {
+              "id": "spleen_infarct_acute",
+              "label": "Acute",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_infarct_healing",
+              "label": "Healing",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_infarct_old",
+              "label": "Old",
+              "snomed": "",
+              "icd": ""
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_focal_parenchymal_lesions",
+            "answerId": "spleen_lesion_infarct"
+          }
+        },
+        {
+          "id": "spleen_granuloma_type",
+          "label": "Granuloma Type",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_focal_parenchymal_lesions",
+            "answerId": "spleen_lesion_granuloma"
+          },
+          "options": [
+            {
+              "id": "spleen_granuloma_calcified",
+              "label": "Calcified",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "spleen_granuloma_non_calcified",
+              "label": "Non-calcified",
+              "snomed": "",
+              "icd": ""
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "spleen_focal_parenchymal_lesions",
+            "answerId": "spleen_lesion_granuloma"
+          }
+        },
+        {
+          "id": "spleen_mass_tumor_detail",
+          "label": "Mass / Tumor — Size and Appearance",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "spleen_focal_parenchymal_lesions",
+            "answerId": "spleen_lesion_mass_tumor"
+          },
+          "options": []
+        },
+        {
+          "id": "bone_marrow_evaluation_sites",
+          "label": "Bone Marrow Evaluation Site(s)",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all sites evaluated.",
+          "options": [
+            {
+              "id": "bone_marrow_site_asis",
+              "label": "Anterior superior iliac spine",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_site_psis",
+              "label": "Posterior superior iliac spine",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_site_sternum",
+              "label": "Sternum",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_site_vertebral_body",
+              "label": "Vertebral body",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_site_femoral_shaft",
+              "label": "Femoral shaft",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_site_other",
+              "label": "Other",
+              "snomed": "",
+              "icd": ""
+            }
+          ]
+        },
+        {
+          "id": "bone_marrow_vertebral_level_detail",
+          "label": "Vertebral Level",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "bone_marrow_evaluation_sites",
+            "answerId": "bone_marrow_site_vertebral_body"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "bone_marrow_evaluation_sites",
+            "answerId": "bone_marrow_site_vertebral_body"
+          }
+        },
+        {
+          "id": "bone_marrow_other_site_detail",
+          "label": "Other Site",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "bone_marrow_evaluation_sites",
+            "answerId": "bone_marrow_site_other"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "bone_marrow_evaluation_sites",
+            "answerId": "bone_marrow_site_other"
+          }
+        },
+        {
+          "id": "bone_marrow_gross_appearance",
+          "label": "Gross Appearance & Cellularity Estimate",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "bone_marrow_normal_distribution",
+              "label": "Normal yellow/red marrow distribution for age",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_marrow_fatty_hypoplastic",
+              "label": "Predominantly fatty / Hypoplastic (yellow)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_marrow.fatty_hypoplastic"
+            },
+            {
+              "id": "bone_marrow_hypercellular_expanded",
+              "label": "Hypercellular / Expanded red marrow (dark red/brown)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_marrow.hypercellular_expanded_red_marrow"
+            },
+            {
+              "id": "bone_marrow_fibrotic_dry_tap",
+              "label": "Fibrotic / Dry tap on core harvest",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_marrow.fibrotic_dry_tap"
+            },
+            {
+              "id": "bone_marrow_focal_lesion_opt",
+              "label": "Focal osteolytic or osteoblastic lesion(s)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_marrow.focal_osteolytic_osteoblastic_lesion"
+            }
+          ]
+        },
+        {
+          "id": "lymph_nodes_cervical_supraclavicular",
+          "label": "Cervical / Supraclavicular Nodes",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "lymph_cervical_unremarkable",
+              "label": "Unremarkable / Not enlarged",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lymph_cervical_enlarged",
+              "label": "Enlarged",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.enlarged"
+            },
+            {
+              "id": "lymph_cervical_matting_fixed",
+              "label": "Matting / Fixed to surrounding structures",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.matting_fixed"
+            }
+          ]
+        },
+        {
+          "id": "lymph_cervical_enlarged_diameter_cm",
+          "label": "Maximum Diameter (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "lymph_nodes_cervical_supraclavicular",
+            "answerId": "lymph_cervical_enlarged"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "lymph_nodes_cervical_supraclavicular",
+            "answerId": "lymph_cervical_enlarged"
+          }
+        },
+        {
+          "id": "lymph_cervical_sectioned_appearance",
+          "label": "Sectioned Appearance",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "lymph_sectioned_homogeneous",
+              "label": "Homogeneous",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lymph_sectioned_necrotic",
+              "label": "Necrotic",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.sectioned_necrotic"
+            },
+            {
+              "id": "lymph_sectioned_granulomatous",
+              "label": "Granulomatous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.sectioned_granulomatous"
+            },
+            {
+              "id": "lymph_sectioned_hemorrhagic",
+              "label": "Hemorrhagic",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.sectioned_hemorrhagic"
+            }
+          ]
+        },
+        {
+          "id": "lymph_nodes_mediastinal_hilar",
+          "label": "Mediastinal / Hilar Nodes",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "lymph_mediastinal_unremarkable",
+              "label": "Unremarkable / Anthracotic / Not enlarged",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lymph_mediastinal_enlarged",
+              "label": "Enlarged",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.enlarged"
+            },
+            {
+              "id": "lymph_mediastinal_calcified_granulomatous",
+              "label": "Calcified / Granulomatous",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.calcified_granulomatous"
+            },
+            {
+              "id": "lymph_mediastinal_matting",
+              "label": "Matting present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.matting_fixed"
+            }
+          ]
+        },
+        {
+          "id": "lymph_mediastinal_enlarged_diameter_cm",
+          "label": "Maximum Diameter (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "lymph_nodes_mediastinal_hilar",
+            "answerId": "lymph_mediastinal_enlarged"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "lymph_nodes_mediastinal_hilar",
+            "answerId": "lymph_mediastinal_enlarged"
+          }
+        },
+        {
+          "id": "lymph_nodes_abdominal_retroperitoneal",
+          "label": "Abdominal / Retroperitoneal / Mesenteric Nodes",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "lymph_abdominal_unremarkable",
+              "label": "Unremarkable / Not enlarged",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lymph_abdominal_enlarged",
+              "label": "Enlarged",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.enlarged"
+            },
+            {
+              "id": "lymph_abdominal_confluent_bulky",
+              "label": "Confluent / Bulky nodal mass",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.confluent_bulky_mass"
+            }
+          ]
+        },
+        {
+          "id": "lymph_abdominal_enlarged_diameter_cm",
+          "label": "Maximum Diameter (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "lymph_nodes_abdominal_retroperitoneal",
+            "answerId": "lymph_abdominal_enlarged"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "lymph_nodes_abdominal_retroperitoneal",
+            "answerId": "lymph_abdominal_enlarged"
+          }
+        },
+        {
+          "id": "lymph_nodes_axillary_inguinal",
+          "label": "Axillary & Inguinal Nodes",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "lymph_axillary_unremarkable",
+              "label": "Unremarkable / Not enlarged",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "lymph_axillary_enlarged",
+              "label": "Enlarged",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.lymph_node.enlarged"
+            }
+          ]
+        },
+        {
+          "id": "lymph_axillary_enlarged_diameter_cm",
+          "label": "Maximum Diameter (cm)",
+          "type": "numeric",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "lymph_nodes_axillary_inguinal",
+            "answerId": "lymph_axillary_enlarged"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "lymph_nodes_axillary_inguinal",
+            "answerId": "lymph_axillary_enlarged"
+          }
+        },
+        {
+          "id": "skeletal_integrity",
+          "label": "Skeletal Integrity",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "skeletal_integrity_intact",
+              "label": "Intact, no fractures or deformities",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "skeletal_integrity_nontraumatic_deformity",
+              "label": "Non-traumatic deformity present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal.nontraumatic_deformity"
+            },
+            {
+              "id": "skeletal_integrity_acute_fracture",
+              "label": "Acute fracture(s) present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal.acute_fracture"
+            },
+            {
+              "id": "skeletal_integrity_healing_old_fracture",
+              "label": "Healing / Old fracture(s) with callus formation",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal.healing_old_fracture_callus"
+            }
+          ]
+        },
+        {
+          "id": "skeletal_deformity_detail",
+          "label": "Deformity — Site and Nature",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_nontraumatic_deformity"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_nontraumatic_deformity"
+          }
+        },
+        {
+          "id": "fracture_location_detail",
+          "label": "Fracture Location(s)",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_acute_fracture",
+            "answerIds": [
+              "skeletal_integrity_acute_fracture",
+              "skeletal_integrity_healing_old_fracture"
+            ]
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_acute_fracture",
+            "answerIds": [
+              "skeletal_integrity_acute_fracture",
+              "skeletal_integrity_healing_old_fracture"
+            ]
+          }
+        },
+        {
+          "id": "fracture_type",
+          "label": "Fracture Type",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_acute_fracture",
+            "answerIds": [
+              "skeletal_integrity_acute_fracture",
+              "skeletal_integrity_healing_old_fracture"
+            ]
+          },
+          "options": [
+            {
+              "id": "fracture_type_simple_transverse",
+              "label": "Simple / Transverse",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_type.simple_transverse"
+            },
+            {
+              "id": "fracture_type_comminuted",
+              "label": "Comminuted",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_type.comminuted"
+            },
+            {
+              "id": "fracture_type_compound_open",
+              "label": "Compound / Open",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_type.compound_open"
+            },
+            {
+              "id": "fracture_type_pathologic",
+              "label": "Pathologic",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_type.pathologic"
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_acute_fracture",
+            "answerIds": [
+              "skeletal_integrity_acute_fracture",
+              "skeletal_integrity_healing_old_fracture"
+            ]
+          }
+        },
+        {
+          "id": "fracture_associated_tissue_trauma",
+          "label": "Associated Tissue Trauma",
+          "type": "checkboxes",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all present.",
+          "visibleWhen": {
+            "fieldId": "skeletal_integrity",
+            "answerId": "skeletal_integrity_acute_fracture",
+            "answerIds": [
+              "skeletal_integrity_acute_fracture",
+              "skeletal_integrity_healing_old_fracture"
+            ]
+          },
+          "options": [
+            {
+              "id": "fracture_trauma_soft_tissue_hemorrhage",
+              "label": "Soft tissue hemorrhage",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_trauma.soft_tissue_hemorrhage"
+            },
+            {
+              "id": "fracture_trauma_periosteal_disruption",
+              "label": "Periosteal disruption",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_trauma.periosteal_disruption"
+            },
+            {
+              "id": "fracture_trauma_marrow_edema",
+              "label": "Marrow edema",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.fracture_trauma.marrow_edema"
+            }
+          ]
+        },
+        {
+          "id": "bone_quality_density",
+          "label": "Bone Quality & Density",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "bone_quality_normal",
+              "label": "Normal cortical thickness and density",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "bone_quality_osteoporotic",
+              "label": "Osteoporotic / Thin cortical bone / Fragile",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_quality.osteoporotic_thin_fragile"
+            },
+            {
+              "id": "bone_quality_osteopetrotic",
+              "label": "Osteopetrotic / Abnormally dense cortical bone",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_quality.osteopetrotic_dense"
+            },
+            {
+              "id": "bone_quality_osteolytic_lesion",
+              "label": "Focal osteolytic lesion(s)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_quality.focal_osteolytic_lesion"
+            },
+            {
+              "id": "bone_quality_osteoblastic_lesion",
+              "label": "Focal osteoblastic lesion(s)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_quality.focal_osteoblastic_lesion"
+            }
+          ]
+        },
+        {
+          "id": "bone_quality_lesion_site_detail",
+          "label": "Lesion Site",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "bone_quality_density",
+            "answerId": "bone_quality_osteolytic_lesion",
+            "answerIds": [
+              "bone_quality_osteolytic_lesion",
+              "bone_quality_osteoblastic_lesion"
+            ]
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "bone_quality_density",
+            "answerId": "bone_quality_osteolytic_lesion",
+            "answerIds": [
+              "bone_quality_osteolytic_lesion",
+              "bone_quality_osteoblastic_lesion"
+            ]
+          }
+        },
+        {
+          "id": "joints_articular_surfaces",
+          "label": "Joints & Articular Surfaces",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "joints_unremarkable",
+              "label": "Unremarkable, smooth cartilage, adequate joint fluid",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "joints_degenerative_osteoarthritis",
+              "label": "Degenerative joint disease / Osteoarthritis",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.joints.degenerative_osteoarthritis"
+            },
+            {
+              "id": "joints_inflammatory_arthropathy",
+              "label": "Inflammatory arthropathy / Pannus / Joint effusion",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.joints.inflammatory_arthropathy_pannus_effusion"
+            },
+            {
+              "id": "joints_ankylosis",
+              "label": "Ankylosis / Joint fixation",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.joints.ankylosis_fixation"
+            },
+            {
+              "id": "joints_gouty_tophi",
+              "label": "Gouty tophi / Crystal deposits present",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.joints.gouty_tophi_crystal_deposits"
+            }
+          ]
+        },
+        {
+          "id": "joints_osteoarthritis_severe_sites_detail",
+          "label": "Severe Sites",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "joints_articular_surfaces",
+            "answerId": "joints_degenerative_osteoarthritis"
+          },
+          "options": []
+        },
+        {
+          "id": "skeletal_muscle_assessment",
+          "label": "Skeletal Muscle Assessment",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "muscle_normal",
+              "label": "Normal mass, color (red-brown), and consistency",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "muscle_atrophy",
+              "label": "Atrophy",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal_muscle.atrophy"
+            },
+            {
+              "id": "muscle_hypertrophy",
+              "label": "Hypertrophy",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal_muscle.hypertrophy"
+            },
+            {
+              "id": "muscle_necrosis_rhabdomyolysis",
+              "label": "Necrosis / Rhabdomyolysis (pale, soft, or streaked muscle)",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal_muscle.necrosis_rhabdomyolysis"
+            },
+            {
+              "id": "muscle_intramuscular_hemorrhage",
+              "label": "Intramuscular hemorrhage / Hematoma",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.skeletal_muscle.intramuscular_hemorrhage_hematoma"
+            }
+          ]
+        },
+        {
+          "id": "muscle_atrophy_extent_detail",
+          "label": "Atrophy Extent",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "skeletal_muscle_assessment",
+            "answerId": "muscle_atrophy"
+          },
+          "options": [
+            {
+              "id": "muscle_atrophy_localized",
+              "label": "Localized",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "muscle_atrophy_generalized",
+              "label": "Generalized",
+              "snomed": "",
+              "icd": ""
+            }
+          ],
+          "requiredIf": {
+            "fieldId": "skeletal_muscle_assessment",
+            "answerId": "muscle_atrophy"
+          }
+        },
+        {
+          "id": "muscle_hemorrhage_group_detail",
+          "label": "Muscle Group",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "skeletal_muscle_assessment",
+            "answerId": "muscle_intramuscular_hemorrhage"
+          },
+          "options": []
+        },
+        {
+          "id": "subcutaneous_tissue_fascia",
+          "label": "Subcutaneous Tissue & Fascia",
+          "type": "checkboxes",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "subcutaneous_unremarkable",
+              "label": "Unremarkable",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "subcutaneous_edema_anasarca",
+              "label": "Edema / Anasarca",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subcutaneous.edema_anasarca"
+            },
+            {
+              "id": "subcutaneous_fasciitis_infection",
+              "label": "Fasciitis / Soft tissue infection",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subcutaneous.fasciitis_soft_tissue_infection"
+            },
+            {
+              "id": "subcutaneous_mass_tumor",
+              "label": "Mass / Soft tissue tumor",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.subcutaneous.mass_soft_tissue_tumor"
+            }
+          ]
+        },
+        {
+          "id": "subcutaneous_mass_detail",
+          "label": "Mass — Size, Margin Depth, and Compartment",
+          "type": "text",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "subcutaneous_tissue_fascia",
+            "answerId": "subcutaneous_mass_tumor"
+          },
+          "options": []
+        },
+        {
+          "id": "hematopoietic_lineages",
+          "label": "Hematopoietic Lineages",
+          "type": "checkboxes",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Microscopic/histomorphologic summary, if applicable. Select all that apply.",
+          "options": [
+            {
+              "id": "hematopoietic_trilineage_intact",
+              "label": "Trilineage hematopoiesis intact and proportional",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "hematopoietic_erythroid_hyperplasia_hypoplasia",
+              "label": "Erythroid hyperplasia / Hypoplasia",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hematopoietic.erythroid_hyperplasia_hypoplasia"
+            },
+            {
+              "id": "hematopoietic_myeloid_hyperplasia_hypoplasia",
+              "label": "Myeloid hyperplasia / Hypoplasia",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hematopoietic.myeloid_hyperplasia_hypoplasia"
+            },
+            {
+              "id": "hematopoietic_megakaryocytic_atypia",
+              "label": "Megakaryocytic atypia / Dysplasia / Hyperplasia",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hematopoietic.megakaryocytic_atypia_dysplasia_hyperplasia"
+            },
+            {
+              "id": "hematopoietic_abnormal_infiltration",
+              "label": "Infiltration by abnormal lymphoid or blast populations",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.hematopoietic.abnormal_lymphoid_blast_infiltration"
+            }
+          ]
+        },
+        {
+          "id": "bone_soft_tissue_histology",
+          "label": "Bone & Soft Tissue Histology",
+          "type": "checkboxes",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "hint": "Select all that apply.",
+          "options": [
+            {
+              "id": "histology_normal_lamellar_bone",
+              "label": "Normal lamellar bone architecture",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "histology_increased_osteoclastic_resorption",
+              "label": "Increased osteoclastic resorption / Peritrabecular fibrosis",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_histology.increased_osteoclastic_resorption_peritrabecular_fibrosis"
+            },
+            {
+              "id": "histology_necrotic_bone_sequestrum",
+              "label": "Necrotic bone / Sequestrum formation",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_histology.necrotic_bone_sequestrum"
+            },
+            {
+              "id": "histology_neoplastic_infiltrates",
+              "label": "Neoplastic infiltrates",
+              "snomed": "",
+              "icd": "",
+              "lexiconTermKey": "forensic.bone_histology.neoplastic_infiltrates"
+            }
+          ]
+        },
+        {
+          "id": "histology_neoplastic_infiltrates_origin_detail",
+          "label": "Neoplastic Infiltrates — Primary vs. Metastatic",
+          "type": "radio",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "bone_soft_tissue_histology",
+            "answerId": "histology_neoplastic_infiltrates"
+          },
+          "options": [
+            {
+              "id": "histology_neoplastic_primary",
+              "label": "Primary bone/soft tissue",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "histology_neoplastic_metastatic",
+              "label": "Metastatic",
+              "snomed": "",
+              "icd": ""
+            }
+          ]
+        },
+        {
+          "id": "musculoskeletal_diagnostic_summary",
+          "label": "Primary Musculoskeletal / Hematopoietic Findings",
+          "type": "radio",
+          "required": true,
+          "snomed": "",
+          "icd": "",
+          "options": [
+            {
+              "id": "musculoskeletal_summary_no_significant_findings",
+              "label": "No significant pathological changes",
+              "snomed": "",
+              "icd": ""
+            },
+            {
+              "id": "musculoskeletal_summary_findings_present",
+              "label": "Pathological findings present",
+              "snomed": "",
+              "icd": ""
+            }
+          ]
+        },
+        {
+          "id": "musculoskeletal_diagnostic_summary_freetext",
+          "label": "Pathological Findings Summary",
+          "type": "longtext",
+          "required": false,
+          "snomed": "",
+          "icd": "",
+          "visibleWhen": {
+            "fieldId": "musculoskeletal_diagnostic_summary",
+            "answerId": "musculoskeletal_summary_findings_present"
+          },
+          "options": [],
+          "requiredIf": {
+            "fieldId": "musculoskeletal_diagnostic_summary",
+            "answerId": "musculoskeletal_summary_findings_present"
+          }
+        }
+      ]
+    }
+  ]
+}

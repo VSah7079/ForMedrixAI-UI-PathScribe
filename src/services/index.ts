@@ -30,7 +30,10 @@ export { mockFacilityService       as facilityService     } from './facilities/m
 export { mockLocationService       as locationService     } from './locations/mockLocationService';
 export { mockInterfaceExceptionService as interfaceExceptionService } from './interfaceExceptions/mockInterfaceExceptionService';
 export { mockReportReleaseService as reportReleaseService } from './reportRelease/mockReportReleaseService';
+export { mockConcordanceReviewSettingsService as concordanceReviewSettingsService } from './qualitySettings/mockConcordanceReviewSettingsService';
 export { mockDepartmentService as departmentService } from './departments/mockDepartmentService';
+export { mockAssetLocationDictionaryService as assetLocationDictionaryService } from './assetLocation/mockAssetLocationDictionaryService';
+export { mockCaseViewTrackingService as caseViewTrackingService } from './caseViewTracking/mockCaseViewTrackingService';
 export { mockGrossingRoutingOverrideService as grossingRoutingOverrideService } from './grossingRoutingOverrides/mockGrossingRoutingOverrideService';
 export { mockTemplateSuggestionSignalService as templateSuggestionSignalService } from './templateSuggestions/mockTemplateSuggestionSignalService';
 export { mockLisSyncService as lisSyncService } from './lisSync/mockLisSyncService';
@@ -38,11 +41,27 @@ export { mockSpecimenDictionaryService as specimenDictionaryService } from './sp
 export { mockSpecimenCategoryService as specimenCategoryService } from './specimenCategories/mockSpecimenCategoryService';
 export { mockPriorityService as priorityService } from './priority/mockPriorityService';
 export { mockStainTypeService as stainTypeService } from './stains/mockStainTypeService';
+export { mockFixativeDictionaryService as fixativeDictionaryService, mockProcessingFormatDictionaryService as processingFormatDictionaryService } from './protocols/mockPathwayMaterialDictionaryService';
 export { mockSectioningProtocolService as sectioningProtocolService } from './stains/mockSectioningProtocolService';
 export { mockStainOrderMacroService as stainOrderMacroService } from './stains/mockStainOrderMacroService';
 export { mockManagementReviewService as managementReviewService } from './deficiencies/mockManagementReviewService';
 export { mockBatchService as batchService } from './batches/mockBatchService';
+// Real, pre-existing baseline gap fixed here, confirmed directly before
+// touching anything: all three mock service files (Stain QC Module §2.1
+// Reagent & Solution Lot Registry, and PS-289 Workstation Groups & Action
+// Routing) were already fully built, but never actually wired into this
+// barrel export — a real tsc error blocking a clean baseline, not a
+// stylistic gap, same class of finding as this file's own reagentLots/
+// workstationGroups/actionGroups README notes already describe elsewhere.
+export { mockReagentLotService as reagentLotService } from './reagentLots/mockReagentLotService';
+export { mockWorkstationGroupService as workstationGroupService } from './workstationGroups/mockWorkstationGroupService';
+export { mockActionGroupService as actionGroupService } from './actionGroups/mockActionGroupService';
 export { mockHardwareContainerRegistryService as hardwareContainerRegistryService } from './hardwareContainers/mockHardwareContainerRegistryService';
+// PS-290 — External Consult / Second-Opinion Access. See
+// consultAccess/IConsultTokenService.ts's own header before using this
+// anywhere: it is NOT real token security, mock-first in a categorically
+// different sense than most of this barrel's other entries.
+export { mockConsultTokenService as consultTokenService } from './consultAccess/mockConsultTokenService';
 export { mockProtocolService as protocolService } from './protocols/mockProtocolService';
 export { mockPrinterProfileService as printerProfileService } from './printerProfiles/mockPrinterProfileService';
 export { mockDiagnosisCodesService as diagnosisCodesService } from './diagnosisCodes/mockDiagnosisCodesService';
@@ -91,6 +110,7 @@ export type { Facility }          from './facilities/IFacilityService';
 export type { Department }  from './departments/IDepartmentService';
 export type { PriorityLevel }     from './priority/IPriorityService';
 export type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from './stains/IStainService';
+export type { FixativeDictionaryEntry, FixativeCategory, ProcessingFormatDictionaryEntry } from './protocols/IPathwayMaterialDictionaryService';
 export type { IncomingOrder, IncomingOrderSpecimen, SpecimenCodeCrosswalkEntry, OrderResolutionResult } from './orderIntake/IOrderIntakeService';
 export type { DeficiencyType, ResolutionType, SpecimenDeficiency, ManagementReview } from './deficiencies/IDeficiencyService';
 export type { Protocol, ProtocolPathway, PathwayTask, ProtocolHistoryEntry } from './protocols/IProtocolService';

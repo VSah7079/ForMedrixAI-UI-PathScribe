@@ -2,9 +2,11 @@
 import { describe, it, expect } from 'vitest';
 import { resolveCaseCytologyTriagePendingMembership } from './resolveCaseCytologyTriagePendingMembership';
 
-const DICTIONARY = [
-  { id: 'sp-cyto-pap', type: 'Cytology', isGynCytology: true },
-  { id: 'sp-cyto-hpv-self', type: 'Cytology', isGynCytology: true, isSelfCollected: true },
+import type { SpecimenEntry } from '../specimenDictionary/specimenTypes';
+
+const DICTIONARY: Pick<SpecimenEntry, 'id' | 'type' | 'isSelfCollected' | 'specimenCategory'>[] = [
+  { id: 'sp-cyto-pap', type: 'Cytology', specimenCategory: 'GYN_CYTOLOGY' },
+  { id: 'sp-cyto-hpv-self', type: 'Cytology', specimenCategory: 'GYN_CYTOLOGY', isSelfCollected: true },
 ];
 
 describe('resolveCaseCytologyTriagePendingMembership', () => {

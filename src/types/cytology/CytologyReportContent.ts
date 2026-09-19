@@ -81,6 +81,21 @@ export interface CytologyReportContent {
   // ── 6. Adjunctive Testing & Integrated Results ───────────────────────────
   hpvResult?: string;
   computerAssistedScreening?: { used: boolean; system?: string };
+  /** Real, per direct correction ("Cytology cases can have addendums...
+   *  addendums are an essential standard for appending supplemental
+   *  information to an already completed or signed-out case without
+   *  altering the original signed text") — free-text supplemental
+   *  content added after the original sign-out: reflex/ancillary
+   *  testing (HPV co-testing beyond the structured hpvResult above,
+   *  cell-block IHC, flow cytometry, NGS/molecular markers), an
+   *  external consultation or second opinion, clinical correlation
+   *  with later imaging/biopsy, or findings from delayed material
+   *  review. Only ever set on a real addendum record
+   *  (releaseCytologyAddendum.ts); undefined on every original sign-out
+   *  and every real correction — this is additive content, never a
+   *  replacement for primaryInterpretation, which stays exactly what
+   *  it was on the record this addendum adds to. */
+  addendumText?: string;
 
   // ── 7. Educational Notes, Comments, & Sign-Off ───────────────────────────
   recommendations: string[];

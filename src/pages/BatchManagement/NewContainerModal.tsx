@@ -12,7 +12,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { batchService, hardwareContainerRegistryService, printSettingsService, facilityService, stainTypeService } from '@/services';
+import { batchService, hardwareContainerRegistryService, printSettingsService, facilityService, stainTypeService, reagentLotService } from '@/services';
+import type { ReagentLot } from '@/services/reagentLots/IReagentLotService';
 import type { Facility } from '@/services/facilities/IFacilityService';
 import type { StainType } from '@/services';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
@@ -102,6 +103,18 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
   }, []);
+  // Real, additive — per 'Staining' (Batch.stainingReagentLotIds's own
+  // doc comment). Same real "node-specific field, fetched from the
+  // real dictionary" pattern as cytologyStainTypeId above — a real,
+  // multi-select array here, not a single id, since a real stainer
+  // run genuinely draws on several real reagent lots at once. Filtered
+  // to real, currently Active lots only — an Inactive (used up,
+  // superseded) lot has no business being newly assigned to a run.
+  const [reagentLots, setReagentLots] = useState<ReagentLot[]>([]);
+  const [stainingReagentLotIds, setStainingReagentLotIds] = useState<string[]>([]);
+  useEffect(() => {
+    reagentLotService.getAll().then(res => { if (res.ok) setReagentLots(res.data.filter(l => l.status === 'Active')); });
+  }, []);
   const [targetHours, setTargetHours] = useState(4);
   const [targetMinutesExtra, setTargetMinutesExtra] = useState(0);
 
@@ -177,6 +190,16 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
   // Real, additive — same real "node-specific required field" pattern
   // as isDecalNode/isReferralNode above.
   const isCytologyStainingNode = processingNode === 'Cytology Staining';
+  // Real, additive — same real "node-specific field" pattern as
+  // isCytologyStainingNode above. Deliberately NOT added to canCreate
+  // below — unlike cytologyStainTypeId (which IS what a Cytology
+  // Staining batch fundamentally is), a stainer run's own reagent
+  // lots are real, per direct requirements, scanned in at the bench
+  // ("scanning reagent or kit barcodes... to automatically log the
+  // active lot"), which can genuinely happen after the batch itself
+  // is created, not necessarily known at creation time. Requiring it
+  // up front would misrepresent that real, intended workflow.
+  const isStainingNode = processingNode === 'Staining';
   const targetDurationMinutes = targetHours * 60 + targetMinutesExtra;
   const canCreate = protocol.trim().length > 0
     && (identifierMode === 'disposable' || rackId.trim().length > 0)
@@ -211,6 +234,7 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
       referralDestinationFacilityId: isReferralNode ? referralDestinationFacilityId : undefined,
       referralTestRequested: isReferralNode ? (referralTestRequested.trim() || undefined) : undefined,
       cytologyStainTypeId: isCytologyStainingNode ? cytologyStainTypeId : undefined,
+      stainingReagentLotIds: isStainingNode && stainingReagentLotIds.length > 0 ? stainingReagentLotIds : undefined,
     });
     setBusy(false);
     if ('error' in res) { setError(res.error); return; }
@@ -386,6 +410,38 @@ const NewContainerModal: React.FC<Props> = ({ onClose, onCreated, userId, userNa
                     <option value="">{t('newContainerModal.selectStainProtocol')}</option>
                     {stainTypes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+                </>
+              )}
+
+              {/* Real, additive — per 'Staining' (Batch.
+                  stainingReagentLotIds's own doc comment). Only shown
+                  for this one real processing node. Real FKs into the
+                  Reagent & Solution Lot Registry, never free text —
+                  same real posture as cytologyStainTypeId above.
+                  Checkboxes, not a native <select multiple>, since a
+                  real stainer run genuinely draws on several lots at
+                  once and this reads far more clearly than a native
+                  multi-select control. Optional at creation — see
+                  isStainingNode's own doc comment for why. */}
+              {isStainingNode && (
+                <>
+                  <label className="ps-batch-field-label">Reagent / Solution Lots Used (optional)</label>
+                  <div className="ps-batch-reagent-lot-list">
+                    {reagentLots.length === 0 && <div className="ps-batch-reagent-lot-empty">No active reagent lots in the registry.</div>}
+                    {reagentLots.map(l => {
+                      const label = l.stainTypeId
+                        ? (stainTypes.find(s => s.id === l.stainTypeId)?.name ?? l.stainTypeId)
+                        : (l.routineComponentType ?? '\u2014');
+                      const checked = stainingReagentLotIds.includes(l.id);
+                      return (
+                        <label key={l.id} className="ps-batch-reagent-lot-row">
+                          <input type="checkbox" checked={checked}
+                            onChange={e => setStainingReagentLotIds(prev => e.target.checked ? [...prev, l.id] : prev.filter(id => id !== l.id))} />
+                          <span>{label} \u2014 {l.lotNumber}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </>
               )}
 
