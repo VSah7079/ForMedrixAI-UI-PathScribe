@@ -8,9 +8,18 @@
 // header comment for the full reasoning this component defers to entirely,
 // rather than re-deciding any of it here). A small, presentational
 // component only — all real logic lives in computePatientIdStatus().
+//
+// i18n note: computePatientIdStatus() is a plain utility with no
+// useTranslation() of its own, so it returns translation keys
+// (labelKey/tooltipKey/tooltipParams/innerKeys) rather than rendered
+// text — resolved here, the one place that actually has `t()`. Any
+// `innerKeys` entry (a nested validation-reason or NHS status-code
+// description key) is resolved first, then substituted into the
+// outer tooltip translation.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Jurisdiction } from '@/types/systemConfig';
 import { computePatientIdStatus } from '@/utils/patientIdStatus';
 import '@/pathscribe.css';
@@ -36,14 +45,21 @@ const DOT_COLOR: Record<string, string> = {
 };
 
 export const PatientIdStatusDot: React.FC<Props> = ({ jurisdiction, rawId, hl7StatusCode, size = 'sm' }) => {
+  const { t } = useTranslation();
   const status = computePatientIdStatus(jurisdiction, rawId, hl7StatusCode);
   const px = size === 'lg' ? 10 : 8;
+  const tooltipParams: Record<string, unknown> = { ...status.tooltipParams };
+  if (status.innerKeys) {
+    for (const [param, key] of Object.entries(status.innerKeys)) tooltipParams[param] = t(key);
+  }
+  const label = t(status.labelKey);
+  const tooltip = t(status.tooltipKey, tooltipParams);
   return (
     <span
       className="ps-patient-id-status-dot"
       role="img"
-      aria-label={`${status.label}: ${status.tooltip}`}
-      title={status.tooltip}
+      aria-label={`${label}: ${tooltip}`}
+      title={tooltip}
       style={{
         display: 'inline-block',
         width: px,

@@ -32,7 +32,7 @@
 // browser today, no native agent required. PS-284's own named
 // "Print/Etch Next... physical foot pedal integration" trigger is now
 // wired below via that same, already-working hook — Pedal 2 (see
-// FOOT_PEDAL_ACTION_LABELS's own doc comment).
+// FootPedalConfig.ts's own doc comment).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState, useCallback } from 'react';

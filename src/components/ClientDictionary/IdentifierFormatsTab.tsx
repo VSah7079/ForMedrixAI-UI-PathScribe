@@ -30,9 +30,19 @@
 // ClientEditorModal.tsx is already large. Same "one file per real
 // concern, imported into the parent" pattern this app already uses
 // throughout Config/.
+//
+// i18n note: this file and its FacilityDictionary twin are byte-for-
+// byte identical apart from file-path/component-name references in
+// comments (confirmed via diff) — no rendered string differs between
+// them — so, unlike ClientEditorModal.tsx/FacilityEditorModal.tsx
+// (which have real wording differences and so keep separate
+// namespaces), both copies share a single `identifierFormatsTab`
+// locale namespace rather than duplicating one identical translation
+// set under two names.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { useScanner } from '../../contexts/ScannerProvider';
 import { useAuditLog } from '../Audit/useAuditLog';
@@ -47,57 +57,40 @@ import {
 import type { Facility, FacilityIdentifierFormatSelection } from '../../services/facilities/IFacilityService';
 import { dateFormatHint } from '../../utils/formatDate';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const KIND_LABELS: Record<IdentifierKind, string> = {
-  accession:    'Accession Number',
-  mrn:          'Patient Identifier',
-  slide:        'Slide Barcode',
-  requisition:  'Requisition Number',
-  block:        'Block / Cassette ID',
-  external_ref: 'External Reference',
-};
-
-const KIND_COLOURS: Record<IdentifierKind, string> = {
-  accession:    '#8b5cf6',
-  mrn:          '#0891B2',
-  slide:        '#10b981',
-  requisition:  '#f59e0b',
-  block:        '#64748b',
-  external_ref: '#6366f1',
-};
-
-const BARCODE_LABELS: Record<string, string> = {
-  '1d_code128':    '1D Code 128',
-  '1d_code39':     '1D Code 39',
-  '2d_datamatrix': '2D DataMatrix',
-  '2d_qr':         '2D QR',
-  '2d_pdf417':     '2D PDF417',
-};
-
-const LIS_OPTIONS: { value: LisPreset; label: string }[] = [
-  { value: 'generic',       label: 'Generic / All' },
-  { value: 'copath',        label: 'CoPath' },
-  { value: 'epic_beaker',   label: 'Epic Beaker' },
-  { value: 'sunquest',      label: 'Sunquest' },
-  { value: 'cerner_pathnet',label: 'Cerner PathNet' },
-  { value: 'meditech',      label: 'Meditech' },
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const testPattern = (pattern: string, value: string): boolean => {
   try { return new RegExp(pattern).test(value); } catch { return false; }
 };
 
+const BARCODE_KEY: Record<string, string> = {
+  '1d_code128':    'code128',
+  '1d_code39':     'code39',
+  '2d_datamatrix': 'datamatrix',
+  '2d_qr':         'qr',
+  '2d_pdf417':     'pdf417',
+};
+
 // ── Format row ────────────────────────────────────────────────────────────────
 
 const FormatRow: React.FC<{
   format:    IdentifierFormat;
+  kindLabels: Record<IdentifierKind, string>;
+  barcodeLabels: Record<string, string>;
   onToggle:  (id: string, enabled: boolean) => void;
-}> = ({ format, onToggle }) => {
+}> = ({ format, kindLabels, barcodeLabels, onToggle }) => {
+  const { t } = useTranslation();
   const [testValue,  setTestValue]  = useState('');
   const [showRegex,  setShowRegex]  = useState(false);
+
+  const KIND_COLOURS: Record<IdentifierKind, string> = {
+    accession:    '#8b5cf6',
+    mrn:          '#0891B2',
+    slide:        '#10b981',
+    requisition:  '#f59e0b',
+    block:        '#64748b',
+    external_ref: '#6366f1',
+  };
 
   const matches   = testValue ? testPattern(format.pattern, testValue) : null;
   const kindColor = KIND_COLOURS[format.kind];
@@ -113,17 +106,17 @@ const FormatRow: React.FC<{
             className="ps-idf-kind-badge"
             style={{ background: kindColor + '22', color: kindColor, border: `1px solid ${kindColor}44` }}
           >
-            {KIND_LABELS[format.kind]}
+            {kindLabels[format.kind]}
           </span>
           <span className="ps-idf-row-label">{format.label}</span>
           {format.tier === 1 && (
-            <span className="ps-idf-tier-badge ps-idf-tier-badge--1">Tier 1 · Search</span>
+            <span className="ps-idf-tier-badge ps-idf-tier-badge--1">{t('identifierFormatsTab.tier1Badge')}</span>
           )}
           {format.tier === 2 && (
-            <span className="ps-idf-tier-badge ps-idf-tier-badge--2">Tier 2 · Internal</span>
+            <span className="ps-idf-tier-badge ps-idf-tier-badge--2">{t('identifierFormatsTab.tier2Badge')}</span>
           )}
           {format.navigateToCaseOnMatch && (
-            <span className="ps-idf-nav-badge">⚡ Opens case directly</span>
+            <span className="ps-idf-nav-badge">{t('identifierFormatsTab.navBadge')}</span>
           )}
           {is2D && (
             <span className="ps-idf-barcode-badge ps-idf-barcode-badge--2d">2D</span>
@@ -145,7 +138,7 @@ const FormatRow: React.FC<{
       {/* Barcode types */}
       <div className="ps-idf-barcodes">
         {format.barcodeTypes.map(b => (
-          <span key={b} className="ps-idf-barcode-chip">{BARCODE_LABELS[b] ?? b}</span>
+          <span key={b} className="ps-idf-barcode-chip">{barcodeLabels[b] ?? b}</span>
         ))}
       </div>
 
@@ -158,21 +151,25 @@ const FormatRow: React.FC<{
               value={testValue}
               onChange={e => setTestValue(e.target.value)}
               placeholder={is2D
-                ? `Scan a ${format.barcodeTypes[0]} barcode or paste payload…`
-                : `Type or scan a value (e.g. ${format.example})`}
+                ? t('identifierFormatsTab.testPlaceholder2d', { type: format.barcodeTypes[0] })
+                : t('identifierFormatsTab.testPlaceholderGeneric', { example: format.example })}
               spellCheck={false}
             />
             {testValue && matches !== null && (
               <span className={`ps-idf-test-result${matches ? ' ps-idf-test-result--pass' : ' ps-idf-test-result--fail'}`}>
-                {matches ? '✓ match' : '✗ no match'}
+                {matches ? t('identifierFormatsTab.testMatch') : t('identifierFormatsTab.testNoMatch')}
               </span>
             )}
           </div>
           {testValue && matches !== null && (
             <div className={`ps-idf-test-banner${matches ? ' ps-idf-test-banner--pass' : ' ps-idf-test-banner--fail'}`}>
               {matches
-                ? `✓ "${testValue}" matches — will be detected as ${KIND_LABELS[format.kind]}${format.navigateToCaseOnMatch ? ' and open the case directly' : ''}`
-                : `✗ "${testValue}" does not match — check your test value`}
+                ? t('identifierFormatsTab.testBannerPass', {
+                    value: testValue,
+                    kind: kindLabels[format.kind],
+                    navSuffix: format.navigateToCaseOnMatch ? t('identifierFormatsTab.testBannerNavSuffix') : '',
+                  })
+                : t('identifierFormatsTab.testBannerFail', { value: testValue })}
             </div>
           )}
         </div>
@@ -184,16 +181,16 @@ const FormatRow: React.FC<{
           className="ps-idf-regex-btn"
           onClick={() => setShowRegex(v => !v)}
         >
-          {showRegex ? 'Hide pattern' : 'Show pattern'}
+          {showRegex ? t('identifierFormatsTab.hidePattern') : t('identifierFormatsTab.showPattern')}
         </button>
         {format.payload2DSchema && (
-          <span className="ps-idf-schema-hint">2D schema: {format.payload2DSchema}</span>
+          <span className="ps-idf-schema-hint">{t('identifierFormatsTab.schemaHint', { schema: format.payload2DSchema })}</span>
         )}
       </div>
       {showRegex && (
         <div className="ps-idf-regex-display">
           <code>{format.pattern}</code>
-          <span className="ps-idf-regex-note">System-defined — not editable. Submit an enhancement request to modify.</span>
+          <span className="ps-idf-regex-note">{t('identifierFormatsTab.regexNote')}</span>
         </div>
       )}
 
@@ -212,6 +209,7 @@ const FormatRow: React.FC<{
 // launched from.
 
 const SimulateScanTool: React.FC = () => {
+  const { t } = useTranslation();
   const { simulateScan, lastScan } = useScanner();
   const [value, setValue] = useState('');
   const [fired, setFired] = useState(false);
@@ -225,7 +223,7 @@ const SimulateScanTool: React.FC = () => {
   return (
     <div className="ps-idf-locale-card">
       <div className="ps-idf-locale-row ps-idf-simulate-label-row">
-        <span className="ps-idf-locale-label">Simulate a scan (no scanner needed)</span>
+        <span className="ps-idf-locale-label">{t('identifierFormatsTab.simulateLabel')}</span>
       </div>
       <div className="ps-idf-simulate-row">
         <input
@@ -233,22 +231,20 @@ const SimulateScanTool: React.FC = () => {
           value={value}
           onChange={e => { setValue(e.target.value); setFired(false); }}
           onKeyDown={e => { if (e.key === 'Enter') handleRun(); }}
-          placeholder="Type a value exactly as it would scan, e.g. SP26-4200 or 943 476 5919"
+          placeholder={t('identifierFormatsTab.simulatePlaceholder')}
           spellCheck={false}
         />
-        <button className="ps-btn-secondary ps-idf-simulate-btn" onClick={handleRun}>Simulate Scan</button>
+        <button className="ps-btn-secondary ps-idf-simulate-btn" onClick={handleRun}>{t('identifierFormatsTab.simulateBtn')}</button>
       </div>
       {fired && lastScan && (
         <div className={`ps-idf-test-banner${lastScan.type !== 'unknown' ? ' ps-idf-test-banner--pass' : ' ps-idf-test-banner--fail'}`}>
-          {lastScan.type === 'accession' && `✓ Detected as Accession Number — navigating to /case/${lastScan.matchedAccession}/synoptic, same as a real scan.`}
-          {lastScan.type === 'mrn' && `✓ Detected as a Patient ID (MRN/NHS/CHI/etc.) format.`}
-          {lastScan.type === 'unknown' && `✗ Didn't match any enabled Accession or Patient ID format app-wide. Check the formats are toggled on for the relevant Enterprise, or that this value's shape matches one of their patterns.`}
+          {lastScan.type === 'accession' && t('identifierFormatsTab.simulateResultAccession', { accession: lastScan.matchedAccession })}
+          {lastScan.type === 'mrn' && t('identifierFormatsTab.simulateResultMrn')}
+          {lastScan.type === 'unknown' && t('identifierFormatsTab.simulateResultUnknown')}
         </div>
       )}
       <div className="ps-idf-regex-note ps-idf-simulate-note">
-        This runs the exact same detection code a real scan triggers, against the real, live union
-        of every Enterprise's own enabled formats — if the value matches an enabled Accession or
-        Slide format, this will navigate away from this page, same as scanning the physical label would.
+        {t('identifierFormatsTab.simulateNote')}
       </div>
     </div>
   );
@@ -263,10 +259,33 @@ interface IdentifierFormatsTabProps {
 }
 
 const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, allFacilities, onChange }) => {
+  const { t } = useTranslation();
   const { log } = useAuditLog();
   const jurisdiction = facility.jurisdiction;
   const jLocale      = JURISDICTION_LOCALE[jurisdiction];
   const patientId    = PATIENT_ID_BY_JURISDICTION[jurisdiction];
+
+  const KIND_LABELS: Record<IdentifierKind, string> = {
+    accession:    t('identifierFormatsTab.kind.accession'),
+    mrn:          t('identifierFormatsTab.kind.mrn'),
+    slide:        t('identifierFormatsTab.kind.slide'),
+    requisition:  t('identifierFormatsTab.kind.requisition'),
+    block:        t('identifierFormatsTab.kind.block'),
+    external_ref: t('identifierFormatsTab.kind.externalRef'),
+  };
+
+  const BARCODE_LABELS: Record<string, string> = Object.fromEntries(
+    Object.entries(BARCODE_KEY).map(([id, key]) => [id, t(`identifierFormatsTab.barcode.${key}`)])
+  );
+
+  const LIS_OPTIONS: { value: LisPreset; label: string }[] = [
+    { value: 'generic',       label: t('identifierFormatsTab.lisGeneric') },
+    { value: 'copath',        label: 'CoPath' },
+    { value: 'epic_beaker',   label: 'Epic Beaker' },
+    { value: 'sunquest',      label: 'Sunquest' },
+    { value: 'cerner_pathnet',label: 'Cerner PathNet' },
+    { value: 'meditech',      label: 'Meditech' },
+  ];
 
   const parentEnterprise = facility.parentId ? allFacilities.find(f => f.id === facility.parentId) : undefined;
 
@@ -340,44 +359,44 @@ const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, a
       {/* Header */}
       <div className="ps-idf-header">
         <div className="ps-idf-header-text">
-          <h3 className="ps-idf-title">Identifier Formats</h3>
+          <h3 className="ps-idf-title">{t('identifierFormatsTab.title')}</h3>
           <p className="ps-idf-subtitle">
             {facility.isEnterprise
-              ? "Enable the identifier patterns this Enterprise's own shared LIS produces — multiple jurisdictions can be enabled at once (e.g. US and UK simultaneously). Every affiliate inherits this unless it sets its own override."
-              : "Enable the identifier patterns this facility uses, overriding its Enterprise parent's own default."}
-            {' '}Slide barcodes (Tier 1) open the case directly in the Synoptic Report page when scanned.
+              ? t('identifierFormatsTab.subtitleEnterprise')
+              : t('identifierFormatsTab.subtitleFacility')}
+            {' '}{t('identifierFormatsTab.subtitleSuffix')}
           </p>
         </div>
         {showEditor && (
           <div className="ps-idf-header-actions">
-            {hasChanges && <span className="ps-idf-unsaved">● Unsaved changes</span>}
+            {hasChanges && <span className="ps-idf-unsaved">{t('identifierFormatsTab.unsaved')}</span>}
             {hasChanges && (
-              <button className="ps-conf-btn-primary" onClick={handleSave}>Save Changes</button>
+              <button className="ps-conf-btn-primary" onClick={handleSave}>{t('identifierFormatsTab.saveChanges')}</button>
             )}
           </div>
         )}
       </div>
 
       {!facility.isEnterprise && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', marginBottom: '16px' }}>
+        <div className="ps-idf-override-row">
           <input
             type="checkbox"
             id="override-identifier-formats"
             checked={overriding}
             onChange={e => handleToggleOverride(e.target.checked)}
-            style={{ width: '16px', height: '16px', accentColor: '#0891b2', cursor: 'pointer' }}
+            className="ps-idf-override-checkbox"
           />
-          <label htmlFor="override-identifier-formats" style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', cursor: 'pointer' }}>
-            Override Enterprise identifier formats for this facility
+          <label htmlFor="override-identifier-formats" className="ps-idf-override-label">
+            {t('identifierFormatsTab.overrideLabel')}
           </label>
         </div>
       )}
 
       {!showEditor && (
-        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px', color: '#94a3b8' }}>
-          Not overridden — this facility uses {parentEnterprise
-            ? <><strong>{parentEnterprise.name}</strong>'s own enabled formats</>
-            : "its Enterprise parent's own enabled formats"} unchanged.
+        <div className="ps-idf-infobox">
+          {t('identifierFormatsTab.notOverriddenPrefix')} {parentEnterprise
+            ? <><strong>{parentEnterprise.name}</strong>{t('identifierFormatsTab.usesParentDefaultSuffix')}</>
+            : t('identifierFormatsTab.usesEnterpriseParentDefault')} {t('identifierFormatsTab.unchanged')}
         </div>
       )}
 
@@ -389,31 +408,31 @@ const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, a
               Client's jurisdiction first). */}
           <div className="ps-idf-locale-card">
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">This facility's jurisdiction</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.jurisdictionLabel')}</span>
               <span className="ps-idf-locale-value">{jurisdiction}</span>
             </div>
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">Date format</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.dateFormatLabel')}</span>
               <span className="ps-idf-locale-value">{dateFormatHint(jurisdiction)}</span>
             </div>
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">Time format</span>
-              <span className="ps-idf-locale-value">{jLocale.timeFormat === '24h' ? '24-hour' : '12-hour'}</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.timeFormatLabel')}</span>
+              <span className="ps-idf-locale-value">{jLocale.timeFormat === '24h' ? t('identifierFormatsTab.hour24') : t('identifierFormatsTab.hour12')}</span>
             </div>
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">Locale</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.localeLabel')}</span>
               <span className="ps-idf-locale-value">{jLocale.locale}</span>
             </div>
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">Spell check</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.spellCheckLabel')}</span>
               <span className="ps-idf-locale-value">{jLocale.spellLang}</span>
             </div>
             <div className="ps-idf-locale-row">
-              <span className="ps-idf-locale-label">Patient ID standard{enabledPatientIdFormats.length > 1 ? 's' : ''}</span>
+              <span className="ps-idf-locale-label">{t('identifierFormatsTab.patientIdStandard', { count: Math.max(enabledPatientIdFormats.length, 1) })}</span>
               <span className="ps-idf-locale-value">
                 {enabledPatientIdFormats.length > 0
                   ? enabledPatientIdFormats.map(f => `${f.label} — ${f.example}`).join(', ')
-                  : `${patientId.label} — ${patientId.format} (default — no MRN-kind format currently enabled)`}
+                  : t('identifierFormatsTab.patientIdFallback', { label: patientId.label, format: patientId.format })}
               </span>
             </div>
           </div>
@@ -422,7 +441,7 @@ const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, a
 
           {/* LIS preset filter */}
           <div className="ps-idf-lis-row">
-            <span className="ps-idf-lis-label">Filter by LIS:</span>
+            <span className="ps-idf-lis-label">{t('identifierFormatsTab.lisFilterLabel')}</span>
             <div className="ps-idf-lis-options">
               {LIS_OPTIONS.map(opt => (
                 <button
@@ -439,16 +458,15 @@ const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, a
           {/* Tier 1 — Search box + direct navigation */}
           <div className="ps-idf-section">
             <div className="ps-idf-section-header">
-              <span className="ps-idf-section-title">Tier 1 — Smart Search & Direct Navigation</span>
+              <span className="ps-idf-section-title">{t('identifierFormatsTab.tier1Title')}</span>
               <span className="ps-idf-section-desc">
-                These formats are detected in the Search identifier box.
-                Slide barcodes (⚡) navigate directly to the Synoptic Report page.
+                {t('identifierFormatsTab.tier1Desc')}
               </span>
             </div>
             <div className="ps-idf-list">
               {tier1.length === 0
-                ? <div className="ps-idf-empty">No Tier 1 formats available for this LIS filter.</div>
-                : tier1.map(f => <FormatRow key={f.id} format={f} onToggle={handleToggle} />)
+                ? <div className="ps-idf-empty">{t('identifierFormatsTab.tier1Empty')}</div>
+                : tier1.map(f => <FormatRow key={f.id} format={f} kindLabels={KIND_LABELS} barcodeLabels={BARCODE_LABELS} onToggle={handleToggle} />)
               }
             </div>
           </div>
@@ -456,24 +474,22 @@ const IdentifierFormatsTab: React.FC<IdentifierFormatsTabProps> = ({ facility, a
           {/* Tier 2 — Internal mapping */}
           <div className="ps-idf-section">
             <div className="ps-idf-section-header">
-              <span className="ps-idf-section-title">Tier 2 — Internal Mapping</span>
+              <span className="ps-idf-section-title">{t('identifierFormatsTab.tier2Title')}</span>
               <span className="ps-idf-section-desc">
-                Used by the Computational Sidecar for result-to-specimen mapping and HL7 OBR segment matching.
-                Not detected in the Search box.
+                {t('identifierFormatsTab.tier2Desc')}
               </span>
             </div>
             <div className="ps-idf-list">
               {tier2.length === 0
-                ? <div className="ps-idf-empty">No Tier 2 formats available for this LIS filter.</div>
-                : tier2.map(f => <FormatRow key={f.id} format={f} onToggle={handleToggle} />)
+                ? <div className="ps-idf-empty">{t('identifierFormatsTab.tier2Empty')}</div>
+                : tier2.map(f => <FormatRow key={f.id} format={f} kindLabels={KIND_LABELS} barcodeLabels={BARCODE_LABELS} onToggle={handleToggle} />)
               }
             </div>
           </div>
 
           {/* Enhancement request note */}
           <div className="ps-idf-enhance-note">
-            Identifier patterns are system-defined and validated. To add a new format or modify an existing one,
-            submit an Enhancement Request via the nav bar.
+            {t('identifierFormatsTab.enhanceNote')}
           </div>
         </>
       )}

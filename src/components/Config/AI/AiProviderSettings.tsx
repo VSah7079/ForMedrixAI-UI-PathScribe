@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   resolveAiConfig,
   setOrgAiConfig,
@@ -25,6 +26,14 @@ import {
   type AiProviderConfig,
 } from '@/components/Config/AI/aiProviderConfig';
 
+// Real, per this file's own header — these vendor/model labels and their
+// notes deliberately show real, literal vendor and product names (proper
+// nouns), same as any other real, fixed brand vocabulary in this app —
+// never translated in any locale, the same way CAP/RCPath/SNOMED CT etc.
+// stay literal. "Mock — Demo Mode" and "Self-hosted / Custom endpoint" are
+// kept alongside them for the same reason: this whole map is deliberately
+// literal, real reference text an admin needs verbatim to identify which
+// real vendor account/contract they're configuring.
 const PROVIDER_LABELS: Record<AiProviderId, string> = {
   structured_messages:      'Anthropic (Claude)',
   chat_completions:         'OpenAI (GPT-4)',
@@ -45,19 +54,6 @@ const PROVIDER_NOTES: Record<AiProviderId, string> = {
   custom:                   'Must be an OpenAI-compatible endpoint. Auth managed server-side.',
 };
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: 8,
-  border: '1px solid rgba(148,163,184,0.3)',
-  background: '#0f172a', color: '#e2e8f0', fontSize: 13,
-  boxSizing: 'border-box',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: '#64748b',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-  marginBottom: 6, display: 'block',
-};
-
 interface AiProviderSettingsProps {
   /** true = org admin view (saves org config), false = dev override view */
   isAdmin?: boolean;
@@ -68,6 +64,7 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
   isAdmin = false,
   onSaved,
 }) => {
+  const { t } = useTranslation();
   const rawConfig = resolveAiConfig();
   // Guard: if the stored providerId isn't a known key (e.g. after a host
   // migration corrupted / cleared localStorage), fall back to
@@ -150,14 +147,12 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
   const devOnly = !isAdmin;
 
   return (
-    <div style={{ maxWidth: 560, padding: '24px 0' }}>
-      <h2 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
-        {isAdmin ? '🔧 AI Provider — Organisation Settings' : '🧪 AI Provider — Developer Override'}
+    <div className="ps-aiprovider-page">
+      <h2 className="ps-aiprovider-heading">
+        {isAdmin ? `🔧 ${t('aiProviderSettings.adminHeading')}` : `🧪 ${t('aiProviderSettings.devHeading')}`}
       </h2>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>
-        {isAdmin
-          ? 'Sets the AI provider for all users in this organisation. API keys are managed server-side and never entered here.'
-          : 'Local override for development and testing. Takes priority over org settings. Never use in production.'}
+      <p className="ps-aiprovider-subtitle">
+        {isAdmin ? t('aiProviderSettings.adminSubtitle') : t('aiProviderSettings.devSubtitle')}
       </p>
 
       {/* Real, per direct guidance's own priority follow-up on PHI
@@ -165,53 +160,53 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
           have to be careful") - placed here, front and center, since
           this is the one screen an admin is actually making the
           provider decision this warning concerns. */}
-      <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, padding: '12px 14px', marginBottom: 24, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
-        <strong>⚠ Data handling — read before selecting a provider:</strong>{' '}
-        Case narrative text (Gross/Microscopic/Ancillary descriptions) is sent to whichever provider is configured here for real, live AI features (report generation, synoptic field suggestions, template assignment). Confirmed directly: no field on this app's own request templates structurally includes patient name, MRN, or date of birth — those are never automatically appended. This does not cover free text a pathologist types directly into a narrative field; avoid including direct patient identifiers there. Transit to the configured endpoint is TLS-encrypted; at-rest retention and any Business Associate Agreement are governed by that provider's own contract with your organisation, not by this application. Confirm a real BAA is in place before using a non-mock provider with real patient cases.
+      <div className="ps-aiprovider-warning-box">
+        <strong>{t('aiProviderSettings.dataHandlingWarningTitle')}</strong>{' '}
+        {t('aiProviderSettings.dataHandlingWarningBody')}
       </div>
 
       {/* Active config summary */}
-      <div style={{ background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 24, fontSize: 12, color: '#38bdf8' }}>
-        <strong>Currently active:</strong>{' '}
+      <div className="ps-aiprovider-active-box">
+        <strong>{t('aiProviderSettings.currentlyActive')}</strong>{' '}
         {PROVIDER_LABELS[current.providerId]} · {current.modelId}
-        {isDevMode() && <span style={{ marginLeft: 8, color: '#fbbf24' }}>⚠ Dev mode — direct API calls enabled</span>}
+        {isDevMode() && <span className="ps-aiprovider-devmode-flag">⚠ {t('aiProviderSettings.devModeFlag')}</span>}
       </div>
 
       {/* Demo mode banner */}
       {providerId === 'mock' && (
-        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 24, fontSize: 12, color: '#34d399' }}>
-          <strong>Demo Mode active</strong> — AI responses are instant and simulated. No API calls are made. Safe for offline demos and testing. Switch to a real provider before clinical use.
+        <div className="ps-aiprovider-demo-box">
+          <strong>{t('aiProviderSettings.demoModeActive')}</strong> — {t('aiProviderSettings.demoModeBody')}
         </div>
       )}
 
       {/* Provider selector */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>AI Provider</label>
+      <div className="ps-aiprovider-field-group">
+        <label className="ps-aiprovider-label">{t('aiProviderSettings.providerLabel')}</label>
         <select
           value={providerId}
           onChange={e => setProviderId(e.target.value as AiProviderId)}
-          style={inputStyle}
+          className="ps-aiprovider-input"
         >
           {/* Real providers */}
-          <optgroup label="Production Providers">
+          <optgroup label={t('aiProviderSettings.productionProvidersGroup')}>
             {(['structured_messages', 'chat_completions', 'chat_completions_managed', 'model_gateway', 'structured_content', 'custom'] as AiProviderId[]).map(id => (
               <option key={id} value={id}>{PROVIDER_LABELS[id]}</option>
             ))}
           </optgroup>
           {/* Mock for demos */}
-          <optgroup label="Development &amp; Demo">
+          <optgroup label={t('aiProviderSettings.developmentDemoGroup')}>
             <option value="mock">{PROVIDER_LABELS.mock}</option>
           </optgroup>
         </select>
-        <p style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+        <p className="ps-aiprovider-hint">
           {PROVIDER_NOTES[providerId]}
         </p>
       </div>
 
       {/* Model selector */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Model</label>
-        <select value={modelId} onChange={e => setModelId(e.target.value)} style={inputStyle}>
+      <div className="ps-aiprovider-field-group">
+        <label className="ps-aiprovider-label">{t('aiProviderSettings.modelLabel')}</label>
+        <select value={modelId} onChange={e => setModelId(e.target.value)} className="ps-aiprovider-input">
           {(PROVIDER_MODELS[providerId] ?? PROVIDER_MODELS['structured_messages']).map(m => (
             <option key={m.id} value={m.id}>{m.label}</option>
           ))}
@@ -221,22 +216,22 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
       {/* Managed-deployment-specific fields */}
       {providerId === 'chat_completions_managed' && (
         <>
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Azure Resource Endpoint</label>
+          <div className="ps-aiprovider-field-group ps-aiprovider-field-group--sm">
+            <label className="ps-aiprovider-label">{t('aiProviderSettings.azureEndpointLabel')}</label>
             <input
               type="url" value={managedEndpoint}
               onChange={e => setManagedEndpoint(e.target.value)}
               placeholder="https://my-org.openai.azure.com"
-              style={inputStyle}
+              className="ps-aiprovider-input"
             />
           </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Deployment Name</label>
+          <div className="ps-aiprovider-field-group ps-aiprovider-field-group--sm">
+            <label className="ps-aiprovider-label">{t('aiProviderSettings.deploymentNameLabel')}</label>
             <input
               type="text" value={managedDeployment}
               onChange={e => setManagedDeployment(e.target.value)}
               placeholder="my-gpt4-deployment"
-              style={inputStyle}
+              className="ps-aiprovider-input"
             />
           </div>
         </>
@@ -244,90 +239,84 @@ const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
 
       {/* Model gateway region */}
       {providerId === 'model_gateway' && (
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>AWS Region</label>
+        <div className="ps-aiprovider-field-group ps-aiprovider-field-group--sm">
+          <label className="ps-aiprovider-label">{t('aiProviderSettings.awsRegionLabel')}</label>
           <input
             type="text" value={gatewayRegion}
             onChange={e => setGatewayRegion(e.target.value)}
             placeholder="us-east-1"
-            style={inputStyle}
+            className="ps-aiprovider-input"
           />
         </div>
       )}
 
       {/* Custom endpoint */}
       {providerId === 'custom' && (
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Endpoint Base URL</label>
+        <div className="ps-aiprovider-field-group ps-aiprovider-field-group--sm">
+          <label className="ps-aiprovider-label">{t('aiProviderSettings.customEndpointLabel')}</label>
           <input
             type="url" value={customEndpoint}
             onChange={e => setCustomEndpoint(e.target.value)}
             placeholder="https://my-llm.hospital.internal/v1"
-            style={inputStyle}
+            className="ps-aiprovider-input"
           />
-          <p style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
-            Must be OpenAI-compatible (POST /chat/completions).
+          <p className="ps-aiprovider-hint">
+            {t('aiProviderSettings.customEndpointHint')}
           </p>
         </div>
       )}
 
       {/* Dev-only: API key field */}
       {devOnly && isDevMode() && (
-        <div style={{ marginBottom: 20, padding: '12px 14px', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8 }}>
-          <label style={{ ...labelStyle, color: '#f59e0b' }}>
-            ⚠ Dev API Key (local only — never commit this)
+        <div className="ps-aiprovider-devkey-box">
+          <label className="ps-aiprovider-label ps-aiprovider-label--warn">
+            ⚠ {t('aiProviderSettings.devApiKeyLabel')}
           </label>
           <input
             type="password" value={devApiKey}
             onChange={e => setDevApiKey(e.target.value)}
             placeholder="sk-ant-... or sk-..."
-            style={{ ...inputStyle, borderColor: 'rgba(251,191,36,0.3)' }}
+            className="ps-aiprovider-input ps-aiprovider-input--warn"
           />
-          <p style={{ fontSize: 11, color: '#78350f', marginTop: 6 }}>
-            Only used when VITE_AI_DEV_MODE=true. Set VITE_AI_API_KEY in .env instead to avoid entering this each session.
+          <p className="ps-aiprovider-devkey-hint">
+            {t('aiProviderSettings.devApiKeyHint')}
           </p>
         </div>
       )}
 
       {/* Action row */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
+      <div className="ps-aiprovider-action-row">
         <button
           onClick={handleSave}
           className="ps-conf-btn-primary"
         >
-          {saved ? '✓ Saved' : isAdmin ? 'Save Org Config' : 'Save Override'}
+          {saved ? `✓ ${t('aiProviderSettings.savedButton')}` : isAdmin ? t('aiProviderSettings.saveOrgConfigButton') : t('aiProviderSettings.saveOverrideButton')}
         </button>
 
         <button
           onClick={handleTest}
           disabled={testResult === 'testing'}
-          className="ps-conf-btn-secondary"
-          style={{
-            border: `1.5px solid ${testResult === 'ok' ? '#10b981' : testResult === 'fail' ? '#f87171' : 'rgba(148,163,184,0.3)'}`,
-            color: testResult === 'ok' ? '#10b981' : testResult === 'fail' ? '#f87171' : '#94a3b8',
-            cursor: testResult === 'testing' ? 'wait' : 'pointer',
-          }}
+          className={`ps-conf-btn-secondary ps-aiprovider-test-btn${testResult === 'ok' ? ' ps-aiprovider-test-btn--ok' : testResult === 'fail' ? ' ps-aiprovider-test-btn--fail' : ''}${testResult === 'testing' ? ' ps-aiprovider-test-btn--testing' : ''}`}
         >
-          {testResult === 'testing' ? '⏳ Testing…'
-           : testResult === 'ok'    ? '✓ Connection OK'
-           : testResult === 'fail'  ? '✗ Failed'
-           :                          'Test Connection'}
+          {testResult === 'testing' ? `⏳ ${t('aiProviderSettings.testingButton')}`
+           : testResult === 'ok'    ? `✓ ${t('aiProviderSettings.connectionOkButton')}`
+           : testResult === 'fail'  ? `✗ ${t('aiProviderSettings.failedButton')}`
+           :                          t('aiProviderSettings.testConnectionButton')}
         </button>
 
         {devOnly && (
           <button
             onClick={handleClearOverride}
-            className="ps-conf-btn-secondary"
-            style={{ marginLeft: 'auto', fontSize: 12 }}
+            className="ps-conf-btn-secondary ps-aiprovider-clear-btn"
           >
-            Clear Override
+            {t('aiProviderSettings.clearOverrideButton')}
           </button>
         )}
       </div>
 
       {testResult === 'fail' && testError && (
-        <p style={{ marginTop: 10, fontSize: 12, color: '#f87171' }}>
-          Error: {testError}
+        <p className="ps-aiprovider-error-text">
+          {t('aiProviderSettings.errorPrefix', { message: testError })}
         </p>
       )}
     </div>

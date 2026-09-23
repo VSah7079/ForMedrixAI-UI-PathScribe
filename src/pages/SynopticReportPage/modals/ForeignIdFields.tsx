@@ -30,7 +30,16 @@
 // explicit action, never per keystroke).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// i18n note: this shared component's two field labels and its
+// collision-warning sentence are identical, already-translated
+// strings from SpecimenEditModal.tsx (one of this component's own
+// four real callers) — reused directly rather than duplicated.
+// `collision.recordLabel`/`.caseAccession` are real record data,
+// interpolated into the translated warning, never translated
+// themselves.
+
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ForeignIdCollision } from '@/utils/foreignIdCollision';
 
 interface ForeignIdFieldsProps {
@@ -51,6 +60,7 @@ interface ForeignIdFieldsProps {
 const ForeignIdFields: React.FC<ForeignIdFieldsProps> = ({
   externalId, externalIdSource, disabled, idPrefix, sourcePlaceholder, idPlaceholder, collision, onCommit, onCheckCollision,
 }) => {
+  const { t } = useTranslation();
   // Real, deliberate one-time initialization from props — this
   // component is rendered inside an already-keyed row (key={block.id}/
   // key={decant.id}/key={matrixBlock.id} on the surrounding element in
@@ -71,9 +81,29 @@ const ForeignIdFields: React.FC<ForeignIdFieldsProps> = ({
     <>
       <div className="ps-conf-form-row">
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label" htmlFor={`${idPrefix}-ext-source`}>Foreign ID Source</label>
+          {/* Real fix (PS-302 — "'Foreign ID' field label is unclear"):
+              relabeled to say what this actually is — the outside/
+              referring lab that already assigned this specimen its
+              own identifier before it reached us (externalId/
+              externalIdSource themselves are unchanged internally;
+              only the label a real user reads has changed).
+              Real fix (PS-314 — this field's specific follow-up
+              suggestion: "'Foreign ID Source'... 'Referral Client' is
+              likely better"): relabeled again, from PS-302's "Outside
+              Lab Name" to "Referral Client" — a real, standard
+              pathology-industry term for exactly this: the outside
+              party (lab, clinic, or physician office) that referred
+              this specimen in, which "Outside Lab Name" narrowed to
+              labs specifically even though a referral source is
+              routinely a clinic or physician office, not always a
+              lab. Also swapped both inputs below off ps-conf-select —
+              same real dropdown-chevron/cursor-pointer class mismatch
+              as BlockStainEditorModal.tsx's own Block Comment field
+              (PS-314's other item), onto ps-conf-input, the correct
+              plain-text-input class. */}
+          <label className="ps-conf-label" htmlFor={`${idPrefix}-ext-source`}>{t('specimenEditModal.fields.referralClient')}</label>
           <input
-            id={`${idPrefix}-ext-source`} type="text" className="ps-conf-select"
+            id={`${idPrefix}-ext-source`} type="text" className="ps-conf-input"
             disabled={disabled}
             value={localSource}
             placeholder={sourcePlaceholder}
@@ -82,9 +112,9 @@ const ForeignIdFields: React.FC<ForeignIdFieldsProps> = ({
           />
         </div>
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label" htmlFor={`${idPrefix}-ext-id`}>Foreign ID</label>
+          <label className="ps-conf-label" htmlFor={`${idPrefix}-ext-id`}>{t('specimenEditModal.fields.referralClientId')}</label>
           <input
-            id={`${idPrefix}-ext-id`} type="text" className="ps-conf-select"
+            id={`${idPrefix}-ext-id`} type="text" className="ps-conf-input"
             disabled={disabled}
             value={localId}
             placeholder={idPlaceholder}
@@ -96,7 +126,7 @@ const ForeignIdFields: React.FC<ForeignIdFieldsProps> = ({
       {collision && (
         <div className="ps-foreign-id-collision-warning">
           <div className="ps-foreign-id-collision-warning-text">
-            ⚠ This foreign ID is already linked to {collision.recordLabel} on case {collision.caseAccession} — double-check before continuing.
+            ⚠ {t('specimenEditModal.foreignId.collisionWarning', { recordLabel: collision.recordLabel, caseAccession: collision.caseAccession })}
           </div>
         </div>
       )}

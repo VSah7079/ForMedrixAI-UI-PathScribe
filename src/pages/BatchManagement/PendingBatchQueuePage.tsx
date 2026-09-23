@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useCurrentScanStation } from '@/hooks/useCurrentScanStation';
@@ -31,13 +32,15 @@ import { facilityService } from '@/services';
 import { computePendingBatchQueue } from '@/services/batches/computePendingBatchQueue';
 import type { PendingBatchQueueItem } from '@/services/batches/computePendingBatchQueue';
 
-const MATERIAL_TYPE_LABEL: Record<PendingBatchQueueItem['materialType'], string> = {
-  block: 'Cassette', slide: 'Slide',
+// Real, label-key-map — keeps the real materialType value untouched.
+const MATERIAL_TYPE_LABEL_KEY: Record<PendingBatchQueueItem['materialType'], string> = {
+  block: 'pendingBatchQueue.materialType.block', slide: 'pendingBatchQueue.materialType.slide',
 };
 
 const PendingBatchQueuePage: React.FC = () => {
+  const { t } = useTranslation();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Pending Batch Load', '/batch-management/pending-load'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('pendingBatchQueue.pageTitle'), '/batch-management/pending-load'); }, [pushCrumb, t]);
 
   const { stationId } = useCurrentScanStation();
   const [facilityId, setFacilityId] = useState<string | undefined>(undefined);
@@ -108,18 +111,14 @@ const PendingBatchQueuePage: React.FC = () => {
       <div className="ps-batch-scroll">
         <div className="ps-batch-inner">
           <div className="ps-batch-page-header">
-            <h1 className="ps-batch-page-title">📦 Pending Batch Load</h1>
+            <h1 className="ps-batch-page-title">📦 {t('pendingBatchQueue.pageTitle')}</h1>
             <p className="ps-batch-page-subtitle">
-              A real, computed list of cassettes and slides that have genuinely been printed/engraved but haven't
-              been scanned into any active batch yet — nothing here is a stored flag, it's derived fresh from every
-              real case's own material against every real, active batch's own manifest. To load one, open or create
-              the real batch it belongs in from Batch Management, then scan it there — this page is for finding what
-              still needs picking up, not for loading it directly.
+              {t('pendingBatchQueue.pageSubtitle')}
             </p>
             <p className="ps-batch-page-subtitle">
               {facilityId
-                ? <>Scoped to <strong>{facilityName ?? facilityId}</strong>, per the active scan station.</>
-                : <>No scan station set — showing every facility's own pending items. Set a station for a facility-scoped queue.</>}
+                ? t('pendingBatchQueue.scopedTo', { facility: facilityName ?? facilityId })
+                : t('pendingBatchQueue.noStationAllFacilities')}
             </p>
           </div>
 
@@ -127,43 +126,45 @@ const PendingBatchQueuePage: React.FC = () => {
             <input
               className="ps-batch-lookup-input"
               type="text"
-              placeholder="Scan or type to search — cassette/slide id, case, or specimen…"
+              placeholder={t('pendingBatchQueue.searchPlaceholder')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
               <button className="ps-btn-secondary" onClick={() => setSearchQuery('')}>
-                ✕ Clear
+                ✕ {t('pendingBatchQueue.clear')}
               </button>
             )}
             <button className="ps-btn-secondary" onClick={refresh} disabled={loading}>
-              {loading ? 'Refreshing…' : '↻ Refresh'}
+              {loading ? t('pendingBatchQueue.refreshing') : `↻ ${t('pendingBatchQueue.refresh')}`}
             </button>
           </div>
 
           <div className="ps-batch-section-label">
-            Awaiting Batch Load ({filteredQueue.length}{trimmedQuery ? ` of ${queue.length}` : ''})
+            {trimmedQuery
+              ? t('pendingBatchQueue.sectionLabelFiltered', { count: filteredQueue.length, total: queue.length })
+              : t('pendingBatchQueue.sectionLabel', { count: filteredQueue.length })}
           </div>
           {loading ? (
-            <div className="ps-batch-empty">Computing the real, current queue…</div>
+            <div className="ps-batch-empty">{t('pendingBatchQueue.computing')}</div>
           ) : filteredQueue.length === 0 ? (
             <div className="ps-batch-empty">
               {trimmedQuery
-                ? `No pending item matches "${searchQuery.trim()}".`
-                : 'Nothing printed is currently waiting to be loaded into a batch.'}
+                ? t('pendingBatchQueue.noMatch', { query: searchQuery.trim() })
+                : t('pendingBatchQueue.emptyAll')}
             </div>
           ) : (
             Array.from(byCase.entries()).map(([caseAccession, items]) => (
-              <div key={caseAccession} style={{ marginBottom: 16 }}>
-                <div className="ps-batch-manifest-added" style={{ marginBottom: 4, fontWeight: 600 }}>
-                  {caseAccession} — {items.length} item{items.length === 1 ? '' : 's'}
+              <div key={caseAccession} className="ps-batch-pending-case-group">
+                <div className="ps-batch-manifest-added ps-batch-pending-case-heading">
+                  {caseAccession} — {t('batchManagement.itemCount', { count: items.length })}
                 </div>
                 <div className="ps-batch-manifest">
                   {items.map(item => (
                     <div key={item.key} className="ps-batch-manifest-row">
                       <span className="ps-batch-manifest-id">{item.displayId}</span>
-                      <span className="ps-batch-manifest-type">{MATERIAL_TYPE_LABEL[item.materialType]}</span>
-                      <span className="ps-batch-manifest-added">Specimen {item.specimenLabel}</span>
+                      <span className="ps-batch-manifest-type">{t(MATERIAL_TYPE_LABEL_KEY[item.materialType])}</span>
+                      <span className="ps-batch-manifest-added">{t('pendingBatchQueue.specimenLabel', { label: item.specimenLabel })}</span>
                     </div>
                   ))}
                 </div>

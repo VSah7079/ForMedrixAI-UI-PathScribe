@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -133,9 +134,7 @@ const ActionButton: React.FC<{
   );
 };
 
-const Divider = () => (
-  <div style={{ width: 1, height: 32, background: '#475569', flexShrink: 0, margin: '0 2px' }} />
-);
+const Divider = () => <div className="ps-bab-divider" />;
 
 const BottomActionBar: React.FC<BottomActionBarProps> = ({
   caseData,
@@ -163,6 +162,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onGrossComplete,
   synopticFitPending = false,
 }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -244,10 +244,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   }, [isPendingRelease]);
   const handlePrintClick = () => {
     if (isPendingRelease && printRestricted) {
-      const proceed = window.confirm(
-        'Hardcopy printing is restricted while this report is Pending Release. ' +
-        'The printed copy will carry the "PENDING FINAL RELEASE" watermark. Print anyway?'
-      );
+      const proceed = window.confirm(t('bottomActionBar.print.confirmRestricted'));
       if (!proceed) return;
     }
     onPrint?.();
@@ -311,41 +308,37 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   return (
     <>
-    <div style={{
-      background: '#0d1829', padding: '11px 12px 10px', borderTop: '1px solid rgba(255,255,255,0.08)',
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, gap: '6px',
-      overflow: 'visible', position: 'relative', zIndex: 200,
-    }}>
+    <div className="ps-bab-bar">
       <div className="ps-bottombar-scroll-wrapper">
         {canScrollLeft && (
           <button
             type="button"
             onClick={() => scrollBar('left')}
-            aria-label="Scroll left for more actions"
+            aria-label={t('bottomActionBar.nav.scrollLeftAria')}
             className="ps-bottombar-scroll-arrow ps-bottombar-scroll-arrow--left"
           >
             ‹
           </button>
         )}
         <div ref={scrollRef} className="ps-bottombar-scroll">
-          <ActionButton onClick={onPreviousCase} variant="outline" color="#94a3b8" title="Previous case">← Prev</ActionButton>
-          <ActionButton onClick={onNextCase} variant="outline" color="#94a3b8" title="Next case">Next →</ActionButton>
+          <ActionButton onClick={onPreviousCase} variant="outline" color="#94a3b8" title={t('bottomActionBar.nav.prevTitle')}>{t('bottomActionBar.nav.prevLabel')}</ActionButton>
+          <ActionButton onClick={onNextCase} variant="outline" color="#94a3b8" title={t('bottomActionBar.nav.nextTitle')}>{t('bottomActionBar.nav.nextLabel')}</ActionButton>
           <Divider />
-          
+
           {/* LAUNCH EMR BUTTON */}
-          <ActionButton onClick={handleLaunchEMR} variant="outline" color="#0ea5e9" title="Open Patient Record in EMR Sidecar">
-            🌐 EMR
+          <ActionButton onClick={handleLaunchEMR} variant="outline" color="#0ea5e9" title={t('bottomActionBar.emr.title')}>
+            🌐 {t('bottomActionBar.emr.label')}
           </ActionButton>
 
           {/* Hide delegate/review/flags/codes for pool cases — not yet assigned */}
           {!isPool && <>
-            <ActionButton onClick={() => onDelegate?.()} variant="outline" color="#a78bfa" title="Delegate case">👥 Delegate</ActionButton>
-            <ActionButton onClick={() => onTeam?.()} variant="outline" color="#0891B2" title="Manage case team">👤 Team</ActionButton>
-            <ActionButton onClick={() => setReviewOpen(true)} variant="outline" color="#a78bfa" title="Request informal peer review">🔍 Req. Review</ActionButton>
-            <ActionButton onClick={() => setConsultOpen(true)} variant="outline" color="#f87171" title="External consult / second-opinion access (demo/pilot only — not real security)">🌐 Consult</ActionButton>
-            <ActionButton onClick={() => onHistory?.()} variant="outline" color="#0891B2">📋 History</ActionButton>
-            <ActionButton onClick={() => onFlags?.()} variant="outline" color="#f59e0b">🚩 Flags</ActionButton>
-            <ActionButton onClick={() => onCodes?.()} variant="outline" color={codesColor}># Codes</ActionButton>
+            <ActionButton onClick={() => onDelegate?.()} variant="outline" color="#a78bfa" title={t('bottomActionBar.actions.delegateTitle')}>👥 {t('bottomActionBar.actions.delegateLabel')}</ActionButton>
+            <ActionButton onClick={() => onTeam?.()} variant="outline" color="#0891B2" title={t('bottomActionBar.actions.teamTitle')}>👤 {t('bottomActionBar.actions.teamLabel')}</ActionButton>
+            <ActionButton onClick={() => setReviewOpen(true)} variant="outline" color="#a78bfa" title={t('bottomActionBar.actions.reviewTitle')}>🔍 {t('bottomActionBar.actions.reviewLabel')}</ActionButton>
+            <ActionButton onClick={() => setConsultOpen(true)} variant="outline" color="#f87171" title={t('bottomActionBar.actions.consultTitle')}>🌐 {t('bottomActionBar.actions.consultLabel')}</ActionButton>
+            <ActionButton onClick={() => onHistory?.()} variant="outline" color="#0891B2">📋 {t('bottomActionBar.actions.historyLabel')}</ActionButton>
+            <ActionButton onClick={() => onFlags?.()} variant="outline" color="#f59e0b">🚩 {t('bottomActionBar.actions.flagsLabel')}</ActionButton>
+            <ActionButton onClick={() => onCodes?.()} variant="outline" color={codesColor}># {t('bottomActionBar.actions.codesLabel')}</ActionButton>
           </>}
         </div>
         {canScrollRight && (
@@ -354,7 +347,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             <button
               type="button"
               onClick={() => scrollBar('right')}
-              aria-label="Scroll right for more actions"
+              aria-label={t('bottomActionBar.nav.scrollRightAria')}
               className="ps-bottombar-scroll-arrow ps-bottombar-scroll-arrow--right"
             >
               ›
@@ -363,7 +356,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+      <div className="ps-bab-right-cluster">
         {/* Real feature, per direct follow-up: "Move Manage Reprints...
             Bottom-Right Action Cluster... Place Manage Reports as the
             leftmost button in the bottom-right cluster." Placed
@@ -376,8 +369,8 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             regression, not a UI cleanup. */}
         {onOpenReprints && (
           <>
-            <ActionButton onClick={onOpenReprints} variant="outline" color="#94a3b8" title="Manage reprints — requisition, container, cassette, and slide labels">
-              🖨️ Manage Reprints
+            <ActionButton onClick={onOpenReprints} variant="outline" color="#94a3b8" title={t('bottomActionBar.reprints.title')}>
+              🖨️ {t('bottomActionBar.reprints.label')}
             </ActionButton>
             <Divider />
           </>
@@ -385,7 +378,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         {/* Pool case — show Claim button only */}
         {isPool && (
           <ActionButton onClick={() => setClaimOpen(true)} variant="solid" color="#6366f1" hoverColor="#4f46e5">
-            ✋ Claim This Case
+            ✋ {t('bottomActionBar.pool.claimLabel')}
           </ActionButton>
         )}
 
@@ -403,8 +396,8 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             once grossing is done. */}
         {showGrossComplete && (
           <>
-            <ActionButton onClick={onSaveDraft} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title="Save partial grossing progress — does not mark grossing complete or trigger AI evaluation">
-              💾 Save Draft
+            <ActionButton onClick={onSaveDraft} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title={t('bottomActionBar.grossing.saveDraftTitle')}>
+              💾 {t('bottomActionBar.grossing.saveDraftLabel')}
             </ActionButton>
             <Divider />
             <ActionButton
@@ -413,10 +406,10 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
               color={isUpdateGross ? '#f59e0b' : '#34d399'}
               hoverColor={isUpdateGross ? '#d97706' : '#10b981'}
               title={isUpdateGross
-                ? 'Re-finalize corrected Grossing — re-evaluates AI synoptic assignment, requires a reason for the audit trail'
-                : 'Mark grossing complete — triggers AI evaluation of diagnostic synoptic assignment'}
+                ? t('bottomActionBar.grossing.updateGrossTitle')
+                : t('bottomActionBar.grossing.grossCompleteTitle')}
             >
-              {isUpdateGross ? '✏️ Update Gross' : '✅ Gross Complete'}
+              {isUpdateGross ? `✏️ ${t('bottomActionBar.grossing.updateGrossLabel')}` : `✅ ${t('bottomActionBar.grossing.grossCompleteLabel')}`}
             </ActionButton>
           </>
         )}
@@ -428,19 +421,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             {onGenerateReport && (
               <>
                 {isGenerating ? (
-                  <ActionButton onClick={() => onAbortGenerate?.()} variant="outline" color="#ef4444" title="Abort generation">
-                    ✕ Abort
+                  <ActionButton onClick={() => onAbortGenerate?.()} variant="outline" color="#ef4444" title={t('bottomActionBar.report.abortTitle')}>
+                    ✕ {t('bottomActionBar.report.abortLabel')}
                   </ActionButton>
                 ) : (
-                  <ActionButton onClick={onGenerateReport} variant="outline" color="#38bdf8" title="Generate AI report draft from synoptic answers">
-                    ⚡ Gen. Report
+                  <ActionButton onClick={onGenerateReport} variant="outline" color="#38bdf8" title={t('bottomActionBar.report.genReportTitle')}>
+                    ⚡ {t('bottomActionBar.report.genReportLabel')}
                   </ActionButton>
                 )}
                 <Divider />
               </>
             )}
-            <ActionButton onClick={onSaveDraft} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title="Save draft">💾 Save Draft</ActionButton>
-            <ActionButton onClick={onSaveAndNext} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title="Save and go to next case">💾 Save &amp; Next</ActionButton>
+            <ActionButton onClick={onSaveDraft} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title={t('bottomActionBar.report.saveDraftTitle')}>💾 {t('bottomActionBar.report.saveDraftLabel')}</ActionButton>
+            <ActionButton onClick={onSaveAndNext} variant="outline" color={isDirty ? '#38bdf8' : '#94a3b8'} title={t('bottomActionBar.report.saveNextTitle')}>💾 {t('bottomActionBar.report.saveNextLabel')}</ActionButton>
             {/* Real, per direct guidance ("Path B Execution Plan" — Step
                 3, "What to do with Finalize"): retired for Orchestration
                 Mode, since Sign Out Case now safely handles the trainee
@@ -458,10 +451,10 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
                   color="#34d399"
                   disabled={synopticFitPending}
                   title={synopticFitPending
-                    ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
-                    : 'Finalize this report'}
+                    ? t('bottomActionBar.common.synopticPendingTitle')
+                    : t('bottomActionBar.report.finalizeTitle')}
                 >
-                  🔒 Finalize
+                  🔒 {t('bottomActionBar.report.finalizeLabel')}
                 </ActionButton>
                 <ActionButton
                   onClick={onFinalizeAndNext}
@@ -469,10 +462,10 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
                   color="#34d399"
                   disabled={synopticFitPending}
                   title={synopticFitPending
-                    ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review'
-                    : 'Finalize and go to next case'}
+                    ? t('bottomActionBar.common.synopticPendingTitle')
+                    : t('bottomActionBar.report.finalizeNextTitle')}
                 >
-                  🔒 Finalize &amp; Next
+                  🔒 {t('bottomActionBar.report.finalizeNextLabel')}
                 </ActionButton>
               </>
             )}
@@ -491,9 +484,9 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             onClick={onReleasePreliminary}
             variant="outline"
             color="#c026d3"
-            title="Send the current Preliminary findings to the outbound interface now — does not sign out or finalize the case"
+            title={t('bottomActionBar.release.preliminaryTitle')}
           >
-            📤 Release as Preliminary
+            📤 {t('bottomActionBar.release.preliminaryLabel')}
           </ActionButton>
         )}
         {!isPool && caseData?.reportingMode !== 'assist' && (allFinalized || isFinalized) && status !== 'finalized' &&
@@ -519,19 +512,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             color="#047857"
             hoverColor="#065f46"
             disabled={synopticFitPending}
-            title={synopticFitPending ? 'Disabled — Stage 1 synoptic assignment evaluation in progress or awaiting review' : undefined}
+            title={synopticFitPending ? t('bottomActionBar.common.synopticPendingTitle') : undefined}
           >
-            ✍️ Sign Out Case
+            ✍️ {t('bottomActionBar.signOut.label')}
           </ActionButton>
         )}
         {!isPool && caseData?.reportingMode === 'assist' && (allFinalized || isFinalized) && (
-          <span className="ps-bab-assist-complete" title="Assist-mode cases are completed via Finalize — the LIS owns official sign-out for this reporting mode, not PathScribe.">
-            ✓ Finalized — structured data complete, LIS handles official sign-out
+          <span className="ps-bab-assist-complete" title={t('bottomActionBar.assistComplete.title')}>
+            ✓ {t('bottomActionBar.assistComplete.label')}
           </span>
         )}
         {!isPool && caseData?.reportingMode === 'assist' && (allFinalized || isFinalized || isPendingRelease) && onPrint && (
-          <ActionButton onClick={handlePrintClick} variant="outline" color="#0891B2" title={isPendingRelease ? 'Printing is restricted while Pending Release' : 'Print this report'}>
-            🖨 Print
+          <ActionButton onClick={handlePrintClick} variant="outline" color="#0891B2" title={isPendingRelease ? t('bottomActionBar.print.restrictedTitle') : t('bottomActionBar.print.normalTitle')}>
+            🖨 {t('bottomActionBar.print.label')}
           </ActionButton>
         )}
         {status === 'finalized' && onRequestAmendment && (
@@ -539,9 +532,9 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             onClick={onRequestAmendment}
             variant="outline"
             color="#d97706"
-            title="Issue a correction or addition to this already-finalized report"
+            title={t('bottomActionBar.amendment.title')}
           >
-            ✏️ Request Amendment / Addendum
+            ✏️ {t('bottomActionBar.amendment.label')}
           </ActionButton>
         )}
       </div>
@@ -568,7 +561,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       isOpen={claimOpen && isPool}
       caseId={caseData?.id ?? null}
       caseSummary={caseData ? `${caseData.patient?.lastName}, ${caseData.patient?.firstName} — ${caseData.specimens?.[0]?.description ?? ''}` : undefined}
-      poolName={`${(caseData as any)?.originHospitalId ?? 'MFT'} Pool`}
+      poolName={t('bottomActionBar.pool.nameSuffix', { hospitalId: (caseData as any)?.originHospitalId ?? 'MFT' })}
       currentUserId={user?.id ?? 'u1'}
       currentUserName={user?.name ?? 'Unknown'}
       continueToReport={true}

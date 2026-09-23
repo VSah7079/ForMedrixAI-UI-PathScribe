@@ -21,9 +21,32 @@ import { storageGet, storageSet } from '../mockStorage';
 import { mockSpecimenDeficiencyService } from '../deficiencies/mockSpecimenDeficiencyService';
 import { mockQaActivityTypeService } from './mockQaActivityTypeService';
 import type { IQaActivityRecordService } from './IQaActivityRecordService';
-import type { QaActivityRecord } from '@/types/quality/QaActivityRecord';
+import type { QaActivityRecord, QaDiscordanceRootCause } from '@/types/quality/QaActivityRecord';
 
 const STORAGE_KEY = 'qa_activity_records';
+
+const ROOT_CAUSE_LABEL: Record<QaDiscordanceRootCause, string> = {
+  sampling_error: 'Sampling error',
+  interpretation_error: 'Interpretation error',
+  technical_artifact: 'Technical artifact',
+  other: 'Other',
+};
+
+/**
+ * Real, per direct guidance (PS-119): formats a QaActivityRecord's own
+ * rootCause/rootCauseNote for the free-text SpecimenDeficiency.rootCause
+ * field it's being wired through to — not a raw enum value dropped in
+ * unreadable, and not silently dropping the "Other" note that's the
+ * whole reason that root cause exists. Undefined when the review
+ * itself never captured one (a real, if rare, discordant record with
+ * no root cause recorded), matching this app's own real "absence means
+ * nothing to show" convention rather than inventing a placeholder string.
+ */
+function formatQaRootCauseForDeficiency(rootCause: QaDiscordanceRootCause | undefined, rootCauseNote: string | undefined): string | undefined {
+  if (!rootCause) return undefined;
+  if (rootCause === 'other' && rootCauseNote?.trim()) return rootCauseNote.trim();
+  return ROOT_CAUSE_LABEL[rootCause];
+}
 
 // Real, frozen migration of the old ReconciliationRecord seed data -
 // 175 records (10 discordant, 165 concordant), all under the real
@@ -3680,13 +3703,61 @@ export const mockQaActivityRecordService: IQaActivityRecordService = {
       const rule = activityType?.capaTriggerRule;
       if (rule?.triggerSeverities?.includes(newRecord.severity) && rule.deficiencyTypeId) {
         try {
-          await mockSpecimenDeficiencyService.raise({
-            caseId: newRecord.caseId,
-            specimenId: newRecord.specimenId,
-            deficiencyTypeId: rule.deficiencyTypeId,
-            raisedBy: newRecord.recordedBy.userId,
-            comment: `Auto-raised from QA activity "${activityType?.name ?? newRecord.activityTypeId}" (${newRecord.severity} severity): ${newRecord.comments ?? ''}`.trim(),
-          });
+          // Real, per direct guidance: never auto-raise a duplicate CAPA
+          // for the same real, still-open issue. A second discordant QA
+          // activity landing on a case that already has an unresolved
+          // deficiency of this same type is real, useful evidence the
+          // SAME problem is still open — not a second, separate problem
+          // to track. Piling up duplicate open CAPA records for one real
+          // issue is exactly the kind of administrative overhead a QA/
+          // CAPA system must never create, especially once more than one
+          // trigger (PS-144/PS-145/PS-146) can independently fire on the
+          // same case.
+          //
+          // Deliberately scoped to THIS auto-raise call site only — every
+          // other raise()/raiseAndResolve() caller (cold-chain telemetry,
+          // AI/human concordance, batch processing) keeps its existing,
+          // deliberate one-event-per-occurrence behavior; this file's own
+          // header comment explains why a manually/system-detected
+          // deficiency is usually a genuine, distinct workflow event each
+          // time. An automated trigger re-firing on the same case is a
+          // different situation: it can easily re-detect the exact same
+          // still-unresolved condition, not a new one.
+          //
+          // Once the existing record is actually closed (resolved AND
+          // verified effective), a fresh trigger firing again correctly
+          // raises a new one — that's a genuinely new occurrence, not
+          // overhead.
+          const existingRes = await mockSpecimenDeficiencyService.getByCaseId(newRecord.caseId);
+          const alreadyTracked = existingRes.ok && existingRes.data.some(d =>
+            d.deficiencyTypeId === rule.deficiencyTypeId &&
+            d.status !== 'closed' &&
+            (d.specimenId ?? null) === (newRecord.specimenId ?? null)
+          );
+          if (alreadyTracked) {
+            console.info(
+              `[mockQaActivityRecordService] Skipped auto-raising a duplicate CAPA deficiency for case ${newRecord.caseId} — ` +
+              `an open or pending-verification deficiency of type "${rule.deficiencyTypeId}" already exists for this case.`,
+            );
+          } else {
+            await mockSpecimenDeficiencyService.raise({
+              caseId: newRecord.caseId,
+              specimenId: newRecord.specimenId,
+              deficiencyTypeId: rule.deficiencyTypeId,
+              raisedBy: newRecord.recordedBy.userId,
+              comment: `Auto-raised from QA activity "${activityType?.name ?? newRecord.activityTypeId}" (${newRecord.severity} severity): ${newRecord.comments ?? ''}`.trim(),
+              // Real, per direct guidance (PS-119): root cause captured
+              // on the review itself is wired through onto the real CAPA
+              // record at raise time, not left stranded on the review
+              // alone (buried only in the free-text comment above). This
+              // is a deliberate, additional real use of
+              // SpecimenDeficiency.rootCause beyond its original
+              // resolve()-time-only intent — see that field's own doc
+              // comment for the full account of both real populating
+              // paths it now has.
+              rootCause: formatQaRootCauseForDeficiency(newRecord.rootCause, newRecord.rootCauseNote),
+            });
+          }
         } catch (e) {
           console.error('[mockQaActivityRecordService] Failed to auto-raise CAPA deficiency for a discordant, high-severity QA activity record:', e);
         }

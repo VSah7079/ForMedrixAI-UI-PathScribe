@@ -18,9 +18,19 @@
 // ConsultToken IS the authorization for this one, specific read — that
 // is the entire point of building a token-scoped access path instead of
 // just handing out a normal case URL.
+//
+// i18n note: this page is a standalone, self-contained shell (its own
+// dark theme, not the normal app chrome — see the "Station Identity"
+// posture above), so its inline styles were converted to a dedicated
+// `.ps-extconsult-*` class family rather than reused `.ps-conf-*`/
+// `.ps-modal-dark-*` classes. Patient/specimen/slide identifiers stay
+// as real data; `signedStatus`'s underlying 'Draft'/'Signed' values
+// stay literal via SIGNED_STATUS_LABEL_KEY, translating only the
+// displayed button label.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { mockCaseService } from '@/services/cases/mockCaseService';
 import { consultTokenService } from '@/services';
@@ -41,19 +51,22 @@ function flattenSlides(c: Case): SlideRow[] {
   return out;
 }
 
-const shellStyle: React.CSSProperties = { minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', fontFamily: 'inherit', padding: '24px 16px' };
-const cardStyle: React.CSSProperties = { maxWidth: 720, margin: '0 auto', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, overflow: 'hidden' };
+const SIGNED_STATUS_LABEL_KEY: Record<ConsultOpinionSignedStatus, string> = {
+  Draft:  'externalConsultViewPage.status.draft',
+  Signed: 'externalConsultViewPage.status.signed',
+};
 
 const DisclosureBanner: React.FC = () => (
-  <div style={{ display: 'flex', gap: 10, padding: '12px 16px', background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.3)' }}>
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-    <span style={{ fontSize: 12, color: '#fca5a5', lineHeight: 1.5 }}>
-      <strong>This is a demo/pilot access link, not a production-secure one.</strong> It relies on an unsigned, opaque URL rather than real cryptographic authentication.
+  <div className="ps-extconsult-disclosure-banner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="ps-extconsult-disclosure-icon"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span className="ps-extconsult-disclosure-text">
+      <Trans i18nKey="externalConsultViewPage.disclosureBanner" components={{ strong: <strong /> }} />
     </span>
   </div>
 );
 
 const ExternalConsultViewPage: React.FC = () => {
+  const { t } = useTranslation();
   const { token } = useParams<{ token: string }>();
   const [status, setStatus] = useState<'loading' | 'invalid' | 'ready'>('loading');
   const [tokenRecord, setTokenRecord] = useState<ConsultToken | null>(null);
@@ -91,7 +104,7 @@ const ExternalConsultViewPage: React.FC = () => {
 
   const handleSubmitOpinion = async () => {
     if (!tokenRecord || !caseRecord) return;
-    if (!opinionText.trim()) { setSubmitError('An opinion is required before submitting.'); return; }
+    if (!opinionText.trim()) { setSubmitError(t('externalConsultViewPage.requiredOpinionError')); return; }
     setSubmitting(true);
     setSubmitError(null);
     const res = await consultTokenService.submitOpinion({
@@ -108,17 +121,17 @@ const ExternalConsultViewPage: React.FC = () => {
   };
 
   if (status === 'loading') {
-    return <div style={shellStyle}><div style={{ ...cardStyle, padding: 32, textAlign: 'center', color: '#64748b' }}>Loading…</div></div>;
+    return <div className="ps-extconsult-shell"><div className="ps-extconsult-card ps-extconsult-card--loading">{t('externalConsultViewPage.loading')}</div></div>;
   }
 
   if (status === 'invalid' || !tokenRecord || !caseRecord) {
     return (
-      <div style={shellStyle}>
-        <div style={cardStyle}>
+      <div className="ps-extconsult-shell">
+        <div className="ps-extconsult-card">
           <DisclosureBanner />
-          <div style={{ padding: 32, textAlign: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>This link is invalid or no longer active</div>
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>It may have expired, been revoked, or never existed. Contact the ordering pathologist for a new link.</div>
+          <div className="ps-extconsult-invalid-content">
+            <div className="ps-extconsult-invalid-title">{t('externalConsultViewPage.invalidLink.title')}</div>
+            <div className="ps-extconsult-invalid-desc">{t('externalConsultViewPage.invalidLink.description')}</div>
           </div>
         </div>
       </div>
@@ -131,73 +144,75 @@ const ExternalConsultViewPage: React.FC = () => {
     : slides;
 
   return (
-    <div style={shellStyle}>
-      <div style={cardStyle}>
+    <div className="ps-extconsult-shell">
+      <div className="ps-extconsult-card">
         <DisclosureBanner />
 
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#64748b', marginBottom: 6 }}>PathScribe External Consult</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }} data-phi="accession">{caseRecord.accession?.accessionNumber}</div>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
+        <div className="ps-extconsult-section">
+          <div className="ps-extconsult-eyebrow">{t('externalConsultViewPage.eyebrow')}</div>
+          <div className="ps-extconsult-accession" data-phi="accession">{caseRecord.accession?.accessionNumber}</div>
+          <div className="ps-extconsult-patient-line">
             {caseRecord.patient?.lastName}, {caseRecord.patient?.firstName}
-            {caseRecord.patient?.dateOfBirth && <> · DOB {caseRecord.patient.dateOfBirth}</>}
+            {caseRecord.patient?.dateOfBirth && <> · {t('externalConsultViewPage.dobPrefix', { date: caseRecord.patient.dateOfBirth })}</>}
           </div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
-            {tokenRecord.scope.slideIds?.length ? `Scoped access — ${tokenRecord.scope.slideIds.length} slide(s)` : 'Full case access'} · Link expires {new Date(tokenRecord.expiresAt).toLocaleString()}
+          <div className="ps-extconsult-scope-line">
+            {tokenRecord.scope.slideIds?.length ? t('externalConsultViewPage.scopedAccess', { count: tokenRecord.scope.slideIds.length }) : t('externalConsultViewPage.fullCaseAccess')}
+            {' · '}
+            {t('externalConsultViewPage.linkExpires', { date: new Date(tokenRecord.expiresAt).toLocaleString() })}
           </div>
         </div>
 
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>Specimens & Slides</div>
+        <div className="ps-extconsult-section">
+          <div className="ps-extconsult-section-heading">{t('externalConsultViewPage.specimensAndSlides')}</div>
           {caseRecord.specimens?.map(sp => (
-            <div key={sp.id} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{sp.label} — {sp.description}</div>
+            <div key={sp.id} className="ps-extconsult-specimen-row">
+              <div className="ps-extconsult-specimen-text">{sp.label} — {sp.description}</div>
             </div>
           ))}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+          <div className="ps-extconsult-slides-list">
             {scopedSlides.length === 0 ? (
-              <div style={{ fontSize: 12, color: '#64748b' }}>No slides in scope for this link.</div>
+              <div className="ps-extconsult-empty-note">{t('externalConsultViewPage.noSlidesInScope')}</div>
             ) : scopedSlides.map(s => (
-              <div key={s.stainOrderId} style={{ fontSize: 12, color: '#cbd5e1', padding: '4px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: 6 }}>
+              <div key={s.stainOrderId} className="ps-extconsult-slide-row">
                 {s.specimenLabel}-{s.blockLabel} · {s.stainName}
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ padding: '20px 24px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>Your Opinion</div>
+        <div className="ps-extconsult-section-plain">
+          <div className="ps-extconsult-section-heading">{t('externalConsultViewPage.yourOpinionHeading')}</div>
           {submitted ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8 }}>
+            <div className="ps-extconsult-submitted-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-              <span style={{ fontSize: 13, color: '#a7f3d0' }}>Your opinion has been recorded and returned to the ordering pathologist.</span>
+              <span className="ps-extconsult-submitted-text">{t('externalConsultViewPage.opinionSubmittedConfirmation')}</span>
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Diagnostic Category (optional)</label>
-                  <input type="text" value={diagnosticCategory} onChange={e => setDiagnosticCategory(e.target.value)} placeholder="e.g. Benign, Malignant, Indeterminate"
-                    style={{ width: '100%', padding: '8px 10px', background: '#0b1120', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#e2e8f0', fontSize: 12 }} />
+              <div className="ps-extconsult-form-row">
+                <div className="ps-extconsult-field-flex">
+                  <label className="ps-extconsult-field-label">{t('externalConsultViewPage.diagnosticCategoryLabel')}</label>
+                  <input type="text" value={diagnosticCategory} onChange={e => setDiagnosticCategory(e.target.value)} placeholder={t('externalConsultViewPage.diagnosticCategoryPlaceholder')}
+                    className="ps-extconsult-input" />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Status</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <label className="ps-extconsult-field-label">{t('externalConsultViewPage.statusLabel')}</label>
+                  <div className="ps-extconsult-status-group">
                     {(['Draft', 'Signed'] as const).map(s => (
-                      <button key={s} onClick={() => setSignedStatus(s)} style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${signedStatus === s ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.1)'}`, background: signedStatus === s ? 'rgba(16,185,129,0.15)' : 'transparent', color: signedStatus === s ? '#34d399' : '#64748b' }}>
-                        {s}
+                      <button key={s} onClick={() => setSignedStatus(s)} className={`ps-extconsult-status-btn${signedStatus === s ? ' ps-extconsult-status-btn--active' : ''}`}>
+                        {t(SIGNED_STATUS_LABEL_KEY[s])}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
               <textarea value={opinionText} onChange={e => setOpinionText(e.target.value)} rows={5}
-                placeholder="Enter your diagnostic impression / opinion…"
-                style={{ width: '100%', padding: '10px 12px', background: '#0b1120', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#e2e8f0', fontSize: 13, resize: 'vertical' }} />
-              {submitError && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{submitError}</div>}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                <button onClick={handleSubmitOpinion} disabled={submitting} style={{ padding: '9px 20px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.5)', borderRadius: 8, color: '#34d399', fontSize: 13, fontWeight: 600, cursor: submitting ? 'default' : 'pointer' }}>
-                  {submitting ? 'Submitting…' : 'Submit Opinion'}
+                placeholder={t('externalConsultViewPage.opinionPlaceholder')}
+                className="ps-extconsult-textarea" />
+              {submitError && <div className="ps-extconsult-submit-error">{submitError}</div>}
+              <div className="ps-extconsult-submit-row">
+                <button onClick={handleSubmitOpinion} disabled={submitting} className="ps-extconsult-submit-btn">
+                  {submitting ? t('externalConsultViewPage.submittingButton') : t('externalConsultViewPage.submitOpinionButton')}
                 </button>
               </div>
             </>

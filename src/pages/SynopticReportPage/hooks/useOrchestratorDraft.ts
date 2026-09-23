@@ -43,6 +43,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { OrchestratorSection } from '../components/OrchestratorSectionEditor';
 import type { Case } from '@/types/case/Case';
@@ -137,6 +138,8 @@ export function useOrchestratorDraft({
   activeSectionId, setActiveSectionId, isOrchestrationMode, leftTab,
   knownVersionRef, setConcurrencyConflict, clearDirty, discardDraft, showToast,
 }: UseOrchestratorDraftParams) {
+  const { t } = useTranslation();
+
   // ── Save ──────────────────────────────────────────────────────────────
   // The real consolidation — ONE implementation of "save the draft,"
   // mode-aware (Orchestration's orchSections vs. CoPilot's synopticReports)
@@ -162,7 +165,7 @@ export function useOrchestratorDraft({
   const saveDraftInternal = useCallback(async (): Promise<boolean> => {
     if (!caseData?.id) {
       clearDirty();
-      showToast('Draft saved');
+      showToast(t('useOrchestratorDraft.toast.draftSaved'));
       return true;
     }
     try {
@@ -182,9 +185,9 @@ export function useOrchestratorDraft({
     // "unsaved draft found" for work that had already been persisted.
     discardDraft();
     clearDirty();
-    showToast('Draft saved');
+    showToast(t('useOrchestratorDraft.toast.draftSaved'));
     return true;
-  }, [caseData, caseId, orchSections, clearDirty, showToast, discardDraft, knownVersionRef, setConcurrencyConflict]);
+  }, [caseData, caseId, orchSections, clearDirty, showToast, discardDraft, knownVersionRef, setConcurrencyConflict, t]);
 
   // ── Restore on load ──────────────────────────────────────────────────
   // Restore orchSections — checks localStorage AND the loaded caseData.

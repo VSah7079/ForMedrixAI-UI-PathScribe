@@ -13,8 +13,17 @@
 // value) rather than a full combobox with search/multi-select/keyboard
 // list navigation. Extend if a future use case genuinely needs more.
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// i18n note: `options[].label` and the caller-supplied `placeholder`/
+// `emptyText` are the caller's own already-resolved display text, not
+// literal chrome authored in this file. The one piece of UI copy this
+// file itself owns is the `emptyText` fallback default, which reuses
+// `searchableCombobox.defaultEmptyText` — the sibling combobox
+// component's own exact-text default for the same "no options"
+// fallback case.
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 
 export interface DropdownOption {
@@ -30,7 +39,9 @@ interface DropdownProps {
   className?:  string;
 }
 
-export const Dropdown: React.FC<DropdownProps> = ({ options, placeholder, onSelect, emptyText = 'No options available', className }) => {
+export const Dropdown: React.FC<DropdownProps> = ({ options, placeholder, onSelect, emptyText, className }) => {
+  const { t } = useTranslation();
+  const resolvedEmptyText = emptyText ?? t('searchableCombobox.defaultEmptyText');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -61,7 +72,7 @@ export const Dropdown: React.FC<DropdownProps> = ({ options, placeholder, onSele
       {open && (
         <div className="ps-dropdown-list">
           {options.length === 0 ? (
-            <div className="ps-dropdown-empty">{emptyText}</div>
+            <div className="ps-dropdown-empty">{resolvedEmptyText}</div>
           ) : options.map(opt => (
             <div
               key={opt.value}

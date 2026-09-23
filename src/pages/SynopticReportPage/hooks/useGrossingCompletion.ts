@@ -37,6 +37,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { routeCase, routeStatCase } from '@/services/cases/casePoolAssignmentService';
 import { aiBehaviorService } from '@/services';
@@ -86,6 +87,7 @@ export function useGrossingCompletion({
   handleGrossingProtocolChangesDetected,
   orchSections,
 }: UseGrossingCompletionParams) {
+  const { t } = useTranslation();
   const [isEvaluatingSynopticFit, setIsEvaluatingSynopticFit] = useState(false);
 
   const handleGrossComplete = useCallback(async () => {
@@ -134,11 +136,7 @@ export function useGrossingCompletion({
     });
     if (specimensWithoutAnswers.length > 0) {
       const labels = specimensWithoutAnswers.map(sp => sp.label).join(', ');
-      showToast(
-        specimensWithoutAnswers.length === 1
-          ? `Specimen ${labels} has no grossing entered yet — complete every specimen before finishing Gross`
-          : `Specimens ${labels} have no grossing entered yet — complete every specimen before finishing Gross`
-      );
+      showToast(t('useGrossingCompletion.toast.specimensMissingGrossing', { count: specimensWithoutAnswers.length, labels }));
       return;
     }
 
@@ -152,9 +150,9 @@ export function useGrossingCompletion({
       // MVP reason capture via prompt() — a dedicated modal (matching
       // RequestReviewModal/PoolClaimModal's pattern) is the real long-term
       // UI here, not a browser prompt.
-      const entered = window.prompt('Reason for updating Gross (required for audit trail):');
+      const entered = window.prompt(t('useGrossingCompletion.prompt.reasonForUpdate'));
       if (!entered || !entered.trim()) {
-        showToast('Update cancelled — a reason is required');
+        showToast(t('useGrossingCompletion.toast.updateCancelledReasonRequired'));
         return;
       }
       reason = entered.trim();
@@ -337,7 +335,7 @@ export function useGrossingCompletion({
             ? await routeStatCase({ ...caseData, ...patch })
             : await routeCase({ ...caseData, ...patch });
           if (routingResult.outcome === 'routed_to_pool' || routingResult.outcome === 'routed_to_fallback') {
-            showToast(`Routed to ${routingResult.poolName} pool.`);
+            showToast(t('useGrossingCompletion.toast.routedToPool', { poolName: routingResult.poolName }));
           }
         } catch (e) {
           console.error('Pool routing failed (non-blocking):', e);
@@ -361,9 +359,9 @@ export function useGrossingCompletion({
       const grossAiEnabled = !aiBehaviorRes.ok || aiBehaviorRes.data.grossEnabled !== false;
 
       if (!grossAiEnabled) {
-        showToast(isUpdate ? 'Gross updated' : 'Grossing complete');
+        showToast(t(isUpdate ? 'useGrossingCompletion.toast.grossUpdated' : 'useGrossingCompletion.toast.grossingComplete'));
       } else {
-        showToast(isUpdate ? 'Gross updated — re-evaluating synoptic assignment…' : 'Grossing complete — evaluating synoptic assignment…');
+        showToast(t(isUpdate ? 'useGrossingCompletion.toast.grossUpdatedReEvaluating' : 'useGrossingCompletion.toast.grossingCompleteEvaluating'));
 
         // Lock Finalize/Finalize & Next/Sign Out while evaluation runs and
         // while any resulting review modal is open — see isEvaluatingSynopticFit.
@@ -384,7 +382,7 @@ export function useGrossingCompletion({
             // resolves the modal (commit or cancel), not just until this
             // call returns.
           } else {
-            showToast('No synoptic assignment changes proposed');
+            showToast(t('useGrossingCompletion.toast.noSynopticChangesProposed'));
           }
 
           // Real feature, per direct follow-up: "there is kind of a
@@ -537,7 +535,7 @@ export function useGrossingCompletion({
                 await caseRouter.updateCase(caseData.id, { grossingReports: grossingReportsWithSuggestions }, knownVersionRef.current);
                 knownVersionRef.current = knownVersionRef.current + 1;
                 setCaseData(prev => prev ? ({ ...prev, grossingReports: grossingReportsWithSuggestions } as typeof prev) : prev);
-                showToast('Dictated Gross reviewed — synoptic field suggestions ready for confirmation');
+                showToast(t('useGrossingCompletion.toast.dictatedGrossReviewed'));
               }
             } catch (e) {
               // Non-blocking — Gross Complete has already fully
@@ -554,9 +552,9 @@ export function useGrossingCompletion({
     } catch (err) {
       if (handleConcurrencyConflict(err, setConcurrencyConflict)) return;
       console.error('[Gross Complete] Failed:', err);
-      showToast((isUpdate ? 'Update Gross' : 'Gross Complete') + ' failed — please try again');
+      showToast(t(isUpdate ? 'useGrossingCompletion.toast.updateGrossFailed' : 'useGrossingCompletion.toast.grossCompleteFailed'));
     }
-  }, [caseData, log, showToast, handleProtocolChangesDetected, setCaseData, knownVersionRef, setConcurrencyConflict, grossingSnapshotRef, orchSections]);
+  }, [caseData, log, showToast, handleProtocolChangesDetected, setCaseData, knownVersionRef, setConcurrencyConflict, grossingSnapshotRef, orchSections, t]);
 
   return {
     isEvaluatingSynopticFit,

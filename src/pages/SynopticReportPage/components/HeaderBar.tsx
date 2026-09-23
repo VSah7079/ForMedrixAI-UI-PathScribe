@@ -2,9 +2,11 @@
 // Rich case header — white bar with accession, patient info, progress steps.
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useMessaging } from '@/contexts/MessagingContext';
 import type { Case } from '@/types/case/Case';
+import type { BlockStatus } from '@/types/case/Specimen';
 import { getOrgOrchestratorDefault, resolveOrchestratorMode } from '@/components/Config/AI/orchestratorModeConfig';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
 import { lisSyncService, flagService } from '@/services';
@@ -12,6 +14,38 @@ import type { LisSyncState, LisSyncPendingFlag } from '@/services/lisSync/mockLi
 import { getCaseStatusLabel, hasDisplayableRevision } from '@/utils/caseRevisionDisplay';
 import { useReleaseBufferCountdown } from '../hooks/useReleaseBufferCountdown';
 import '@/pathscribe.css';
+
+// i18n note (batch 120): `caseData.order.priority` / `block.priority`
+// (CasePriority: 'Routine' | 'Rush' | 'STAT') and `block.status`
+// (BlockStatus) are persisted enums rendered directly as text in
+// several places in this file — both go through a LABEL_KEY map
+// below, same pattern as every other persisted-enum display in this
+// codebase (e.g. MaterialTreePanel.tsx's own BLOCK_STATUS_LABEL_KEY,
+// CassetteRoutingRulesSection.tsx's own PRIORITY_LABEL_KEY — this file
+// reuses their exact wording for consistency, in its own namespace per
+// established per-file convention). 'STAT' itself stays literal in
+// every locale, matching that same precedent — a fixed clinical
+// shorthand, not an ordinary translatable word, unlike 'Routine'/
+// 'Rush'. `statusDisplayLabel`/`getCaseStatusLabel()` and
+// `CASE_STATE_CLASS` come from this file's own case-status utility,
+// already established as translated data upstream — left as-is here
+// (not re-translated a second time). Specimen/block labels, stain
+// names, and hospital/client names are real persisted case data and
+// stay untranslated throughout.
+const CASE_PRIORITY_LABEL_KEY: Record<'Routine' | 'Rush' | 'STAT', string> = {
+  Routine: 'headerBar.priorityLabels.routine',
+  Rush:    'headerBar.priorityLabels.rush',
+  STAT:    'headerBar.priorityLabels.stat',
+};
+const BLOCK_STATUS_LABEL_KEY: Record<BlockStatus, string> = {
+  Pending:   'headerBar.blockStatusLabels.pending',
+  Grossed:   'headerBar.blockStatusLabels.grossed',
+  Embedded:  'headerBar.blockStatusLabels.embedded',
+  Exhausted: 'headerBar.blockStatusLabels.exhausted',
+  Cancelled: 'headerBar.blockStatusLabels.cancelled',
+  Lost:      'headerBar.blockStatusLabels.lost',
+  Damaged:   'headerBar.blockStatusLabels.damaged',
+};
 
 // ── AI Synthesis Status — Gatekeeper Badge model. Matches the type defined
 // in SynopticReportPage.tsx (duplicated here rather than imported to avoid
@@ -116,6 +150,7 @@ function stepClass(status: StepStatus): string {
 }
 
 const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, onNavigate, aiSynthesisStatus, onAiStatusClick, compact = false, onChangePriority, priorityLevels, deficiencyCount, onOpenDeficiencyHistory, versionCount, onOpenVersionHistory, focusedBlockId, onOpenBlockEditor, onCaseUpdate, onToggleManualCompact }) => {
+  const { t } = useTranslation();
   // Real fix, found via a direct audit: this used to call the old,
   // superseded getOrchestratorMode() (org-level only, from the now-
   // dead NarrativeTemplates/index.tsx) instead of the real
@@ -254,9 +289,13 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   const formatSyncLabel = (iso: string): string => {
     const then = new Date(iso);
     const mins = Math.round((Date.now() - then.getTime()) / 60000);
-    const rel = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} hr${Math.round(mins / 60) === 1 ? '' : 's'} ago`;
+    const rel = mins < 1
+      ? t('headerBar.lisSync.justNow')
+      : mins < 60
+      ? t('headerBar.lisSync.minsAgo', { count: mins })
+      : t('headerBar.lisSync.hrsAgo', { count: Math.round(mins / 60) });
     const clock = then.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    return `Data as of ${clock} · ${rel}`;
+    return t('headerBar.lisSync.dataAsOf', { clock, rel });
   };
 
   const accession = caseData?.accession?.fullAccession ?? caseData?.accession?.accessionNumber ?? '—';
@@ -280,7 +319,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   const { formatted: pendingReleaseCountdown } = useReleaseBufferCountdown(isPendingRelease ? caseData?.releaseBufferExpiresAt : undefined);
 
   // ── Mode-aware final step label ───────────────────────────────────────────
-  const finalStepLabel = isOrchestration ? 'Sign Out' : 'Finalise';
+  const finalStepLabel = isOrchestration ? t('headerBar.stage.signOut') : t('headerBar.stage.finalise');
 
   // ── Real, dynamic workflow stage — shared by both compact and full
   // render paths below.
@@ -328,7 +367,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
         : activeSynopticStatus ? 2  // draft/in-progress synoptic exists — Synoptic stage current
         : 2);                        // no synoptic yet — still Synoptic stage (Grossing/Processing default complete for CoPilot)
 
-  const stageLabels = ['Grossing', 'Processing', 'Synoptic', finalStepLabel];
+  const stageLabels = [t('headerBar.stage.grossing'), t('headerBar.stage.processing'), t('headerBar.stage.synoptic'), finalStepLabel];
 
   const progressSteps: ProgressStep[] = stageLabels.map((label, i) => ({
     id: i + 1,
@@ -350,14 +389,14 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
             <>
               <span className="ps-hb-compact-sep">·</span>
               <span className="ps-hb-compact-meta" data-phi="dob">
-                DOB {dob} · {sex}
+                {t('headerBar.field.dobInline', { dob, sex })}
               </span>
             </>
           )}
           {caseData?.patient?.mrn && (
             <>
               <span className="ps-hb-compact-sep">·</span>
-              <span className="ps-hb-compact-meta" data-phi="mrn">MRN {mrn}</span>
+              <span className="ps-hb-compact-meta" data-phi="mrn">{t('headerBar.field.mrnInline', { mrn })}</span>
             </>
           )}
           {(caseData?.order as any)?.priority && (
@@ -366,14 +405,14 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
                 className={`ps-hb-compact-priority ps-hb-compact-priority--editable${(caseData?.order as any)?.priority === 'STAT' ? ' ps-hb-compact-priority--stat' : (caseData?.order as any)?.priority === 'Rush' ? ' ps-hb-compact-priority--rush' : ' ps-hb-compact-priority--routine'}`}
                 value={(caseData?.order as any)?.priority}
                 onChange={e => onChangePriority(e.target.value)}
-                title="Change case priority"
-                aria-label="Change case priority"
+                title={t('headerBar.priorityLabels.changeTitle')}
+                aria-label={t('headerBar.priorityLabels.changeTitle')}
               >
                 {priorityLevels.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             ) : (
               <span className={`ps-hb-compact-priority${(caseData?.order as any)?.priority === 'STAT' ? ' ps-hb-compact-priority--stat' : (caseData?.order as any)?.priority === 'Rush' ? ' ps-hb-compact-priority--rush' : ' ps-hb-compact-priority--routine'}`}>
-                {(caseData?.order as any)?.priority}
+                {t(CASE_PRIORITY_LABEL_KEY[(caseData?.order as any)?.priority as 'Routine' | 'Rush' | 'STAT'] ?? CASE_PRIORITY_LABEL_KEY.Routine)}
               </span>
             )
           )}
@@ -405,16 +444,16 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
                 onClick={onAiStatusClick}
                 title={
                   aiSynthesisStatus.flaggedFieldConfidence !== undefined
-                    ? `AI review confidence (separate from case status): a field is at ${aiSynthesisStatus.flaggedFieldConfidence}% confidence — click to review`
-                    : 'AI review confidence (separate from case status): a field is below the confidence threshold — click to review'
+                    ? t('headerBar.aiStatus.reviewTooltipWithPct', { pct: aiSynthesisStatus.flaggedFieldConfidence })
+                    : t('headerBar.aiStatus.reviewTooltip')
                 }
               >
                 <span className="ps-hb-compact-conf-pct">⚠</span>
-                <span className="ps-hb-compact-conf-label">Review Pending</span>
+                <span className="ps-hb-compact-conf-label">{t('headerBar.aiStatus.reviewPending')}</span>
               </button>
             ) : (
-              <span className="ps-hb-compact-conf ps-hb-compact-conf--neutral" title="AI-drafted — no fields below threshold">
-                <span className="ps-hb-compact-conf-label">AI Drafted</span>
+              <span className="ps-hb-compact-conf ps-hb-compact-conf--neutral" title={t('headerBar.aiStatus.draftedTooltip')}>
+                <span className="ps-hb-compact-conf-label">{t('headerBar.aiStatus.aiDrafted')}</span>
               </span>
             )
           )}
@@ -422,14 +461,14 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
             <button
               className="ps-hb-compact-nav-btn"
               onClick={() => onNavigate('/worklist')}
-              title="Back to worklist"
-            >← Worklist</button>
+              title={t('headerBar.nav.backToWorklistTooltip')}
+            >← {t('headerBar.breadcrumb.worklist')}</button>
             {onToggleManualCompact && (
               <button
                 className="ps-hb-compact-nav-btn"
                 onClick={onToggleManualCompact}
-                title="Show full patient header"
-              >⌄ Full view</button>
+                title={t('headerBar.nav.showFullHeaderTooltip')}
+              >⌄ {t('headerBar.nav.fullView')}</button>
             )}
           </div>
         </div>
@@ -445,28 +484,26 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
         {showBackToMessages && (
           <>
             <span
-              className="ps-hb-crumb"
-              style={{ color: '#0891B2', fontWeight: 600, cursor: 'pointer' }}
+              className="ps-hb-crumb ps-hb-crumb--messages"
               onClick={() => { sessionStorage.removeItem('ps_reopen_messages'); setShowBackToMessages(false); setPortalOpen(true); navigate(-1); }}
             >
-              ← Back to Messages
+              ← {t('headerBar.breadcrumb.backToMessages')}
             </span>
             <span className="ps-hb-crumb-sep">│</span>
           </>
         )}
-        <span className="ps-hb-crumb" onClick={() => onNavigate('/')}>Home</span>
+        <span className="ps-hb-crumb" onClick={() => onNavigate('/')}>{t('headerBar.breadcrumb.home')}</span>
         <span className="ps-hb-crumb-sep">›</span>
-        <span className="ps-hb-crumb" onClick={() => onNavigate('/worklist')}>Worklist</span>
+        <span className="ps-hb-crumb" onClick={() => onNavigate('/worklist')}>{t('headerBar.breadcrumb.worklist')}</span>
         <span className="ps-hb-crumb-sep">›</span>
-        <span className="ps-hb-crumb ps-hb-crumb--active">Case Report</span>
+        <span className="ps-hb-crumb ps-hb-crumb--active">{t('headerBar.breadcrumb.caseReport')}</span>
 
         {onToggleManualCompact && (
           <button
-            className="ps-hb-compact-nav-btn"
-            style={{ marginLeft: 'auto' }}
+            className="ps-hb-compact-nav-btn ps-hb-compact-nav-btn--ml-auto"
             onClick={onToggleManualCompact}
-            title="Shrink to a compact single-line header -- more room for the report"
-          >⌃ Compact view</button>
+            title={t('headerBar.nav.shrinkToCompactTooltip')}
+          >⌃ {t('headerBar.nav.compactView')}</button>
         )}
 
         {isAssistCase && syncState && (
@@ -476,9 +513,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
               className="ps-hb-lis-sync-btn"
               disabled={checkingNow}
               onClick={handleCheckNow}
-              title="Ask the LIS for the current state of this case"
+              title={t('headerBar.lisSync.checkNowTooltip')}
             >
-              {checkingNow ? 'Checking…' : '↻ Check now'}
+              {checkingNow ? t('headerBar.lisSync.checking') : `↻ ${t('headerBar.lisSync.checkNow')}`}
             </button>
           </div>
         )}
@@ -495,13 +532,13 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
             <span key={block.id} className={`ps-hb-block-chip${block.id === focusedBlockId ? ' ps-hb-block-chip--focused' : ''}`} title={block.sourcePathwayName ?? undefined}>
               <strong>{sp.label}{block.label}</strong>
               {block.sourcePathwayName ? ` (${block.sourcePathwayName})` : ''}
-              {' · '}{block.stains.length ? block.stains.map((st: any) => st.stainName).join(', ') : 'no stains yet'}
-              {' · '}<em>{block.status}</em>
-              {block.priority ? <> · <em title="Priority override">{block.priority}</em></> : null}
+              {' · '}{block.stains.length ? block.stains.map((st: any) => st.stainName).join(', ') : t('headerBar.blocks.noStainsYet')}
+              {' · '}<em>{t(BLOCK_STATUS_LABEL_KEY[block.status as BlockStatus] ?? block.status)}</em>
+              {block.priority ? <> · <em title={t('headerBar.blocks.priorityOverrideTitle')}>{t(CASE_PRIORITY_LABEL_KEY[block.priority as 'Routine' | 'Rush' | 'STAT'] ?? block.priority)}</em></> : null}
             </span>
           )))}
           {onOpenBlockEditor && (
-            <button className="ps-hb-block-edit-btn" onClick={onOpenBlockEditor}>Edit</button>
+            <button className="ps-hb-block-edit-btn" onClick={onOpenBlockEditor}>{t('common.edit')}</button>
           )}
         </div>
       )}
@@ -512,7 +549,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
       {!!deficiencyCount && onOpenDeficiencyHistory && (
         <div className="ps-hb-blocks-row">
           <button className="ps-hb-deficiency-chip" onClick={onOpenDeficiencyHistory}>
-            ⚠ {deficiencyCount} specimen deficienc{deficiencyCount === 1 ? 'y' : 'ies'} — click to view history
+            ⚠ {t('headerBar.blocks.deficiencyChip', { count: deficiencyCount })}
           </button>
         </div>
       )}
@@ -522,7 +559,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
       {!!versionCount && onOpenVersionHistory && (
         <div className="ps-hb-blocks-row">
           <button className="ps-hb-version-chip" onClick={onOpenVersionHistory}>
-            🕐 {versionCount} signed version{versionCount === 1 ? '' : 's'} — click to view history
+            🕐 {t('headerBar.blocks.versionChip', { count: versionCount })}
           </button>
         </div>
       )}
@@ -535,18 +572,18 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
 
           {/* Accession block */}
           <div className="ps-hb-accession">
-            <div className="ps-hb-field-label">Accession</div>
+            <div className="ps-hb-field-label">{t('headerBar.field.accession')}</div>
             <div className="ps-hb-accession-number" data-phi="accession">{accession}</div>
             {hospital && (
               <div className="ps-hb-hospital-sublabel">
                 {hospital.shortName} · {hospital.country === 'UK' ? 'NHS' : hospital.country}
               </div>
             )}
-            <div className={`ps-hb-status-pill ${statusClass}`} title="Overall case status — separate from the AI review confidence indicator on synoptic fields">
+            <div className={`ps-hb-status-pill ${statusClass}`} title={t('headerBar.status.overallStatusTooltip')}>
               <div className="ps-hb-status-dot" />
               <span className="ps-hb-status-text">
-                Case: {statusDisplayLabel}
-                {isPendingRelease && ` (${pendingReleaseCountdown} remaining)`}
+                {t('headerBar.status.caseLabel', { status: statusDisplayLabel })}
+                {isPendingRelease && ` (${t('headerBar.status.remaining', { countdown: pendingReleaseCountdown })})`}
               </span>
             </div>
           </div>
@@ -556,24 +593,24 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           {/* Patient fields */}
           <div className="ps-hb-patient-fields">
             <div className="ps-hb-field">
-              <div className="ps-hb-field-label">Patient</div>
+              <div className="ps-hb-field-label">{t('headerBar.field.patient')}</div>
               <div className="ps-hb-field-value ps-hb-field-value--lg" data-phi="name">{patient}</div>
             </div>
             <div className="ps-hb-field">
-              <div className="ps-hb-field-label">Sex</div>
+              <div className="ps-hb-field-label">{t('headerBar.field.sex')}</div>
               <div className="ps-hb-field-value">{sex}</div>
             </div>
             <div className="ps-hb-field">
-              <div className="ps-hb-field-label">Date of Birth</div>
+              <div className="ps-hb-field-label">{t('headerBar.field.dateOfBirth')}</div>
               <div className="ps-hb-field-value" data-phi="dob">{dob}</div>
             </div>
             <div className="ps-hb-field">
-              <div className="ps-hb-field-label">MRN</div>
+              <div className="ps-hb-field-label">{t('headerBar.field.mrn')}</div>
               <div className="ps-hb-field-value" data-phi="mrn">{mrn}</div>
             </div>
             {clientName && (
               <div className="ps-hb-field">
-                <div className="ps-hb-field-label">Referring</div>
+                <div className="ps-hb-field-label">{t('headerBar.field.referring')}</div>
                 <div className="ps-hb-field-value">{clientName}</div>
               </div>
             )}
@@ -603,30 +640,30 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
         <div className="ps-hb-right">
           <div className="ps-hb-confidence-card">
             <div className="ps-hb-confidence-header">
-              <span className="ps-hb-confidence-status" title="Overall case status">Case: {statusDisplayLabel}</span>
-              <span className="ps-hb-confidence-priority">{caseData?.order?.priority ?? 'Routine'}</span>
+              <span className="ps-hb-confidence-status" title={t('headerBar.status.overallStatusTitle')}>{t('headerBar.status.caseLabel', { status: statusDisplayLabel })}</span>
+              <span className="ps-hb-confidence-priority">{t(CASE_PRIORITY_LABEL_KEY[(caseData?.order?.priority as 'Routine' | 'Rush' | 'STAT') ?? 'Routine'])}</span>
             </div>
             {aiSynthesisStatus && aiSynthesisStatus.state !== 'none' ? (
               aiSynthesisStatus.state === 'review-required' ? (
                 <button
                   className="ps-hb-confidence-score ps-hb-confidence-score--warn ps-hb-reset-button ps-hb-reset-button--column"
                   onClick={onAiStatusClick}
-                  title="AI review confidence on synoptic fields — separate from overall case status. Click to jump to the flagged field."
+                  title={t('headerBar.aiStatus.reviewScoreTooltip')}
                 >
-                  <span className="ps-hb-confidence-pct">⚠ Review Pending</span>
+                  <span className="ps-hb-confidence-pct">⚠ {t('headerBar.aiStatus.reviewPending')}</span>
                   {aiSynthesisStatus.flaggedFieldConfidence !== undefined && (
                     <span className="ps-hb-confidence-label">
-                      Field at {aiSynthesisStatus.flaggedFieldConfidence}% confidence
+                      {t('headerBar.aiStatus.fieldAtConfidence', { pct: aiSynthesisStatus.flaggedFieldConfidence })}
                     </span>
                   )}
                 </button>
               ) : (
                 <div className="ps-hb-confidence-score ps-hb-confidence-score--neutral">
-                  <span className="ps-hb-confidence-pct">AI Drafted</span>
+                  <span className="ps-hb-confidence-pct">{t('headerBar.aiStatus.aiDrafted')}</span>
                   <span className="ps-hb-confidence-label">
-                    No fields below threshold
+                    {t('headerBar.aiStatus.noFieldsBelowThreshold')}
                     {aiSynthesisStatus.overallConfidence !== undefined
-                      ? ` · ${aiSynthesisStatus.overallConfidence}% avg`
+                      ? ` · ${t('headerBar.aiStatus.avgConfidence', { pct: aiSynthesisStatus.overallConfidence })}`
                       : ''}
                   </span>
                 </div>
@@ -642,7 +679,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
                   {statusDisplayLabel.toUpperCase()}
                 </span>
                 <span className="ps-hb-confidence-label">
-                  {isPendingRelease ? `Releasing in ${pendingReleaseCountdown}` : 'No AI suggestions yet'}
+                  {isPendingRelease ? t('headerBar.status.releasingIn', { countdown: pendingReleaseCountdown }) : t('headerBar.aiStatus.noSuggestionsYet')}
                 </span>
               </div>
             )}

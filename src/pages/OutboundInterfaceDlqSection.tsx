@@ -40,7 +40,23 @@
 // than silently sending an incomplete payload.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// File-by-file cleanup sweep: all UI chrome (headers, labels, buttons,
+// empty-row/status text) now goes through t() — new `outboundInterfaceDlq`
+// namespace. The inline style={{}} blocks became the same
+// `.ps-dlq-inline-actions`/`.ps-dlq-section-header--spaced` classes added
+// for OutboundDlqSection.tsx last batch, and the `.ps-conf-hint` color
+// overrides became `.ps-conf-hint--success`/`--warning`. Deliberately left
+// untranslated: the errorMessage/comment strings passed into
+// markFailed()/specimenDeficiencyService.raise() — those are persisted
+// records (like an audit-log entry), not live display chrome, so they
+// stay in English regardless of the viewer's locale, consistent with how
+// this sweep has treated stored audit/CAPA text elsewhere. No duplicated
+// business logic found against OutboundDlqSection.tsx — the two files
+// share no queue types or services; this file's own QUEUE_CONFIG
+// abstraction across three queue types is already the established,
+// correct pattern for this kind of per-type variation.
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockOutboundPatientAdtQueueService } from '@/services/patients/mockOutboundPatientAdtQueueService';
 import { mockOutboundResultQueueService } from '@/services/reports/mockOutboundResultQueueService';
 import { mockOutboundLisSyncQueueService } from '@/services/reports/mockOutboundLisSyncQueueService';
@@ -60,9 +76,9 @@ type AnyEntry = OutboundPatientAdtQueueEntry | OutboundResultQueueEntry | Outbou
 type Failure = { errorCode: 'DISPATCH_TIMEOUT' | 'DISPATCH_UNREACHABLE' | 'DISPATCH_REJECTED'; errorMessage: string; maxRetriesExceeded: boolean };
 
 interface QueueConfig {
-  label: string;
-  identifierColumnLabel: string;
-  kindColumnLabel: string;
+  labelKey: string;
+  identifierColumnLabelKey: string;
+  kindColumnLabelKey: string;
   /** Real, per-entry resolution — A08/A40/A47 all share one queue, so
    *  this can't be a fixed, static value the way it can for the other
    *  two queue types. Returns null when this entry's own real
@@ -87,9 +103,9 @@ interface QueueConfig {
 
 const QUEUE_CONFIG: Record<QueueType, QueueConfig> = {
   patient_adt: {
-    label: 'Patient ADT (A08/A40/A47)',
-    identifierColumnLabel: 'Source Patient',
-    kindColumnLabel: 'Event Type',
+    labelKey: 'outboundInterfaceDlq.queueType.patientAdt.optionLabel',
+    identifierColumnLabelKey: 'outboundInterfaceDlq.queueType.patientAdt.identifierColumnLabel',
+    kindColumnLabelKey: 'outboundInterfaceDlq.queueType.patientAdt.kindColumnLabel',
     getTransactionType: e => {
       const eventType = (e as OutboundPatientAdtQueueEntry).eventType;
       if (eventType === 'A08_DEMOGRAPHIC_UPDATE') return 'A08';
@@ -122,9 +138,9 @@ const QUEUE_CONFIG: Record<QueueType, QueueConfig> = {
     },
   },
   result: {
-    label: 'Pathology Result (ORU^R01)',
-    identifierColumnLabel: 'Case',
-    kindColumnLabel: 'Result State',
+    labelKey: 'outboundInterfaceDlq.queueType.result.optionLabel',
+    identifierColumnLabelKey: 'outboundInterfaceDlq.queueType.result.identifierColumnLabel',
+    kindColumnLabelKey: 'outboundInterfaceDlq.queueType.result.kindColumnLabel',
     getTransactionType: () => 'ORU_R01',
     getIdentifier: e => (e as OutboundResultQueueEntry).caseId,
     getKind: e => (e as OutboundResultQueueEntry).resultState,
@@ -146,9 +162,9 @@ const QUEUE_CONFIG: Record<QueueType, QueueConfig> = {
     },
   },
   lis_sync: {
-    label: 'Assist-Mode LIS Sync',
-    identifierColumnLabel: 'Case',
-    kindColumnLabel: 'Sync Kind',
+    labelKey: 'outboundInterfaceDlq.queueType.lisSync.optionLabel',
+    identifierColumnLabelKey: 'outboundInterfaceDlq.queueType.lisSync.identifierColumnLabel',
+    kindColumnLabelKey: 'outboundInterfaceDlq.queueType.lisSync.kindColumnLabel',
     getTransactionType: () => 'LIS_SYNC',
     getIdentifier: e => (e as OutboundLisSyncQueueEntry).caseId,
     getKind: e => (e as OutboundLisSyncQueueEntry).kind,
@@ -167,6 +183,7 @@ const QUEUE_CONFIG: Record<QueueType, QueueConfig> = {
 };
 
 const OutboundInterfaceDlqSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [queueType, setQueueType] = useState<QueueType>('patient_adt');
   const [entriesByType, setEntriesByType] = useState<Record<QueueType, AnyEntry[]>>({ patient_adt: [], result: [], lis_sync: [] });
@@ -209,7 +226,7 @@ const OutboundInterfaceDlqSection: React.FC = () => {
       const result = await dispatchInterfaceMessage(entry.id, transactionType, payload);
       if (result.ok) {
         await config.markSent(entry.id);
-        setDispatchMessages(prev => ({ ...prev, [entry.id]: '✓ Dispatched and accepted by the receiving interface.' }));
+        setDispatchMessages(prev => ({ ...prev, [entry.id]: t('outboundInterfaceDlq.dispatchedSuccess') }));
       } else {
         await config.markFailed(entry.id, { errorCode: result.errorCode ?? 'DISPATCH_REJECTED', errorMessage: result.error ?? 'Unknown dispatch failure.', maxRetriesExceeded: false });
       }
@@ -271,25 +288,17 @@ const OutboundInterfaceDlqSection: React.FC = () => {
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
         <div>
-          <h2 className="ps-conf-section-title">Outbound Interface DLQ</h2>
-          <p className="ps-conf-section-subtitle">
-            Failed and queued outbound ADT^A08/A40/A47, ORU^R01, and assist-mode LIS sync dispatches. Dispatch Now
-            and Retry Dispatch genuinely send the real payload to the real receiving endpoint
-            (receive_interface_message) — Simulate Failure stays a real, separate testing aid, never a real
-            dispatch attempt.
-          </p>
+          <h2 className="ps-conf-section-title">{t('outboundInterfaceDlq.title')}</h2>
+          <p className="ps-conf-section-subtitle">{t('outboundInterfaceDlq.subtitle')}</p>
         </div>
         <select value={queueType} onChange={e => setQueueType(e.target.value as QueueType)} className="ps-conf-select">
-          {(Object.keys(QUEUE_CONFIG) as QueueType[]).map(t => <option key={t} value={t}>{QUEUE_CONFIG[t].label}</option>)}
+          {(Object.keys(QUEUE_CONFIG) as QueueType[]).map(qt => <option key={qt} value={qt}>{t(QUEUE_CONFIG[qt].labelKey)}</option>)}
         </select>
       </div>
 
       {!config.buildPayload && (
-        <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>
-          ⚠ This queue's own real payload (the actual report text) is built from a real, ephemeral value that's
-          never persisted anywhere — it genuinely can't be rebuilt here later. Real dispatch for this type happens
-          immediately, at the moment its payload is actually built (SynopticReportPage.tsx's own sign-out/amendment
-          flow) — Dispatch Now/Retry Dispatch are disabled below rather than sending an incomplete payload.
+        <p className="ps-conf-hint ps-conf-hint--warning">
+          {t('outboundInterfaceDlq.lisSyncWarning')}
         </p>
       )}
 
@@ -298,12 +307,12 @@ const OutboundInterfaceDlqSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">{config.identifierColumnLabel}</th>
-                <th className="ps-conf-th">{config.kindColumnLabel}</th>
-                <th className="ps-conf-th">Error</th>
-                <th className="ps-conf-th">Retries</th>
-                <th className="ps-conf-th">Retry</th>
-                <th className="ps-conf-th">CAPA</th>
+                <th className="ps-conf-th">{t(config.identifierColumnLabelKey)}</th>
+                <th className="ps-conf-th">{t(config.kindColumnLabelKey)}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.errorHeader')}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.retriesHeader')}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.retryHeader')}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.capaHeader')}</th>
               </tr>
             </thead>
             <tbody>
@@ -312,51 +321,48 @@ const OutboundInterfaceDlqSection: React.FC = () => {
                   <td className="ps-conf-td">{config.getIdentifier(e)}</td>
                   <td className="ps-conf-td">{config.getKind(e)}</td>
                   <td className="ps-conf-td">
-                    {e.errorCode === 'DISPATCH_TIMEOUT' ? 'Dispatch timeout' : e.errorCode === 'DISPATCH_UNREACHABLE' ? 'Engine unreachable' : e.errorCode === 'DISPATCH_REJECTED' ? 'Dispatch rejected' : 'Unknown'}
+                    {e.errorCode === 'DISPATCH_TIMEOUT' ? t('outboundInterfaceDlq.errorLabel.dispatchTimeout') : e.errorCode === 'DISPATCH_UNREACHABLE' ? t('outboundInterfaceDlq.errorLabel.engineUnreachable') : e.errorCode === 'DISPATCH_REJECTED' ? t('outboundInterfaceDlq.errorLabel.dispatchRejected') : t('outboundInterfaceDlq.errorLabel.unknown')}
                     <div className="ps-specreq-meta">{e.errorMessage}</div>
                   </td>
-                  <td className="ps-conf-td">{e.retryCount}{e.maxRetriesExceeded ? ' (max exceeded)' : ''}</td>
+                  <td className="ps-conf-td">{e.retryCount}{e.maxRetriesExceeded ? ` ${t('outboundInterfaceDlq.maxExceededSuffix')}` : ''}</td>
                   <td className="ps-conf-td">
                     <button className="ps-conf-btn-primary" disabled={busyId === e.id || !config.buildPayload} onClick={() => retryDispatch(e)}>
-                      {busyId === e.id ? 'Sending…' : 'Retry Dispatch'}
+                      {busyId === e.id ? t('outboundInterfaceDlq.sending') : t('outboundInterfaceDlq.retryDispatch')}
                     </button>
                   </td>
                   <td className="ps-conf-td">
                     {capturedIds.has(e.id) ? (
-                      <span className="ps-conf-hint" style={{ color: '#10b981' }}>✓ Captured</span>
+                      <span className="ps-conf-hint ps-conf-hint--success">{t('outboundInterfaceDlq.captured')}</span>
                     ) : (
                       <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => captureAsCapa(e)}>
-                        Capture as CAPA
+                        {t('outboundInterfaceDlq.captureAsCapa')}
                       </button>
                     )}
                   </td>
                 </tr>
               ))}
               {failed.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={6}>No failed dispatches.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={6}>{t('outboundInterfaceDlq.noFailedDispatches')}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="ps-conf-section-header" style={{ marginTop: 24 }}>
-        <h2 className="ps-conf-section-title">Queued</h2>
-        <p className="ps-conf-section-subtitle">
-          Real, queued messages awaiting dispatch. Dispatch Now genuinely sends; Simulate Failure honestly
-          fabricates a network-style failure for testing this dashboard — it never reflects a real dispatch attempt.
-        </p>
+      <div className="ps-conf-section-header ps-dlq-section-header--spaced">
+        <h2 className="ps-conf-section-title">{t('outboundInterfaceDlq.queuedSectionTitle')}</h2>
+        <p className="ps-conf-section-subtitle">{t('outboundInterfaceDlq.queuedSectionSubtitle')}</p>
       </div>
       <div className="ps-conf-table-wrap">
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">{config.identifierColumnLabel}</th>
-                <th className="ps-conf-th">{config.kindColumnLabel}</th>
-                <th className="ps-conf-th">Queued At</th>
-                <th className="ps-conf-th">Dispatch</th>
-                <th className="ps-conf-th">Simulate</th>
+                <th className="ps-conf-th">{t(config.identifierColumnLabelKey)}</th>
+                <th className="ps-conf-th">{t(config.kindColumnLabelKey)}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.queuedAtHeader')}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.dispatchHeader')}</th>
+                <th className="ps-conf-th">{t('outboundInterfaceDlq.simulateHeader')}</th>
               </tr>
             </thead>
             <tbody>
@@ -367,21 +373,21 @@ const OutboundInterfaceDlqSection: React.FC = () => {
                   <td className="ps-conf-td">{new Date(e.queuedAt).toLocaleString()}</td>
                   <td className="ps-conf-td">
                     <button className="ps-conf-btn-primary" disabled={busyId === e.id || !config.buildPayload} onClick={() => realDispatch(e)}>
-                      {busyId === e.id ? 'Sending…' : 'Dispatch Now'}
+                      {busyId === e.id ? t('outboundInterfaceDlq.sending') : t('outboundInterfaceDlq.dispatchNow')}
                     </button>
-                    {dispatchMessages[e.id] && <div className="ps-conf-hint" style={{ color: '#10b981' }}>{dispatchMessages[e.id]}</div>}
+                    {dispatchMessages[e.id] && <div className="ps-conf-hint ps-conf-hint--success">{dispatchMessages[e.id]}</div>}
                   </td>
                   <td className="ps-conf-td">
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'timeout')}>Simulate Timeout</button>
-                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'unreachable')}>Simulate Unreachable</button>
-                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'rejected')}>Simulate Rejected</button>
+                    <div className="ps-dlq-inline-actions">
+                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'timeout')}>{t('outboundInterfaceDlq.simulateTimeout')}</button>
+                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'unreachable')}>{t('outboundInterfaceDlq.simulateUnreachable')}</button>
+                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => simulateFailure(e, 'rejected')}>{t('outboundInterfaceDlq.simulateRejected')}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {queued.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={5}>No queued messages.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={5}>{t('outboundInterfaceDlq.noQueuedMessages')}</td></tr>
               )}
             </tbody>
           </table>

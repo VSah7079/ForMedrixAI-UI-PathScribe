@@ -1,26 +1,43 @@
+// src/components/Config/Models/index.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// i18n note: `m.name`/`.version`/`.accuracy`/`.casesProcessed` are real
+// model data, never translated. `m.vendor`/`.type`/`.status` are real,
+// persisted enum values — the local `VENDOR_LABEL_KEY`/`TYPE_LABEL_KEY`/
+// `STATUS_LABEL_KEY` maps below translate only the displayed label,
+// leaving the underlying enum values (used for conditional logic too,
+// e.g. `target?.type === 'Voice Dictation'`) untouched as data.
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { modelService, facilityService } from '../../../services';
-import { AIModel, ModelVendor } from '../../../services/models/IModelService';
+import { AIModel, ModelVendor, ModelType, ModelStatus } from '../../../services/models/IModelService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import { hasPassingValidationForVoiceModel } from '../AI/resolveVoiceAiModel';
 
-const statusStyle: Record<string, React.CSSProperties> = {
-  Active:  { color: '#81C995', background: 'rgba(129,201,149,0.15)', border: '1px solid rgba(129,201,149,0.3)'  },
-  Retired: { color: '#9AA0A6', background: 'rgba(154,160,166,0.10)', border: '1px solid rgba(154,160,166,0.2)' },
-  Beta:    { color: '#FDD663', background: 'rgba(253,214,99,0.12)',  border: '1px solid rgba(253,214,99,0.3)'   },
+const STATUS_LABEL_KEY: Record<ModelStatus, string> = {
+  Active:  'common.active',
+  Retired: 'billingDictionarySection.status.retired',
+  Beta:    'modelStoreModal.betaLabel',
 };
 
-// Real, honest labels for the vendors this app actually knows about —
-// keeps the table readable rather than showing raw union values.
-const vendorLabel: Record<ModelVendor, string> = {
-  anthropic: 'Anthropic',
-  openai:    'OpenAI',
-  google:    'Google',
-  other:     'Other',
+const VENDOR_LABEL_KEY: Record<ModelVendor, string> = {
+  anthropic: 'navBar.systemInfo.anthropic',
+  openai:    'modelsTab.vendor.openai',
+  google:    'login.ssoGoogle',
+  other:     'printerProfilesSection.vendorLabels.OTHER',
+};
+
+const TYPE_LABEL_KEY: Record<ModelType, string> = {
+  'Gross Only':     'modelsTab.type.grossOnly',
+  'Micro Only':     'modelsTab.type.microOnly',
+  'Gross + Micro':  'modelsTab.type.grossAndMicro',
+  'Diagnosis Only': 'modelsTab.type.diagnosisOnly',
+  'Voice Dictation': 'modelsTab.type.voiceDictation',
 };
 
 const ModelsTab: React.FC = () => {
+  const { t } = useTranslation();
   const [models,  setModels]  = useState<AIModel[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +66,7 @@ const ModelsTab: React.FC = () => {
     if (target?.type === 'Voice Dictation') {
       const eligible = await hasPassingValidationForVoiceModel(id);
       if (!eligible) {
-        setBlockedMessage(`"${target.name} ${target.version}" needs a PASS-graded, reported Validation Study before it can become the active voice model.`);
+        setBlockedMessage(t('modelsTab.blockedMessage', { nameVersion: `${target.name} ${target.version}` }));
         return;
       }
     }
@@ -76,64 +93,71 @@ const ModelsTab: React.FC = () => {
   const facilitiesOnModel = (modelId: string) => facilities.filter(c => c.internalAiModelId === modelId);
 
   if (loading) return (
-    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#6b7280', fontSize: 14 }}>Loading models...</div>
+    <div className="ps-models-loading">{t('modelsTab.loading')}</div>
   );
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#FFFFFF', marginBottom: '4px' }}>Models</h2>
-      <p style={{ fontSize: '14px', color: '#9AA0A6', marginBottom: '24px' }}>View and compare AI model performance across versions.</p>
+    <div className="ps-models-page">
+      <h2 className="ps-models-title">{t('modelsTab.title')}</h2>
+      <p className="ps-models-subtitle">{t('modelsTab.subtitle')}</p>
       {blockedMessage && (
-        <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', fontSize: 13 }}>
+        <div className="ps-models-blocked-message">
           🔒 {blockedMessage}
         </div>
       )}
-      <div style={{ border: '1px solid rgba(255,255,255,0.10)', borderRadius: '12px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="ps-models-table-wrap">
+        <table className="ps-models-table">
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-              {['Model', 'Vendor', 'Type', 'Accuracy', 'Cases Processed', 'Status', 'Facilities Approved', 'Default'].map(h => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#9AA0A6', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</th>
+            <tr className="ps-models-thead-row">
+              {[
+                t('modelsTab.tableHeaders.model'),
+                t('modelsTab.tableHeaders.vendor'),
+                t('modelsTab.tableHeaders.type'),
+                t('modelsTab.tableHeaders.accuracy'),
+                t('modelsTab.tableHeaders.casesProcessed'),
+                t('modelsTab.tableHeaders.status'),
+                t('modelsTab.tableHeaders.facilitiesApproved'),
+                t('modelsTab.tableHeaders.default'),
+              ].map(h => (
+                <th key={h} className="ps-models-th">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {models.map((m, i) => {
+            {models.map(m => {
               const approved = facilitiesOnModel(m.id);
               return (
-              <tr key={m.id} style={{ borderBottom: i < models.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', opacity: m.status === 'Retired' ? 0.6 : 1 }}>
-                <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600, color: '#DEE4E7' }}>
+              <tr key={m.id} className={`ps-models-tr${m.status === 'Retired' ? ' ps-models-tr--retired' : ''}`}>
+                <td className="ps-models-td ps-models-td--strong">
                   {m.name} {m.version}
                 </td>
-                <td style={{ padding: '14px 16px', fontSize: '14px', color: '#9AA0A6' }}>{vendorLabel[m.vendor]}</td>
-                <td style={{ padding: '14px 16px', fontSize: '14px', color: '#9AA0A6' }}>{m.type}</td>
-                <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 700, color: '#8AB4F8' }}>{m.accuracy}%</td>
-                <td style={{ padding: '14px 16px', fontSize: '14px', color: '#9AA0A6' }}>{m.casesProcessed.toLocaleString()}</td>
-                <td style={{ padding: '14px 16px' }}>
-                  <span style={{ padding: '3px 10px', borderRadius: '99px', fontSize: '12px', fontWeight: 600, ...statusStyle[m.status] }}>{m.status}</span>
+                <td className="ps-models-td ps-models-td--muted">{t(VENDOR_LABEL_KEY[m.vendor])}</td>
+                <td className="ps-models-td ps-models-td--muted">{t(TYPE_LABEL_KEY[m.type])}</td>
+                <td className="ps-models-td ps-models-td--accent">{m.accuracy}%</td>
+                <td className="ps-models-td ps-models-td--muted">{m.casesProcessed.toLocaleString()}</td>
+                <td className="ps-models-td">
+                  <span className={`ps-models-status-badge ps-models-status-badge--${m.status.toLowerCase()}`}>{t(STATUS_LABEL_KEY[m.status])}</span>
                 </td>
-                <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                <td className="ps-models-td ps-models-td--small">
                   {approved.length === 0 ? (
-                    <span style={{ color: '#6b7280' }}>—</span>
+                    <span className="ps-models-facilities-empty">—</span>
                   ) : (
                     <span
-                      style={{ color: '#81C995', fontWeight: 600, cursor: 'default' }}
+                      className="ps-models-facilities-count"
                       title={approved.map(c => c.name).join(', ')}
                     >
-                      {approved.length} facilit{approved.length === 1 ? 'y' : 'ies'}
+                      {t('modelsTab.facilitiesCount', { count: approved.length })}
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '14px 16px' }}>
+                <td className="ps-models-td">
                   {m.isDefault ? (
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#8AB4F8' }}>✓ Default</span>
+                    <span className="ps-models-default-badge">✓ {t('modelsTab.tableHeaders.default')}</span>
                   ) : m.status !== 'Retired' ? (
                     <button
                       onClick={() => handleSetDefault(m.id)}
-                      style={{ padding: '4px 12px', fontSize: '12px', fontWeight: 600, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, background: 'rgba(255,255,255,0.07)', cursor: 'pointer', color: '#DEE4E7' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-                    >Set Default</button>
+                      className="ps-models-set-default-btn"
+                    >{t('modelsTab.setDefaultButton')}</button>
                   ) : null}
                 </td>
               </tr>

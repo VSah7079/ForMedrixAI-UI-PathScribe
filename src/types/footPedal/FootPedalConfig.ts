@@ -31,6 +31,18 @@
 // tech at the Embedding bench configuring "Pedal 1" needs to
 // recognize it as the same real physical trigger regardless of which
 // page happens to be open when they press it.
+//
+// i18n sweep (batch 39): the labels/description below are only ever
+// actually rendered in one place — FootPedalSection.tsx (the other two
+// real consumers, MicrotomyWorkstationPage.tsx and
+// EmbeddingStationPage.tsx, only reference this file in a doc comment,
+// confirmed via grep). So instead of hardcoded English strings, this
+// exports i18n KEYS (FOOT_PEDAL_ACTION_LABEL_KEYS) resolved via t() at
+// the one real render site, and describeFootPedalInput() now takes the
+// same t() function to build its live "what's bound" text — matching
+// the established `t: (key, options?) => string` utility-function
+// pattern used elsewhere (e.g. BillingLogsSection.tsx's
+// summarizeFilters()).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type FootPedalAction = 'pedal1_pushToTalk' | 'pedal2_nextField' | 'pedal3_pauseReplay';
@@ -41,13 +53,16 @@ export type FootPedalInputSource =
 
 export type FootPedalBindings = Partial<Record<FootPedalAction, FootPedalInputSource>>;
 
-export const FOOT_PEDAL_ACTION_LABELS: Record<FootPedalAction, string> = {
-  pedal1_pushToTalk:  'Pedal 1 — Primary Action (Push-to-Talk on Sign-Out · Confirm Piece Count on Embedding)',
-  pedal2_nextField:   'Pedal 2 — Advance / Next (Next Field on Sign-Out · Print/Etch Next on Microtomy)',
-  pedal3_pauseReplay: 'Pedal 3 — Pause / Replay Last Segment (Sign-Out dictation only)',
+export const FOOT_PEDAL_ACTION_LABEL_KEYS: Record<FootPedalAction, string> = {
+  pedal1_pushToTalk:  'footPedalSection.actions.pedal1',
+  pedal2_nextField:   'footPedalSection.actions.pedal2',
+  pedal3_pauseReplay: 'footPedalSection.actions.pedal3',
 };
 
-export function describeFootPedalInput(input: FootPedalInputSource): string {
-  if (input.kind === 'keyboard') return `Keyboard: ${input.label}`;
-  return `Pedal button ${input.buttonIndex + 1} (${input.gamepadId})`;
+export function describeFootPedalInput(
+  input: FootPedalInputSource,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  if (input.kind === 'keyboard') return t('footPedalSection.input.keyboard', { label: input.label });
+  return t('footPedalSection.input.gamepadButton', { index: input.buttonIndex + 1, gamepadId: input.gamepadId });
 }

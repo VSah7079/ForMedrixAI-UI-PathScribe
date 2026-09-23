@@ -236,4 +236,19 @@ body {
   50%       { opacity: 0.5; }
 }
 
-html, body, #root { overflow-x: hidden; }
+/* Real fix (PS-296 — "Accession screen requires scrolling that
+   shouldn't be necessary... extra scroll bar at top"): this app is
+   built as a fixed-viewport shell — .ps-app-root is already
+   `height: 100vh; overflow: hidden`, and every page manages its own
+   internal scroll region explicitly (.ps-accession-shell,
+   .ps-scroll, etc.). But this rule only ever constrained horizontal
+   overflow, never vertical — so on any page whose content came out
+   even a few px taller than the viewport (confirmed on Accession at
+   100% zoom), the real, unwanted result was the raw BROWSER/document
+   scrollbar appearing ABOVE and independent of that page's own
+   intentional inner scrollbar — a real, confirmed second, redundant
+   scrollbar, not a rendering quirk. Constraining overflow-y here too
+   makes the outer document match its own already-stated
+   fixed-viewport design on both axes: only a page's own explicit
+   scroll containers can ever scroll, never the document itself. */
+html, body, #root { overflow: hidden; }

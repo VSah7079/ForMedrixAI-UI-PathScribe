@@ -29,6 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -43,6 +44,7 @@ import type { Case } from '@/types/case/Case';
 type ActiveAction = 'merge' | 'link' | 'move' | null;
 
 export const PatientManagementSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const session = getSessionUser();
   const crossTenant = canViewCrossTenantQaData(session);
@@ -128,16 +130,20 @@ export const PatientManagementSection: React.FC = () => {
   // data-phi span goes (same "redact the whole message" convention as
   // PhiToastMessage, since every branch here names at least one patient).
   const confirmActionLabel = activeAction === 'merge'
-    ? `Merge ${selectedPatient?.firstName} ${selectedPatient?.lastName} into ${targetPatient?.firstName} ${targetPatient?.lastName}?`
+    ? t('patientManagementSection.confirm.mergeLabel', { sourceFirstName: selectedPatient?.firstName, sourceLastName: selectedPatient?.lastName, targetFirstName: targetPatient?.firstName, targetLastName: targetPatient?.lastName })
     : activeAction === 'link'
-      ? `Link ${selectedPatient?.firstName} ${selectedPatient?.lastName} to ${targetPatient?.firstName} ${targetPatient?.lastName} as ${linkRelationshipType === 'same_person' ? 'the same real person' : 'a family relation'}?`
-      : `Move case ${moveCaseId} from ${selectedPatient?.firstName} ${selectedPatient?.lastName} to ${targetPatient?.firstName} ${targetPatient?.lastName}?`;
+      ? t('patientManagementSection.confirm.linkLabel', {
+          sourceFirstName: selectedPatient?.firstName, sourceLastName: selectedPatient?.lastName,
+          targetFirstName: targetPatient?.firstName, targetLastName: targetPatient?.lastName,
+          relationship: linkRelationshipType === 'same_person' ? t('patientManagementSection.relationshipLabel.samePersonReal') : t('patientManagementSection.relationshipLabel.familyRelation'),
+        })
+      : t('patientManagementSection.confirm.moveLabel', { caseId: moveCaseId, sourceFirstName: selectedPatient?.firstName, sourceLastName: selectedPatient?.lastName, targetFirstName: targetPatient?.firstName, targetLastName: targetPatient?.lastName });
 
   const confirmActionMessage = activeAction === 'merge'
-    ? 'This is irreversible: every real case and encounter under the merged-away identity will be repointed to the surviving one. The merged-away record is kept, not deleted, as a permanent audit trail.'
+    ? t('patientManagementSection.confirm.mergeMessage')
     : activeAction === 'link'
-      ? 'Both identities stay fully, independently active — nothing is merged or repointed.'
-      : 'Only this one specific case moves. Both identities stay independently active; any other real case under the source patient is untouched.';
+      ? t('patientManagementSection.confirm.linkMessage')
+      : t('patientManagementSection.confirm.moveMessage');
 
   const handleConfirmedAction = async () => {
     if (!selectedPatient || !targetPatient) return;
@@ -145,15 +151,22 @@ export const PatientManagementSection: React.FC = () => {
     try {
       if (activeAction === 'merge') {
         const result = await mockPatientIndexService.mergeIntoExistingPatient(selectedPatient.id, targetPatient.id);
-        setStatusMessage(`✓ Merged — ${result.casesRepointed} case(s) and ${result.encountersRepointed} encounter(s) repointed to ${targetPatient.firstName} ${targetPatient.lastName}.`);
+        setStatusMessage(t('patientManagementSection.status.mergedSuccess', {
+          casesFragment: t('patientManagementSection.status.caseCount', { count: result.casesRepointed }),
+          encountersFragment: t('patientManagementSection.status.encounterCount', { count: result.encountersRepointed }),
+          targetFirstName: targetPatient.firstName, targetLastName: targetPatient.lastName,
+        }));
       } else if (activeAction === 'link') {
         await mockPatientIndexService.linkPatients(selectedPatient.id, targetPatient.id, linkRelationshipType, user?.id ?? 'unknown', 'Linked from Patient Management');
-        setStatusMessage(`✓ Linked to ${targetPatient.firstName} ${targetPatient.lastName} as ${linkRelationshipType === 'same_person' ? 'the same person' : 'a family relation'}.`);
+        setStatusMessage(t('patientManagementSection.status.linkedSuccess', {
+          targetFirstName: targetPatient.firstName, targetLastName: targetPatient.lastName,
+          relationship: linkRelationshipType === 'same_person' ? t('patientManagementSection.relationshipLabel.samePerson') : t('patientManagementSection.relationshipLabel.familyRelation'),
+        }));
       } else if (activeAction === 'move') {
         const result = await mockPatientIndexService.moveCaseToPatient(moveCaseId, selectedPatient.id, targetPatient.id, new Date().toISOString());
         setStatusMessage(result.moved
-          ? `✓ Case ${moveCaseId} moved to ${targetPatient.firstName} ${targetPatient.lastName}. Encounter: ${result.encounterOutcome ?? 'none'}.`
-          : `⚠ Move failed: ${result.reason}`);
+          ? t('patientManagementSection.status.moveSuccess', { caseId: moveCaseId, targetFirstName: targetPatient.firstName, targetLastName: targetPatient.lastName, encounterOutcome: result.encounterOutcome ?? t('patientManagementSection.status.noneValue') })
+          : t('patientManagementSection.status.moveFailed', { reason: result.reason }));
       }
       setConfirmOpen(false);
       setActiveAction(null); setTargetPatient(null); setMoveCaseId('');
@@ -167,11 +180,9 @@ export const PatientManagementSection: React.FC = () => {
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
         <div>
-          <h2 className="ps-conf-section-title">Patient Management</h2>
+          <h2 className="ps-conf-section-title">{t('patientManagementSection.title')}</h2>
           <p className="ps-conf-section-subtitle">
-            Real, proactive Merge, Link, and Move — search for any real patient and act on them directly, rather
-            than waiting for the system to flag something. Merge and Move both correctly repoint real Encounter
-            records, not just Cases.
+            {t('patientManagementSection.subtitle')}
           </p>
         </div>
       </div>
@@ -179,19 +190,18 @@ export const PatientManagementSection: React.FC = () => {
       {!selectedPatient ? (
         <>
           <input
-            className="ps-conf-input"
-            style={{ maxWidth: 400 }}
-            placeholder="Search by name or MRN…"
+            className="ps-conf-input ps-patientmgmt-search-input"
+            placeholder={t('patientManagementSection.searchPlaceholder')}
             value={primaryQuery}
             onChange={e => setPrimaryQuery(e.target.value)}
           />
-          {primaryLoading && <p className="ps-conf-hint">Searching…</p>}
+          {primaryLoading && <p className="ps-conf-hint">{t('common.searching')}</p>}
           {primaryResults.length > 0 && (
-            <div className="ps-accession-outside-link-results" style={{ marginTop: 10 }}>
+            <div className="ps-accession-outside-link-results">
               {primaryResults.map(r => (
                 <div key={r.id} className="ps-accession-outside-link-result">
-                  <span data-phi="true">{r.firstName} {r.lastName} — MRN {r.mrn} — DOB {new Date(r.dateOfBirth).toLocaleDateString()}</span>
-                  <button className="ps-conf-btn-secondary" onClick={() => selectPrimaryPatient(r)}>Select</button>
+                  <span data-phi="true">{t('patientManagementSection.searchResultLine', { firstName: r.firstName, lastName: r.lastName, mrn: r.mrn, dob: new Date(r.dateOfBirth).toLocaleDateString() })}</span>
+                  <button className="ps-conf-btn-secondary" onClick={() => selectPrimaryPatient(r)}>{t('common.select')}</button>
                 </div>
               ))}
             </div>
@@ -199,91 +209,91 @@ export const PatientManagementSection: React.FC = () => {
         </>
       ) : (
         <>
-          <div className="ps-conf-table-wrap" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div className="ps-conf-table-wrap ps-conf-table-wrap--padded">
+            <div className="ps-patientmgmt-card-header">
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }} data-phi="name">{selectedPatient.firstName} {selectedPatient.lastName}</div>
-                <div className="ps-conf-hint" data-phi="true">MRN {selectedPatient.mrn} · DOB {new Date(selectedPatient.dateOfBirth).toLocaleDateString()} · {selectedPatient.id}</div>
+                <div className="ps-patientmgmt-name" data-phi="name">{selectedPatient.firstName} {selectedPatient.lastName}</div>
+                <div className="ps-conf-hint" data-phi="true">{t('patientManagementSection.selectedMetaLine', { mrn: selectedPatient.mrn, dob: new Date(selectedPatient.dateOfBirth).toLocaleDateString(), id: selectedPatient.id })}</div>
                 {selectedPatient.mergedInto && (
-                  <p className="ps-conf-hint" style={{ color: '#ef4444' }}>⚠ This record was merged into {selectedPatient.mergedInto} — acting on the surviving record is usually correct instead.</p>
+                  <p className="ps-conf-hint ps-conf-hint--danger">⚠ {t('patientManagementSection.mergedIntoWarning', { mergedInto: selectedPatient.mergedInto })}</p>
                 )}
                 {selectedPatient.needsReview && (
-                  <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>⚠ Flagged for review: {selectedPatient.reviewReason}</p>
+                  <p className="ps-conf-hint ps-conf-hint--warning">⚠ {t('patientManagementSection.flaggedForReviewWarning', { reason: selectedPatient.reviewReason })}</p>
                 )}
                 {selectedPatient.isDowntimeRecord && (
-                  <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>⚠ Downtime/placeholder identity</p>
+                  <p className="ps-conf-hint ps-conf-hint--warning">⚠ {t('patientManagementSection.downtimeWarning')}</p>
                 )}
               </div>
-              <button className="ps-btn-ghost-dark" onClick={() => { setSelectedPatient(null); setActiveAction(null); }}>← New Search</button>
+              <button className="ps-btn-ghost-dark" onClick={() => { setSelectedPatient(null); setActiveAction(null); }}>← {t('patientManagementSection.newSearchButton')}</button>
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <div className="ps-conf-hint" style={{ fontWeight: 600 }}>Real Cases ({selectedCases.length})</div>
-              {selectedCases.length === 0 ? <p className="ps-conf-hint">No real cases under this identity.</p> : (
-                <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
+            <div className="ps-patientmgmt-cases-block">
+              <div className="ps-conf-hint ps-patientmgmt-cases-heading">{t('patientManagementSection.realCasesHeading', { count: selectedCases.length })}</div>
+              {selectedCases.length === 0 ? <p className="ps-conf-hint">{t('patientManagementSection.noCasesUnderIdentity')}</p> : (
+                <ul className="ps-patientmgmt-cases-list">
                   {selectedCases.map(c => <li key={c.id} className="ps-conf-hint" data-phi="accession">{c.accession?.fullAccession ?? c.id}</li>)}
                 </ul>
               )}
             </div>
 
             {(samePersonLinks.length > 0 || familyRelationLinks.length > 0) && (
-              <div style={{ marginTop: 10 }}>
+              <div className="ps-patientmgmt-links-block">
                 {samePersonLinks.length > 0 && (
-                  <div className="ps-conf-hint" data-phi="name">Same person: {samePersonLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
+                  <div className="ps-conf-hint" data-phi="name">{t('patientManagementSection.samePersonLine', { names: samePersonLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ') })}</div>
                 )}
                 {familyRelationLinks.length > 0 && (
-                  <div className="ps-conf-hint" data-phi="name">Family relation: {familyRelationLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ')}</div>
+                  <div className="ps-conf-hint" data-phi="name">{t('patientManagementSection.familyRelationLine', { names: familyRelationLinks.map(r => `${r.firstName} ${r.lastName}`).join(', ') })}</div>
                 )}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button className="ps-conf-btn-primary" onClick={() => openAction('merge')}>Merge Into…</button>
-              <button className="ps-conf-btn-primary" onClick={() => openAction('link')}>Link To…</button>
-              <button className="ps-conf-btn-primary" disabled={selectedCases.length === 0} onClick={() => openAction('move')}>Move a Case…</button>
+            <div className="ps-patientmgmt-actions-row">
+              <button className="ps-conf-btn-primary" onClick={() => openAction('merge')}>{t('patientManagementSection.mergeIntoButton')}</button>
+              <button className="ps-conf-btn-primary" onClick={() => openAction('link')}>{t('patientManagementSection.linkToButton')}</button>
+              <button className="ps-conf-btn-primary" disabled={selectedCases.length === 0} onClick={() => openAction('move')}>{t('patientManagementSection.moveACaseButton')}</button>
             </div>
 
             {/* PS-72: whole-message tagging, same convention as PhiToastMessage —
                 the ✓ success paths here always name a target patient; only the
                 ⚠ failure path doesn't, and redacting that one too is the accepted
                 trade-off for not needing per-branch logic here. */}
-            {statusMessage && <p className="ps-conf-hint" data-phi="true" style={{ color: statusMessage.startsWith('⚠') ? '#ef4444' : '#10b981', marginTop: 10 }}>{statusMessage}</p>}
+            {statusMessage && <p className={`ps-conf-hint ps-patientmgmt-status-msg ${statusMessage.startsWith('⚠') ? 'ps-conf-hint--danger' : 'ps-conf-hint--success'}`} data-phi="true">{statusMessage}</p>}
           </div>
 
           {activeAction === 'move' && (
-            <div className="ps-conf-table-wrap" style={{ padding: 16, marginTop: 12 }}>
-              <label className="ps-label">Which case?</label>
+            <div className="ps-conf-table-wrap ps-conf-table-wrap--padded ps-conf-table-wrap--spaced">
+              <label className="ps-label">{t('patientManagementSection.whichCaseLabel')}</label>
               <select className="ps-conf-select" value={moveCaseId} onChange={e => setMoveCaseId(e.target.value)}>
-                <option value="">— Select —</option>
+                <option value="">{t('patientManagementSection.selectPlaceholderOption')}</option>
                 {selectedCases.map(c => <option key={c.id} value={c.id}>{c.accession?.fullAccession ?? c.id}</option>)}
               </select>
             </div>
           )}
 
           {activeAction === 'link' && (
-            <div className="ps-conf-table-wrap" style={{ padding: 16, marginTop: 12 }}>
-              <label className="ps-label">Relationship</label>
+            <div className="ps-conf-table-wrap ps-conf-table-wrap--padded ps-conf-table-wrap--spaced">
+              <label className="ps-label">{t('patientManagementSection.relationshipLabel_field')}</label>
               <select className="ps-conf-select" value={linkRelationshipType} onChange={e => setLinkRelationshipType(e.target.value as PatientLinkRelationshipType)}>
-                <option value="same_person">Same real person (e.g. maiden/married name)</option>
-                <option value="family_relation">Family relation (e.g. newborn/mother, or siblings for cascade molecular testing) — distinct real people</option>
+                <option value="same_person">{t('patientManagementSection.relationshipOption.samePerson')}</option>
+                <option value="family_relation">{t('patientManagementSection.relationshipOption.familyRelation')}</option>
               </select>
             </div>
           )}
 
           {(activeAction === 'merge' || activeAction === 'link' || (activeAction === 'move' && moveCaseId)) && (
-            <div style={{ marginTop: 12 }}>
+            <div className="ps-patientmgmt-linksearch-wrap">
               <PatientLinkSearch
                 organisationId={selectedPatient.organisationId}
                 confirmed={targetPatient}
                 onConfirm={setTargetPatient}
-                title={activeAction === 'merge' ? 'Merge into which patient?' : activeAction === 'link' ? 'Link to which patient?' : 'Move to which patient?'}
-                helpText="Search and select the real, target patient for this action."
-                confirmButtonLabel="Select"
-                confirmedLabel="Target"
+                title={activeAction === 'merge' ? t('patientManagementSection.linkSearch.mergeTitle') : activeAction === 'link' ? t('patientManagementSection.linkSearch.linkTitle') : t('patientManagementSection.linkSearch.moveTitle')}
+                helpText={t('patientManagementSection.linkSearch.helpText')}
+                confirmButtonLabel={t('common.select')}
+                confirmedLabel={t('patientManagementSection.linkSearch.confirmedLabel')}
               />
               {targetPatient && (
-                <button className="ps-conf-btn-primary" style={{ marginTop: 10 }} onClick={() => setConfirmOpen(true)}>
-                  Continue
+                <button className="ps-conf-btn-primary ps-patientmgmt-continue-btn" onClick={() => setConfirmOpen(true)}>
+                  {t('common.continue')}
                 </button>
               )}
             </div>
@@ -293,10 +303,10 @@ export const PatientManagementSection: React.FC = () => {
 
       <ConfirmModal
         show={confirmOpen}
-        title="Confirm Patient Management Action"
+        title={t('patientManagementSection.confirmModalTitle')}
         message={<span data-phi="true">{confirmActionLabel} {confirmActionMessage}</span>}
-        confirmLabel={busy ? 'Working…' : 'Confirm'}
-        cancelLabel="Cancel"
+        confirmLabel={busy ? t('patientManagementSection.workingButton') : t('common.confirm')}
+        cancelLabel={t('common.cancel')}
         onConfirm={handleConfirmedAction}
         onCancel={() => setConfirmOpen(false)}
       />

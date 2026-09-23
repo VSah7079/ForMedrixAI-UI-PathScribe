@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CptCodeSearchPicker } from '@/components/Common/CptCodeSearchPicker';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
 import type { BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
@@ -33,6 +34,7 @@ export interface CorrectAppliedCodeModalProps {
 }
 
 export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = ({ originalCode, onConfirm, onCancel }) => {
+  const { t } = useTranslation();
   const [newCode, setNewCode] = useState('');
   const [rvuEntries, setRvuEntries] = useState<BillingDictionaryEntry[]>([]);
   useEffect(() => {
@@ -45,14 +47,18 @@ export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = (
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Correct Billing Code</div>
+        <div className="ps-ms-header">{t('correctAppliedCodeModal.header')}</div>
         <div className="ps-ms-body">
+          {/* Real copy cleanup, same "leaked rhetorical tic" pattern
+              found elsewhere in this sweep (see MolecularPlateBuilderPage):
+              this UI string had picked up this codebase's own comment
+              habit of qualifying things as "Real, ..." — cleaned to
+              plain English before translating. */}
           <p className="ps-fixgate-intro">
-            Real, per direct guidance's own "credit the old, charge the new" pattern — code {originalCode}
-            will be reversed with a real credit, and a new charge created with the code entered below.
+            {t('correctAppliedCodeModal.intro', { originalCode })}
           </p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="correct-applied-code-input">Corrected CPT Code <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="correct-applied-code-input">{t('correctAppliedCodeModal.correctedCodeLabel')} <span className="ps-conf-required">*</span></label>
             <CptCodeSearchPicker
               entries={rvuEntries}
               value={newCode}
@@ -62,13 +68,13 @@ export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = (
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('correctAppliedCodeModal.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canConfirm}
             onClick={() => onConfirm(newCode.trim())}
           >
-            Correct Code
+            {t('correctAppliedCodeModal.correctCode')}
           </button>
         </div>
       </div>

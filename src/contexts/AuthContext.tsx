@@ -342,3 +342,30 @@ export function useAuth() {
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
+
+// ── Shared admin-tier role checks ──────────────────────────────────────────
+// File-by-file cleanup sweep: consolidates two independently-duplicated,
+// independently-bug-prone copies of this exact check.
+// ConfigurationPage.tsx used to read its own localStorage.getItem
+// ('pathscribe-user') + JSON.parse, duplicating exactly what this context
+// already does under the same storage key; Config/AI/index.tsx's own copy
+// had the same bug pattern for real (read the wrong storage key entirely —
+// 'pathscribe_current_user' instead of this context's real 'pathscribe-user'
+// — so isAdmin there was always false for every real user until that was
+// caught and fixed locally). Reading useAuth()'s already-parsed user.role
+// here means there is exactly one source of truth for "is this user an
+// admin," not two (or more) that can silently drift or regress.
+//
+// "Admin-tier" here is the broader set used for gating whole admin surfaces
+// (admin, pathologist-admin, or superadmin) — deliberately broader than
+// roleHas()'s own "admin" check above, which folds pathologist-admin into
+// "pathologist" checks but not "admin" ones. See roleHas's own doc comment.
+export function useIsAdmin(): boolean {
+  const { user } = useAuth();
+  return !!user && ['admin', 'pathologist-admin', 'superadmin'].includes(user.role);
+}
+
+export function useIsSuperAdmin(): boolean {
+  const { user } = useAuth();
+  return user?.role === 'superadmin';
+}

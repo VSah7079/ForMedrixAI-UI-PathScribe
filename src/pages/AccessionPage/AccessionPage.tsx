@@ -35,6 +35,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { PhiToastMessage } from '@/components/Common/PhiToastMessage';
@@ -147,25 +148,53 @@ import { formatConsentingRelativePriorityHint } from '@/services/autopsy/formatC
  *  autopsy_gross_examination.json's own real section titles exactly,
  *  so a picked organ's group name is recognizable against the actual
  *  synoptic section it will reveal. */
-const AUTOPSY_ORGAN_PICKER_GROUPS: { sectionTitle: string; organs: AutopsyOrganCode[] }[] = (() => {
-  const sectionTitleById: Record<string, string> = {
-    head_and_neck: 'Head & Neck', cardiovascular_system: 'Cardiovascular',
-    respiratory_system: 'Respiratory', gastrointestinal_hepatobiliary: 'Gastrointestinal & Hepatobiliary',
-    genitourinary_endocrine: 'Genitourinary & Endocrine', musculoskeletal_hematopoietic: 'Musculoskeletal & Hematopoietic',
+// Real, i18n sweep (batch 10) — sectionTitle/autopsyOrganCodeLabel were
+// static English text generated algorithmically from the organ code
+// itself; converted to the same label-key-map pattern used throughout
+// this sweep (real value/id untouched, only the displayed label is a
+// translation key, resolved with t() at the render site).
+const AUTOPSY_ORGAN_PICKER_GROUPS: { sectionId: string; titleKey: string; organs: AutopsyOrganCode[] }[] = (() => {
+  const sectionTitleKeyById: Record<string, string> = {
+    head_and_neck: 'accessionPage.autopsy.section.headAndNeck',
+    cardiovascular_system: 'accessionPage.autopsy.section.cardiovascular',
+    respiratory_system: 'accessionPage.autopsy.section.respiratory',
+    gastrointestinal_hepatobiliary: 'accessionPage.autopsy.section.gastrointestinalHepatobiliary',
+    genitourinary_endocrine: 'accessionPage.autopsy.section.genitourinaryEndocrine',
+    musculoskeletal_hematopoietic: 'accessionPage.autopsy.section.musculoskeletalHematopoietic',
   };
   const bySectionId = new Map<string, AutopsyOrganCode[]>();
   for (const [organ, sectionId] of Object.entries(AUTOPSY_ORGAN_TO_SECTION) as [AutopsyOrganCode, string][]) {
     if (!bySectionId.has(sectionId)) bySectionId.set(sectionId, []);
     bySectionId.get(sectionId)!.push(organ);
   }
-  return Object.entries(sectionTitleById).map(([sectionId, sectionTitle]) => ({
-    sectionTitle, organs: bySectionId.get(sectionId) ?? [],
+  return Object.entries(sectionTitleKeyById).map(([sectionId, titleKey]) => ({
+    sectionId, titleKey, organs: bySectionId.get(sectionId) ?? [],
   }));
 })();
 
-function autopsyOrganCodeLabel(code: AutopsyOrganCode): string {
-  return code.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
-}
+const AUTOPSY_ORGAN_LABEL_KEY: Record<AutopsyOrganCode, string> = {
+  brain: 'accessionPage.autopsy.organLabel.brain', pituitary: 'accessionPage.autopsy.organLabel.pituitary',
+  eyes: 'accessionPage.autopsy.organLabel.eyes', spinal_cord: 'accessionPage.autopsy.organLabel.spinalCord',
+  thyroid: 'accessionPage.autopsy.organLabel.thyroid', parathyroid: 'accessionPage.autopsy.organLabel.parathyroid',
+  larynx_trachea: 'accessionPage.autopsy.organLabel.larynxTrachea',
+  heart: 'accessionPage.autopsy.organLabel.heart', pericardium: 'accessionPage.autopsy.organLabel.pericardium',
+  aorta: 'accessionPage.autopsy.organLabel.aorta', major_vessels: 'accessionPage.autopsy.organLabel.majorVessels',
+  right_lung: 'accessionPage.autopsy.organLabel.rightLung', left_lung: 'accessionPage.autopsy.organLabel.leftLung',
+  pleura: 'accessionPage.autopsy.organLabel.pleura',
+  tracheobronchial_tree: 'accessionPage.autopsy.organLabel.tracheobronchialTree',
+  esophagus: 'accessionPage.autopsy.organLabel.esophagus', stomach: 'accessionPage.autopsy.organLabel.stomach',
+  duodenum: 'accessionPage.autopsy.organLabel.duodenum', small_intestine: 'accessionPage.autopsy.organLabel.smallIntestine',
+  large_intestine: 'accessionPage.autopsy.organLabel.largeIntestine', appendix: 'accessionPage.autopsy.organLabel.appendix',
+  liver: 'accessionPage.autopsy.organLabel.liver', gallbladder_biliary: 'accessionPage.autopsy.organLabel.gallbladderBiliary',
+  pancreas: 'accessionPage.autopsy.organLabel.pancreas', peritoneum_omentum: 'accessionPage.autopsy.organLabel.peritoneumOmentum',
+  right_kidney: 'accessionPage.autopsy.organLabel.rightKidney', left_kidney: 'accessionPage.autopsy.organLabel.leftKidney',
+  adrenal_glands: 'accessionPage.autopsy.organLabel.adrenalGlands', bladder: 'accessionPage.autopsy.organLabel.bladder',
+  ureters: 'accessionPage.autopsy.organLabel.ureters', prostate: 'accessionPage.autopsy.organLabel.prostate',
+  uterus_adnexa: 'accessionPage.autopsy.organLabel.uterusAdnexa', testes: 'accessionPage.autopsy.organLabel.testes',
+  spleen: 'accessionPage.autopsy.organLabel.spleen', lymph_nodes: 'accessionPage.autopsy.organLabel.lymphNodes',
+  bone_marrow: 'accessionPage.autopsy.organLabel.boneMarrow', skin_subcutis: 'accessionPage.autopsy.organLabel.skinSubcutis',
+  musculoskeletal_specimen: 'accessionPage.autopsy.organLabel.musculoskeletalSpecimen',
+};
 
 // ── Local form types ────────────────────────────────────────────────────────
 
@@ -355,6 +384,7 @@ const Icd10Picker: React.FC<{
   selected: Icd10Code[];
   onChange: (codes: Icd10Code[]) => void;
 }> = ({ allCodes, selected, onChange }) => {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -392,7 +422,7 @@ const Icd10Picker: React.FC<{
       )}
       <input
         className="ps-input-dark"
-        placeholder="Search ICD-10 diagnosis codes — code or description…"
+        placeholder={t('accessionPage.icd10.searchPlaceholder')}
         value={query}
         onFocus={() => setOpen(true)}
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
@@ -409,7 +439,7 @@ const Icd10Picker: React.FC<{
       )}
       {open && query.trim() && matches.length === 0 && (
         <div className="ps-protocol-stainselect-dropdown">
-          <div className="ps-protocol-stainselect-empty">No matching codes.</div>
+          <div className="ps-protocol-stainselect-empty">{t('accessionPage.icd10.noMatches')}</div>
         </div>
       )}
     </div>
@@ -440,6 +470,7 @@ function emptySpecimen(label: string): SpecimenDraft {
 type TabKey = 'case' | 'specimens' | 'outside_patient';
 
 const AccessionPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { config } = useSystemConfig();
@@ -483,7 +514,7 @@ const AccessionPage: React.FC = () => {
   const searchDobFormat = dateFormatHint(searchJurisdiction) as 'MM/DD/YYYY' | 'DD/MM/YYYY';
   const searchDobFormatHint = searchDobFormat.toLowerCase();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Accession', '/accession'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('accessionPage.page.title'), '/accession'); }, [pushCrumb, t]);
 
   const [tab, setTab] = useState<TabKey>('case');
   const [submitting, setSubmitting] = useState(false);
@@ -638,7 +669,7 @@ const AccessionPage: React.FC = () => {
   const [jurisdictionMappings, setJurisdictionMappings] = useState<JurisdictionPaymentMapping[]>([]);
   useEffect(() => {
     if (intakeType !== 'outside') return;
-    mockMasterPaymentTypeService.getAll().then(res => { if (res.ok) setMasterPaymentTypes(res.data.filter(t => t.active)); });
+    mockMasterPaymentTypeService.getAll().then(res => { if (res.ok) setMasterPaymentTypes(res.data.filter(mpt => mpt.active)); });
     mockJurisdictionPaymentMappingService.getAll().then(res => { if (res.ok) setJurisdictionMappings(res.data.filter(m => m.active)); });
   }, [intakeType]);
 
@@ -796,7 +827,7 @@ const AccessionPage: React.FC = () => {
         if (facilityRes.ok) performingLabFacilityId = resolvePerformingLabFacilityId(facilityRes.data);
       }
       if (!cancelled) {
-        setDeficiencyTypes(typesRes.data.filter(t => !t.performingLabFacilityId || t.performingLabFacilityId === performingLabFacilityId));
+        setDeficiencyTypes(typesRes.data.filter(dt => !dt.performingLabFacilityId || dt.performingLabFacilityId === performingLabFacilityId));
       }
     })();
     return () => { cancelled = true; };
@@ -841,6 +872,22 @@ const AccessionPage: React.FC = () => {
   // ── Specimens ────────────────────────────────────────────────────────────
   const { dictionary } = useSpecimenDictionary();
   const [specimens, setSpecimens] = useState<SpecimenDraft[]>([emptySpecimen('A')]);
+  // Real fix (PS-297) — scroll a newly-added specimen row into view;
+  // see addSpecimen's own comment below for the full reasoning.
+  // lastSpecimenRowRef always points at whichever row is currently
+  // last (re-assigned via the map's own ref callback each render);
+  // justAddedSpecimenRef is a plain ref (not state) specifically so
+  // setting it never triggers its own extra re-render — it only needs
+  // to survive from the click handler to the effect that runs right
+  // after specimens actually re-renders with the new row mounted.
+  const lastSpecimenRowRef = useRef<HTMLDivElement | null>(null);
+  const justAddedSpecimenRef = useRef(false);
+  useEffect(() => {
+    if (justAddedSpecimenRef.current) {
+      justAddedSpecimenRef.current = false;
+      lastSpecimenRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [specimens.length]);
   // Real, per direct guidance's own confirmed integration — the same
   // real form state/validation/build functions
   // components/Autopsy/AutopsyIntakeForm.tsx already used as a
@@ -871,6 +918,19 @@ const AccessionPage: React.FC = () => {
 
   const addSpecimen = () => {
     setSpecimens(prev => [...prev, emptySpecimen(getSpecimenLabel(prev.length, selectedFacility?.specimenLabelStyle))]);
+    // Real fix (PS-297 — "adding a specimen doesn't auto-scroll... the
+    // whole panel is [not] visible"): the new row is appended to the
+    // BOTTOM of a list that's already taller than the viewport on any
+    // real multi-specimen case, so it rendered entirely off-screen
+    // with nothing on screen changing — confirmed the likely real
+    // cause of this same ticket's other complaint too ("must fill in
+    // Specimen A before adding a second"): nothing here has ever
+    // actually required that (addSpecimen has no such gate), it just
+    // LOOKED that way when the newly-added Specimen B was invisible
+    // below the fold and the still-visible, still-incomplete Specimen
+    // A was the only thing on screen. Flagged for scroll-into-view
+    // below, once the new row has actually mounted.
+    justAddedSpecimenRef.current = true;
   };
   const removeSpecimen = (idx: number) => {
     setSpecimens(prev =>
@@ -1259,7 +1319,7 @@ const AccessionPage: React.FC = () => {
     setImporting(true);
     try {
       const res = await orderIntakeService.resolveOrder(orderId);
-      if (res.ok === false) { const errMsg: string = res.error; toast.error(`Could not resolve order: ${errMsg}`); return; }
+      if (res.ok === false) { const errMsg: string = res.error; toast.error(t('accessionPage.toast.resolveOrderFailed', { error: errMsg })); return; }
       const { order, warnings } = res.data;
 
       // IncomingOrder.patient is still the simpler {firstName,lastName}
@@ -1316,7 +1376,7 @@ const AccessionPage: React.FC = () => {
         const encounterRes = await mockEncounterService.getByEncounterNumber(orgId, order.encounterNumber);
         if (encounterRes.ok && encounterRes.data && isEncounterActive(encounterRes.data, Date.now())) {
           applyEncounterToForm(encounterRes.data);
-          toast.success(`Auto-filled from Encounter #${encounterRes.data.encounterNumber}${encounterRes.data.ward ? ` (${encounterRes.data.ward})` : ''}`);
+          toast.success(t('accessionPage.encounter.autoFilled', { number: encounterRes.data.encounterNumber }) + (encounterRes.data.ward ? ` (${encounterRes.data.ward})` : ''));
         }
       }
 
@@ -1386,18 +1446,18 @@ const AccessionPage: React.FC = () => {
       }));
 
       if (unresolvedCount > 0) {
-        toast.warning(`${unresolvedCount} specimen(s) didn't exactly match the Specimen Dictionary — resolve on the Specimens tab before submitting.`);
+        toast.warning(t('accessionPage.toast.unresolvedSpecimens', { count: unresolvedCount }));
       }
 
       setSourceOrderId(order.id);
       setImportWarnings(warnings);
       if (warnings.length > 0) {
-        toast.warning(`Imported order ${order.externalOrderNumber} — ${warnings.length} item(s) need admin follow-up (see banner).`);
+        toast.warning(t('accessionPage.toast.importedWithFollowUp', { orderNumber: order.externalOrderNumber, count: warnings.length }));
       } else if (unresolvedCount === 0) {
-        toast.success(`Imported order ${order.externalOrderNumber} — facility and specimens resolved cleanly.`);
+        toast.success(t('accessionPage.toast.importedCleanly', { orderNumber: order.externalOrderNumber }));
       }
     } catch (e) {
-      toast.error(`Import failed: ${(e as Error)?.message ?? 'unknown error'}`);
+      toast.error(t('accessionPage.toast.importFailed', { message: (e as Error)?.message ?? 'unknown error' }));
     } finally {
       setImporting(false);
     }
@@ -1500,7 +1560,7 @@ const AccessionPage: React.FC = () => {
     }
     if (active.length === 1) {
       applyEncounterToForm(active[0]);
-      toast.success(`Auto-filled from Encounter #${active[0].encounterNumber}${active[0].ward ? ` (${active[0].ward})` : ''}`);
+      toast.success(t('accessionPage.encounter.autoFilled', { number: active[0].encounterNumber }) + (active[0].ward ? ` (${active[0].ward})` : ''));
       return;
     }
     // Real feature, per direct specification: "Dropdown Selection
@@ -1508,7 +1568,7 @@ const AccessionPage: React.FC = () => {
     // any of them; the accessioner picks via the selector rendered
     // below the omnibox (see encounterCandidates' own render site).
     setEncounterCandidates(active);
-    toast.warning(<PhiToastMessage>{active.length} active encounters found for {patientLabel} — select the correct one below.</PhiToastMessage>);
+    toast.warning(<PhiToastMessage>{t('accessionPage.toast.activeEncountersFound', { count: active.length, patientLabel })}</PhiToastMessage>);
   }
 
   // Real feature, per direct specification: "Change / Unlink
@@ -1580,7 +1640,7 @@ const AccessionPage: React.FC = () => {
       const candidate = parsed.serial ?? parsed.additionalId;
       const match = candidate ? pendingOrders.find(o => isExactOrderMatch(o, candidate)) : undefined;
       if (match) {
-        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {match.externalOrderNumber} ({match.patient.firstName} {match.patient.lastName})</PhiToastMessage>);
+        toast.success(<PhiToastMessage>{t('accessionPage.toast.scannedSpecimenLabel', { order: match.externalOrderNumber, patient: `${match.patient.firstName} ${match.patient.lastName}` })}</PhiToastMessage>);
         playScanBeep();
         await handleImportOrder(match.id);
         return;
@@ -1593,7 +1653,7 @@ const AccessionPage: React.FC = () => {
     if (parsed.type === 'delimited') {
       const match = parsed.accession ? pendingOrders.find(o => isExactOrderMatch(o, parsed.accession!)) : undefined;
       if (match) {
-        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {match.externalOrderNumber} ({match.patient.firstName} {match.patient.lastName})</PhiToastMessage>);
+        toast.success(<PhiToastMessage>{t('accessionPage.toast.scannedSpecimenLabel', { order: match.externalOrderNumber, patient: `${match.patient.firstName} ${match.patient.lastName}` })}</PhiToastMessage>);
         playScanBeep();
         await handleImportOrder(match.id);
         return;
@@ -1611,8 +1671,8 @@ const AccessionPage: React.FC = () => {
         if (parsed.mrn) setMrn(parsed.mrn);
         const dobIso = parsed.dob ? parseScannedDob(parsed.dob) : undefined;
         if (dobIso) setDob(dobIso);
-        const label = [parsed.givenName, parsed.familyName].filter(Boolean).join(' ') || parsed.mrn || 'new patient';
-        toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {parsed.accession ?? raw} ({label})</PhiToastMessage>);
+        const label = [parsed.givenName, parsed.familyName].filter(Boolean).join(' ') || parsed.mrn || t('accessionPage.toast.newPatientFallback');
+        toast.success(<PhiToastMessage>{t('accessionPage.toast.scannedSpecimenLabel', { order: parsed.accession ?? raw, patient: label })}</PhiToastMessage>);
         playScanBeep();
         return;
       }
@@ -1624,7 +1684,7 @@ const AccessionPage: React.FC = () => {
     // Requisition #, Order #, MRN], per the spec's own fallback.
     const plainMatch = pendingOrders.find(o => isExactOrderMatch(o, parsed.value));
     if (plainMatch) {
-      toast.success(<PhiToastMessage>✓ Scanned Specimen Label: {plainMatch.externalOrderNumber} ({plainMatch.patient.firstName} {plainMatch.patient.lastName})</PhiToastMessage>);
+      toast.success(<PhiToastMessage>{t('accessionPage.toast.scannedSpecimenLabel', { order: plainMatch.externalOrderNumber, patient: `${plainMatch.patient.firstName} ${plainMatch.patient.lastName}` })}</PhiToastMessage>);
       playScanBeep();
       await handleImportOrder(plainMatch.id);
       return;
@@ -1707,7 +1767,7 @@ const AccessionPage: React.FC = () => {
     setNameSuffix('');
     setDob(patient.dateOfBirth ?? '');
     setMrn(patient.mrn ?? '');
-    toast.success(<PhiToastMessage>Loaded {patient.firstName} {patient.lastName} from the patient index — verify details and continue.</PhiToastMessage>);
+    toast.success(<PhiToastMessage>{t('accessionPage.toast.loadedFromIndex', { patient: `${patient.firstName} ${patient.lastName}` })}</PhiToastMessage>);
     void lookupActiveEncountersForPatient(patient.id, `${patient.firstName} ${patient.lastName}`);
   }
 
@@ -2110,7 +2170,7 @@ const AccessionPage: React.FC = () => {
             downtimeReasonCode: isDowntimeAccession ? (downtimeReasonCode || undefined) : undefined,
           });
       if (mpiResult.outcome === 'ambiguous') {
-        toast.warning(<PhiToastMessage>Patient match needs review: {mpiResult.reason}</PhiToastMessage>);
+        toast.warning(<PhiToastMessage>{t('accessionPage.toast.patientMatchNeedsReview', { reason: mpiResult.reason })}</PhiToastMessage>);
       }
 
       // Real, per direct guidance ("should the accession do this as
@@ -2379,8 +2439,8 @@ const AccessionPage: React.FC = () => {
           const templateModule = await import('@/services/templates/templateService');
           const allTemplates = await templateModule.listTemplates('published');
           const availableTemplates = allTemplates
-            .filter(t => t.isDiagnostic === false)
-            .map(t => ({ id: t.id, name: t.name, category: t.category }));
+            .filter(tpl => tpl.isDiagnostic === false)
+            .map(tpl => ({ id: tpl.id, name: tpl.name, category: tpl.category }));
 
           const overridesRes = await grossingRoutingOverrideService.getAll();
           const routingOverrides = (overridesRes.ok ? overridesRes.data : [])
@@ -2428,8 +2488,8 @@ const AccessionPage: React.FC = () => {
             toast.success(
               <PhiToastMessage>
                 {lowConfidenceCount > 0
-                  ? `Case ${caseId}: Grossing Templates refined — ${lowConfidenceCount} of ${evalResult.assignments.length} specimen(s) fell back to the default.`
-                  : `Case ${caseId}: Grossing Templates refined based on specimen details.`}
+                  ? t('accessionPage.toast.templatesRefinedFallback', { caseId, lowCount: lowConfidenceCount, total: evalResult.assignments.length })
+                  : t('accessionPage.toast.templatesRefined', { caseId })}
               </PhiToastMessage>
             );
           }
@@ -2605,7 +2665,7 @@ const AccessionPage: React.FC = () => {
       // claiming a specific AI outcome that hasn't happened yet. A
       // separate, later toast reports the real refinement outcome once
       // it completes.
-      toast.success(<PhiToastMessage>Case {caseId} accessioned with {specimens.length} specimen(s). Refining Grossing Template assignments…</PhiToastMessage>);
+      toast.success(<PhiToastMessage>{t('accessionPage.toast.accessioned', { caseId, count: specimens.length })}</PhiToastMessage>);
 
       // Closes the loop described in the original Intraop spec — "when
       // the formal order finally arrives from the LIS, PathScribe
@@ -2627,7 +2687,7 @@ const AccessionPage: React.FC = () => {
       setTab('specimens');
     } catch (e) {
       console.error('[PathScribe] Accession submit failed:', e);
-      toast.error(`Accession failed: ${(e as Error)?.message ?? 'unknown error'}`);
+      toast.error(t('accessionPage.toast.accessionFailed', { message: (e as Error)?.message ?? 'unknown error' }));
     } finally {
       setSubmitting(false);
     }
@@ -2682,22 +2742,22 @@ const AccessionPage: React.FC = () => {
       <div className="ps-accession-content">
 
         <div className="ps-accession-header">
-          <h1 className="ps-accession-title">Accession</h1>
+          <h1 className="ps-accession-title">{t('accessionPage.page.title')}</h1>
           <p className="ps-accession-subtitle">
-            Log a new Orchestration case and assign Grossing Templates per specimen.
+            {t('accessionPage.page.subtitle')}
           </p>
         </div>
 
         <div className="ps-tab-bar ps-accession-tabs">
-          <button className={`ps-tab-btn ${tab === 'case' ? 'active' : ''}`} onClick={() => setTab('case')}>Case & Patient</button>
+          <button className={`ps-tab-btn ${tab === 'case' ? 'active' : ''}`} onClick={() => setTab('case')}>{t('accessionPage.tabs.casePatient')}</button>
           <button className={`ps-tab-btn ${tab === 'specimens' ? 'active' : ''}`} onClick={() => setTab('specimens')}>
-            Specimens {filledSpecimenCount ? `(${filledSpecimenCount})` : ''}
+            {t('accessionPage.tabs.specimens')} {filledSpecimenCount ? `(${filledSpecimenCount})` : ''}
           </button>
           {/* Real, per direct guidance: only shown for Outside/Contract
               Case intake — dynamically activated, not always present. */}
           {intakeType === 'outside' && (
             <button className={`ps-tab-btn ps-accession-outside-tab-btn ${tab === 'outside_patient' ? 'active' : ''}`} onClick={() => setTab('outside_patient')}>
-              ℹ Outside Patient Data
+              ℹ {t('accessionPage.tabs.outsidePatientData')}
             </button>
           )}
         </div>
@@ -2725,13 +2785,13 @@ const AccessionPage: React.FC = () => {
                 entry below is a fully valid path. */}
             {pendingOrders.length > 0 && (
               <div className="ps-accession-import-row">
-                <label className="ps-label">Import from Order ({pendingOrders.length} pending) — Optional</label>
+                <label className="ps-label">{t('accessionPage.importOrder.label', { count: pendingOrders.length })}</label>
                 <p className="ps-accession-import-hint">
-                  No matching order? Skip this and enter the case details directly below.
+                  {t('accessionPage.importOrder.hint')}
                 </p>
                 <div className="ps-accession-order-picker">
                   <div className="ps-accession-order-picker-search-wrap">
-                    <input type="text" placeholder={`Search by Order #, MRN, Patient Name, DOB (${searchDobFormatHint}), or Facility Code…`}
+                    <input type="text" placeholder={t('accessionPage.importOrder.searchPlaceholder', { format: searchDobFormatHint })}
                       value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
                       onKeyDown={handleOrderSearchKeyDown}
                       className="ps-accession-order-picker-search" disabled={importing} />
@@ -2740,8 +2800,8 @@ const AccessionPage: React.FC = () => {
                       className="ps-accession-order-search-icon-btn"
                       onClick={handleOrderSearchIconClick}
                       disabled={importing}
-                      title="Search"
-                      aria-label="Search"
+                      title={t('accessionPage.importOrder.search')}
+                      aria-label={t('accessionPage.importOrder.search')}
                     >
                       🔍
                     </button>
@@ -2751,14 +2811,14 @@ const AccessionPage: React.FC = () => {
                       onClick={() => openOrderLookupModal(orderSearch)}
                       disabled={importing}
                     >
-                      Advanced Search
+                      {t('accessionPage.importOrder.advancedSearch')}
                     </button>
                   </div>
                   <div className="ps-accession-order-picker-list" data-phi="accession">{orderSearch.trim().length < 2 ? (
                       <div className="ps-accession-order-picker-empty">
-                        {orderSearch.trim().length === 1 ? 'Keep typing…' : 'Type at least 2 characters to search pending orders.'}</div>
+                        {orderSearch.trim().length === 1 ? t('accessionPage.importOrder.keepTyping') : t('accessionPage.importOrder.typeAtLeast2')}</div>
                     ) : filteredOrders.length === 0 ? (
-                      <div className="ps-accession-order-picker-empty">No pending orders match.</div>
+                      <div className="ps-accession-order-picker-empty">{t('accessionPage.importOrder.noMatch')}</div>
                     ) : filteredOrders.map(o => (
                       <div key={o.id}
                         className={`ps-accession-order-picker-item ${sourceOrderId === o.id ? 'ps-accession-order-picker-item--selected' : ''} ${importing ? 'ps-accession-order-picker-item--disabled' : ''}`}
@@ -2773,7 +2833,7 @@ const AccessionPage: React.FC = () => {
                     ))}
                   </div>
                 </div>
-                {importing && <div className="ps-accession-order-picker-status">Importing…</div>}
+                {importing && <div className="ps-accession-order-picker-status">{t('accessionPage.importOrder.importing')}</div>}
                 {sourceOrderId && importWarnings.length > 0 && (
                   <div className="ps-accession-warnings">
                     {importWarnings.map((w, i) => <div key={i} className="ps-accession-warning-item">{w}</div>)}
@@ -2790,22 +2850,22 @@ const AccessionPage: React.FC = () => {
                 BEFORE entering a real name, not a system-level
                 footnote among pure demographic fields. */}
             <div className="ps-accession-intake-selector">
-              <label className="ps-label">Patient Origin / Intake Type</label>
+              <label className="ps-label">{t('accessionPage.intakeSelector.label')}</label>
               <div className="ps-accession-intake-tabs">
                 <button type="button"
                   className={`ps-accession-intake-tab ${intakeType === 'standard' ? 'ps-accession-intake-tab--active' : ''}`}
                   onClick={() => setIntakeType('standard')}>
-                  Standard / EMR Order
+                  {t('accessionPage.intakeSelector.standard')}
                 </button>
                 <button type="button"
                   className={`ps-accession-intake-tab ps-accession-intake-tab--downtime ${intakeType === 'downtime' ? 'ps-accession-intake-tab--active' : ''}`}
                   onClick={() => setIntakeType('downtime')}>
-                  ⚠ Temporary / Downtime
+                  ⚠ {t('accessionPage.intakeSelector.downtime')}
                 </button>
                 <button type="button"
                   className={`ps-accession-intake-tab ps-accession-intake-tab--outside ${intakeType === 'outside' ? 'ps-accession-intake-tab--active' : ''}`}
                   onClick={() => setIntakeType('outside')}>
-                  ℹ Outside / Contract Case
+                  ℹ {t('accessionPage.intakeSelector.outside')}
                 </button>
               </div>
 
@@ -2817,14 +2877,12 @@ const AccessionPage: React.FC = () => {
               {intakeType === 'downtime' && (
                 <div className="ps-accession-downtime-banner">
                   <div className="ps-accession-intake-alert ps-accession-intake-alert--downtime">
-                    ⚠ Identity reconciliation required — this is a temporary/downtime placeholder identity
-                    (e.g. unidentified trauma patient, registration system outage). A future Break-Glass
-                    rebind will be required once the real patient identity is confirmed.
+                    ⚠ {t('accessionPage.intakeSelector.downtimeAlert')}
                   </div>
                   <div className="ps-accession-downtime-reason">
-                    <label className="ps-label" htmlFor="accession-downtime-reason">Downtime Reason <span className="ps-required">*</span></label>
+                    <label className="ps-label" htmlFor="accession-downtime-reason">{t('accessionPage.intakeSelector.downtimeReasonLabel')} <span className="ps-required">*</span></label>
                     <select id="accession-downtime-reason" className="ps-input-dark" value={downtimeReasonCode} onChange={e => setDowntimeReasonCode(e.target.value)}>
-                      <option value="">Select a reason…</option>
+                      <option value="">{t('accessionPage.intakeSelector.selectReason')}</option>
                       {BREAK_GLASS_REASON_CODES.map(r => (
                         <option key={r.code} value={r.code}>{r.label}</option>
                       ))}
@@ -2840,32 +2898,40 @@ const AccessionPage: React.FC = () => {
                   Downtime is. */}
               {intakeType === 'outside' && (
                 <div className="ps-accession-intake-alert ps-accession-intake-alert--outside">
-                  ℹ Outside / Contract Case — external billing and report distribution workflow.
-                  Complete the real Outside Patient Data tab (after Specimens) for jurisdiction and
-                  financial-class routing.
+                  {/* PS-301: the raw "ℹ" character pulls in its own
+                      fallback-font line-height, taller than the
+                      surrounding text's, which pushed it up and out of
+                      the box (looked like a positioning bug, but no
+                      element here was ever actually position:absolute).
+                      A wrapping span with a pinned line-height/
+                      vertical-align keeps its box the same height as a
+                      normal letter, so it sits on the same line as the
+                      text instead of floating above it. */}
+                  <span className="ps-accession-intake-alert__icon" aria-hidden="true">ℹ</span>
+                  {t('accessionPage.intakeSelector.outsideAlert')}
                 </div>
               )}
             </div>
             <div className="ps-accession-grid">
               <div>
-                <label className="ps-label">Given Name(s)</label>
+                <label className="ps-label">{t('accessionPage.demographics.givenNames')}</label>
                 <input data-phi="name" className="ps-input-dark" value={givenNames} onChange={e => setGivenNames(e.target.value)}
-                  placeholder='e.g. "John Michael" or "Juan Carlos"' />
+                  placeholder={t('accessionPage.demographics.givenNamesPlaceholder')} />
               </div>
               <div>
-                <label className="ps-label">Family Name(s)</label>
+                <label className="ps-label">{t('accessionPage.demographics.familyNames')}</label>
                 <input data-phi="name" className="ps-input-dark" value={familyNames} onChange={e => setFamilyNames(e.target.value)}
-                  placeholder='e.g. "Smith" or "García López"' />
+                  placeholder={t('accessionPage.demographics.familyNamesPlaceholder')} />
               </div>
               <div>
-                <label className="ps-label">Preferred Name (optional)</label>
+                <label className="ps-label">{t('accessionPage.demographics.preferredName')}</label>
                 <input data-phi="name" className="ps-input-dark" value={preferredName} onChange={e => setPreferredName(e.target.value)}
-                  placeholder="If different from Given Name(s)" />
+                  placeholder={t('accessionPage.demographics.preferredNamePlaceholder')} />
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-prefix">Prefix (optional)</label>
+                <label className="ps-label" htmlFor="accession-prefix">{t('accessionPage.demographics.prefix')}</label>
                 <select id="accession-prefix" className="ps-input-dark" value={namePrefix} onChange={e => setNamePrefix(e.target.value)}>
-                  <option value="">None</option>
+                  <option value="">{t('accessionPage.demographics.prefixNone')}</option>
                   <option value="Mr.">Mr.</option>
                   <option value="Mrs.">Mrs.</option>
                   <option value="Ms.">Ms.</option>
@@ -2876,25 +2942,25 @@ const AccessionPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="ps-label">Suffix (optional)</label>
+                <label className="ps-label">{t('accessionPage.demographics.suffix')}</label>
                 <SuffixSelect value={nameSuffix} onChange={setNameSuffix} selectClassName="ps-input-dark" inputClassName="ps-input-dark" />
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-dob">Date of Birth</label>
+                <label className="ps-label" htmlFor="accession-dob">{t('accessionPage.demographics.dob')}</label>
                 <input id="accession-dob" data-phi="dob" className="ps-input-dark" type="date" value={dob} onChange={e => setDob(e.target.value)} />
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-sex">Sex</label>
+                <label className="ps-label" htmlFor="accession-sex">{t('accessionPage.demographics.sex')}</label>
                 <select id="accession-sex" className="ps-input-dark" value={sex} onChange={e => setSex(e.target.value as 'M' | 'F' | 'U')}>
-                  <option value="F">Female</option>
-                  <option value="M">Male</option>
-                  <option value="U">Other / Unspecified</option>
+                  <option value="F">{t('accessionPage.demographics.sexFemale')}</option>
+                  <option value="M">{t('accessionPage.demographics.sexMale')}</option>
+                  <option value="U">{t('accessionPage.demographics.sexOther')}</option>
                 </select>
               </div>
               {cytologyRelevant && (
-                <div className="ps-card-dark" style={{ gridColumn: '1 / -1', padding: 16, marginTop: 4, marginBottom: 4 }}>
-                  <div className="ps-label" style={{ marginBottom: 10, fontWeight: 700 }}>
-                    Cytology — Clinical History &amp; Accessioning Detail
+                <div className="ps-card-dark ps-accession-conditional-card">
+                  <div className="ps-label ps-accession-section-heading">
+                    {t('accessionPage.cytology.heading')}
                   </div>
                   {/* Real, per direct guidance ("New tab, only would be
                       used for Cytology cases") — a real, local sub-tab
@@ -2902,12 +2968,12 @@ const AccessionPage: React.FC = () => {
                       rather than a page-wide restructure. 'main' is
                       the real default, matching every field already
                       here today. */}
-                  <div className="ps-sub-tab-group" style={{ marginBottom: 14 }}>
+                  <div className="ps-sub-tab-group ps-sub-tab-group--spaced">
                     <button type="button" className={`ps-sub-tab-btn${accessionTab === 'main' ? ' active' : ''}`} onClick={() => setAccessionTab('main')}>
-                      Patient Detail
+                      {t('accessionPage.cytology.tabPatientDetail')}
                     </button>
                     <button type="button" className={`ps-sub-tab-btn${accessionTab === 'clinical_history' ? ' active' : ''}`} onClick={() => setAccessionTab('clinical_history')}>
-                      Clinical History{clinicalHistoryEntries.length > 0 ? ` (${clinicalHistoryEntries.length})` : ''}
+                      {t('accessionPage.cytology.tabClinicalHistory')}{clinicalHistoryEntries.length > 0 ? ` (${clinicalHistoryEntries.length})` : ''}
                     </button>
                   </div>
 
@@ -2915,29 +2981,29 @@ const AccessionPage: React.FC = () => {
                     <>
                       <div className="ps-accession-specimen-row-3col">
                         <div>
-                          <label className="ps-label" htmlFor="accession-lmp">Last Menstrual Period</label>
+                          <label className="ps-label" htmlFor="accession-lmp">{t('accessionPage.cytology.lmp')}</label>
                           <input id="accession-lmp" className="ps-input-dark" type="date" value={lmp} onChange={e => setLmp(e.target.value)} />
                         </div>
                         <div>
-                          <label className="ps-label" htmlFor="accession-hormonal-status">Hormonal Status</label>
+                          <label className="ps-label" htmlFor="accession-hormonal-status">{t('accessionPage.cytology.hormonalStatus')}</label>
                           <select id="accession-hormonal-status" className="ps-input-dark" value={hormonalStatus} onChange={e => setHormonalStatus(e.target.value as typeof hormonalStatus)}>
-                            <option value="">— not specified —</option>
-                            <option value="premenopausal">Premenopausal</option>
-                            <option value="perimenopausal">Perimenopausal</option>
-                            <option value="postmenopausal">Postmenopausal</option>
-                            <option value="pregnant">Pregnant</option>
+                            <option value="">{t('accessionPage.common.notSpecified')}</option>
+                            <option value="premenopausal">{t('accessionPage.cytology.hormonalPremenopausal')}</option>
+                            <option value="perimenopausal">{t('accessionPage.cytology.hormonalPerimenopausal')}</option>
+                            <option value="postmenopausal">{t('accessionPage.cytology.hormonalPostmenopausal')}</option>
+                            <option value="pregnant">{t('accessionPage.cytology.hormonalPregnant')}</option>
                           </select>
                         </div>
                         <div>
-                          <label className="ps-label" htmlFor="accession-reason-for-study">Reason for Study</label>
+                          <label className="ps-label" htmlFor="accession-reason-for-study">{t('accessionPage.cytology.reasonForStudy')}</label>
                           <select id="accession-reason-for-study" className="ps-input-dark" value={reasonForStudy} onChange={e => setReasonForStudy(e.target.value as typeof reasonForStudy)}>
-                            <option value="">— not specified —</option>
-                            <option value="nhs_programme_invited">Routine programme-invited screening</option>
-                            <option value="private_or_opportunistic">Private / opportunistic test</option>
+                            <option value="">{t('accessionPage.common.notSpecified')}</option>
+                            <option value="nhs_programme_invited">{t('accessionPage.cytology.reasonRoutineScreening')}</option>
+                            <option value="private_or_opportunistic">{t('accessionPage.cytology.reasonPrivateOpportunistic')}</option>
                           </select>
                         </div>
                       </div>
-                      <div className="ps-accession-specimen-row-3col" style={{ marginTop: 12 }}>
+                      <div className="ps-accession-specimen-row-3col ps-accession-specimen-row-3col--spaced-12">
                         {/* Real, per the uploaded spec's own Acceptance
                             Criteria 3 ("Category 1 (SCR): Prompts for
                             LMP and prior_hpv_result") — a new, simple
@@ -2948,24 +3014,24 @@ const AccessionPage: React.FC = () => {
                             (HX_PRIOR_ABNL_PAP_HPV) lives on the
                             Clinical History tab now. */}
                         <div>
-                          <label className="ps-label" htmlFor="accession-prior-hpv-result">Prior HPV Result</label>
+                          <label className="ps-label" htmlFor="accession-prior-hpv-result">{t('accessionPage.cytology.priorHpvResult')}</label>
                           <select id="accession-prior-hpv-result" className="ps-input-dark" value={priorHpvResult} onChange={e => setPriorHpvResult(e.target.value as typeof priorHpvResult)}>
-                            <option value="">— not specified —</option>
-                            <option value="positive">Positive</option>
-                            <option value="negative">Negative</option>
-                            <option value="not_tested">Not Tested</option>
-                            <option value="unknown">Unknown</option>
+                            <option value="">{t('accessionPage.common.notSpecified')}</option>
+                            <option value="positive">{t('accessionPage.cytology.hpvPositive')}</option>
+                            <option value="negative">{t('accessionPage.cytology.hpvNegative')}</option>
+                            <option value="not_tested">{t('accessionPage.cytology.hpvNotTested')}</option>
+                            <option value="unknown">{t('accessionPage.cytology.hpvUnknown')}</option>
                           </select>
                         </div>
                         <div>
-                          <label className="ps-label" htmlFor="accession-iud">IUD / Contraception Use</label>
-                          <input id="accession-iud" className="ps-input-dark" value={iudOrContraceptionUse} onChange={e => setIudOrContraceptionUse(e.target.value)} placeholder="e.g. Copper IUD in place…" />
+                          <label className="ps-label" htmlFor="accession-iud">{t('accessionPage.cytology.iud')}</label>
+                          <input id="accession-iud" className="ps-input-dark" value={iudOrContraceptionUse} onChange={e => setIudOrContraceptionUse(e.target.value)} placeholder={t('accessionPage.cytology.iudPlaceholder')} />
                         </div>
                       </div>
-                      <label className="ps-accession-checkbox-row" style={{ marginTop: 12 }}>
+                      <label className="ps-accession-checkbox-row ps-accession-checkbox-row--spaced">
                         <input type="checkbox" checked={persistentContactBleedingAtCollection}
                           onChange={e => setPersistentContactBleedingAtCollection(e.target.checked)} />
-                        Persistent contact bleeding observed during specimen collection
+                        {t('accessionPage.cytology.persistentBleeding')}
                       </label>
                     </>
                   )}
@@ -2974,16 +3040,16 @@ const AccessionPage: React.FC = () => {
                     <ClinicalHistoryEntryPanel
                       specimenTypes={Array.from(new Set(specimens
                         .map(s => s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId)?.type : undefined)
-                        .filter((t): t is string => !!t)))}
+                        .filter((st): st is string => !!st)))}
                       targets={[
-                        { id: 'case', label: 'Case-Level (applies to all specimens)', entries: clinicalHistoryEntries },
+                        { id: 'case', label: t('accessionPage.cytology.caseLevelTarget'), entries: clinicalHistoryEntries },
                         // Real, per direct guidance's own real LIS/
                         // cytology data-modeling follow-up — only
                         // offered as separate targets when this case
                         // genuinely has more than one real specimen;
                         // the panel itself hides the selector entirely
                         // in the single-specimen case.
-                        ...(specimens.length > 1 ? specimens.map((s, i) => ({ id: `specimen-${i}`, label: `Specimen ${s.label}`, entries: s.clinicalHistory })) : []),
+                        ...(specimens.length > 1 ? specimens.map((s, i) => ({ id: `specimen-${i}`, label: t('accessionPage.cytology.specimenTarget', { label: s.label }), entries: s.clinicalHistory })) : []),
                       ]}
                       onChangeTarget={(targetId, newEntries) => {
                         if (targetId === 'case') { setClinicalHistoryEntries(newEntries); return; }
@@ -2997,57 +3063,57 @@ const AccessionPage: React.FC = () => {
               )}
 
               {autopsyRelevant && (
-                <div className="ps-card-dark" style={{ gridColumn: '1 / -1', padding: 16, marginTop: 4, marginBottom: 4 }}>
-                  <div className="ps-label" style={{ marginBottom: 10, fontWeight: 700 }}>
-                    Autopsy — Case Authority &amp; Authorization
+                <div className="ps-card-dark ps-accession-conditional-card">
+                  <div className="ps-label ps-accession-section-heading">
+                    {t('accessionPage.autopsy.heading')}
                   </div>
 
                   <div className="ps-accession-specimen-row-3col">
                     <div>
-                      <label className="ps-label">Jurisdiction</label>
+                      <label className="ps-label">{t('accessionPage.autopsy.jurisdiction')}</label>
                       <select className="ps-conf-select" value={autopsyForm.jurisdiction} onChange={e => setAutopsyForm({ ...autopsyForm, jurisdiction: e.target.value as AutopsyJurisdiction })}>
-                        <option value="">Select...</option>
+                        <option value="">{t('accessionPage.common.selectEllipsisDots')}</option>
                         {(Object.keys(JURISDICTION_LABELS) as AutopsyJurisdiction[]).map(j => (
                           <option key={j} value={j}>{JURISDICTION_LABELS[j]}</option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label className="ps-label">Case Authority</label>
+                      <label className="ps-label">{t('accessionPage.autopsy.caseAuthority')}</label>
                       <select className="ps-conf-select" value={autopsyForm.caseAuthority} onChange={e => setAutopsyForm({ ...autopsyForm, caseAuthority: e.target.value as AutopsyCaseAuthority })}>
-                        <option value="">Select...</option>
-                        <option value="medicolegal_forensic">Medicolegal / Forensic</option>
-                        <option value="hospital_consented">Hospital-Consented</option>
+                        <option value="">{t('accessionPage.common.selectEllipsisDots')}</option>
+                        <option value="medicolegal_forensic">{t('accessionPage.autopsy.authorityMedicolegal')}</option>
+                        <option value="hospital_consented">{t('accessionPage.autopsy.authorityHospitalConsented')}</option>
                       </select>
                     </div>
                   </div>
 
                   {autopsyForm.caseAuthority === 'medicolegal_forensic' && (
-                    <div className="ps-accession-specimen-row-3col" style={{ marginTop: 10 }}>
+                    <div className="ps-accession-specimen-row-3col ps-accession-specimen-row-3col--spaced-10">
                       <div>
-                        <label className="ps-label">Authority Type</label>
-                        <input className="ps-conf-input" value={autopsyForm.authorityType} placeholder="e.g. Coroner, Medical Examiner" onChange={e => setAutopsyForm({ ...autopsyForm, authorityType: e.target.value })} />
+                        <label className="ps-label">{t('accessionPage.autopsy.authorityType')}</label>
+                        <input className="ps-conf-input" value={autopsyForm.authorityType} placeholder={t('accessionPage.autopsy.authorityTypePlaceholder')} onChange={e => setAutopsyForm({ ...autopsyForm, authorityType: e.target.value })} />
                       </div>
                       <div>
-                        <label className="ps-label">Verbal Order Received At</label>
+                        <label className="ps-label">{t('accessionPage.autopsy.verbalOrderAt')}</label>
                         <input type="datetime-local" className="ps-conf-input" value={autopsyForm.verbalOrderReceivedAt} onChange={e => setAutopsyForm({ ...autopsyForm, verbalOrderReceivedAt: e.target.value })} />
                       </div>
                       <div>
-                        <label className="ps-label">Verbal Order Received From</label>
-                        <input className="ps-conf-input" value={autopsyForm.verbalOrderReceivedFrom} placeholder="e.g. On-call Deputy Coroner" onChange={e => setAutopsyForm({ ...autopsyForm, verbalOrderReceivedFrom: e.target.value })} />
+                        <label className="ps-label">{t('accessionPage.autopsy.verbalOrderFrom')}</label>
+                        <input className="ps-conf-input" value={autopsyForm.verbalOrderReceivedFrom} placeholder={t('accessionPage.autopsy.verbalOrderFromPlaceholder')} onChange={e => setAutopsyForm({ ...autopsyForm, verbalOrderReceivedFrom: e.target.value })} />
                       </div>
                     </div>
                   )}
 
                   {autopsyForm.caseAuthority === 'hospital_consented' && (
-                    <div className="ps-accession-specimen-row-3col" style={{ marginTop: 10 }}>
+                    <div className="ps-accession-specimen-row-3col ps-accession-specimen-row-3col--spaced-10">
                       <div>
-                        <label className="ps-label">Consenting Relative Name (optional)</label>
+                        <label className="ps-label">{t('accessionPage.autopsy.consentingRelativeName')}</label>
                         <input className="ps-conf-input" value={autopsyForm.consentingRelativeName} onChange={e => setAutopsyForm({ ...autopsyForm, consentingRelativeName: e.target.value })} />
                       </div>
                       <div>
-                        <label className="ps-label">Relationship (optional)</label>
-                        <input className="ps-conf-input" value={autopsyForm.consentingRelativeRelationship} placeholder="e.g. spouse, adult child" onChange={e => setAutopsyForm({ ...autopsyForm, consentingRelativeRelationship: e.target.value })} />
+                        <label className="ps-label">{t('accessionPage.autopsy.relationship')}</label>
+                        <input className="ps-conf-input" value={autopsyForm.consentingRelativeRelationship} placeholder={t('accessionPage.autopsy.relationshipPlaceholder')} onChange={e => setAutopsyForm({ ...autopsyForm, consentingRelativeRelationship: e.target.value })} />
                         {/* Real, per direct follow-up: "it all needs
                             to be wired" — resolveConsentingRelativePriority.ts
                             had zero real UI callers; this is that
@@ -3064,15 +3130,15 @@ const AccessionPage: React.FC = () => {
                   )}
 
                   {!autopsyFormValidation.valid && (
-                    <div style={{ marginTop: 10, fontSize: 12, color: '#fca5a5' }}>
-                      Complete the required Autopsy fields above before submitting.
+                    <div className="ps-accession-validation-message">
+                      {t('accessionPage.autopsy.validationMessage')}
                     </div>
                   )}
                 </div>
               )}
               <div>
-                <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Patient ID (optional)
+                <label className="ps-label ps-label--with-badge">
+                  {t('accessionPage.patientId.label')}
                   {/* Real feature, per direct specification: "UI Status
                       Indicator Component" — only shown once a real
                       facility is selected, since the jurisdiction (and
@@ -3094,11 +3160,11 @@ const AccessionPage: React.FC = () => {
                 </label>
                 <input data-phi="mrn" className="ps-input-dark" value={mrn} onChange={e => setMrn(e.target.value)}
                   placeholder={selectedFacility
-                    ? `${patientIdStandard.label} format, e.g. ${patientIdStandard.example} — auto-generated if blank`
-                    : 'Select a Submitting Facility first, or leave blank to auto-generate'} />
+                    ? t('accessionPage.patientId.placeholderWithFacility', { standardLabel: t(patientIdStandard.labelKey), example: patientIdStandard.example })
+                    : t('accessionPage.patientId.placeholderNoFacility')} />
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-priority">Priority</label>
+                <label className="ps-label" htmlFor="accession-priority">{t('accessionPage.priority.label')}</label>
                 <select id="accession-priority" className="ps-input-dark" value={priority} onChange={e => setPriority(e.target.value as CasePriority)}>
                   {priorityLevels.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
@@ -3117,7 +3183,7 @@ const AccessionPage: React.FC = () => {
                   use, rather than a new, one-off spanning rule. */}
               {encounterLookupState === 'loading' && (
                 <div className="ps-accession-field--full">
-                  <div className="ps-encounter-loading">Checking for active encounters…</div>
+                  <div className="ps-encounter-loading">{t('accessionPage.encounter.checking')}</div>
                 </div>
               )}
               {linkedEncounter && (
@@ -3125,11 +3191,11 @@ const AccessionPage: React.FC = () => {
                   <div className="ps-encounter-badge">
                     <span className="ps-encounter-badge-icon">✓</span>
                     <span className="ps-encounter-badge-text">
-                      Auto-filled from Encounter #{linkedEncounter.encounterNumber}
+                      {t('accessionPage.encounter.autoFilled', { number: linkedEncounter.encounterNumber })}
                       {linkedEncounter.ward ? ` (${linkedEncounter.ward})` : linkedEncounter.department ? ` (${linkedEncounter.department})` : ''}
                     </span>
                     <button type="button" className="ps-encounter-badge-unlink" onClick={handleUnlinkEncounter}>
-                      Change / Unlink Encounter
+                      {t('accessionPage.encounter.changeUnlink')}
                     </button>
                   </div>
                 </div>
@@ -3137,7 +3203,7 @@ const AccessionPage: React.FC = () => {
               {!linkedEncounter && encounterCandidates.length > 0 && (
                 <div className="ps-accession-field--full">
                   <label className="ps-label" htmlFor="accession-encounter-selector">
-                    Select Encounter ({encounterCandidates.length} active)
+                    {t('accessionPage.encounter.selectLabel', { count: encounterCandidates.length })}
                   </label>
                   <select
                     id="accession-encounter-selector"
@@ -3150,7 +3216,7 @@ const AccessionPage: React.FC = () => {
                       handleSelectEncounterFromDropdown(chosen);
                     }}
                   >
-                    <option value="" disabled>Choose the correct encounter…</option>
+                    <option value="" disabled>{t('accessionPage.encounter.chooseCorrect')}</option>
                     {encounterCandidates.map(enc => (
                       <option key={enc.id} value={enc.id}>
                         #{enc.encounterNumber} — {enc.encounterClass}
@@ -3160,15 +3226,15 @@ const AccessionPage: React.FC = () => {
                         {enc.attendingProvider ? ` — ${enc.attendingProvider}` : ''}
                       </option>
                     ))}
-                    <option value="">Create without encounter link (Manual Entry)</option>
+                    <option value="">{t('accessionPage.encounter.createWithoutLink')}</option>
                   </select>
                 </div>
               )}
 
               <div>
-                <label className="ps-label" htmlFor="accession-client">Submitting Facility</label>
+                <label className="ps-label" htmlFor="accession-client">{t('accessionPage.facility.submittingFacility')}</label>
                 <select id="accession-client" className="ps-input-dark" value={clientId} onChange={e => setClientId(e.target.value)}>
-                  <option value="">Select facility…</option>
+                  <option value="">{t('accessionPage.facility.selectFacility')}</option>
                   {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
@@ -3178,14 +3244,14 @@ const AccessionPage: React.FC = () => {
                   known, specific inpatient location (e.g. outpatient/
                   clinic specimens genuinely have none). */}
               <div>
-                <label className="ps-label" htmlFor="accession-location">Location (Ward / Room / Bed)</label>
+                <label className="ps-label" htmlFor="accession-location">{t('accessionPage.facility.location')}</label>
                 <select
                   id="accession-location" className="ps-input-dark"
                   value={locationId} onChange={e => setLocationId(e.target.value)}
                   disabled={!clientId}
                 >
                   <option value="">
-                    {!clientId ? 'Select a Submitting Facility first' : locations.length === 0 ? 'No locations configured for this facility' : 'None specified'}
+                    {!clientId ? t('accessionPage.facility.selectFacilityFirst') : locations.length === 0 ? t('accessionPage.facility.noLocationsConfigured') : t('accessionPage.facility.noneSpecified')}
                   </option>
                   {locations.map(l => (
                     <option key={l.id} value={l.id}>
@@ -3195,20 +3261,20 @@ const AccessionPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-origin-hospital">Origin Hospital / Organisation</label>
+                <label className="ps-label" htmlFor="accession-origin-hospital">{t('accessionPage.facility.originHospital')}</label>
                 <input id="accession-origin-hospital" className="ps-input-dark ps-input-readonly" readOnly disabled
-                  value={user?.organisationId ? (getOrganisationDisplayName(originHospitalId) ?? originHospitalId) : 'No organisation on session — contact an admin'} />
+                  value={user?.organisationId ? (getOrganisationDisplayName(originHospitalId) ?? originHospitalId) : t('accessionPage.facility.noOrganisationOnSession')} />
               </div>
               {originSites.length > 1 && (
                 <div>
-                  <label className="ps-label" htmlFor="accession-origin-site">Site / Facility</label>
+                  <label className="ps-label" htmlFor="accession-origin-site">{t('accessionPage.facility.siteFacility')}</label>
                   <select id="accession-origin-site" className="ps-input-dark" value={originSiteId} onChange={e => setOriginSiteId(e.target.value)}>
                     {originSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
               )}
               <div className="ps-conf-form-field ps-amendment-physician-picker">
-                <label className="ps-label">Requesting Provider</label>
+                <label className="ps-label">{t('accessionPage.provider.requestingProvider')}</label>
                 <input
                   className="ps-amendment-physician-search"
                   value={requestingProvider || providerQuery}
@@ -3219,7 +3285,7 @@ const AccessionPage: React.FC = () => {
                     e.target.select();
                   }}
                   onBlur={() => setTimeout(() => setShowProviderDropdown(false), 150)}
-                  placeholder="Search staff, or type a name…"
+                  placeholder={t('accessionPage.provider.searchPlaceholder')}
                 />
                 {showProviderDropdown && filteredProviders.length > 0 && (
                   <div className="ps-amendment-physician-dropdown">
@@ -3238,7 +3304,7 @@ const AccessionPage: React.FC = () => {
                           <span className="ps-amendment-physician-info">
                             <span className="ps-amendment-physician-name">
                               {fullName}
-                              {p.status === 'Unverified' && <span className="ps-amendment-physician-unverified"> · unverified</span>}
+                              {p.status === 'Unverified' && <span className="ps-amendment-physician-unverified"> · {t('accessionPage.provider.unverified')}</span>}
                             </span>
                             <span className="ps-amendment-physician-specialty">{p.specialty}</span>
                             {rows.length > 0 && (
@@ -3275,17 +3341,17 @@ const AccessionPage: React.FC = () => {
                 )}
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-assigned-to">Assign to Pathologist (optional)</label>
+                <label className="ps-label" htmlFor="accession-assigned-to">{t('accessionPage.provider.assignPathologist')}</label>
                 <select id="accession-assigned-to" className="ps-input-dark" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-                  <option value="">Unassigned — leave for triage</option>
+                  <option value="">{t('accessionPage.provider.unassigned')}</option>
                   {pathologists.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
                 </select>
               </div>
               <div className="ps-accession-field--full">
-                <label className="ps-label">Clinical Indication</label>
+                <label className="ps-label">{t('accessionPage.clinicalIndication.label')}</label>
                 <textarea className="ps-input-dark ps-accession-textarea"
                   value={clinicalIndication} onChange={e => setClinicalIndication(e.target.value)}
-                  placeholder="Reason for the specimen — feeds the Grossing Template assignment AI" />
+                  placeholder={t('accessionPage.clinicalIndication.placeholder')} />
               </div>
               {/* Real, per direct guidance ("should the accession do
                   this as they go rather than the current process"),
@@ -3307,42 +3373,42 @@ const AccessionPage: React.FC = () => {
                   organisationId={mpiScopeOrgId}
                   confirmed={samePersonLinkConfirmed}
                   onConfirm={setSamePersonLinkConfirmed}
-                  title="Check for Existing Patient (optional)"
-                  helpText="If this patient is already known to this lab under a different identity (e.g. a name change, or a prior referral), search and link them here — their case history stays associated with them going forward, without merging the two records."
-                  confirmButtonLabel="This is the same patient"
-                  confirmedLabel="Will link to"
+                  title={t('accessionPage.patientLink.title')}
+                  helpText={t('accessionPage.patientLink.helpText')}
+                  confirmButtonLabel={t('accessionPage.patientLink.confirmButtonLabel')}
+                  confirmedLabel={t('accessionPage.patientLink.confirmedLabel')}
                 />
               </div>
               <div className="ps-accession-field--full">
-                <label className="ps-label">ICD-10 Diagnosis Code(s)</label>
+                <label className="ps-label">{t('accessionPage.icd10.label')}</label>
                 <Icd10Picker allCodes={allIcd10Codes} selected={icd10Codes} onChange={setIcd10Codes} />
               </div>
               <div className="ps-accession-field--full">
-                <label className="ps-label">Case Comment (optional)</label>
+                <label className="ps-label">{t('accessionPage.caseComment.label')}</label>
                 <button type="button"
                   className={`ps-accession-specimen-trigger${caseComments.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ''}`}
                   onClick={() => setCaseCommentModalOpen(true)}>
                   {caseComments.length === 0
-                    ? 'General note about the whole case — e.g. "STAT per phone call with Dr. Smith." Not used by the routing AI — see Clinical Indication above for that.'
-                    : `✓ ${caseComments.length} comment${caseComments.length === 1 ? '' : 's'} — click to view / add`}
+                    ? t('accessionPage.caseComment.placeholder')
+                    : t('accessionPage.caseComment.viewAdd', { count: caseComments.length })}
                 </button>
               </div>
               <div className="ps-accession-field--full">
-                <label className="ps-label">Case-Level Deficiencies (optional)</label>
+                <label className="ps-label">{t('accessionPage.caseDeficiency.label')}</label>
                 <button type="button"
                   className={`ps-accession-specimen-trigger${caseManualDeficiencies.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
                   onClick={() => setCaseDeficiencyModalOpen(true)}>
                   {caseManualDeficiencies.length === 0
-                    ? '⚠ Flag something wrong with the whole case, not a specific specimen — e.g. missing requisition paperwork'
+                    ? t('accessionPage.caseDeficiency.placeholder')
                     : caseManualDeficiencies.length === 1
-                      ? `⚠ ${deficiencyTypes.find(t => t.id === caseManualDeficiencies[0].deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`
-                      : `⚠ ${caseManualDeficiencies.length} deficiencies reported — click to manage`}
+                      ? t('accessionPage.deficiency.clickToEdit', { name: deficiencyTypes.find(dt => dt.id === caseManualDeficiencies[0].deficiencyTypeId)?.name ?? t('accessionPage.deficiency.reportedFallback') })
+                      : t('accessionPage.deficiency.multipleReported', { count: caseManualDeficiencies.length })}
                 </button>
               </div>
             </div>
             <div className="ps-accession-actions">
               <button className="ps-btn-primary" onClick={() => setTab('specimens')} disabled={!caseInfoValid}>
-                Next: Specimens →
+                {t('accessionPage.actions.nextSpecimens')} →
               </button>
             </div>
           </div>
@@ -3354,73 +3420,49 @@ const AccessionPage: React.FC = () => {
             {specimens.map((s, idx) => {
               const selectedEntry = s.dictionaryEntryId ? dictionary.find(e => e.id === s.dictionaryEntryId) : undefined;
               return (
-                <div key={idx} className={`ps-card-dark ps-accession-specimen-row ${s.needsDictionaryResolution ? 'ps-accession-specimen-row--deficient' : ''}`}>
+                <div key={idx} ref={idx === specimens.length - 1 ? lastSpecimenRowRef : undefined}
+                  className={`ps-card-dark ps-accession-specimen-row ${s.needsDictionaryResolution ? 'ps-accession-specimen-row--deficient' : ''}`}>
                   <div className="ps-accession-specimen-badge">{s.label}</div>
                   <div className="ps-accession-specimen-field ps-accession-specimen-field--stacked">
 
                     {s.needsDictionaryResolution && (
                       <div className="ps-accession-deficiency-banner">
-                        <strong>Specimen requisition deficiency — could not match to dictionary.</strong>
-                        <div>Order text: "{s.unmatchedOrderText}" didn't exactly match any Specimen Dictionary entry.
-                          Select the correct entry below, or confirm no match exists.</div>
+                        <strong>{t('accessionPage.specimens.deficiencyBannerTitle')}</strong>
+                        <div>{t('accessionPage.specimens.deficiencyBannerBody', { text: s.unmatchedOrderText })}</div>
                         <button className="ps-btn-secondary ps-accession-deficiency-confirm" onClick={() => confirmCustomSpecimen(idx)}>
-                          Confirm — no dictionary match, proceed as custom
+                          {t('accessionPage.specimens.confirmCustom')}
                         </button>
                       </div>
                     )}
 
                     <div>
-                      <label className="ps-label">Specimen {s.label} — Dictionary Entry</label>
+                      <label className="ps-label">{t('accessionPage.specimens.dictionaryEntryLabel', { label: s.label })}</label>
                       <button
                         type="button"
                         className={`ps-accession-specimen-trigger${!selectedEntry ? ' ps-accession-specimen-trigger--placeholder' : ''}`}
                         onClick={() => setPickerOpenForIdx(idx)}
                       >
-                        {selectedEntry ? selectedEntry.name : '— Select from Specimen Dictionary, or leave as Custom —'}
+                        {selectedEntry ? selectedEntry.name : t('accessionPage.specimens.selectFromDictionary')}
                       </button>
                     </div>
 
                     <div className="ps-accession-specimen-field--wide">
-                      <label className="ps-label">Description</label>
+                      <label className="ps-label">{t('accessionPage.specimens.description')}</label>
                       <input className="ps-input-dark" value={s.description}
                         onChange={e => updateSpecimen(idx, e.target.value)}
-                        placeholder='e.g. "Right breast core needle biopsy" or "Pleural fluid, thoracentesis"' />
-                    </div>
-
-                    <div className="ps-accession-specimen-field--wide">
-                      <label className="ps-label">Comment (optional)</label>
-                      <button type="button"
-                        className={`ps-accession-specimen-trigger${s.comments.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ''}`}
-                        onClick={() => setSpecimenCommentOpenForIdx(idx)}>
-                        {s.comments.length === 0
-                          ? 'e.g. received in two fragments, labeling confirmed by phone with OR'
-                          : `✓ ${s.comments.length} comment${s.comments.length === 1 ? '' : 's'} — click to view / add`}
-                      </button>
-                    </div>
-
-                    <div className="ps-accession-specimen-field--wide">
-                      <label className="ps-label">Deficiencies (optional)</label>
-                      <button type="button"
-                        className={`ps-accession-specimen-trigger${s.manualDeficiencies.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
-                        onClick={() => setDeficiencyModalOpenForIdx(idx)}>
-                        {s.manualDeficiencies.length === 0
-                          ? '⚠ Flag a problem with this specimen — container damage, insufficient volume, etc.'
-                          : s.manualDeficiencies.length === 1
-                            ? `⚠ ${deficiencyTypes.find(t => t.id === s.manualDeficiencies[0].deficiencyTypeId)?.name ?? 'Deficiency reported'} — click to edit`
-                            : `⚠ ${s.manualDeficiencies.length} deficiencies reported — click to manage`}
-                      </button>
+                        placeholder={t('accessionPage.specimens.descriptionPlaceholder')} />
                     </div>
 
                     <div className="ps-accession-specimen-row-3col">
                       <div>
-                        <label className="ps-label">Anatomic Site</label>
+                        <label className="ps-label">{t('accessionPage.specimens.anatomicSite')}</label>
                         <input className="ps-input-dark" value={s.anatomicSite}
                           onChange={e => updateSpecimenField(idx, 'anatomicSite', e.target.value)}
-                          placeholder="e.g. Breast" />
+                          placeholder={t('accessionPage.specimens.anatomicSitePlaceholder')} />
                       </div>
                       <div>
-                        <label className="ps-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          Laterality
+                        <label className="ps-label ps-label--with-badge">
+                          {t('accessionPage.specimens.laterality')}
                           {/* Real feature, per direct follow-up: "I would
                               like to include the AI badge, confidence on
                               fields being suggested." Deliberately no
@@ -3433,30 +3475,25 @@ const AccessionPage: React.FC = () => {
                               rounded, colored), honestly labeled instead. */}
                           {s.lateralityInferred && (
                             <span
-                              title={`Inferred from the order's specimen description: "${s.description}"`}
-                              style={{
-                                fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 8,
-                                background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)',
-                                color: '#34d399', cursor: 'default',
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                              }}
+                              title={t('accessionPage.specimens.lateralitySuggestedTitle', { description: s.description })}
+                              className="ps-laterality-suggested-badge"
                             >
-                              <span style={{ fontSize: 10 }}>💡</span> Suggested from order
+                              <span className="ps-laterality-suggested-badge__icon">💡</span> {t('accessionPage.specimens.lateralitySuggested')}
                             </span>
                           )}
                         </label>
                         <select className="ps-input-dark" value={s.laterality}
                           onChange={e => updateSpecimenField(idx, 'laterality', e.target.value)}>
-                          <option value="">— not specified —</option>
-                          <option value="Left">Left</option>
-                          <option value="Right">Right</option>
-                          <option value="Bilateral">Bilateral</option>
-                          <option value="Midline">Midline</option>
-                          <option value="N/A">Not applicable</option>
+                          <option value="">{t('accessionPage.specimens.lateralityNotSpecified')}</option>
+                          <option value="Left">{t('accessionPage.specimens.lateralityLeft')}</option>
+                          <option value="Right">{t('accessionPage.specimens.lateralityRight')}</option>
+                          <option value="Bilateral">{t('accessionPage.specimens.lateralityBilateral')}</option>
+                          <option value="Midline">{t('accessionPage.specimens.lateralityMidline')}</option>
+                          <option value="N/A">{t('accessionPage.specimens.lateralityNotApplicable')}</option>
                         </select>
                       </div>
                       <div>
-                        <label className="ps-label">Container Type</label>
+                        <label className="ps-label">{t('accessionPage.specimens.containerType')}</label>
                         <select className="ps-input-dark" value={s.containerType}
                           onChange={e => {
                             const selected = containerTypes.find(c => c.name === e.target.value);
@@ -3470,11 +3507,11 @@ const AccessionPage: React.FC = () => {
                               updateSpecimenField(idx, 'fixativeVolumeMl', String(selected.capacityMl));
                             }
                           }}>
-                          <option value="">Select container type…</option>
+                          <option value="">{t('accessionPage.specimens.selectContainerType')}</option>
                           {(['histology', 'cytology', 'special_media'] as const).map(cat => {
                             const inCat = containerTypes.filter(c => c.category === cat);
                             if (inCat.length === 0) return null;
-                            const label = cat === 'histology' ? 'Histology' : cat === 'cytology' ? 'Cytology' : 'Special Media';
+                            const label = cat === 'histology' ? t('accessionPage.specimens.containerCategoryHistology') : cat === 'cytology' ? t('accessionPage.specimens.containerCategoryCytology') : t('accessionPage.specimens.containerCategorySpecialMedia');
                             return (
                               <optgroup key={cat} label={label}>
                                 {inCat.map(c => (
@@ -3486,34 +3523,29 @@ const AccessionPage: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="ps-label">Fixative Volume (mL)</label>
+                        <label className="ps-label">{t('accessionPage.specimens.fixativeVolume')}</label>
                         <input type="number" className="ps-input-dark" value={s.fixativeVolumeMl}
                           onChange={e => updateSpecimenField(idx, 'fixativeVolumeMl', e.target.value)}
-                          placeholder="Real, actual volume used" />
+                          placeholder={t('accessionPage.specimens.fixativeVolumePlaceholder')} />
                       </div>
                     </div>
 
                     {resolveSpecimenEntryMatchesCategory(selectedEntry, ['AUTOPSY']) && (
                       <div className="ps-accession-specimen-field--wide">
                         <label className="ps-label">
-                          Organ(s) Included — drives which Autopsy Grossing Synoptic sections apply
+                          {t('accessionPage.specimens.organsIncluded')}
                         </label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                        <div className="ps-autopsy-organ-groups">
                           {AUTOPSY_ORGAN_PICKER_GROUPS.map(group => (
-                            <div key={group.sectionTitle}>
-                              <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.7, marginBottom: 3 }}>{group.sectionTitle}</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            <div key={group.sectionId}>
+                              <div className="ps-autopsy-organ-group-title">{t(group.titleKey)}</div>
+                              <div className="ps-autopsy-organ-chip-row">
                                 {group.organs.map(organ => {
                                   const checked = (s.organCodes ?? []).includes(organ);
                                   return (
                                     <label
                                       key={organ}
-                                      style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12,
-                                        padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
-                                        background: checked ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
-                                        border: checked ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.12)',
-                                      }}
+                                      className={`ps-autopsy-organ-chip${checked ? ' ps-autopsy-organ-chip--checked' : ''}`}
                                     >
                                       <input
                                         type="checkbox"
@@ -3524,7 +3556,7 @@ const AccessionPage: React.FC = () => {
                                           setSpecimens(prev => prev.map((row, i) => i === idx ? { ...row, organCodes: next } : row));
                                         }}
                                       />
-                                      {autopsyOrganCodeLabel(organ)}
+                                      {t(AUTOPSY_ORGAN_LABEL_KEY[organ])}
                                     </label>
                                   );
                                 })}
@@ -3537,23 +3569,23 @@ const AccessionPage: React.FC = () => {
 
                     <div className="ps-accession-specimen-row-3col">
                       <div>
-                        <label className="ps-label">Date/Time Collected</label>
+                        <label className="ps-label">{t('accessionPage.specimens.collectedAt')}</label>
                         <input className="ps-input-dark" type="datetime-local" value={s.collectedAt}
                           onChange={e => updateSpecimenField(idx, 'collectedAt', e.target.value)} />
-                        <div className="ps-accession-field-hint">Blank if unknown — starts the cold-ischemia clock.</div>
+                        <div className="ps-accession-field-hint">{t('accessionPage.specimens.collectedAtHint')}</div>
                       </div>
                       <div>
-                        <label className="ps-label">Date/Time Placed in Fixative</label>
+                        <label className="ps-label">{t('accessionPage.specimens.processedAt')}</label>
                         <input className="ps-input-dark" type="datetime-local" value={s.processedAt}
                           onChange={e => updateSpecimenField(idx, 'processedAt', e.target.value)} />
                         <label className="ps-accession-checkbox-row">
                           <input type="checkbox" checked={s.processedAtIsEstimated}
                             onChange={e => updateSpecimenField(idx, 'processedAtIsEstimated', e.target.checked)} />
-                          Estimated — not directly documented
+                          {t('accessionPage.specimens.processedAtEstimated')}
                         </label>
                       </div>
                       <div>
-                        <label className="ps-label">Date/Time Received</label>
+                        <label className="ps-label">{t('accessionPage.specimens.receivedAt')}</label>
                         <input className="ps-input-dark" type="datetime-local" value={s.receivedAt}
                           onChange={e => updateSpecimenField(idx, 'receivedAt', e.target.value)} />
                       </div>
@@ -3571,44 +3603,95 @@ const AccessionPage: React.FC = () => {
                         fields elsewhere in this app. */}
                     <div className="ps-accession-specimen-row-3col">
                       <div>
-                        <label className="ps-label">Foreign ID Source (optional)</label>
+                        {/* Real fix (PS-302 — "'Foreign ID' field label
+                            is unclear") — relabeled to say what this
+                            actually is: an identifier the specimen
+                            already carries from an outside/referring
+                            lab, same relabel as SpecimenEditModal.tsx/
+                            ForeignIdFields.tsx's own identical fields.
+                            externalId/externalIdSource themselves are
+                            unchanged.
+                            Real fix (PS-314) — relabeled again to
+                            "Referral Client", same follow-up wording
+                            and reasoning as ForeignIdFields.tsx's own
+                            identical relabel; this modal keeps its own
+                            separate copy of these fields, so it needs
+                            the same update to stay in sync. */}
+                        <label className="ps-label">{t('accessionPage.specimens.referralClient')}</label>
                         <input className="ps-input-dark" value={s.externalIdSource}
                           onChange={e => updateSpecimenField(idx, 'externalIdSource', e.target.value)}
                           onBlur={() => checkSpecimenForeignIdCollision(idx)}
-                          placeholder="e.g. Outside Cytology Lab" />
+                          placeholder={t('accessionPage.specimens.referralClientPlaceholder')} />
                       </div>
                       <div>
-                        <label className="ps-label">Foreign ID (optional)</label>
+                        <label className="ps-label">{t('accessionPage.specimens.referralClientId')}</label>
                         <input className="ps-input-dark" value={s.externalId}
                           onChange={e => updateSpecimenField(idx, 'externalId', e.target.value)}
                           onBlur={() => checkSpecimenForeignIdCollision(idx)}
-                          placeholder="e.g. the id already assigned by that lab" />
+                          placeholder={t('accessionPage.specimens.referralClientIdPlaceholder')} />
                       </div>
                     </div>
                     {specimenForeignIdCollisions[idx] && (
                       <div className="ps-accession-specimen-field--wide ps-foreign-id-collision-warning">
                         <div className="ps-foreign-id-collision-warning-text">
                           {('withinDraft' in specimenForeignIdCollisions[idx]!)
-                            ? <>⚠ Specimen {(specimenForeignIdCollisions[idx] as { otherLabel: string }).otherLabel} on this same accession already uses this foreign ID — double-check before continuing.</>
-                            : <>⚠ This foreign ID is already linked to {(specimenForeignIdCollisions[idx] as ForeignIdCollision).recordLabel} on case {(specimenForeignIdCollisions[idx] as ForeignIdCollision).caseAccession} — double-check before continuing.</>
+                            ? t('accessionPage.specimens.foreignIdCollisionWithinDraft', { label: (specimenForeignIdCollisions[idx] as { otherLabel: string }).otherLabel })
+                            : t('accessionPage.specimens.foreignIdCollisionExisting', { recordLabel: (specimenForeignIdCollisions[idx] as ForeignIdCollision).recordLabel, caseAccession: (specimenForeignIdCollisions[idx] as ForeignIdCollision).caseAccession })
                           }
                         </div>
                       </div>
                     )}
 
+                    {/* Real fix (PS-303 — "Move optional comments/
+                        deficiencies to the bottom of the panel"):
+                        these two used to sit right after Description,
+                        ahead of every real intake field (Anatomic
+                        Site, Container Type, collection/fixation
+                        timestamps, Outside Lab ID) — pushing the
+                        fields an accessioner fills in on essentially
+                        every real specimen further down, behind two
+                        genuinely optional, comparatively rare ones
+                        (Referral Client ID, renamed under PS-314 — see
+                        that field's own doc comment above).
+                        Moved here, after every other specimen field,
+                        content and behavior otherwise unchanged. */}
+                    <div className="ps-accession-specimen-field--wide">
+                      <label className="ps-label">{t('accessionPage.specimens.comment')}</label>
+                      <button type="button"
+                        className={`ps-accession-specimen-trigger${s.comments.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ''}`}
+                        onClick={() => setSpecimenCommentOpenForIdx(idx)}>
+                        {s.comments.length === 0
+                          ? t('accessionPage.specimens.commentPlaceholder')
+                          : t('accessionPage.specimens.commentViewAdd', { count: s.comments.length })}
+                      </button>
+                    </div>
+
+                    <div className="ps-accession-specimen-field--wide">
+                      <label className="ps-label">{t('accessionPage.specimens.deficienciesLabel')}</label>
+                      <button type="button"
+                        className={`ps-accession-specimen-trigger${s.manualDeficiencies.length === 0 ? ' ps-accession-specimen-trigger--placeholder' : ' ps-accession-specimen-trigger--deficiency'}`}
+                        onClick={() => setDeficiencyModalOpenForIdx(idx)}>
+                        {s.manualDeficiencies.length === 0
+                          ? t('accessionPage.specimens.deficienciesPlaceholder')
+                          : s.manualDeficiencies.length === 1
+                            ? t('accessionPage.deficiency.clickToEdit', { name: deficiencyTypes.find(dt => dt.id === s.manualDeficiencies[0].deficiencyTypeId)?.name ?? t('accessionPage.deficiency.reportedFallback') })
+                            : t('accessionPage.deficiency.multipleReported', { count: s.manualDeficiencies.length })}
+                      </button>
+                    </div>
+
                     {s.resolvedDepartmentName && (
                       <div className={`ps-accession-assignment-meta ${s.departmentWasAutoCreated ? 'ps-accession-assignment-meta--warn' : ''}`}>
-                        Department: {s.resolvedDepartmentName}{s.departmentWasAutoCreated ? ' (new — pending admin review)' : ''}
+                        {t('accessionPage.specimens.departmentNote', { name: s.resolvedDepartmentName })}{s.departmentWasAutoCreated ? t('accessionPage.specimens.departmentNewPending') : ''}
                       </div>
                     )}
                   </div>
                   {specimens.length > 1 && (
-                    <button className="ps-btn-icon ps-accession-remove-btn" onClick={() => removeSpecimen(idx)} title="Remove specimen">✕</button>
+                    <button className="ps-btn-icon ps-accession-remove-btn" onClick={() => removeSpecimen(idx)} title={t('accessionPage.specimens.removeSpecimen')}>✕</button>
                   )}
                 </div>
               );
             })}
-            <button className="ps-btn-secondary ps-accession-add-btn" onClick={addSpecimen}>+ Add Specimen</button>
+            <button className="ps-btn-secondary ps-accession-add-btn" onClick={addSpecimen}>{t('accessionPage.specimens.addSpecimen')}</button>
 
             {pickerOpenForIdx !== null && (
               <SpecimenDictionaryPicker
@@ -3623,7 +3706,7 @@ const AccessionPage: React.FC = () => {
 
             {specimenCommentOpenForIdx !== null && (
               <ReportCommentModal
-                specimenName={`Specimen ${specimens[specimenCommentOpenForIdx].label} \u203a ${specimens[specimenCommentOpenForIdx].description || '(no description yet)'}`}
+                specimenName={`${t('accessionPage.grossing.specimenLabel', { label: specimens[specimenCommentOpenForIdx].label })} \u203a ${specimens[specimenCommentOpenForIdx].description || t('accessionPage.specimens.noDescriptionYet')}`}
                 specimenId={specimens[specimenCommentOpenForIdx].label}
                 comments={specimens[specimenCommentOpenForIdx].comments}
                 isFinalized={false}
@@ -3651,36 +3734,42 @@ const AccessionPage: React.FC = () => {
             )}
 
             <div className="ps-card-dark ps-accession-card">
-              <h3>Ready to accession</h3>
+              <h3>{t('accessionPage.readyCard.heading')}</h3>
               <p className="ps-accession-summary-meta" data-phi="name">
                 {formatFullDisplayName({ namePrefix, givenNames, familyNames, preferredName, nameSuffix })}
                 {preferredName.trim() && ` (${preferredName.trim()})`}
-                {' '}· {specimens.length} specimen(s) · {priority}
+                {/* Real fix (PS-300 — "Ready to accession count should
+                    only count records where required fields have
+                    actually been filled in"): raw specimens.length
+                    includes empty placeholder rows with no description
+                    yet, same real over-count the Specimens tab label
+                    itself already fixed via filledSpecimenCount below
+                    — reused here rather than a second, separate count
+                    that could drift from it. */}
+                {' '}· {t('accessionPage.readyCard.specimenCount', { count: filledSpecimenCount })} · {priority}
                 {selectedFacility ? ` · ${selectedFacility.name}` : ''}
               </p>
             </div>
 
             {departmentConflictNames && (
               <div className="ps-warning-banner">
-                These specimens span different case types — {departmentConflictNames.join(' and ')} — which standard
-                practice accessions as separate cases, each with its own accession number. Submit them as
-                separate accessions rather than one combined case.
+                {t('accessionPage.departmentConflict.message', { names: departmentConflictNames.join(' and ') })}
               </div>
             )}
 
             <div className="ps-accession-actions ps-accession-actions--split">
-              <button className="ps-btn-secondary" onClick={() => setTab('case')}>← Back</button>
+              <button className="ps-btn-secondary" onClick={() => setTab('case')}>← {t('accessionPage.actions.back')}</button>
               <button className="ps-btn-primary" onClick={handleSubmit} disabled={!canSubmit}>
-                {submitting ? 'Assigning Grossing Templates…' : 'Submit Accession'}
+                {submitting ? t('accessionPage.actions.assigningTemplates') : t('accessionPage.actions.submitAccession')}
               </button>
             </div>
             </>}
 
             {justAccessionedCase && (
               <div className="ps-card-dark ps-accession-card">
-                <h3>Labels</h3>
+                <h3>{t('accessionPage.labelsCard.heading')}</h3>
                 <p className="ps-accession-print-hint">
-                  1 requisition label + {justAccessionedCase.specimens.length} container label(s) for <strong data-phi="accession">{justAccessionedCase.caseData.accession.fullAccession}</strong>.
+                  {t('accessionPage.labelsCard.hint', { count: justAccessionedCase.specimens.length })} <strong data-phi="accession">{justAccessionedCase.caseData.accession.fullAccession}</strong>.
                 </p>
                 <button className="ps-btn-secondary" onClick={handlePrintLabels}>🖨️ Print Labels</button>
               </div>
@@ -3688,13 +3777,13 @@ const AccessionPage: React.FC = () => {
 
             {lastResult && (
               <div className="ps-card-dark ps-accession-card">
-                <h3>Grossing Templates assigned</h3>
+                <h3>{t('accessionPage.grossing.heading')}</h3>
                 {lastResult.assignments.map(a => (
                   <div key={a.specimenId} className="ps-form-row ps-accession-assignment-row">
                     <div className="ps-accession-assignment-head">
                       <strong className="ps-accession-assignment-name">{a.specimenId.split('-SP-')[1] ?? a.specimenId}</strong>
                       <span className={`ps-accession-assignment-meta ${a.belowThreshold ? 'ps-accession-assignment-meta--warn' : ''}`}>
-                        {a.templateName} {a.fromOverride ? '(override)' : `· ${a.confidence}% confidence`}
+                        {a.templateName} {a.fromOverride ? t('accessionPage.grossing.override') : t('accessionPage.grossing.confidence', { value: a.confidence })}
                       </span>
                     </div>
                     <div className="ps-accession-assignment-reason">{a.reason}</div>
@@ -3708,26 +3797,26 @@ const AccessionPage: React.FC = () => {
                   </div>
                 )}
 
-                <h3 className="ps-accession-blocks-heading">Blocks &amp; Stains</h3>
+                <h3 className="ps-accession-blocks-heading">{t('accessionPage.grossing.blocksHeading')}</h3>
                 {lastResult.specimenBlocks.map(sb => (
                   <div key={sb.specimenId} className="ps-accession-blocks-specimen">
-                    <strong className="ps-accession-assignment-name">Specimen {sb.label}</strong>
+                    <strong className="ps-accession-assignment-name">{t('accessionPage.grossing.specimenLabel', { label: sb.label })}</strong>
                     {sb.blocks.map(block => (
                       <div key={block.id} className="ps-accession-block-row">
                         <span className="ps-accession-block-label">
-                          Block {block.label}{block.sourcePathwayName ? ` (${block.sourcePathwayName})` : ''}
+                          {t('accessionPage.grossing.blockLabel', { label: block.label })}{block.sourcePathwayName ? ` (${block.sourcePathwayName})` : ''}
                         </span>
                         <span className="ps-accession-block-status">{block.status}</span>
                         <span className="ps-accession-block-stains">
-                          {block.stains.length ? block.stains.map(st => st.stainName).join(', ') : '(no stains ordered yet)'}
+                          {block.stains.length ? block.stains.map(st => st.stainName).join(', ') : t('accessionPage.grossing.noStainsYet')}
                         </span>
                       </div>
                     ))}
                   </div>
                 ))}
                 <div className="ps-accession-actions ps-accession-actions--split">
-                  <button className="ps-btn-secondary" onClick={resetForm}>Accession Another Case</button>
-                  <button className="ps-btn-primary" onClick={() => navigate('/worklist')}>Go to Worklist →</button>
+                  <button className="ps-btn-secondary" onClick={resetForm}>{t('accessionPage.actions.accessionAnother')}</button>
+                  <button className="ps-btn-primary" onClick={() => navigate('/worklist')}>{t('accessionPage.actions.goToWorklist')} →</button>
                 </div>
               </div>
             )}
@@ -3737,11 +3826,9 @@ const AccessionPage: React.FC = () => {
         {tab === 'outside_patient' && (
           <div className="ps-card-dark ps-accession-card">
             <div className="ps-accession-outside-header">
-              <h3 className="ps-accession-outside-title">Outside Patient Data</h3>
+              <h3 className="ps-accession-outside-title">{t('accessionPage.outsidePatient.title')}</h3>
               <p className="ps-accession-outside-subtitle">
-                Jurisdiction identification and financial-class/coverage routing for this Outside/Contract Case.
-                Facility Account and Ordering Provider are the same real selections already made on the
-                Case &amp; Patient tab — not repeated here.
+                {t('accessionPage.outsidePatient.subtitle')}
               </p>
             </div>
 
@@ -3753,21 +3840,21 @@ const AccessionPage: React.FC = () => {
                 directory to build. Account Billing Type is the one
                 genuinely new field here. */}
             <div className="ps-accession-outside-section">
-              <div className="ps-accession-outside-section-title">Facility &amp; Origin</div>
+              <div className="ps-accession-outside-section-title">{t('accessionPage.outsidePatient.facilityOrigin')}</div>
               <div className="ps-accession-grid">
                 <div>
-                  <label className="ps-label">Facility Account</label>
-                  <input className="ps-input-dark" disabled value={selectedFacility?.name ?? '(select a Submitting Facility on Case & Patient)'} />
+                  <label className="ps-label">{t('accessionPage.outsidePatient.facilityAccount')}</label>
+                  <input className="ps-input-dark" disabled value={selectedFacility?.name ?? t('accessionPage.outsidePatient.facilityAccountPlaceholder')} />
                 </div>
                 <div>
-                  <label className="ps-label">Ordering Provider</label>
-                  <input className="ps-input-dark" disabled value={requestingProvider || '(enter on Case & Patient)'} />
+                  <label className="ps-label">{t('accessionPage.outsidePatient.orderingProvider')}</label>
+                  <input className="ps-input-dark" disabled value={requestingProvider || t('accessionPage.outsidePatient.orderingProviderPlaceholder')} />
                 </div>
                 <div>
-                  <label className="ps-label">Account Billing Type</label>
+                  <label className="ps-label">{t('accessionPage.outsidePatient.billingType')}</label>
                   <input className="ps-input-dark" value={outsidePatientData.accountBillingType ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, accountBillingType: e.target.value }))}
-                    placeholder="Auto-populates from Facility Master when available — always editable" />
+                    placeholder={t('accessionPage.outsidePatient.billingTypePlaceholder')} />
                 </div>
               </div>
             </div>
@@ -3780,13 +3867,13 @@ const AccessionPage: React.FC = () => {
                 dictionary (services/billing/), not a separate,
                 hardcoded country list that could drift from it. */}
             <div className="ps-accession-outside-section">
-              <div className="ps-accession-outside-section-title">Patient &amp; Jurisdiction Identification</div>
+              <div className="ps-accession-outside-section-title">{t('accessionPage.outsidePatient.patientJurisdiction')}</div>
               <div className="ps-accession-grid">
                 <div>
-                  <label className="ps-label">Primary Jurisdiction</label>
+                  <label className="ps-label">{t('accessionPage.outsidePatient.primaryJurisdiction')}</label>
                   <select className="ps-input-dark" value={outsidePatientData.primaryJurisdictionCountryCode ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, primaryJurisdictionCountryCode: e.target.value, primaryJurisdictionMappingId: undefined }))}>
-                    <option value="">— Select —</option>
+                    <option value="">{t('accessionPage.outsidePatient.select')}</option>
                     {Array.from(new Set(jurisdictionMappings.map(m => m.countryCode))).sort().map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -3804,12 +3891,12 @@ const AccessionPage: React.FC = () => {
                       // approximate label had the same real ambiguity
                       // risk this whole fix addresses.
                       const selected = jurisdictionMappings.find(m => m.id === outsidePatientData.primaryJurisdictionMappingId);
-                      return selected ? `Local ID Number (${selected.localSchemeCode})` : 'Local ID Number';
+                      return selected ? t('accessionPage.outsidePatient.localIdNumberWithScheme', { scheme: selected.localSchemeCode }) : t('accessionPage.outsidePatient.localIdNumber');
                     })()}
                   </label>
                   <input className="ps-input-dark" value={outsidePatientData.localIdNumber ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, localIdNumber: e.target.value }))}
-                    placeholder={outsidePatientData.primaryJurisdictionMappingId ? '' : 'Select a payment scheme first'} />
+                    placeholder={outsidePatientData.primaryJurisdictionMappingId ? '' : t('accessionPage.outsidePatient.localIdPlaceholder')} />
                 </div>
               </div>
             </div>
@@ -3839,62 +3926,62 @@ const AccessionPage: React.FC = () => {
                 this app; see OutsidePatientFinancialData.ts's own
                 header for why. */}
             <div className="ps-accession-outside-section">
-              <div className="ps-accession-outside-section-title">Financial Class &amp; Coverage Routing</div>
+              <div className="ps-accession-outside-section-title">{t('accessionPage.outsidePatient.financialClass')}</div>
               <div className="ps-accession-grid">
                 <div>
-                  <label className="ps-label">Payment Category / Scheme</label>
+                  <label className="ps-label">{t('accessionPage.outsidePatient.paymentCategory')}</label>
                   <select className="ps-input-dark" value={outsidePatientData.primaryJurisdictionMappingId ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, primaryJurisdictionMappingId: e.target.value }))}
                     disabled={!outsidePatientData.primaryJurisdictionCountryCode}>
-                    <option value="">— Select —</option>
+                    <option value="">{t('accessionPage.outsidePatient.select')}</option>
                     {jurisdictionMappings.filter(m => m.countryCode === outsidePatientData.primaryJurisdictionCountryCode).map(m => {
-                      const departmentName = masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
+                      const departmentName = masterPaymentTypes.find(mpt => mpt.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
                       return <option key={m.id} value={m.id}>{departmentName} — {m.localDisplayTerminology}</option>;
                     })}
                   </select>
                 </div>
                 <div>
-                  <label className="ps-label">Primary Payer / Fund</label>
+                  <label className="ps-label">{t('accessionPage.outsidePatient.primaryPayer')}</label>
                   <input className="ps-input-dark" value={outsidePatientData.primaryPayerName ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, primaryPayerName: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="ps-label">Coverage / Policy #</label>
+                  <label className="ps-label">{t('accessionPage.outsidePatient.coveragePolicy')}</label>
                   <input className="ps-input-dark" value={outsidePatientData.coveragePolicyNumber ?? ''}
                     onChange={e => setOutsidePatientData(d => ({ ...d, coveragePolicyNumber: e.target.value }))} />
                 </div>
               </div>
 
-              <label className="ps-accession-checkbox-row" style={{ marginTop: 12 }}>
+              <label className="ps-accession-checkbox-row ps-accession-checkbox-row--spaced">
                 <input type="checkbox" checked={!!outsidePatientData.hasSecondaryCoverage}
                   onChange={e => setOutsidePatientData(d => ({ ...d, hasSecondaryCoverage: e.target.checked }))} />
-                Apply Secondary / Complementary Coverage (Split-Billing)
+                {t('accessionPage.outsidePatient.applySecondary')}
               </label>
 
               {outsidePatientData.hasSecondaryCoverage && (
                 <div className="ps-accession-outside-secondary-box">
                   <div className="ps-accession-grid">
                     <div>
-                      <label className="ps-label">Secondary Category / Scheme</label>
+                      <label className="ps-label">{t('accessionPage.outsidePatient.secondaryCategory')}</label>
                       <select className="ps-input-dark" value={outsidePatientData.secondaryJurisdictionMappingId ?? ''}
                         onChange={e => setOutsidePatientData(d => ({ ...d, secondaryJurisdictionMappingId: e.target.value }))}>
-                        <option value="">— Select —</option>
+                        <option value="">{t('accessionPage.outsidePatient.select')}</option>
                         {jurisdictionMappings
                           .filter(m => m.countryCode === outsidePatientData.primaryJurisdictionCountryCode)
-                          .filter(m => masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.supportsSplitBilling)
+                          .filter(m => masterPaymentTypes.find(mpt => mpt.id === m.masterPaymentTypeId)?.supportsSplitBilling)
                           .map(m => {
-                            const departmentName = masterPaymentTypes.find(t => t.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
+                            const departmentName = masterPaymentTypes.find(mpt => mpt.id === m.masterPaymentTypeId)?.displayName ?? m.masterPaymentTypeId;
                             return <option key={m.id} value={m.id}>{departmentName} — {m.localDisplayTerminology}</option>;
                           })}
                       </select>
                     </div>
                     <div>
-                      <label className="ps-label">Secondary Payer</label>
+                      <label className="ps-label">{t('accessionPage.outsidePatient.secondaryPayer')}</label>
                       <input className="ps-input-dark" value={outsidePatientData.secondaryPayerName ?? ''}
                         onChange={e => setOutsidePatientData(d => ({ ...d, secondaryPayerName: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="ps-label">Member / Card ID</label>
+                      <label className="ps-label">{t('accessionPage.outsidePatient.memberCardId')}</label>
                       <input className="ps-input-dark" value={outsidePatientData.secondaryMemberId ?? ''}
                         onChange={e => setOutsidePatientData(d => ({ ...d, secondaryMemberId: e.target.value }))} />
                     </div>
@@ -3908,7 +3995,7 @@ const AccessionPage: React.FC = () => {
 
       {caseCommentModalOpen && (
         <CaseCommentModal
-          accession="(new case — not yet accessioned)"
+          accession={t('accessionPage.caseComment.notYetAccessioned')}
           comments={caseComments}
           currentUserId={user?.id ?? 'unknown'}
           currentUserName={user?.name ?? 'Unknown User'}
@@ -3949,7 +4036,7 @@ const AccessionPage: React.FC = () => {
               wasManualOverride: false, // this modal only offers Merge Now / Go to Queue Later / Dismiss — no manual case-ID entry
               performedBy: user?.name ?? 'Unknown User',
             });
-            toast.success(<PhiToastMessage>Intraoperative entry merged into {intraopMatch.caseId}</PhiToastMessage>);
+            toast.success(<PhiToastMessage>{t('accessionPage.toast.intraopMerged', { caseId: intraopMatch.caseId })}</PhiToastMessage>);
             setIntraopMatch(null);
           }}
           onGoToQueueLater={() => { setIntraopMatch(null); navigate('/intraop-queue'); }}
@@ -3977,9 +4064,9 @@ const AccessionPage: React.FC = () => {
 
       <ConfirmModal
         show={!!pendingImportOrderId}
-        title="Replace Unsaved Information"
-        message="This form has unsaved information. Importing this order will replace it. Continue?"
-        confirmLabel="Continue"
+        title={t('accessionPage.confirmReplace.title')}
+        message={t('accessionPage.confirmReplace.message')}
+        confirmLabel={t('accessionPage.confirmReplace.confirmLabel')}
         onConfirm={confirmImportOrder}
         onCancel={() => setPendingImportOrderId(null)}
       />
@@ -3994,9 +4081,9 @@ const AccessionPage: React.FC = () => {
           no way to actually confirm or cancel leaving. */}
       <ConfirmModal
         show={!!pendingPath}
-        title="Leave Accession?"
-        message="This form has unsaved information that hasn't been submitted. Leaving now will discard it. Continue?"
-        confirmLabel="Leave and Discard"
+        title={t('accessionPage.confirmLeave.title')}
+        message={t('accessionPage.confirmLeave.message')}
+        confirmLabel={t('accessionPage.confirmLeave.confirmLabel')}
         onConfirm={confirmNavigate}
         onCancel={cancelNavigate}
       />

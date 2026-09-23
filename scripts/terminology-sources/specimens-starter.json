@@ -1,14 +1,15 @@
 {
-  "notes": "Real, researched starter data for the Specimen Dictionary (services/specimenDictionary/). Rebuilt 2026-06-01 after this file was found missing from the working copy (a real, unrelated environment/packaging gap — not a code bug — traced while investigating a cascading test-suite failure). This is a genuine reconstruction, not a byte-for-byte restoration of whatever the original file held: defaultBaseCptCode values are verified against the standard, publicly-published CAP/AMA surgical pathology specimen-level examples table (Levels II-VI; source cross-checked against a Medicare Administrative Contractor-style published specimen checklist during this rebuild) and assigned only where a specimen name is a real, standard example at that level — left blank, never guessed, for Cytology/FNA/Molecular/Autopsy/Consult/Gross-Only entries, which use different, unverified CPT code families. As with the prior version of this file, none of this is a substitute for real coder review before any production/billing use.",
+  "notes": "Real, researched starter data for the Specimen Dictionary (services/specimenDictionary/). Rebuilt 2026-06-01 after this file was found missing from the working copy (a real, unrelated environment/packaging gap \u2014 not a code bug \u2014 traced while investigating a cascading test-suite failure). This is a genuine reconstruction, not a byte-for-byte restoration of whatever the original file held: defaultBaseCptCode values are verified against the standard, publicly-published CAP/AMA surgical pathology specimen-level examples table (Levels II-VI; source cross-checked against a Medicare Administrative Contractor-style published specimen checklist during this rebuild) and assigned only where a specimen name is a real, standard example at that level \u2014 left blank, never guessed, for Cytology/FNA/Molecular/Autopsy/Consult/Gross-Only entries, which use different, unverified CPT code families. As with the prior version of this file, none of this is a substitute for real coder review before any production/billing use.",
   "specimens": [
     {
       "id": "sp001",
-      "name": "Core Needle Biopsy — Breast",
+      "name": "Core Needle Biopsy \u2014 Breast",
       "description": "Image- or palpation-guided core needle biopsy of a breast lesion.",
       "subspecialty": "Breast Pathology",
       "type": "Biopsy",
       "procedure": "Core Needle Biopsy",
-      "normalizedLabel": "Core Needle Biopsy — Breast",
+      "site": "Breast",
+      "normalizedLabel": "Core Needle Biopsy \u2014 Breast",
       "synonyms": [
         "Breast Core Biopsy",
         "Breast Core Needle Biopsy"
@@ -27,6 +28,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Excision",
       "procedure": "Excisional Biopsy / Lumpectomy",
+      "site": "Breast",
       "normalizedLabel": "Breast, Excisional Biopsy",
       "synonyms": [
         "Lumpectomy",
@@ -46,6 +48,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Excision",
       "procedure": "Reduction Mammoplasty",
+      "site": "Breast",
       "normalizedLabel": "Breast, Reduction Mammoplasty",
       "synonyms": [
         "Reduction Mammoplasty"
@@ -64,6 +67,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Resection",
       "procedure": "Partial Mastectomy",
+      "site": "Breast",
       "normalizedLabel": "Mastectomy, Partial",
       "synonyms": [
         "Segmental Mastectomy",
@@ -83,6 +87,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Resection",
       "procedure": "Simple/Total Mastectomy",
+      "site": "Breast",
       "normalizedLabel": "Mastectomy, Simple/Total",
       "synonyms": [
         "Total Mastectomy",
@@ -102,6 +107,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Resection",
       "procedure": "Mastectomy with Axillary Dissection",
+      "site": "Breast",
       "normalizedLabel": "Mastectomy, Total, with Axillary Lymph Node Dissection",
       "synonyms": [
         "Modified Radical Mastectomy",
@@ -121,6 +127,7 @@
       "subspecialty": "Breast Pathology",
       "type": "Biopsy",
       "procedure": "Sentinel Lymph Node Biopsy",
+      "site": "Axilla",
       "normalizedLabel": "Sentinel Lymph Node, Axillary",
       "synonyms": [
         "Sentinel Node Biopsy",
@@ -140,6 +147,7 @@
       "subspecialty": "GI Pathology",
       "type": "Excision",
       "procedure": "Incidental Appendectomy",
+      "site": "Appendix",
       "normalizedLabel": "Appendix, Incidental",
       "synonyms": [
         "Incidental Appendix"
@@ -158,6 +166,7 @@
       "subspecialty": "GI Pathology",
       "type": "Excision",
       "procedure": "Appendectomy",
+      "site": "Appendix",
       "normalizedLabel": "Appendix, Other than Incidental",
       "synonyms": [
         "Appendectomy"
@@ -176,6 +185,7 @@
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Cholecystectomy",
+      "site": "Gallbladder",
       "normalizedLabel": "Gallbladder",
       "synonyms": [
         "Cholecystectomy"
@@ -194,6 +204,7 @@
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
       "procedure": "Colon Biopsy",
+      "site": "Colon",
       "normalizedLabel": "Colon, Biopsy",
       "synonyms": [
         "Colonic Biopsy"
@@ -212,6 +223,7 @@
       "subspecialty": "GI Pathology",
       "type": "Excision",
       "procedure": "Polypectomy",
+      "site": "Colon/Rectum",
       "normalizedLabel": "Polyp, Colorectal",
       "synonyms": [
         "Colon Polyp",
@@ -226,12 +238,13 @@
     },
     {
       "id": "sp013",
-      "name": "Colon, Segmental Resection — No Tumor",
+      "name": "Colon, Segmental Resection \u2014 No Tumor",
       "description": "Segmental colon resection for a non-neoplastic indication (e.g. diverticulitis, ischemia).",
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Segmental Colectomy",
-      "normalizedLabel": "Colon, Segmental Resection — No Tumor",
+      "site": "Colon",
+      "normalizedLabel": "Colon, Segmental Resection \u2014 No Tumor",
       "synonyms": [
         "Segmental Colon Resection"
       ],
@@ -249,6 +262,7 @@
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Segmental Colectomy for Tumor",
+      "site": "Colon",
       "normalizedLabel": "Colon, Segmental Resection for Tumor",
       "synonyms": [
         "Colectomy for Cancer"
@@ -267,6 +281,7 @@
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
       "procedure": "Esophageal Biopsy",
+      "site": "Esophagus",
       "normalizedLabel": "Esophagus, Biopsy",
       "synonyms": [
         "Esophageal Biopsy"
@@ -285,6 +300,7 @@
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Esophagectomy",
+      "site": "Esophagus",
       "normalizedLabel": "Esophagus, Partial/Total Resection",
       "synonyms": [
         "Esophagectomy"
@@ -303,6 +319,7 @@
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
       "procedure": "Gastric Biopsy",
+      "site": "Stomach",
       "normalizedLabel": "Stomach, Biopsy",
       "synonyms": [
         "Gastric Biopsy"
@@ -321,6 +338,7 @@
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Gastrectomy for Tumor",
+      "site": "Stomach",
       "normalizedLabel": "Stomach, Subtotal/Total Resection for Tumor",
       "synonyms": [
         "Gastrectomy"
@@ -339,6 +357,7 @@
       "subspecialty": "GI Pathology",
       "type": "Biopsy",
       "procedure": "Small Bowel Biopsy",
+      "site": "Small Intestine",
       "normalizedLabel": "Small Intestine, Biopsy",
       "synonyms": [
         "Small Bowel Biopsy"
@@ -357,6 +376,7 @@
       "subspecialty": "GI Pathology",
       "type": "Resection",
       "procedure": "Small Bowel Resection for Tumor",
+      "site": "Small Intestine",
       "normalizedLabel": "Small Intestine, Resection for Tumor",
       "synonyms": [
         "Small Bowel Resection"
@@ -375,6 +395,7 @@
       "subspecialty": "GI Pathology",
       "type": "Gross Only",
       "procedure": "Cholecystectomy, Calculous Disease",
+      "site": "Gallbladder",
       "normalizedLabel": "Gallbladder, Calculous",
       "synonyms": [
         "Gallstone Cholecystectomy"
@@ -393,6 +414,7 @@
       "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Biopsy",
       "procedure": "Liver Biopsy",
+      "site": "Liver",
       "normalizedLabel": "Liver, Biopsy",
       "synonyms": [
         "Liver Needle Biopsy",
@@ -412,6 +434,7 @@
       "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Resection",
       "procedure": "Partial Hepatectomy",
+      "site": "Liver",
       "normalizedLabel": "Liver, Partial Resection",
       "synonyms": [
         "Hepatectomy"
@@ -430,6 +453,7 @@
       "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Biopsy",
       "procedure": "Pancreatic Biopsy",
+      "site": "Pancreas",
       "normalizedLabel": "Pancreas, Biopsy",
       "synonyms": [
         "Pancreas Biopsy"
@@ -444,10 +468,11 @@
     {
       "id": "sp025",
       "name": "Pancreaticoduodenectomy",
-      "description": "Whipple procedure specimen — total or subtotal pancreatic resection with duodenum.",
+      "description": "Whipple procedure specimen \u2014 total or subtotal pancreatic resection with duodenum.",
       "subspecialty": "Hepatobiliary & Pancreatic Pathology",
       "type": "Resection",
       "procedure": "Whipple Procedure",
+      "site": "Pancreas/Duodenum",
       "normalizedLabel": "Pancreaticoduodenectomy",
       "synonyms": [
         "Whipple Procedure",
@@ -467,6 +492,7 @@
       "subspecialty": "GU Pathology",
       "type": "Biopsy",
       "procedure": "Renal Biopsy",
+      "site": "Kidney",
       "normalizedLabel": "Kidney, Biopsy",
       "synonyms": [
         "Renal Biopsy"
@@ -485,6 +511,7 @@
       "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "Nephrectomy",
+      "site": "Kidney",
       "normalizedLabel": "Kidney, Partial/Total Nephrectomy",
       "synonyms": [
         "Nephrectomy"
@@ -503,6 +530,7 @@
       "subspecialty": "GU Pathology",
       "type": "Biopsy",
       "procedure": "Prostate Needle Biopsy",
+      "site": "Prostate",
       "normalizedLabel": "Prostate, Needle Biopsy",
       "synonyms": [
         "Prostate Biopsy"
@@ -521,6 +549,7 @@
       "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "TURP",
+      "site": "Prostate",
       "normalizedLabel": "Prostate, TUR",
       "synonyms": [
         "TURP"
@@ -539,6 +568,7 @@
       "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "Radical Prostatectomy",
+      "site": "Prostate",
       "normalizedLabel": "Prostate, Radical Resection",
       "synonyms": [
         "Radical Prostatectomy"
@@ -557,6 +587,7 @@
       "subspecialty": "GU Pathology",
       "type": "Biopsy",
       "procedure": "Bladder Biopsy",
+      "site": "Urinary Bladder",
       "normalizedLabel": "Urinary Bladder, Biopsy",
       "synonyms": [
         "Bladder Biopsy"
@@ -575,6 +606,7 @@
       "subspecialty": "GU Pathology",
       "type": "Resection",
       "procedure": "TURBT",
+      "site": "Urinary Bladder",
       "normalizedLabel": "Urinary Bladder, TUR",
       "synonyms": [
         "TURBT"
@@ -593,6 +625,7 @@
       "subspecialty": "GU Pathology",
       "type": "Biopsy",
       "procedure": "Testicular Biopsy",
+      "site": "Testis",
       "normalizedLabel": "Testis, Biopsy",
       "synonyms": [
         "Testicular Biopsy"
@@ -611,6 +644,7 @@
       "subspecialty": "Cytology",
       "type": "Cytology",
       "procedure": "Fluid Cytology",
+      "site": "Pleural Cavity",
       "normalizedLabel": "Pleural Fluid Cytology",
       "synonyms": [
         "Pleural Fluid",
@@ -629,6 +663,7 @@
       "subspecialty": "Cytology",
       "type": "Cytology",
       "procedure": "Fluid Cytology",
+      "site": "Peritoneal Cavity",
       "normalizedLabel": "Peritoneal Fluid Cytology",
       "synonyms": [
         "Ascitic Fluid Cytology",
@@ -664,6 +699,7 @@
       "subspecialty": "Cytology",
       "type": "Cytology",
       "procedure": "Bronchial Cytology",
+      "site": "Bronchus",
       "normalizedLabel": "Bronchial Washing/Brushing Cytology",
       "synonyms": [
         "Bronchial Washing",
@@ -752,6 +788,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Biopsy",
       "procedure": "Endometrial Biopsy",
+      "site": "Endometrium",
       "normalizedLabel": "Endometrium, Curettings/Biopsy",
       "synonyms": [
         "Endometrial Curettings"
@@ -770,6 +807,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Biopsy",
       "procedure": "Cervical Biopsy",
+      "site": "Cervix",
       "normalizedLabel": "Cervix, Biopsy",
       "synonyms": [
         "Cervical Biopsy"
@@ -788,6 +826,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Excision",
       "procedure": "Cervical Conization",
+      "site": "Cervix",
       "normalizedLabel": "Cervix, Conization",
       "synonyms": [
         "Cone Biopsy",
@@ -807,6 +846,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Biopsy",
       "procedure": "Ovarian Biopsy",
+      "site": "Ovary",
       "normalizedLabel": "Ovary, Biopsy/Wedge Resection",
       "synonyms": [
         "Ovarian Wedge Resection"
@@ -825,6 +865,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Resection",
       "procedure": "Oophorectomy, Neoplastic",
+      "site": "Ovary",
       "normalizedLabel": "Ovary, Neoplastic Resection",
       "synonyms": [
         "Oophorectomy"
@@ -843,6 +884,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Resection",
       "procedure": "Hysterectomy, Neoplastic",
+      "site": "Uterus",
       "normalizedLabel": "Uterus, Neoplastic, with or without Tubes and Ovaries",
       "synonyms": [
         "Hysterectomy for Cancer"
@@ -861,6 +903,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Excision",
       "procedure": "Salpingectomy, Ectopic Pregnancy",
+      "site": "Fallopian Tube",
       "normalizedLabel": "Fallopian Tube, Ectopic Pregnancy",
       "synonyms": [
         "Tubal Ectopic Pregnancy"
@@ -879,6 +922,7 @@
       "subspecialty": "GYN Pathology",
       "type": "Excision",
       "procedure": "Tubal Ligation",
+      "site": "Fallopian Tube",
       "normalizedLabel": "Fallopian Tube, Sterilization",
       "synonyms": [
         "Tubal Ligation Specimen"
@@ -953,6 +997,7 @@
       "subspecialty": "Pulmonary Pathology",
       "type": "Biopsy",
       "procedure": "Transbronchial Biopsy",
+      "site": "Lung",
       "normalizedLabel": "Lung, Transbronchial Biopsy",
       "synonyms": [
         "TBBx"
@@ -971,6 +1016,7 @@
       "subspecialty": "Pulmonary Pathology",
       "type": "Biopsy",
       "procedure": "Lung Wedge Biopsy",
+      "site": "Lung",
       "normalizedLabel": "Lung, Wedge Biopsy",
       "synonyms": [
         "Wedge Lung Biopsy"
@@ -989,6 +1035,7 @@
       "subspecialty": "Pulmonary Pathology",
       "type": "Resection",
       "procedure": "Lung Resection",
+      "site": "Lung",
       "normalizedLabel": "Lung, Total/Lobe/Segment Resection",
       "synonyms": [
         "Lobectomy",
@@ -1008,6 +1055,7 @@
       "subspecialty": "Pulmonary Pathology",
       "type": "Biopsy",
       "procedure": "Endobronchial Biopsy",
+      "site": "Bronchus",
       "normalizedLabel": "Bronchus, Biopsy",
       "synonyms": [
         "Endobronchial Biopsy"
@@ -1026,6 +1074,7 @@
       "subspecialty": "Head & Neck Pathology",
       "type": "Biopsy",
       "procedure": "Laryngeal Biopsy",
+      "site": "Larynx",
       "normalizedLabel": "Larynx, Biopsy",
       "synonyms": [
         "Laryngeal Biopsy"
@@ -1044,6 +1093,7 @@
       "subspecialty": "Head & Neck Pathology",
       "type": "Resection",
       "procedure": "Laryngectomy",
+      "site": "Larynx",
       "normalizedLabel": "Larynx, Partial/Total Resection",
       "synonyms": [
         "Laryngectomy"
@@ -1062,6 +1112,7 @@
       "subspecialty": "Head & Neck Pathology",
       "type": "Excision",
       "procedure": "Tonsillectomy/Adenoidectomy",
+      "site": "Tonsil/Adenoid",
       "normalizedLabel": "Tonsil and/or Adenoid",
       "synonyms": [
         "Tonsillectomy",
@@ -1117,6 +1168,7 @@
       "subspecialty": "Head & Neck Pathology",
       "type": "Resection",
       "procedure": "Thyroidectomy",
+      "site": "Thyroid",
       "normalizedLabel": "Thyroid, Total/Lobe",
       "synonyms": [
         "Thyroid Lobectomy",
@@ -1136,6 +1188,7 @@
       "subspecialty": "Neuropathology",
       "type": "Biopsy",
       "procedure": "Brain Biopsy",
+      "site": "Brain",
       "normalizedLabel": "Brain, Biopsy",
       "synonyms": [
         "Stereotactic Brain Biopsy"
@@ -1154,6 +1207,7 @@
       "subspecialty": "Neuropathology",
       "type": "Resection",
       "procedure": "Craniotomy for Tumor",
+      "site": "Brain/Meninges",
       "normalizedLabel": "Brain/Meninges, Tumor Resection",
       "synonyms": [
         "Craniotomy Tumor Resection"
@@ -1298,6 +1352,7 @@
       "subspecialty": "General Surgical Pathology",
       "type": "Excision",
       "procedure": "Hemorrhoidectomy",
+      "site": "Anorectal",
       "normalizedLabel": "Hemorrhoids",
       "synonyms": [
         "Hemorrhoidectomy"

@@ -84,4 +84,53 @@ describe('resolveResidentCountersignRequired', () => {
     });
     expect(result).toEqual({ required: false });
   });
+
+  it('requires countersign for a cytotechnologist participant with an active competency assessment assignment', () => {
+    const result = resolveResidentCountersignRequired({
+      participants: [participant({ participationTypeIds: ['cytotechnologist'] })],
+      signingUserId: 'user-1',
+      hasActiveFppeAssignment: false,
+      hasActiveCytotechCompetencyAssignment: true,
+    });
+    expect(result).toEqual({ required: true, reason: 'cytotech_competency' });
+  });
+
+  it('does not intercept a cytotechnologist participant when there is no active competency assessment assignment', () => {
+    const result = resolveResidentCountersignRequired({
+      participants: [participant({ participationTypeIds: ['cytotechnologist'] })],
+      signingUserId: 'user-1',
+      hasActiveFppeAssignment: false,
+      hasActiveCytotechCompetencyAssignment: false,
+    });
+    expect(result).toEqual({ required: false });
+  });
+
+  it('does not intercept a cytotechnologist participant when hasActiveCytotechCompetencyAssignment is omitted (existing Surg Path/Autopsy callers never pass it)', () => {
+    const result = resolveResidentCountersignRequired({
+      participants: [participant({ participationTypeIds: ['cytotechnologist'] })],
+      signingUserId: 'user-1',
+      hasActiveFppeAssignment: false,
+    });
+    expect(result).toEqual({ required: false });
+  });
+
+  it('never intercepts a dual-role signer who is also an active attending participant, even with an active cytotech competency assignment', () => {
+    const result = resolveResidentCountersignRequired({
+      participants: [participant({ participationTypeIds: ['cytotechnologist', 'attending'] })],
+      signingUserId: 'user-1',
+      hasActiveFppeAssignment: false,
+      hasActiveCytotechCompetencyAssignment: true,
+    });
+    expect(result).toEqual({ required: false });
+  });
+
+  it('prefers the resident reason over cytotech_competency when a signer somehow carries both types with an active competency assignment', () => {
+    const result = resolveResidentCountersignRequired({
+      participants: [participant({ participationTypeIds: ['resident', 'cytotechnologist'] })],
+      signingUserId: 'user-1',
+      hasActiveFppeAssignment: false,
+      hasActiveCytotechCompetencyAssignment: true,
+    });
+    expect(result).toEqual({ required: true, reason: 'resident' });
+  });
 });

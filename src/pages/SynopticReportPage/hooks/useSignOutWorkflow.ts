@@ -45,6 +45,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getSessionUser, canFinalizeCase } from '@/services/auth/caseAccessControl';
 import { countersignService, userService, fppeAssignmentService, qaSupervisionAssignmentService } from '@/services';
 import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
@@ -64,11 +65,13 @@ import { checkSignOutBillingDeficiencies } from '@/services/billing/checkSignOut
 import { detectCriticalFindings } from '@/services/clinical/detectCriticalFindings';
 import type { CriticalFindingFlag } from '@/services/clinical/detectCriticalFindings';
 import { mockCriticalResultNotificationService } from '@/services/clinical/mockCriticalResultNotificationService';
+import { dispatchCriticalAlerts } from '@/services/clinical/dispatchCriticalAlerts';
 import { abnormalTriggerRuleService } from '@/services';
 import { evaluateAbnormalTriggerRules, toCriticalFindingFlag } from '@/services/abnormalDetection/evaluateAbnormalTriggerRules';
 import { resolveSyntheticCoding } from '@/services/abnormalDetection/resolveSyntheticCoding';
 import { abnormalDetectionSignalService, qaActivityRecordService } from '@/services';
 import { ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
+import { applySurgicalPostSignOutQa } from '@/services/quality/applySurgicalPostSignOutQa';
 import { deidentifyText } from '@/services/narrativeSignals/deidentification';
 import { resolveAnswers } from '@/orchestrator/contextBuilder';
 import { resolveAbnormalDetectionEnabled } from '@/services/abnormalDetection/resolveAbnormalDetectionEnabled';
@@ -84,6 +87,7 @@ import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox'
 import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
 import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 import { sendEmail } from '@/services/communications/notificationService';
+import { resolveResidentCountersignRequired } from '@/services/cases/resolveResidentCountersignRequired';
 import type { FixativeGateSpecimen } from '../modals/FixativeTimeGateModal';
 import type { PreAnalyticDateGateSpecimen } from '../modals/PreAnalyticDateGateModal';
 import { PreFinalisationModal, type SynopticForReview } from '../modals/PreFinalisationModal';
@@ -287,6 +291,14 @@ export function useSignOutWorkflow({
   // fetchCriticalFindings below (the case's own real ordering
   // facility isn't known until then).
   const { enterpriseConfig } = useSystemConfig();
+  // i18n note: `canFinalizeCase()`'s own `.reason` (from
+  // @/services/auth/caseAccessControl, shown as-is at the two
+  // `showToast(...Decision.reason)` spots below) is now translated at
+  // its own source — that file resolves it via a direct i18next
+  // instance call (it's a plain service, not a hook), so both call
+  // sites here stay correct simply by displaying whatever it returns,
+  // in any language, with no wrapping needed here.
+  const { t } = useTranslation();
 
   const finalizeSignOut = useCallback(async () => {
     // Stage 2 of the CoPilot amendment pipeline — this is the real
@@ -333,7 +345,7 @@ export function useSignOutWorkflow({
 
         {
           const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-          if (generationError) showToast(`Version saved, but PDF snapshot failed to generate: ${generationError}`);
+          if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
           await reportVersionService.create({
             caseId: caseData.id,
             mode: 'assist',
@@ -348,7 +360,7 @@ export function useSignOutWorkflow({
       }
 
       if (failedInstances.length > 0) {
-        showToast(`Warning: ${failedInstances.length} corrected synoptic instance(s) could not be transmitted — they remain in your triage queue, not finalized.`);
+        showToast(t('useSignOutWorkflow.toast.correctedInstancesNotTransmitted', { count: failedInstances.length }));
       }
 
       if (successfulInstanceIds.size > 0) {
@@ -380,7 +392,7 @@ export function useSignOutWorkflow({
         const versionCount = existingVersions.ok ? existingVersions.data.length : 0;
         const { pdfBase64, generationError } = await generateReportPdfSnapshot();
         if (generationError) {
-          showToast(`Version saved, but PDF snapshot failed to generate: ${generationError}`);
+          showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
         }
         await reportVersionService.create({
           caseId: caseData.id,
@@ -395,8 +407,8 @@ export function useSignOutWorkflow({
     setCaseSigned(true);
     setShowSignOutModal(false);
     setPendingReconciliation(null);
-    showToast('Case signed out successfully');
-  }, [caseData, sendSynopticReportToLis, generateReportPdfSnapshot, isOrchestrationMode, signingUser, setCaseSigned, setShowSignOutModal, showToast, setCaseData, knownVersionRef, setConcurrencyConflict, setPendingReconciliation]);
+    showToast(t('useSignOutWorkflow.toast.caseSignedOutSuccessfully'));
+  }, [caseData, sendSynopticReportToLis, generateReportPdfSnapshot, isOrchestrationMode, signingUser, setCaseSigned, setShowSignOutModal, showToast, setCaseData, knownVersionRef, setConcurrencyConflict, setPendingReconciliation, t]);
 
   // Real, per direct guidance ("Yes we should scope 'Return to
   // Trainee'/'Reject with Notes'. I think the delegation workflow
@@ -412,7 +424,7 @@ export function useSignOutWorkflow({
 
     const trimmedFeedback = countersignFeedback.trim();
     if (!trimmedFeedback) {
-      showToast('Feedback is required when returning a case to the trainee — they need to know what to revise.');
+      showToast(t('useSignOutWorkflow.toast.feedbackRequiredForReturn'));
       return;
     }
 
@@ -423,7 +435,7 @@ export function useSignOutWorkflow({
       attendingFeedback: trimmedFeedback,
     });
     if (!result.ok) {
-      showToast((result as { ok: false; error: string }).error ?? 'Could not return this case — please try again.');
+      showToast((result as { ok: false; error: string }).error ?? t('useSignOutWorkflow.toast.couldNotReturnCase'));
       return;
     }
     const record = result.data;
@@ -460,13 +472,13 @@ export function useSignOutWorkflow({
       knownVersionRef.current = knownVersionRef.current + 1;
       setCaseData({ ...caseData, ...patch } as typeof caseData);
       setShowSignOutModal(false);
-      showToast(`Case returned to ${record.residentName} for revision.`);
+      showToast(t('useSignOutWorkflow.toast.caseReturnedForRevision', { name: record.residentName }));
     } catch (e) {
       if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
       console.error('[useSignOutWorkflow] Failed to apply the real return-to-trainee state transition:', e);
-      showToast('Feedback recorded, but could not update the case — please contact support.');
+      showToast(t('useSignOutWorkflow.toast.feedbackRecordedUpdateFailed'));
     }
-  }, [caseData, countersignFeedback, signingUser, showToast, setShowSignOutModal, knownVersionRef, setCaseData, setConcurrencyConflict]);
+  }, [caseData, countersignFeedback, signingUser, showToast, setShowSignOutModal, knownVersionRef, setCaseData, setConcurrencyConflict, t]);
 
   const handleSignOutConfirm = useCallback(async () => {
     // Real, critical defense-in-depth guard, per direct specification:
@@ -483,7 +495,7 @@ export function useSignOutWorkflow({
     // in its own recall window should never reach any further sign-out
     // logic at all.
     if (caseData?.status === 'pending-release') {
-      showToast('This report is already Pending Release — recall it first if you need to make further changes.');
+      showToast(t('useSignOutWorkflow.toast.alreadyPendingRelease'));
       setShowSignOutModal(false);
       return;
     }
@@ -504,9 +516,17 @@ export function useSignOutWorkflow({
     // FPPE assignment itself is what says who's proctoring them, for
     // however long the review period lasts.
     if (caseData?.id) {
-      const residentParticipant = caseData?.participants?.find(
-        (p: CaseParticipant) => p.status === 'active' && p.staffId === signingUser?.id && p.participationTypeIds?.includes('resident')
-      );
+      // Real fix (per direct follow-up on the intraop/FPPE differentiator
+      // review): this used to re-derive the resident/attending decision
+      // inline, in parallel with resolveResidentCountersignRequired.ts's
+      // own identical logic (built for Cytology/Autopsy reuse) — two
+      // independently-maintained copies of the same gate, a real drift
+      // risk if either one ever changed alone. `isAttendingToo` is still
+      // needed locally, on its own, purely to decide whether it's worth
+      // making the async FPPE-assignment lookup below at all — that
+      // pre-check isn't part of the shared decision itself, which stays
+      // synchronous/pure by design (see that file's own header). The
+      // actual required/reason decision now comes from one place.
       const isAttendingToo = caseData?.participants?.some(
         (p: CaseParticipant) => p.status === 'active' && p.staffId === signingUser?.id && p.participationTypeIds?.includes('attending')
       );
@@ -548,7 +568,13 @@ export function useSignOutWorkflow({
           .catch(() => {});
       }
 
-      if ((residentParticipant && !isAttendingToo) || activeFppeAssignment) {
+      const countersignCheck = resolveResidentCountersignRequired({
+        participants: caseData?.participants,
+        signingUserId: signingUser?.id ?? '',
+        hasActiveFppeAssignment: !!activeFppeAssignment,
+      });
+
+      if (countersignCheck.required) {
         const releasedAnswersSnapshot: Record<string, Record<string, string | string[]>> = {};
         (caseData.synopticReports ?? []).forEach((r: SynopticReportInstance) => { releasedAnswersSnapshot[r.instanceId] = r.answers ?? {}; });
 
@@ -573,7 +599,7 @@ export function useSignOutWorkflow({
           const existingVersions = await reportVersionService.getByCaseId(caseData.id);
           const versionCount = existingVersions.ok ? existingVersions.data.length : 0;
           const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-          if (generationError) showToast(`Submitted for countersign, but PDF snapshot failed to generate: ${generationError}`);
+          if (generationError) showToast(t('useSignOutWorkflow.toast.submittedCountersignPdfFailed', { error: generationError }));
           await reportVersionService.create({
             caseId: caseData.id,
             mode: 'orchestration',
@@ -642,7 +668,7 @@ export function useSignOutWorkflow({
           }
         }
 
-        showToast(`Case ${caseData.id} released for attending countersign`);
+        showToast(t('useSignOutWorkflow.toast.caseReleasedForCountersign', { caseId: caseData.id }));
         setShowSignOutModal(false);
         return; // does not proceed to reconciliation check or any finalize logic below
       }
@@ -802,6 +828,22 @@ export function useSignOutWorkflow({
     }
     await finalizeSignOut();
 
+    // Real, per direct guidance (PS-324): post-sign-out peer-review
+    // selection + biopsy-to-resection correlation candidate detection
+    // — surgical pathology only (this hook never runs for Cytology
+    // sign-out, same real jurisdiction as the cancer registry dispatch
+    // immediately below). Fire-and-forget, same real posture as every
+    // other post-sign-out side effect in this function — a real
+    // failure here must never block or retroactively undo the case's
+    // own, already-successful sign-out. See applySurgicalPostSignOutQa.ts's
+    // own header for why this deliberately re-fetches the case fresh
+    // rather than racing this function's own knownVersionRef writes.
+    if (caseData?.id) {
+      applySurgicalPostSignOutQa(caseData.id).catch(e =>
+        console.error('[useSignOutWorkflow] Could not apply surgical post-sign-out QA selection/correlation detection:', e)
+      );
+    }
+
     // Real, per the RFP-APLIS-2026-GLOBAL Broader Cancer Registry
     // Exports gap — per FHIR_DISPATCH_ARCHITECTURE_PLAN.md's own
     // already-settled, critical finding, this is the ONLY real place
@@ -850,7 +892,7 @@ export function useSignOutWorkflow({
             durationMinutes: bufferResolution.durationMinutes,
             facilityId: caseData.originHospitalId,
           });
-          showToast(`Report signed — dispatch in ${bufferResolution.durationMinutes} min unless recalled`);
+          showToast(t('useSignOutWorkflow.toast.reportSignedDispatchIn', { minutes: bufferResolution.durationMinutes }));
         } else {
           // Real, per direct guidance: no buffer applies (disabled
           // config, or a real STAT-priority bypass) — no reason to
@@ -870,10 +912,10 @@ export function useSignOutWorkflow({
       } catch (e) {
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
         console.error('[useSignOutWorkflow] Failed to apply the real sign-out/buffer state transition:', e);
-        showToast('Signed out, but could not start the release buffer — please contact support.');
+        showToast(t('useSignOutWorkflow.toast.signedOutBufferFailed'));
       }
     }
-  }, [caseData, finalizeSignOut, signingUser, showToast, countersignFeedback, setShowSignOutModal, knownVersionRef, setConcurrencyConflict, setCaseData, setPendingReconciliation, isOrchestrationMode, log]);
+  }, [caseData, finalizeSignOut, signingUser, showToast, countersignFeedback, setShowSignOutModal, knownVersionRef, setConcurrencyConflict, setCaseData, setPendingReconciliation, isOrchestrationMode, log, t]);
 
   // ── Build SynopticForReview[] for PreFinalisationModal ─────────────────
   const buildSynopticsForReview = useCallback(async (): Promise<SynopticForReview[]> => {
@@ -1165,6 +1207,24 @@ export function useSignOutWorkflow({
       // real posture as the PS-137 signal capture immediately below —
       // never blocks the actual sign-out action.
       const highestFinding = criticalFindings.find(f => f.severity === highest);
+
+      // Real, per direct guidance (PS-136): automated dispatch,
+      // additive to the mandatory human verbal-notification recorded
+      // above — fires on whichever real channels the ordering
+      // physician's own contact record actually supports. Fire-and-
+      // forget, same posture as the QA-activity/agreement-signal
+      // captures immediately below — never blocks the actual sign-out
+      // action, and a real dispatch failure here must never prevent
+      // the human notification already recorded from standing.
+      dispatchCriticalAlerts({
+        caseId: caseData.id,
+        orderingPhysicianId: caseData.order?.orderingPhysicianId,
+        findingTerm: highestFinding?.term ?? highest,
+        findingSeverity: highest,
+        sourceQuote: highestFinding?.sourceQuote ?? '',
+        confirmedAt: patch.abnormalDetectionStatus.confirmedAt,
+      }).catch(e => console.error('[AbnormalDetection] Could not dispatch automated critical alert:', e));
+
       qaActivityRecordService.create({
         activityTypeId: ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID,
         caseId: caseData.id,
@@ -1374,8 +1434,8 @@ export function useSignOutWorkflow({
       }
 
       showToast(bufferResolution.applies
-        ? `Report signed — release in ${bufferResolution.durationMinutes} min unless recalled`
-        : 'Report finalized');
+        ? t('useSignOutWorkflow.toast.reportSignedReleaseIn', { minutes: bufferResolution.durationMinutes })
+        : t('useSignOutWorkflow.toast.reportFinalized'));
 
       // Real, per direct guidance: the actual detection + raising step
       // for Trigger A/Trigger B, run here (inside the one, real, shared
@@ -1398,7 +1458,7 @@ export function useSignOutWorkflow({
           auditorNotes: f.auditorNotes,
           createdBy: 'system',
         })));
-        showToast(`${findings.length} billing item${findings.length === 1 ? '' : 's'} flagged for QA review — case signed out, not blocked.`);
+        showToast(t('useSignOutWorkflow.toast.billingItemsFlaggedQa', { count: findings.length }));
       })().catch(e => console.error('[PathScribe] Billing deficiency raise failed (non-blocking):', e));
 
       // Real, per direct guidance's own Code Review Pool design - the
@@ -1485,10 +1545,10 @@ export function useSignOutWorkflow({
       // never actually saw.
       if (handleConcurrencyConflict(err, setConcurrencyConflict, { blockOverride: true })) return false;
       console.error('[Finalise] Failed to persist finalization:', err);
-      showToast('Finalization failed — please try again');
+      showToast(t('useSignOutWorkflow.toast.finalizationFailed'));
       return false;
     }
-  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setStainQcGateBlocking, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings]);
+  }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setStainQcGateBlocking, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings, t]);
 
   // Real feature, per direct follow-up: "Wire evaluateMicroscopicFinalizeGate
   // into handleRequestFinalize." Genuinely case-wide, unlike
@@ -1505,10 +1565,10 @@ export function useSignOutWorkflow({
   // synoptic template assigned at all) still applies regardless, so
   // this isn't a silent no-op: a case with genuinely nothing
   // documenting it is still correctly blocked.
-  const getMicroscopicBlockingSpecimens = useCallback(async (): Promise<{ specimenLabel: string; specimenId: string; reason: string }[]> => {
+  const getMicroscopicBlockingSpecimens = useCallback(async (): Promise<{ specimenLabel: string; specimenId: string; reasonKey: string }[]> => {
     if (!caseData) return [];
     const specimens = caseData.specimens ?? [];
-    const blocking: { specimenLabel: string; specimenId: string; reason: string }[] = [];
+    const blocking: { specimenLabel: string; specimenId: string; reasonKey: string }[] = [];
 
     // Real, deliberate cache — several specimens can share the same
     // real synoptic templateId (e.g. the same CAP protocol assigned
@@ -1534,7 +1594,7 @@ export function useSignOutWorkflow({
           hasSynopticTemplate: false, allRequiredSynopticFieldsComplete: false,
           requiresMicroscopicNarrative: false,
         });
-        if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reason: result.reason! });
+        if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reasonKey: result.reasonKey! });
         continue;
       }
 
@@ -1579,7 +1639,7 @@ export function useSignOutWorkflow({
         hasSynopticTemplate, allRequiredSynopticFieldsComplete,
         requiresMicroscopicNarrative: false,
       });
-      if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reason: result.reason! });
+      if (result.blocked) blocking.push({ specimenId: specimen.id, specimenLabel: specimen.label, reasonKey: result.reasonKey! });
     }
 
     return blocking;
@@ -1601,10 +1661,10 @@ export function useSignOutWorkflow({
     if (findings.length === 0) return;
     showToast(
       findings.length === 1
-        ? `Billing note: ${findings[0].auditorNotes}`
-        : `${findings.length} billing items flagged — starting with: ${findings[0].auditorNotes}`
+        ? t('useSignOutWorkflow.toast.billingNoteSingle', { note: findings[0].auditorNotes })
+        : t('useSignOutWorkflow.toast.billingItemsFlaggedStartingWith', { count: findings.length, note: findings[0].auditorNotes })
     );
-  }, [fetchBillingDeficiencyFindings, showToast]);
+  }, [fetchBillingDeficiencyFindings, showToast, t]);
 
   const handleRequestFinalize = useCallback(async (andNext: boolean) => {
     setFinalizeAndNextPending(andNext);
@@ -1617,7 +1677,7 @@ export function useSignOutWorkflow({
     // those checks find.
     const activeCaseHold = (caseData?.caseHolds ?? []).find(h => h.active);
     if (activeCaseHold) {
-      showToast(`This case is on hold: ${activeCaseHold.note} — release the hold before finalizing.`);
+      showToast(t('useSignOutWorkflow.toast.caseOnHold', { note: activeCaseHold.note }));
       return;
     }
     // Real fix, found via direct live verification before shipping this:
@@ -1637,10 +1697,11 @@ export function useSignOutWorkflow({
     const microscopicBlocking = await getMicroscopicBlockingSpecimens();
     if (microscopicBlocking.length > 0) {
       const first = microscopicBlocking[0];
+      const firstReasonText = t(first.reasonKey);
       showToast(
         microscopicBlocking.length === 1
-          ? `Specimen ${first.specimenLabel}: ${first.reason}`
-          : `${microscopicBlocking.length} specimens need attention before finalizing — starting with Specimen ${first.specimenLabel}: ${first.reason}`
+          ? t('useSignOutWorkflow.toast.specimenBlocking', { label: first.specimenLabel, reason: firstReasonText })
+          : t('useSignOutWorkflow.toast.specimensNeedAttention', { count: microscopicBlocking.length, label: first.specimenLabel, reason: firstReasonText })
       );
       setActiveSpecimenId(first.specimenId);
       setActiveReportType('microscopic');
@@ -1686,8 +1747,8 @@ export function useSignOutWorkflow({
     if (blocking.length > 0) {
       showToast(
         blocking.length === 1
-          ? `1 AI suggestion still needs your review before this case can be finalized — "${blocking[0].fieldLabel}"`
-          : `${blocking.length} AI suggestions still need your review before this case can be finalized — starting with "${blocking[0].fieldLabel}"`
+          ? t('useSignOutWorkflow.toast.aiSuggestionNeedsReview', { label: blocking[0].fieldLabel })
+          : t('useSignOutWorkflow.toast.aiSuggestionsNeedReview', { count: blocking.length, label: blocking[0].fieldLabel })
       );
       if (isOrchestrationMode) safeSetLeftTab('draft');
       setAlertFieldId(blocking[0].fieldId);
@@ -1700,7 +1761,7 @@ export function useSignOutWorkflow({
     previewBillingWarnings().catch(e => console.error('[PathScribe] Billing warning preview failed (non-blocking):', e));
     setPreFinalSynoptics(await buildSynopticsForReview());
     setShowPreFinalise(true);
-  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType, previewBillingWarnings, acknowledgedCritical, fetchCriticalFindings]);
+  }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType, previewBillingWarnings, acknowledgedCritical, fetchCriticalFindings, t]);
 
   const handlePreFinalConfirm = useCallback((_ordered: string[], _excluded: string[]) => {
     setShowPreFinalise(false);
@@ -1847,11 +1908,11 @@ export function useSignOutWorkflow({
     };
 
     if (!caseText.gross.trim() && !caseText.microscopic.trim() && !caseText.ancillary.trim()) {
-      showToast('Enter a Gross, Microscopic, or Ancillary narrative before requesting AI suggestions.');
+      showToast(t('useSignOutWorkflow.toast.enterNarrativeBeforeAiSuggestions'));
       return;
     }
     if (!activeInstance?.templateId) {
-      showToast('No synoptic template is assigned to this report yet.');
+      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'));
       return;
     }
 
@@ -1862,7 +1923,7 @@ export function useSignOutWorkflow({
         const detail = await getTemplate(activeInstance.templateId);
         template = detail.template;
       } catch (e) {
-        showToast('Could not load the synoptic template for AI suggestion.');
+        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForAiSuggestion'));
         return;
       }
       if (!template) return;
@@ -1874,13 +1935,13 @@ export function useSignOutWorkflow({
       const aiService = new PathScribeAIService();
       const result = await aiService.suggestSynopticFields(caseText, fields);
       if (!result.success || !result.data) {
-        showToast('AI suggestion failed. Please try again.');
+        showToast(t('useSignOutWorkflow.toast.aiSuggestionFailed'));
         return;
       }
 
       const newReviewFields = buildReviewFieldsFromAiSuggestions(result.data, template, caseData);
       if (newReviewFields.length === 0) {
-        showToast('AI did not find any fields to suggest from the current narrative.');
+        showToast(t('useSignOutWorkflow.toast.aiFoundNoFields'));
         return;
       }
       setReviewFields(newReviewFields);
@@ -1888,7 +1949,7 @@ export function useSignOutWorkflow({
     } finally {
       setIsSuggestingSynoptic(false);
     }
-  }, [caseData, activeReportInstanceId, showToast, setReviewFields, setShowAiReview]);
+  }, [caseData, activeReportInstanceId, showToast, setReviewFields, setShowAiReview, t]);
 
   // Real, per direct guidance's own confirmed PS-275 scope (Phase 2,
   // the reverse of PS-274's own Narrative -> Synoptic direction).
@@ -1907,11 +1968,11 @@ export function useSignOutWorkflow({
     const synopticAnswers = activeInstance?.answers ?? caseData.synopticAnswers ?? {};
 
     if (Object.keys(synopticAnswers).length === 0) {
-      showToast('Answer some synoptic fields before generating narrative text.');
+      showToast(t('useSignOutWorkflow.toast.answerFieldsBeforeGeneratingNarrative'));
       return;
     }
     if (!activeInstance?.templateId) {
-      showToast('No synoptic template is assigned to this report yet.');
+      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'));
       return;
     }
 
@@ -1922,7 +1983,7 @@ export function useSignOutWorkflow({
         const detail = await getTemplate(activeInstance.templateId);
         template = detail.template;
       } catch (e) {
-        showToast('Could not load the synoptic template for narrative generation.');
+        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForNarrativeGeneration'));
         return;
       }
       if (!template) return;
@@ -1930,7 +1991,7 @@ export function useSignOutWorkflow({
       const aiService = new PathScribeAIService();
       const result = await aiService.generateNarrativeFromSynopticAnswers(template, synopticAnswers);
       if (!result.success || !result.data) {
-        showToast('Narrative generation failed. Please try again.');
+        showToast(t('useSignOutWorkflow.toast.narrativeGenerationFailed'));
         return;
       }
 
@@ -1939,7 +2000,7 @@ export function useSignOutWorkflow({
     } finally {
       setIsGeneratingNarrative(false);
     }
-  }, [caseData, activeReportInstanceId, showToast]);
+  }, [caseData, activeReportInstanceId, showToast, t]);
 
   /** Real, per direct guidance's own confirmed PS-275 review step:
    *  the pathologist's own final, possibly-edited text — never the
@@ -1964,9 +2025,9 @@ export function useSignOutWorkflow({
       await caseRouter.updateCase(caseData.id, { diagnostic: updatedDiagnostic } as any, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
     } catch (e) {
-      showToast('Narrative inserted, but saving to the case failed — please retry or copy the text manually.');
+      showToast(t('useSignOutWorkflow.toast.narrativeInsertedSaveFailed'));
     }
-  }, [caseData, setCaseData, knownVersionRef, showToast]);
+  }, [caseData, setCaseData, knownVersionRef, showToast, t]);
 
   return {
     finalizeSignOut,

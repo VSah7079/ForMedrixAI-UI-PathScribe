@@ -13,11 +13,21 @@
  * Navigation:
  *   "View Protocol" → /template-review/:id   (TemplateRenderer, read-only)
  *   "New Version"   → /template-editor/:id   (SynopticEditor, creates draft fork)
+ *
+ * i18n note: `p.category`/`p.source`/`p.type`/`p.owner`/`p.lastModified`/
+ * `p.name` are persisted mock registry data (protocolShared.tsx's own
+ * posture) and stay untouched/English here too. `protocolGroup()`'s return
+ * values are a real closed set used for the group filter tabs, so they go
+ * through a GROUP_LABEL_KEY map (protocolShared.tsx flagged this file as
+ * the place that mapping belongs). The lifecycle-tracker step labels reuse
+ * the exact `protocolShared.lifecycle.*` keys LifecycleBadge already
+ * renders, rather than duplicating that translation content here.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
 import '../../../pathscribe.css';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   Protocol,
@@ -33,9 +43,30 @@ import {
   protocolGroup,
 } from './protocolShared';
 
+// Reuses the same protocolShared.lifecycle.* keys LifecycleBadge already
+// renders for these states, so the tracker's step labels stay in sync with
+// the badge's wording without duplicating translation content.
+const LIFECYCLE_STEP_LABEL_KEY: Partial<Record<Protocol['status'], string>> = {
+  draft:     'protocolShared.lifecycle.draft',
+  in_review: 'protocolShared.lifecycle.inReview',
+  approved:  'protocolShared.lifecycle.approved',
+  published: 'protocolShared.lifecycle.published',
+};
+
+// protocolGroup()'s return values are a real, closed set of data
+// identifiers compared by strict string equality (see protocolShared.tsx);
+// only the displayed label is translated.
+const GROUP_LABEL_KEY: Record<ReturnType<typeof protocolGroup>, string> = {
+  'Surgical Pathology': 'activeProtocolsSection.group.surgicalPathology',
+  'Non-GYN Cytology':   'activeProtocolsSection.group.nonGynCytology',
+  'GYN Cytology':       'activeProtocolsSection.group.gynCytology',
+  'Grossing':           'activeProtocolsSection.group.grossing',
+};
+
 // ─── ProtocolCard ─────────────────────────────────────────────────────────────
 
 const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
+  const { t }            = useTranslation();
   const navigate        = useNavigate();
   const [open, setOpen] = useState(false);
   const catColor        = CATEGORY_COLORS[p.category] ?? '#64748b';
@@ -46,91 +77,88 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
   );
 
   return (
-    <div style={{ marginBottom: '8px' }}>
+    <div className="ps-activeprotocols-card">
 
       {/* Collapsed row */}
       <div
         onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '14px',
-          padding: '14px 18px',
-          background:   open ? 'var(--ps-conf-surface-2)' : 'var(--ps-conf-surface)',
-          border:       `1px solid ${open ? 'var(--ps-conf-border-active)' : 'var(--ps-conf-border)'}`,
-          borderRadius: open ? '10px 10px 0 0' : '10px',
-          cursor: 'pointer', transition: 'all 0.12s',
-        }}
-        onMouseEnter={e => { if (!open) { e.currentTarget.style.background = 'var(--ps-conf-surface-2)'; e.currentTarget.style.borderColor = '#475569'; }}}
-        onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'var(--ps-conf-surface)'; e.currentTarget.style.borderColor = '#334155'; }}}
+        className={`ps-activeprotocols-row${open ? ' ps-activeprotocols-row--open' : ''}`}
       >
-        <div style={{ width: '3px', height: '36px', borderRadius: '2px', background: catColor, flexShrink: 0 }} />
+        <div className="ps-activeprotocols-cat-bar" style={{ background: catColor }} />
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }} data-phi="name">{p.name}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{p.version}</span>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'monospace', padding: '1px 7px', borderRadius: '4px', background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>{p.type}</span>
+        <div className="ps-activeprotocols-info">
+          <div className="ps-activeprotocols-name" data-phi="name">{p.name}</div>
+          <div className="ps-activeprotocols-meta">
+            <span className="ps-activeprotocols-version">{p.version}</span>
+            <span className="ps-activeprotocols-dot">&bull;</span>
+            <span className="ps-activeprotocols-source-badge" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+            <span className="ps-activeprotocols-dot">&bull;</span>
+            <span className="ps-activeprotocols-type">{p.type}</span>
           </div>
         </div>
 
         <LifecycleBadge state={p.status} />
-        <span style={{ fontSize: '16px', color: '#475569', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', marginLeft: '4px', flexShrink: 0 }}>›</span>
+        <span className={`ps-activeprotocols-chevron${open ? ' ps-activeprotocols-chevron--open' : ''}`}>›</span>
       </div>
 
       {/* Expanded panel */}
       {open && (
-        <div style={{ background: 'var(--ps-conf-surface-3)', border: '1px solid rgba(8,145,178,0.2)', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '16px 20px 18px' }}>
+        <div className="ps-activeprotocols-panel">
 
           {/* Stats */}
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', paddingBottom: '14px', marginBottom: '14px', borderBottom: '1px solid #1e293b' }}>
+          <div className="ps-activeprotocols-stats">
             {[
-              { label: 'Sections',      value: Math.max(1, Math.round(p.fields / 7)) },
-              { label: 'Fields',        value: p.fields },
-              { label: 'Last Modified', value: p.lastModified },
-              { label: 'Owner',         value: p.owner },
+              { label: t('activeProtocolsSection.stats.sections'),     value: Math.max(1, Math.round(p.fields / 7)) },
+              { label: t('activeProtocolsSection.stats.fields'),       value: p.fields },
+              { label: t('activeProtocolsSection.stats.lastModified'), value: p.lastModified },
+              { label: t('activeProtocolsSection.stats.owner'),        value: p.owner },
             ].map(stat => (
               <div key={stat.label}>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', lineHeight: 1 }}>{stat.value}</div>
-                <div style={{ fontSize: '10px', color: '#475569', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</div>
+                <div className="ps-activeprotocols-stat-value">{stat.value}</div>
+                <div className="ps-activeprotocols-stat-label">{stat.label}</div>
               </div>
             ))}
-            <div style={{ display: 'flex', gap: '16px', flex: 1, minWidth: '220px', alignItems: 'flex-end' }}>
+            <div className="ps-activeprotocols-coverage-row">
               <CoverageBar pct={p.snomedPct} label="SNOMED CT" />
               <CoverageBar pct={p.icdPct}    label="ICD-10/11" />
             </div>
           </div>
 
           {/* Lifecycle tracker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
+          <div className="ps-activeprotocols-lifecycle">
             {LIFECYCLE_ORDER.map((s, i) => {
               const sStyle    = LIFECYCLE_STYLES[s];
               const isCurrent = i === stepIndex;
               const isPast    = i < stepIndex;
               return (
                 <React.Fragment key={s}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 700, flexShrink: 0, background: isPast ? 'rgba(16,185,129,0.2)' : isCurrent ? sStyle.bg : '#1e293b', color: isPast ? '#10B981' : isCurrent ? sStyle.color : '#334155', border: `1px solid ${isPast ? 'rgba(16,185,129,0.4)' : isCurrent ? sStyle.border : '#334155'}` }}>
+                  <div className="ps-activeprotocols-step">
+                    <div
+                      className={`ps-activeprotocols-step-circle${isPast ? ' ps-activeprotocols-step-circle--past' : ''}`}
+                      style={isCurrent && !isPast ? { background: sStyle.bg, color: sStyle.color, border: `1px solid ${sStyle.border}` } : undefined}
+                    >
                       {isPast ? '✓' : i + 1}
                     </div>
-                    <span style={{ fontSize: '11px', fontWeight: isCurrent ? 700 : 400, color: isCurrent ? sStyle.color : isPast ? '#475569' : '#334155', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-                      {s.replace('_', ' ')}
+                    <span
+                      className={`ps-activeprotocols-step-label${isCurrent ? ' ps-activeprotocols-step-label--current' : isPast ? ' ps-activeprotocols-step-label--past' : ''}`}
+                      style={isCurrent ? { color: sStyle.color } : undefined}
+                    >
+                      {t(LIFECYCLE_STEP_LABEL_KEY[s] ?? 'protocolShared.lifecycle.draft')}
                     </span>
                   </div>
-                  {i < LIFECYCLE_ORDER.length - 1 && <span style={{ color: '#64748b', fontSize: '12px', flexShrink: 0 }}>—</span>}
+                  {i < LIFECYCLE_ORDER.length - 1 && <span className="ps-activeprotocols-step-sep">—</span>}
                 </React.Fragment>
               );
             })}
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <ActionBtn color="#38bdf8" bg="rgba(56,189,248,0.1)" border="rgba(56,189,248,0.25)" onClick={() => navigate(`/template-review/${p.id}`)}>👁 View Protocol</ActionBtn>
-            <ActionBtn onClick={() => navigate(`/template-editor/${p.id}`)}>📋 Duplicate</ActionBtn>
-            <ActionBtn onClick={() => {}}>{'{ }'} Export JSON</ActionBtn>
-            <ActionBtn onClick={() => navigate(`/template-editor/${p.id}`)}>🔁 New Version</ActionBtn>
-            <ActionBtn danger onClick={() => {}}>🗑 Archive</ActionBtn>
+          <div className="ps-activeprotocols-actions">
+            <ActionBtn color="#38bdf8" bg="rgba(56,189,248,0.1)" border="rgba(56,189,248,0.25)" onClick={() => navigate(`/template-review/${p.id}`)}>👁 {t('activeProtocolsSection.viewProtocolButton')}</ActionBtn>
+            <ActionBtn onClick={() => navigate(`/template-editor/${p.id}`)}>📋 {t('common.duplicate')}</ActionBtn>
+            <ActionBtn onClick={() => {}}>{'{ }'} {t('activeProtocolsSection.exportJsonButton')}</ActionBtn>
+            <ActionBtn onClick={() => navigate(`/template-editor/${p.id}`)}>🔁 {t('activeProtocolsSection.newVersionButton')}</ActionBtn>
+            <ActionBtn danger onClick={() => {}}>🗑 {t('common.archive')}</ActionBtn>
           </div>
         </div>
       )}
@@ -141,6 +169,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ActiveProtocolsSection: React.FC = () => {
+  const { t }                         = useTranslation();
   const navigate                      = useNavigate();
   const [search,     setSearch]       = useState('');
   const [showUpload,  setShowUpload]  = useState(false);
@@ -173,19 +202,19 @@ const ActiveProtocolsSection: React.FC = () => {
   return (
     <div>
       {/* Header + buttons */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
+      <div className="ps-activeprotocols-header">
         <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>✅ Active Protocols</div>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Validated CAP checklists currently available in the synoptic reporting workflow. Click any protocol to open the editor.</p>
+          <div className="ps-activeprotocols-title">✅ {t('activeProtocolsSection.title')}</div>
+          <p className="ps-activeprotocols-subtitle">{t('activeProtocolsSection.subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginLeft: '16px' }}>
-          <OutlineBtn onClick={() => setShowUpload(true)}>📤 Upload Protocol</OutlineBtn>
-          <TealBtn    onClick={() => setShowBuild(true)}>🔬 Build / Customise</TealBtn>
+        <div className="ps-activeprotocols-header-actions">
+          <OutlineBtn onClick={() => setShowUpload(true)}>📤 {t('activeProtocolsSection.uploadProtocolButton')}</OutlineBtn>
+          <TealBtn    onClick={() => setShowBuild(true)}>🔬 {t('activeProtocolsSection.buildCustomiseButton')}</TealBtn>
         </div>
       </div>
 
       {/* Group filter */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+      <div className="ps-activeprotocols-filter-row">
         {GROUPS.map(g => {
           const active = groupFilter === g;
           return (
@@ -194,7 +223,7 @@ const ActiveProtocolsSection: React.FC = () => {
               onClick={() => setGroupFilter(g)}
               className={active ? 'ps-tat-filter-btn ps-tat-filter-btn--active' : 'ps-tat-filter-btn'}
             >
-              {g} <span style={{ opacity: 0.7 }}>({groupCounts[g]})</span>
+              {g === 'All' ? t('activeProtocolsSection.filterAll') : t(GROUP_LABEL_KEY[g])} <span className="ps-activeprotocols-filter-count">({groupCounts[g]})</span>
             </button>
           );
         })}
@@ -228,12 +257,22 @@ export default ActiveProtocolsSection;
 
 // ─── Shared mini-components (local) ──────────────────────────────────────────
 
-export const ActionBtn: React.FC<{ children: React.ReactNode; onClick: () => void; color?: string; bg?: string; border?: string; danger?: boolean }> = ({ children, onClick, color, bg, border, danger }) => (
-  <button onClick={e => { e.stopPropagation(); onClick(); }} style={{ padding: '7px 16px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', border: `1px solid ${danger ? 'rgba(239,68,68,0.2)' : border ?? '#334155'}`, background: danger ? 'rgba(239,68,68,0.06)' : bg ?? 'rgba(255,255,255,0.04)', color: danger ? '#f87171' : color ?? '#94a3b8', marginLeft: danger ? 'auto' : undefined, fontFamily: 'inherit' }}
-    onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-    onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-  >{children}</button>
-);
+export const ActionBtn: React.FC<{ children: React.ReactNode; onClick: () => void; color?: string; bg?: string; border?: string; danger?: boolean }> = ({ children, onClick, color, bg, border, danger }) => {
+  const customVars = (color || bg || border)
+    ? ({
+        ...(color  ? { '--ps-abtn-color':  color }  : {}),
+        ...(bg     ? { '--ps-abtn-bg':     bg }     : {}),
+        ...(border ? { '--ps-abtn-border': border } : {}),
+      } as React.CSSProperties)
+    : undefined;
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onClick(); }}
+      className={`ps-activeprotocols-action-btn${danger ? ' ps-activeprotocols-action-btn--danger' : ''}`}
+      style={customVars}
+    >{children}</button>
+  );
+};
 
 export const OutlineBtn: React.FC<{ children: React.ReactNode; onClick: () => void }> = ({ children, onClick }) => (
   <button onClick={onClick} className="ps-conf-btn-secondary">{children}</button>
@@ -243,35 +282,44 @@ export const TealBtn: React.FC<{ children: React.ReactNode; onClick: () => void 
   <button onClick={onClick} className="ps-conf-btn-teal-accent">{children}</button>
 );
 
-export const SearchBar: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
-  <div style={{ position: 'relative', marginBottom: '16px' }}>
-    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#475569', fontSize: '14px', pointerEvents: 'none' }}>🔍</span>
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder="Search protocols…"
-      style={{ width: '100%', padding: '9px 12px 9px 36px', background: 'var(--ps-conf-surface)', border: '1px solid var(--ps-conf-border)', borderRadius: '8px', fontSize: '13px', color: '#f1f5f9', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
-      onFocus={e => (e.currentTarget.style.borderColor = '#0891B2')}
-      onBlur={e  => (e.currentTarget.style.borderColor = '#334155')}
-    />
-  </div>
-);
+export const SearchBar: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-activeprotocols-search-wrap">
+      <span className="ps-activeprotocols-search-icon">🔍</span>
+      <input
+        value={value} onChange={e => onChange(e.target.value)}
+        placeholder={t('activeProtocolsSection.searchPlaceholder')}
+        className="ps-activeprotocols-search-input"
+      />
+    </div>
+  );
+};
 
 export const CategoryGroup: React.FC<{ category: string; count: number; children: React.ReactNode }> = ({ category, count, children }) => {
+  const { t }    = useTranslation();
   const catColor = CATEGORY_COLORS[category] ?? '#64748b';
   return (
-    <div style={{ marginBottom: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-        <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em', color: catColor }}>● {category}</span>
-        <div style={{ flex: 1, height: '1px', background: '#1e293b' }} />
-        <span style={{ fontSize: '10px', color: '#334155' }}>{count} {count === 1 ? 'protocol' : 'protocols'}</span>
+    <div className="ps-activeprotocols-group">
+      <div className="ps-activeprotocols-group-header">
+        <span className="ps-activeprotocols-group-label" style={{ color: catColor }}>● {category}</span>
+        <div className="ps-activeprotocols-group-divider" />
+        <span className="ps-activeprotocols-group-count">{t('activeProtocolsSection.protocolCount', { count })}</span>
       </div>
       {children}
     </div>
   );
 };
 
-export const EmptyState: React.FC<{ search: string }> = ({ search }) => (
-  <div style={{ padding: '60px 0', textAlign: 'center' }}>
-    <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔍</div>
-    <div style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>No protocols found</div>
-    <div style={{ fontSize: '12px', color: '#475569' }}>{search ? `No results for "${search}"` : 'No protocols in this section yet.'}</div>
-  </div>
-);
+export const EmptyState: React.FC<{ search: string }> = ({ search }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-activeprotocols-empty">
+      <div className="ps-activeprotocols-empty-icon">🔍</div>
+      <div className="ps-activeprotocols-empty-title">{t('activeProtocolsSection.emptyState.title')}</div>
+      <div className="ps-activeprotocols-empty-desc">
+        {search ? t('activeProtocolsSection.emptyState.noResultsFor', { query: search }) : t('activeProtocolsSection.emptyState.noneInSection')}
+      </div>
+    </div>
+  );
+};

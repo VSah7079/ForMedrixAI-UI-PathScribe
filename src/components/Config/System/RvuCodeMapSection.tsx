@@ -20,6 +20,7 @@
 //     needing a second trip back to this screen.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import '../../../pathscribe.css';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
@@ -37,6 +38,10 @@ import { getSessionUser } from '@/services/auth/caseAccessControl';
 // "Code {code} — {Level} Level" format - the real code numbers stay
 // accurate (numbers alone aren't licensed content), only the
 // human-readable description is synthetic.
+// Kept in English deliberately: this is data written into a real,
+// downloadable CSV template, not on-screen UI text - the same
+// "exported data stays English" rule already applied to every other
+// CSV export in this app.
 const TEMPLATE_EXAMPLE_ROWS = [
   { Code: '88305', Description: 'Code 88305 — Specimen Level', WorkRVU: 0.73 },
   { Code: '88307', Description: 'Code 88307 — Specimen Level', WorkRVU: 1.55 },
@@ -68,6 +73,7 @@ interface EntryModalProps {
 }
 
 const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onClose, busy }) => {
+  const { t } = useTranslation();
   const isEdit = !!seed && !isDuplicate;
   const [code, setCode] = useState(isDuplicate ? '' : seed?.code ?? '');
   const [description, setDescription] = useState(seed?.description ?? '');
@@ -81,9 +87,9 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
   const [error, setError] = useState<string | null>(null);
 
   const handleSave = () => {
-    if (!code.trim()) { setError('Code is required.'); return; }
-    if (!billingCode.trim()) { setError('Billing code is required.'); return; }
-    if (workRvu.trim() && !(Number(workRvu) > 0)) { setError('Work RVU must be a positive number if given — leave blank if unverified.'); return; }
+    if (!code.trim()) { setError(t('rvuCodeMapSection.entryModal.errors.codeRequired')); return; }
+    if (!billingCode.trim()) { setError(t('rvuCodeMapSection.entryModal.errors.billingCodeRequired')); return; }
+    if (workRvu.trim() && !(Number(workRvu) > 0)) { setError(t('rvuCodeMapSection.entryModal.errors.workRvuInvalid')); return; }
     onSave({
       code: code.trim(),
       billingCode: billingCode.trim(),
@@ -101,47 +107,61 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
   // validateCodeLevel) - never blocks saving, since a real code can
   // legitimately not match the pattern (e.g. 88311 decalcification,
   // confirmed via direct research not to state its own billing unit
-  // in its description text at all).
+  // in its description text at all). The warning text itself comes
+  // from that service function, not this component, so it isn't
+  // converted here.
   const levelWarning = description.trim() ? validateCodeLevel({ description: description.trim(), level }) : null;
 
   return (
     <div className="ps-ms-overlay ps-ms-overlay--top-align">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{isEdit ? `Edit — ${seed?.code}` : isDuplicate ? `Duplicate — ${seed?.code}` : 'Add Code'}</div>
+        <div className="ps-ms-header">
+          {isEdit
+            ? t('rvuCodeMapSection.entryModal.headerEdit', { code: seed?.code })
+            : isDuplicate
+              ? t('rvuCodeMapSection.entryModal.headerDuplicate', { code: seed?.code })
+              : t('rvuCodeMapSection.entryModal.headerAdd')}
+        </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Code <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={code} onChange={e => setCode(e.target.value)} disabled={isEdit} placeholder="e.g. 88305" />
+              <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.codeLabel')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={code} onChange={e => setCode(e.target.value)} disabled={isEdit} placeholder={t('rvuCodeMapSection.entryModal.codePlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Billing Code <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={billingCode} onChange={e => setBillingCode(e.target.value)} disabled={isEdit} placeholder="Often same as Code" />
+              <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.billingCodeLabel')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={billingCode} onChange={e => setBillingCode(e.target.value)} disabled={isEdit} placeholder={t('rvuCodeMapSection.entryModal.billingCodePlaceholder')} />
             </div>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
-            <input className="ps-conf-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Real, human-readable description" />
+            <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.descriptionLabel')}</label>
+            <input className="ps-conf-input" value={description} onChange={e => setDescription(e.target.value)} placeholder={t('rvuCodeMapSection.entryModal.descriptionPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Level <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.levelLabel')} <span className="ps-conf-required">*</span></label>
             <select className="ps-conf-input" value={level} onChange={e => setLevel(e.target.value as BillingDictionaryEntry['level'])}>
-              <option value="specimen">Specimen — primary diagnostic work</option>
-              <option value="block">Block — tissue processing &amp; preparation</option>
-              <option value="stain">Stain — staining, recuts &amp; analytical procedures</option>
-              <option value="decant">Decant — decanted fluid/slide work</option>
+              <option value="specimen">{t('rvuCodeMapSection.entryModal.levelOptions.specimen')}</option>
+              <option value="block">{t('rvuCodeMapSection.entryModal.levelOptions.block')}</option>
+              <option value="stain">{t('rvuCodeMapSection.entryModal.levelOptions.stain')}</option>
+              <option value="decant">{t('rvuCodeMapSection.entryModal.levelOptions.decant')}</option>
             </select>
-            {levelWarning && <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>⚠ {levelWarning}</p>}
+            {levelWarning && <p className="ps-conf-hint ps-rvu-level-warning">⚠ {levelWarning}</p>}
           </div>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">
-              Component Type <span className="ps-conf-required">*</span>{' '}
+              {t('rvuCodeMapSection.entryModal.componentTypeLabel')} <span className="ps-conf-required">*</span>{' '}
               <span
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1px solid #64748b', color: '#94a3b8', fontSize: 10, fontWeight: 700, cursor: 'help', verticalAlign: 'middle' }}
-                title={`Which biller performs this work, and therefore when its charge releases: ${BILLING_TYPE_LABEL.TC} at specimen grossing complete, ${BILLING_TYPE_LABEL['26']}/${BILLING_TYPE_LABEL.Global} at case signout.`}
+                className="ps-billingdict__info-badge"
+                title={t('rvuCodeMapSection.entryModal.componentTypeTooltip', { tc: BILLING_TYPE_LABEL.TC, pc: BILLING_TYPE_LABEL['26'], global: BILLING_TYPE_LABEL.Global })}
               >i</span>
             </label>
             <select className="ps-conf-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingDictionaryEntry['billingType'])}>
+              {/* Data keys ('TC'/'26'/'Global') stay literal; BILLING_TYPE_LABEL is a
+                  shared display-label constant (services/billing/codeMapTable.ts) also
+                  consumed by BillingDictionarySection.tsx, BillingTypeTriggerSection.tsx
+                  and GoverningBodiesSection.tsx - left untouched here too, same as the
+                  batch-62/66 precedent, since converting it would require touching every
+                  other not-yet-converted consumer in the same change. */}
               <option value="TC">{BILLING_TYPE_LABEL.TC}</option>
               <option value="26">{BILLING_TYPE_LABEL['26']}</option>
               <option value="Global">{BILLING_TYPE_LABEL.Global}</option>
@@ -149,28 +169,28 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
           </div>
           <div className="ps-conf-form-row--3">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Work RVU</label>
-              <input className="ps-conf-input" type="number" step="0.01" value={workRvu} onChange={e => setWorkRvu(e.target.value)} placeholder="Blank if unverified" />
+              <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.workRvuLabel')}</label>
+              <input className="ps-conf-input" type="number" step="0.01" value={workRvu} onChange={e => setWorkRvu(e.target.value)} placeholder={t('rvuCodeMapSection.entryModal.workRvuPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">RVU — Practice Expense</label>
+              <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.rvuPeLabel')}</label>
               <input className="ps-conf-input" type="number" step="0.01" value={rvuPe} onChange={e => setRvuPe(e.target.value)} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">RVU — Malpractice</label>
+              <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.rvuMpLabel')}</label>
               <input className="ps-conf-input" type="number" step="0.01" value={rvuMp} onChange={e => setRvuMp(e.target.value)} />
             </div>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">HCPCS Code</label>
-            <input className="ps-conf-input" value={hcpcsCode} onChange={e => setHcpcsCode(e.target.value)} placeholder="Optional" />
+            <label className="ps-conf-label">{t('rvuCodeMapSection.entryModal.hcpcsLabel')}</label>
+            <input className="ps-conf-input" value={hcpcsCode} onChange={e => setHcpcsCode(e.target.value)} placeholder={t('rvuCodeMapSection.entryModal.hcpcsPlaceholder')} />
           </div>
           {error && <span className="ps-conf-error-text">{error}</span>}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary" disabled={busy} onClick={handleSave}>
-            {busy ? 'Submitting…' : 'Submit for Approval'}
+            {busy ? t('rvuCodeMapSection.entryModal.submitting') : t('rvuCodeMapSection.entryModal.submit')}
           </button>
         </div>
       </div>
@@ -179,6 +199,7 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
 };
 
 const RvuCodeMapSection: React.FC = () => {
+  const { t } = useTranslation();
   const [versions, setVersions]   = useState<RvuTableVersion[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showOlder, setShowOlder] = useState(false);
@@ -221,8 +242,12 @@ const RvuCodeMapSection: React.FC = () => {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
+    // Renamed from the shadowing `t` used before this file had a real
+    // useTranslation() `t` in scope - same fix pattern as
+    // DemoResetTab.tsx (batch 64) and GoverningBodiesSection.tsx
+    // (batch 66).
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   const activeVersion = versions.find(v => v.isActive) ?? null;
@@ -238,7 +263,7 @@ const RvuCodeMapSection: React.FC = () => {
     const isEdit = !!entryModalState?.entry && !entryModalState?.isDuplicate;
     const current = activeVersion?.entries ?? [];
     if (!isEdit && current.some(e => e.code === entry.code)) {
-      setToast(`Code "${entry.code}" already exists in the active version.`);
+      setToast(t('rvuCodeMapSection.toast.codeExists', { code: entry.code }));
       return;
     }
     const newEntries = isEdit
@@ -261,7 +286,7 @@ const RvuCodeMapSection: React.FC = () => {
     }
     setEntryBusy(false);
     setEntryModalState(null);
-    setToast(`"${entry.code}" submitted for approval — see Pending Billing Rule Approvals.`);
+    setToast(t('rvuCodeMapSection.toast.entrySubmitted', { code: entry.code }));
     refresh();
   };
 
@@ -270,7 +295,7 @@ const RvuCodeMapSection: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     setUploadError(null);
     if (!isCsvFile(file)) {
-      setUploadError(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      setUploadError(t('rvuCodeMapSection.upload.invalidFileType', { fileName: file.name }));
       return;
     }
     try {
@@ -280,20 +305,20 @@ const RvuCodeMapSection: React.FC = () => {
       const { entries, problems, skippedNonPayable } = parseRvuUploadRows(rows);
 
       if (entries.length === 0 && problems.length === 0) {
-        setUploadError('No real rows found in this file - check it has Code and WorkRVU columns.');
+        setUploadError(t('rvuCodeMapSection.upload.noRowsFound'));
         return;
       }
       if (problems.length > 0) {
         setUploadError(problems.slice(0, 5).join(' '));
       }
       if (skippedNonPayable > 0) {
-        setToast(`${entries.length} real, payable codes found — ${skippedNonPayable} non-payable/modifier rows skipped automatically.`);
+        setToast(t('rvuCodeMapSection.toast.payableSkipped', { count: entries.length, skipped: skippedNonPayable }));
       }
       setUploadPreview(entries);
       setUploadFileName(file.name);
       if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.csv$/i, '')}`);
     } catch {
-      setUploadError("Could not read this file - make sure it's a real .csv file.");
+      setUploadError(t('rvuCodeMapSection.upload.readError'));
     }
   };
 
@@ -346,7 +371,7 @@ const RvuCodeMapSection: React.FC = () => {
     }
 
     setBusy(false);
-    setToast(`"${res.data.label}" submitted for approval — see Pending Billing Rule Approvals.`);
+    setToast(t('rvuCodeMapSection.toast.uploadSubmitted', { label: res.data.label }));
     setUploadPreview(null);
     setUploadFileName('');
     setUploadLabel('');
@@ -357,59 +382,59 @@ const RvuCodeMapSection: React.FC = () => {
     downloadCsv('RvuCodeMapTemplate.csv', toCsv(TEMPLATE_EXAMPLE_ROWS));
   };
 
-  if (loading) return <div className="ps-conf-section-subtitle">Loading…</div>;
+  if (loading) return <div className="ps-conf-section-subtitle">{t('common.loading')}</div>;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">RVU Code Map</h3>
-          <p className="ps-conf-section-subtitle">
-            CPT-to-work-RVU values used for real workload/productivity tracking (not a billing
-            system — no claims, modifiers, or payer rules). Every update becomes a new, dated
-            version — older versions are kept, never edited, so past cases keep the real rates
-            that were in effect when they were finalized.
-          </p>
+          <h3 className="ps-conf-section-title">{t('rvuCodeMapSection.title')}</h3>
+          <p className="ps-conf-section-subtitle">{t('rvuCodeMapSection.subtitle')}</p>
         </div>
         <div className="ps-specdict-header-actions">
-          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setEntryModalState({})}>+ Add Code</button>
-          <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
-          <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
+          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setEntryModalState({})}>{t('rvuCodeMapSection.addCode')}</button>
+          <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>{t('rvuCodeMapSection.downloadTemplate')}</button>
+          <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>{t('rvuCodeMapSection.uploadSpreadsheet')}</button>
           <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv"
             onChange={e => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
         </div>
       </div>
 
-      {toast && <div className="ps-conf-section-subtitle" style={{ color: '#10b981', fontWeight: 600 }}>{toast}</div>}
+      {toast && <div className="ps-conf-section-subtitle ps-rvu-toast-success">{toast}</div>}
       {pendingCount > 0 && (
         <p className="ps-billing-reason-hint">
-          {pendingCount} version{pendingCount !== 1 ? 's' : ''} pending approval — see Pending Billing Rule Approvals.
+          {t('rvuCodeMapSection.pendingApproval', { count: pendingCount })}
         </p>
       )}
 
       {/* ── Active version — front and center ── */}
       {activeVersion ? (
-        <div style={{ margin: '16px 0', padding: '16px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div className="ps-rvu-active-box">
+          <div className="ps-rvu-active-box-head">
             <div>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Active version</span>
-              <div style={{ fontSize: '16px', fontWeight: 700, marginTop: '2px' }}>{activeVersion.label}</div>
+              <span className="ps-rvu-active-eyebrow">{t('rvuCodeMapSection.activeVersion.eyebrow')}</span>
+              <div className="ps-rvu-active-date">{activeVersion.label}</div>
             </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8' }}>Effective {formatDate(activeVersion.effectiveDate)}</div>
+            <div className="ps-rvu-muted-sm">{t('rvuCodeMapSection.activeVersion.effective', { date: formatDate(activeVersion.effectiveDate) })}</div>
           </div>
-          <div className="ps-conf-table-wrap" style={{ marginTop: '12px' }}>
+          <div className="ps-conf-table-wrap ps-rvu-table-wrap--mt">
             <table className="ps-conf-table">
-              <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th><th className="ps-conf-th">Work RVU</th><th className="ps-conf-th">Actions</th></tr></thead>
+              <thead><tr>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.code')}</th>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.description')}</th>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.workRvu')}</th>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.actions')}</th>
+              </tr></thead>
               <tbody>
                 {activeVersion.entries.map(e => (
                   <tr key={e.code}>
                     <td className="ps-conf-td">{e.code}</td>
                     <td className="ps-conf-td">{e.description}</td>
-                    <td className="ps-conf-td">{e.workRvu === undefined ? <span className="ps-conf-error-text">Unverified</span> : e.workRvu}</td>
+                    <td className="ps-conf-td">{e.workRvu === undefined ? <span className="ps-conf-error-text">{t('rvuCodeMapSection.activeVersion.unverified')}</span> : e.workRvu}</td>
                     <td className="ps-conf-td">
                       <div className="ps-conf-row-actions">
-                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e })}>Edit</button>
-                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e, isDuplicate: true })}>Duplicate</button>
+                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e, isDuplicate: true })}>{t('common.duplicate')}</button>
                       </div>
                     </td>
                   </tr>
@@ -419,32 +444,32 @@ const RvuCodeMapSection: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="ps-conf-section-subtitle" style={{ margin: '16px 0' }}>No active version yet — upload a spreadsheet below to get started.</div>
+        <div className="ps-conf-section-subtitle ps-rvu-empty-subtitle">{t('rvuCodeMapSection.activeVersion.empty')}</div>
       )}
 
       {/* ── Older versions — collapsed by default, never deleted ── */}
       {olderVersions.length > 0 && (
-        <div style={{ marginTop: '8px' }}>
+        <div className="ps-rvu-older-wrap">
           <button className="ps-conf-btn-row" onClick={() => setShowOlder(s => !s)}>
-            {showOlder ? '▾' : '▸'} Older versions ({olderVersions.length})
+            {showOlder ? '▾' : '▸'} {t('rvuCodeMapSection.olderVersions.toggle', { count: olderVersions.length })}
           </button>
           {showOlder && (
-            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="ps-rvu-older-list">
               {olderVersions
                 .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))
                 .map(v => (
-                <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div key={v.id} className="ps-rvu-older-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>{v.label}</div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      Effective {formatDate(v.effectiveDate)} · {v.entries.length} codes
-                      {v.sourceFileName && <> · from {v.sourceFileName}</>}
+                    <div className="ps-rvu-older-row-label">{v.label}</div>
+                    <div className="ps-rvu-muted-sm">
+                      {t('rvuCodeMapSection.olderVersions.effectiveCodes', { date: formatDate(v.effectiveDate), count: v.entries.length })}
+                      {v.sourceFileName && <> · {t('rvuCodeMapSection.olderVersions.fromFile', { fileName: v.sourceFileName })}</>}
                     </div>
                   </div>
                   <span className="ps-billing-reason-hint">
-                    {v.approvalStatus === 'PENDING_APPROVAL' ? 'Pending approval'
-                      : v.approvalStatus === 'REJECTED' ? `Rejected${v.rejectionReason ? ` — ${v.rejectionReason}` : ''}`
-                      : v.approvalStatus === 'APPROVED' ? 'Approved (superseded)'
+                    {v.approvalStatus === 'PENDING_APPROVAL' ? t('rvuCodeMapSection.olderVersions.status.pending')
+                      : v.approvalStatus === 'REJECTED' ? (v.rejectionReason ? t('rvuCodeMapSection.olderVersions.status.rejectedWithReason', { reason: v.rejectionReason }) : t('rvuCodeMapSection.olderVersions.status.rejected'))
+                      : v.approvalStatus === 'APPROVED' ? t('rvuCodeMapSection.olderVersions.status.approved')
                       : '—'}
                   </span>
                 </div>
@@ -456,29 +481,32 @@ const RvuCodeMapSection: React.FC = () => {
 
       {/* ── Upload preview panel ── */}
       {uploadPreview && (
-        <div style={{ marginTop: '20px', padding: '16px', borderRadius: '10px', border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.06)' }}>
-          <div style={{ fontWeight: 700, marginBottom: '10px' }}>Review before saving</div>
+        <div className="ps-rvu-preview-box">
+          <div className="ps-rvu-preview-title">{t('rvuCodeMapSection.preview.reviewTitle')}</div>
 
-          {uploadError && <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '10px' }}>{uploadError}</div>}
+          {uploadError && <div className="ps-rvu-preview-error">{uploadError}</div>}
 
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', fontSize: '12px', gap: '4px' }}>
-              Version label
-              <input value={uploadLabel} onChange={e => setUploadLabel(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px' }} />
+          <div className="ps-rvu-preview-fields">
+            <label className="ps-rvu-preview-field">
+              {t('rvuCodeMapSection.preview.versionLabel')}
+              <input value={uploadLabel} onChange={e => setUploadLabel(e.target.value)} className="ps-rvu-preview-field-value" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', fontSize: '12px', gap: '4px' }}>
-              Effective date
-              <input type="date" value={uploadEffectiveDate} onChange={e => setUploadEffectiveDate(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px' }} />
+            <label className="ps-rvu-preview-field">
+              {t('rvuCodeMapSection.preview.effectiveDate')}
+              <input type="date" value={uploadEffectiveDate} onChange={e => setUploadEffectiveDate(e.target.value)} className="ps-rvu-preview-field-value" />
             </label>
           </div>
           <p className="ps-billing-reason-hint">
-            This version will be submitted for approval — a different, real reviewer must approve it before it
-            replaces the active table. See Pending Billing Rule Approvals.
+            {t('rvuCodeMapSection.preview.disclosure')}
           </p>
 
-          <div className="ps-conf-table-wrap" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+          <div className="ps-conf-table-wrap ps-rvu-preview-scroll">
             <table className="ps-conf-table">
-              <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th><th className="ps-conf-th">Work RVU</th></tr></thead>
+              <thead><tr>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.code')}</th>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.description')}</th>
+                <th className="ps-conf-th">{t('rvuCodeMapSection.activeVersion.table.workRvu')}</th>
+              </tr></thead>
               <tbody>
                 {uploadPreview.map((e, i) => (
                   <tr key={`${e.code}-${i}`}>
@@ -491,11 +519,11 @@ const RvuCodeMapSection: React.FC = () => {
             </table>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+          <div className="ps-rvu-preview-actions">
             <button className="ps-conf-btn-primary" disabled={busy || uploadPreview.length === 0} onClick={handleApplyUpload}>
-              {busy ? 'Submitting…' : `Submit for Approval (${uploadPreview.length} codes)`}
+              {busy ? t('rvuCodeMapSection.entryModal.submitting') : t('rvuCodeMapSection.preview.submit', { count: uploadPreview.length })}
             </button>
-            <button className="ps-conf-btn-row" onClick={() => { setUploadPreview(null); setUploadError(null); }}>Cancel</button>
+            <button className="ps-conf-btn-row" onClick={() => { setUploadPreview(null); setUploadError(null); }}>{t('common.cancel')}</button>
           </div>
         </div>
       )}

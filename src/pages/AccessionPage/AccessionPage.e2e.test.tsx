@@ -45,6 +45,15 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
+  // Real shape from react-i18next's own initReactI18next.js (type +
+  // no-op init) — needed as of caseAccessControl.ts's own i18n
+  // conversion, since CaseRouter.ts's import chain now reaches
+  // @/i18n/config, which calls i18n.use(initReactI18next) at module
+  // load time regardless of whether this test ever exercises the
+  // functions that actually call t(). Without this, the mock above
+  // (which replaces the whole react-i18next module) leaves that call
+  // referencing undefined and crashes at import time.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 const mockNavigate = vi.fn();
@@ -80,10 +89,10 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
         </SystemConfigProvider>
       </MemoryRouter>
     );
-    await waitFor(() => screen.getByPlaceholderText('e.g. "John Michael" or "Juan Carlos"'));
+    await waitFor(() => screen.getByPlaceholderText('accessionPage.demographics.givenNamesPlaceholder'));
 
-    fireEvent.change(screen.getByPlaceholderText('e.g. "John Michael" or "Juan Carlos"'), { target: { value: 'Jean' } });
-    fireEvent.change(screen.getByPlaceholderText(/Smith/), { target: { value: 'Dupont' } });
+    fireEvent.change(screen.getByPlaceholderText('accessionPage.demographics.givenNamesPlaceholder'), { target: { value: 'Jean' } });
+    fireEvent.change(screen.getByPlaceholderText('accessionPage.demographics.familyNamesPlaceholder'), { target: { value: 'Dupont' } });
     const dobInput = document.querySelector('input[type="date"]') as HTMLInputElement;
     fireEvent.change(dobInput, { target: { value: '1970-01-01' } });
 
@@ -103,8 +112,8 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // matching <option> exists yet. A real waitFor here, not a fixed
     // delay, is what makes this reliable.
     await waitFor(() => screen.getByText('Metro General Hospital'));
-    fireEvent.change(screen.getByLabelText('Submitting Facility'), { target: { value: 'c1' } });
-    const providerInput = screen.getByPlaceholderText('Search staff, or type a name…');
+    fireEvent.change(screen.getByLabelText('accessionPage.facility.submittingFacility'), { target: { value: 'c1' } });
+    const providerInput = screen.getByPlaceholderText('accessionPage.provider.searchPlaceholder');
     fireEvent.focus(providerInput);
     fireEvent.change(providerInput, { target: { value: 'Williams' } });
     await waitFor(() => screen.getByText('Robert Williams'), { timeout: 2000 });
@@ -114,17 +123,17 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // genuine no-op against this specific real handler.
     fireEvent.mouseDown(screen.getByText('Robert Williams'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Specimens' }));
-    await waitFor(() => screen.getByText(/Select from Specimen Dictionary/));
-    fireEvent.click(screen.getByText(/Select from Specimen Dictionary/));
+    fireEvent.click(screen.getByRole('button', { name: /accessionPage\.tabs\.specimens/ }));
+    await waitFor(() => screen.getByText(/accessionPage\.specimens\.selectFromDictionary/));
+    fireEvent.click(screen.getByText(/accessionPage\.specimens\.selectFromDictionary/));
     await waitFor(() => screen.getByText('Heart, Autopsy'));
     fireEvent.click(screen.getByText('Heart, Autopsy'));
 
     // Real, per the Autopsy Grossing Synoptic's own organ-driven
     // section visibility — at least one organ must be selected for
     // the form to be genuinely submittable.
-    await waitFor(() => screen.getByText('Organ(s) Included', { exact: false }));
-    const heartCheckboxLabel = screen.getAllByText('Heart').find(el => el.closest('label'));
+    await waitFor(() => screen.getByText('accessionPage.specimens.organsIncluded', { exact: false }));
+    const heartCheckboxLabel = screen.getAllByText('accessionPage.autopsy.organLabel.heart').find(el => el.closest('label'));
     fireEvent.click(heartCheckboxLabel!.closest('label')!.querySelector('input')!);
 
     // Real, confirmed root cause: this whole section only renders
@@ -132,7 +141,7 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // & Patient" tab), not "Specimens" \u2014 switching back is
     // required, not optional, once a real Autopsy specimen has made
     // autopsyRelevant true.
-    fireEvent.click(screen.getByRole('button', { name: 'Case & Patient' }));
+    fireEvent.click(screen.getByRole('button', { name: 'accessionPage.tabs.casePatient' }));
 
     // Real, per direct investigation: resolveAutopsyIntakeFormValidation.ts's
     // own real bar for this whole gate \u2014 a real Jurisdiction and
@@ -141,9 +150,9 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // actually associated to its own real <select> via htmlFor/id
     // (AccessionPage.tsx), so this navigates from the real label text
     // to its own sibling select directly, rather than getByLabelText.
-    const jurisdictionSelect = (await waitFor(() => screen.getByText('Jurisdiction'))).closest('div')!.querySelector('select')!;
+    const jurisdictionSelect = (await waitFor(() => screen.getByText('accessionPage.autopsy.jurisdiction'))).closest('div')!.querySelector('select')!;
     fireEvent.change(jurisdictionSelect, { target: { value: 'US' } });
-    const caseAuthoritySelect = screen.getByText('Case Authority').closest('div')!.querySelector('select')!;
+    const caseAuthoritySelect = screen.getByText('accessionPage.autopsy.caseAuthority').closest('div')!.querySelector('select')!;
     fireEvent.change(caseAuthoritySelect, { target: { value: 'hospital_consented' } });
 
     // Real, confirmed root cause: Submit Accession itself only
@@ -153,12 +162,12 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // real ps-tab-btn class \u2014 a bare /Specimens/ name regex also
     // matches other real, unrelated buttons on this page (e.g.
     // "Select from Specimen Dictionary").
-    fireEvent.click(screen.getAllByText(/Specimens/).find(el => el.closest('button')?.className.includes('ps-tab-btn'))!.closest('button')!);
+    fireEvent.click(screen.getAllByText(/accessionPage\.tabs\.specimens/).find(el => el.closest('button')?.className.includes('ps-tab-btn'))!.closest('button')!);
 
-    await waitFor(() => expect(screen.queryByText('Submit Accession')).not.toBeNull());
-    const submitBtn = screen.getByText('Submit Accession').closest('button');
+    await waitFor(() => expect(screen.queryByText('accessionPage.actions.submitAccession')).not.toBeNull());
+    const submitBtn = screen.getByText('accessionPage.actions.submitAccession').closest('button');
     console.log('SUBMIT BUTTON DISABLED?', submitBtn?.disabled);
-    fireEvent.click(screen.getByText('Submit Accession'));
+    fireEvent.click(screen.getByText('accessionPage.actions.submitAccession'));
 
     await waitFor(() => expect(createCaseSpy).toHaveBeenCalled());
     const submittedCase = createCaseSpy.mock.calls[0][0] as any;

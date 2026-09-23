@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { departmentService } from '../../../services';
 import { checkDepartmentReferences } from '../../../services/referenceCheck/referenceCheckService';
@@ -39,10 +40,18 @@ import { resolveCurrentGoverningBodyFloor } from '../../../services/retentionPol
 // resolution; revisit if the list ever needs to come from templateService
 // dynamically (e.g. once custom Grossing Templates beyond the three
 // Gold Standard routes are supported).
-const GROSSING_TEMPLATES: { id: string; name: string }[] = [
-  { id: 'grossing_standard_tissue', name: 'Standard Tissue Grossing (Route A)' },
-  { id: 'grossing_fluid_cytology',  name: 'Fluid / Cell Block Grossing (Route B)' },
-  { id: 'grossing_histology_only',  name: 'Histology-Only / Direct Triage (Route C)' },
+// Stores a translation key rather than resolved display text, since this
+// array lives at module scope, outside any component's render, and can't
+// call useTranslation() itself — same pattern as
+// SpecimenCategoriesSection.tsx's own GROSSING_TEMPLATES conversion
+// (batch 70). This file's own local copy is not shared with the
+// near-identical copies in SpecimenCategoriesSection.tsx and
+// GrossingRouteOverridesSection.tsx — each is its own separate,
+// unconverted-until-its-own-pass `const`.
+const GROSSING_TEMPLATES: { id: string; labelKey: string }[] = [
+  { id: 'grossing_standard_tissue', labelKey: 'departmentsSection.grossingTemplates.standardTissue' },
+  { id: 'grossing_fluid_cytology',  labelKey: 'departmentsSection.grossingTemplates.fluidCytology' },
+  { id: 'grossing_histology_only',  labelKey: 'departmentsSection.grossingTemplates.histologyOnly' },
 ];
 
 const ALL_MATERIAL_TYPES: RetainableMaterialType[] = ['block', 'slide', 'wet_tissue'];
@@ -65,9 +74,9 @@ function findBelowFloorFields(
   floor: Record<RetainableMaterialType, number> | undefined,
 ): RetainableMaterialType[] {
   if (!override || !floor) return [];
-  return ALL_MATERIAL_TYPES.filter(t => {
-    const v = override[t];
-    return v != null && v < floor[t];
+  return ALL_MATERIAL_TYPES.filter(mt => {
+    const v = override[mt];
+    return v != null && v < floor[mt];
   });
 }
 
@@ -80,6 +89,7 @@ interface DepartmentModalProps {
 }
 
 const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, floor, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     department
       ? { ...department, active: department.status !== 'Inactive' }
@@ -98,19 +108,19 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
 
   const validate = () => {
     const e: typeof errors = {};
-    if (!draft.name.trim()) e.name = 'Required';
-    if (!draft.defaultGrossingTemplateId) e.defaultGrossingTemplateId = 'Required';
+    if (!draft.name.trim()) e.name = t('common.required');
+    if (!draft.defaultGrossingTemplateId) e.defaultGrossingTemplateId = t('common.required');
     return e;
   };
 
   const buildRetentionOverride = (): RetentionOverrideDays | undefined => {
     const parsed: RetentionOverrideDays = {};
     let any = false;
-    for (const t of ALL_MATERIAL_TYPES) {
-      const raw = retentionDays[t];
+    for (const mt of ALL_MATERIAL_TYPES) {
+      const raw = retentionDays[mt];
       if (raw.trim() === '') continue;
       const n = parseInt(raw, 10);
-      if (Number.isFinite(n) && n > 0) { parsed[t] = n; any = true; }
+      if (Number.isFinite(n) && n > 0) { parsed[mt] = n; any = true; }
     }
     return any ? parsed : undefined;
   };
@@ -137,26 +147,26 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Department' : `Edit — ${department?.name}`}
+          {mode === 'add' ? t('departmentsSection.modal.headerAdd') : t('departmentsSection.modal.headerEdit', { name: department?.name })}
         </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('departmentsSection.modal.nameLabel')} <span className="ps-conf-required">*</span></label>
             <input className={`ps-conf-input ${errors.name ? 'ps-conf-input--error' : ''}`}
-              value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Surgical Tissue" />
+              value={draft.name} onChange={e => set('name', e.target.value)} placeholder={t('departmentsSection.modal.namePlaceholder')} />
             {errors.name && <span className="ps-conf-error-text">{errors.name}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
-            <textarea className="ps-conf-input ps-conf-textarea" value={draft.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="What kinds of specimens fall into this department" />
+            <label className="ps-conf-label">{t('departmentsSection.modal.descriptionLabel')}</label>
+            <textarea className="ps-conf-input ps-conf-textarea" value={draft.description ?? ''} onChange={e => set('description', e.target.value)} placeholder={t('departmentsSection.modal.descriptionPlaceholder')} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="speccat-template">Default Grossing Template <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="speccat-template">{t('departmentsSection.modal.templateLabel')} <span className="ps-conf-required">*</span></label>
             <select id="speccat-template" className={`ps-conf-select ${errors.defaultGrossingTemplateId ? 'ps-conf-input--error' : ''}`} value={draft.defaultGrossingTemplateId} onChange={e => set('defaultGrossingTemplateId', e.target.value)}>
-              {GROSSING_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {GROSSING_TEMPLATES.map(gt => <option key={gt.id} value={gt.id}>{t(gt.labelKey)}</option>)}
             </select>
             {errors.defaultGrossingTemplateId && <span className="ps-conf-error-text">{errors.defaultGrossingTemplateId}</span>}
           </div>
@@ -184,24 +194,23 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
                   onClose();
                   window.dispatchEvent(new CustomEvent('PATHSCRIBE_SYSTEM_NAVIGATE', { detail: { section: 'case_mask_config' } }));
                 }}
-                style={{ color: '#38bdf8', textDecoration: 'underline', cursor: 'pointer', fontSize: 13 }}
+                className="ps-dept-casemask-link"
               >
-                Define a Case Mask for this department →
+                {t('departmentsSection.modal.caseMaskLink')}
               </a>
               <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                Optional. When defined, this department's own prefix and sequence take precedence over its
-                performing lab's or the enterprise's, whenever a case resolves to it.
+                {t('departmentsSection.modal.caseMaskHint')}
               </p>
             </div>
           )}
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('departmentsSection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
 
@@ -211,26 +220,38 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
               step for going below only appears on Save, once we know
               the actual, final values. */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Retention Override (optional — per material type)</label>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
-              Leave a field blank to use the current jurisdiction default. Only set a real exception here.
+            <label className="ps-conf-label">{t('departmentsSection.modal.retentionOverrideLabel')}</label>
+            <div className="ps-participationtypes__modal-hint">
+              {t('departmentsSection.modal.retentionOverrideHint')}
             </div>
             <div className="ps-conf-form-row">
-              {ALL_MATERIAL_TYPES.map(t => {
-                const parsed = parseInt(retentionDays[t], 10);
-                const isBelowFloor = floor && Number.isFinite(parsed) && parsed > 0 && parsed < floor[t];
+              {ALL_MATERIAL_TYPES.map(mt => {
+                const parsed = parseInt(retentionDays[mt], 10);
+                const isBelowFloor = floor && Number.isFinite(parsed) && parsed > 0 && parsed < floor[mt];
                 return (
-                  <div className="ps-conf-form-field" key={t}>
-                    <label className="ps-conf-label">{MATERIAL_TYPE_LABEL[t]} (days)</label>
+                  <div className="ps-conf-form-field" key={mt}>
+                    {/* MATERIAL_TYPE_LABEL is a shared display-label constant
+                        (services/retentionPolicy/RetentionPolicy.ts) also consumed
+                        by GoverningBodiesSection.tsx (batch 66) and
+                        SpecimenCategoriesSection.tsx (batch 70) - left untouched
+                        here too, same precedent; only the "(days)" suffix around
+                        it is this component's own text. */}
+                    <label className="ps-conf-label">{MATERIAL_TYPE_LABEL[mt]} {t('departmentsSection.modal.daysSuffix')}</label>
                     <input
                       className={`ps-conf-input ${isBelowFloor ? 'ps-conf-input--error' : ''}`}
-                      value={retentionDays[t]}
-                      onChange={e => setRetentionDays(prev => ({ ...prev, [t]: e.target.value }))}
-                      placeholder={floor ? String(floor[t]) : 'e.g. 3653'}
+                      value={retentionDays[mt]}
+                      onChange={e => setRetentionDays(prev => ({ ...prev, [mt]: e.target.value }))}
+                      placeholder={floor ? String(floor[mt]) : t('departmentsSection.modal.daysPlaceholder')}
                     />
-                    <div style={{ fontSize: 11, marginTop: 2, color: isBelowFloor ? '#f87171' : '#64748b' }}>
-                      {Number.isFinite(parsed) && parsed > 0 ? `≈ ${formatRetentionPeriod(parsed)}` : floor ? `Floor: ${formatRetentionPeriod(floor[t])}` : 'No governing-body floor on file'}
-                      {isBelowFloor && ' — below floor'}
+                    {/* formatRetentionPeriod() (same RetentionPolicy.ts module) is a
+                        service-layer function, not a component, and can't call
+                        useTranslation() - its returned "N years"/"N weeks" text stays
+                        English, same as every other consumer of it in this app. */}
+                    <div className={`ps-speccat-days-hint ${isBelowFloor ? 'ps-speccat-days-hint--below' : ''}`}>
+                      {Number.isFinite(parsed) && parsed > 0
+                        ? t('departmentsSection.modal.approxPeriod', { period: formatRetentionPeriod(parsed) })
+                        : floor ? t('departmentsSection.modal.floorPeriod', { period: formatRetentionPeriod(floor[mt]) }) : t('departmentsSection.modal.noFloorOnFile')}
+                      {isBelowFloor && ` ${t('departmentsSection.modal.belowFloorSuffix')}`}
                     </div>
                   </div>
                 );
@@ -240,9 +261,9 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Department' : 'Save Changes'}
+            {mode === 'add' ? t('departmentsSection.modal.addButton') : t('departmentsSection.modal.saveButton')}
           </button>
         </div>
       </div>
@@ -252,31 +273,36 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
           which ConfirmModal (message + confirm/cancel only) has no
           field for. */}
       {belowFloorConfirm && (
-        <div className="ps-ms-overlay" style={{ zIndex: 9500 }}>
-          <div className="ps-ms-modal" style={{ maxWidth: 460 }}>
-            <div className="ps-ms-header" style={{ color: '#f87171' }}>⚠ Below the Current Retention Floor</div>
+        <div className="ps-ms-overlay ps-billing-postsignout-overlay">
+          <div className="ps-ms-modal ps-speccat-belowfloor-modal">
+            <div className="ps-ms-header acd-footer-status--error">⚠ {t('departmentsSection.modal.belowFloor.header')}</div>
             <div className="ps-ms-body">
-              <p style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 12 }}>
-                This override sets {belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(' and ')} below the
-                current governing-body floor{floor && belowFloorConfirm.fields.length === 1 ? ` (${formatRetentionPeriod(floor[belowFloorConfirm.fields[0]])})` : ''}.
-                This is a real, deliberate exception to a real, published minimum — not something to do casually.
+              <p className="ps-speccat-belowfloor-text">
+                {floor && belowFloorConfirm.fields.length === 1
+                  ? t('departmentsSection.modal.belowFloor.messageWithFloor', {
+                      fields: belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(` ${t('departmentsSection.modal.belowFloor.and')} `),
+                      period: formatRetentionPeriod(floor[belowFloorConfirm.fields[0]]),
+                    })
+                  : t('departmentsSection.modal.belowFloor.message', {
+                      fields: belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(` ${t('departmentsSection.modal.belowFloor.and')} `),
+                    })}
               </p>
               <label className="ps-conf-label">
-                Justification <span className="ps-conf-required">*</span>
+                {t('departmentsSection.modal.belowFloor.justificationLabel')} <span className="ps-conf-required">*</span>
               </label>
               <textarea
                 className="ps-conf-input ps-conf-textarea"
                 value={justification}
                 onChange={e => setJustification(e.target.value)}
-                placeholder="Why this department's own retention should be shorter than the published floor..."
+                placeholder={t('departmentsSection.modal.belowFloor.justificationPlaceholder')}
                 rows={3}
                 autoFocus
               />
             </div>
             <div className="ps-ms-footer">
-              <button className="ps-ms-btn-cancel" onClick={() => setBelowFloorConfirm(null)}>Cancel</button>
-              <button className="ps-ms-btn-apply" style={{ background: '#f87171' }} disabled={!justification.trim()} onClick={confirmBelowFloor}>
-                Confirm Below-Floor Override
+              <button className="ps-ms-btn-cancel" onClick={() => setBelowFloorConfirm(null)}>{t('common.cancel')}</button>
+              <button className="ps-ms-btn-apply ps-speccat-btn-danger" disabled={!justification.trim()} onClick={confirmBelowFloor}>
+                {t('departmentsSection.modal.belowFloor.confirmButton')}
               </button>
             </div>
           </div>
@@ -288,6 +314,7 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
 
 // ─── Main DepartmentsSection ────────────────────────────────────────────
 const DepartmentsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [departments,   setDepartments]   = useState<Department[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
@@ -317,7 +344,10 @@ const DepartmentsSection: React.FC = () => {
     });
   }, []);
 
-  const templateName = (id: string) => GROSSING_TEMPLATES.find(t => t.id === id)?.name ?? id;
+  const templateName = (id: string) => {
+    const tpl = GROSSING_TEMPLATES.find(gt => gt.id === id);
+    return tpl ? t(tpl.labelKey) : id;
+  };
 
   const filtered = departments.filter(c => {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.description ?? '').toLowerCase().includes(search.toLowerCase());
@@ -350,12 +380,14 @@ const DepartmentsSection: React.FC = () => {
       const refCheck = await checkDepartmentReferences(modal.department.id);
       if (refCheck.hasReferences) {
         const detail = refCheck.sources.map(s => `${s.count} ${s.label}`).join(', ');
-        setPendingDeactivation({ draft, message: `This department is still referenced by: ${detail}. Deactivating it now won't remove those references — they'll keep pointing at a department that's no longer active. Deactivate anyway?` });
+        setPendingDeactivation({ draft, message: t('departmentsSection.deactivation.message', { detail }) });
         return;
       }
     }
     const saved = await persistSave(draft);
     if (saved && belowFloorFields.length > 0) {
+      // Persisted audit-trail entry — stays English, same convention as
+      // every other real audit-log detail string in this app.
       mockAuditService.logEvent({
         type: 'system', event: 'Retention Override Below Floor',
         detail: `Department "${draft.name}" — ${belowFloorFields.join(', ')} set below the current governing-body floor. Justification: ${justification}`,
@@ -376,28 +408,30 @@ const DepartmentsSection: React.FC = () => {
     setPendingDeactivation(null);
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading departments...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('departmentsSection.loading')}</div>;
+
+  const tableHeaderKeys = ['department', 'defaultGrossingTemplate', 'caseMask', 'retentionOverride', 'status', 'actions'] as const;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Department Dictionary</h3>
+          <h3 className="ps-conf-section-title">{t('departmentsSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            The coarse-grained classification that controls Grossing Template assignment, accession numbering, and per-department retention exceptions at intake.
+            {t('departmentsSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Department</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>{t('departmentsSection.addDepartment')}</button>
       </div>
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by name or description..." value={search} onChange={e => setSearch(e.target.value)}
+        <input type="text" placeholder={t('departmentsSection.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
           className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="Unverified">Unverified</option>
+          <option value="All">{t('departmentsSection.filters.statusAll')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
+          <option value="Unverified">{t('departmentsSection.filters.statusUnverified')}</option>
         </select>
       </div>
 
@@ -406,8 +440,8 @@ const DepartmentsSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Department', 'Default Grossing Template', 'Case Mask', 'Retention Override', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="ps-conf-th">{h}</th>
+                {tableHeaderKeys.map(h => (
+                  <th key={h} className="ps-conf-th">{t(`departmentsSection.table.headers.${h}`)}</th>
                 ))}
               </tr>
             </thead>
@@ -423,47 +457,49 @@ const DepartmentsSection: React.FC = () => {
                     <td className="ps-conf-td">{templateName(c.defaultGrossingTemplateId)}</td>
                     <td className="ps-conf-td">
                       {caseMasksByDeptId[c.id]
-                        ? <span className="ps-sub-system-badge" title="This department has its own, complete Case Mask">DEFINED · {caseMasksByDeptId[c.id].prefix}</span>
-                        : <span className="ps-conf-identity-sub">Not defined</span>}
+                        ? <span className="ps-sub-system-badge" title={t('departmentsSection.table.caseMaskTooltip')}>{t('departmentsSection.table.caseMaskDefinedBadge', { prefix: caseMasksByDeptId[c.id].prefix })}</span>
+                        : <span className="ps-conf-identity-sub">{t('departmentsSection.table.caseMaskNotDefined')}</span>}
                     </td>
                     <td className="ps-conf-td">
                       {c.retentionOverrideDays ? (
-                        <div style={{ fontSize: 11 }}>
-                          {ALL_MATERIAL_TYPES.filter(t => c.retentionOverrideDays![t] != null).map(t => (
-                            <div key={t} style={{ color: belowFloorFields.includes(t) ? '#f87171' : '#94a3b8' }}>
-                              {MATERIAL_TYPE_LABEL[t]}: {formatRetentionPeriod(c.retentionOverrideDays![t]!)}
-                              {belowFloorFields.includes(t) && ' ⚠ below floor'}
+                        <div className="ps-ai-review-hint-label">
+                          {ALL_MATERIAL_TYPES.filter(mt => c.retentionOverrideDays![mt] != null).map(mt => (
+                            <div key={mt} className={belowFloorFields.includes(mt) ? 'ps-speccat-retention-row--below' : 'ps-speccat-retention-row'}>
+                              {MATERIAL_TYPE_LABEL[mt]}: {formatRetentionPeriod(c.retentionOverrideDays![mt]!)}
+                              {belowFloorFields.includes(mt) && ` ⚠ ${t('departmentsSection.table.belowFloorSuffix')}`}
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <span style={{ fontSize: 11, color: '#64748b' }}>Uses jurisdiction default</span>
+                        <span className="ps-gov-jur-hint">{t('departmentsSection.table.usesJurisdictionDefault')}</span>
                       )}
                     </td>
                     <td className="ps-conf-td">
                       <div className="ps-conf-status-cell">
                         <span className={`ps-conf-status-dot ${c.status === 'Active' ? 'ps-conf-status-dot--active' : c.status === 'Unverified' ? 'ps-conf-status-dot--pending' : ''}`} />
-                        <span className={`ps-conf-status-text ${c.status === 'Active' ? 'ps-conf-status-text--active' : c.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>{c.status}</span>
+                        <span className={`ps-conf-status-text ${c.status === 'Active' ? 'ps-conf-status-text--active' : c.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>
+                          {c.status === 'Active' ? t('common.active') : c.status === 'Inactive' ? t('common.inactive') : t('departmentsSection.filters.statusUnverified')}
+                        </span>
                       </div>
                       {c.autoCreated && (
                         <div className="ps-conf-auto-note" title={c.autoCreatedNote}>
-                          Auto-created{c.autoCreatedAt ? ` ${c.autoCreatedAt}` : ''} — from order intake
+                          {c.autoCreatedAt ? t('departmentsSection.table.autoCreatedWithDate', { date: c.autoCreatedAt }) : t('departmentsSection.table.autoCreated')}
                         </div>
                       )}
                     </td>
                     <td className="ps-conf-td">
                       <div className="ps-conf-row-actions">
                         {c.status === 'Unverified' && (
-                          <button className="ps-conf-btn-verify" onClick={() => handleVerify(c.id)}>Verify</button>
+                          <button className="ps-conf-btn-verify" onClick={() => handleVerify(c.id)}>{t('departmentsSection.verify')}</button>
                         )}
-                        <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', department: c })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', department: c })}>{t('common.edit')}</button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={6}>No departments match the current filter.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={6}>{t('departmentsSection.noResults')}</td></tr>
               )}
             </tbody>
           </table>
@@ -474,10 +510,10 @@ const DepartmentsSection: React.FC = () => {
 
       <ConfirmModal
         show={!!pendingDeactivation}
-        title="Department still in use"
+        title={t('departmentsSection.deactivation.title')}
         message={pendingDeactivation?.message ?? ''}
-        confirmLabel="Deactivate Anyway"
-        cancelLabel="Cancel"
+        confirmLabel={t('departmentsSection.deactivation.confirmLabel')}
+        cancelLabel={t('common.cancel')}
         onConfirm={confirmDeactivation}
         onCancel={() => setPendingDeactivation(null)}
       />

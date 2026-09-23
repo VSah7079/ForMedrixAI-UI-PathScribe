@@ -17,16 +17,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import { parseNcciUploadRows } from '@/services/billing/ncciEditUtils';
 import type { NcciPtpEditPair, NcciPtpEditImport } from '@/types/billing/NcciPtpEdit';
 
-const MODIFIER_LABEL: Record<NcciPtpEditPair['modifierIndicator'], string> = {
-  '0': 'Never bypass — real bundling conflict',
-  '1': 'Can bypass with an appropriate modifier',
-  '9': 'Edit does not apply',
+// Real, persisted modifier-indicator values ('0'/'1'/'9') stay as the
+// option value/stored data; only the on-screen label is translated —
+// same `{ value, labelKey }` split established for every other real
+// enum lookup table this sweep has already converted.
+const MODIFIER_LABEL_KEY: Record<NcciPtpEditPair['modifierIndicator'], string> = {
+  '0': 'ncciEditRulesSection.modifierLabels.neverBypass',
+  '1': 'ncciEditRulesSection.modifierLabels.canBypass',
+  '9': 'ncciEditRulesSection.modifierLabels.doesNotApply',
 };
 
 const TEMPLATE_EXAMPLE_ROWS = [
@@ -39,38 +44,38 @@ const TEMPLATE_EXAMPLE_ROWS = [
  *  exactly, so correcting one pair's modifier indicator no longer
  *  requires a full spreadsheet round-trip. */
 const PairEditModal: React.FC<{ pair: NcciPtpEditPair; onSave: (p: NcciPtpEditPair) => void; onClose: () => void; busy: boolean }> = ({ pair, onSave, onClose, busy }) => {
+  const { t } = useTranslation();
   const [modifierIndicator, setModifierIndicator] = useState(pair.modifierIndicator);
   const [deletionDate, setDeletionDate] = useState(pair.deletionDate ?? '');
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Edit — {pair.columnOneCode} / {pair.columnTwoCode}</div>
+        <div className="ps-ms-header">{t('ncciEditRulesSection.modal.editTitle', { col1: pair.columnOneCode, col2: pair.columnTwoCode })}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Column 1 / Column 2</label>
+            <label className="ps-conf-label">{t('ncciEditRulesSection.modal.columnLabel')}</label>
             <input className="ps-conf-input" value={`${pair.columnOneCode} / ${pair.columnTwoCode}`} disabled />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Modifier Indicator</label>
+            <label className="ps-conf-label">{t('ncciEditRulesSection.modal.modifierIndicatorLabel')}</label>
             <select className="ps-conf-select" value={modifierIndicator} onChange={e => setModifierIndicator(e.target.value as NcciPtpEditPair['modifierIndicator'])}>
-              {(Object.keys(MODIFIER_LABEL) as NcciPtpEditPair['modifierIndicator'][]).map(k => (
-                <option key={k} value={k}>{k} — {MODIFIER_LABEL[k]}</option>
+              {(Object.keys(MODIFIER_LABEL_KEY) as NcciPtpEditPair['modifierIndicator'][]).map(k => (
+                <option key={k} value={k}>{k} — {t(MODIFIER_LABEL_KEY[k])}</option>
               ))}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Deletion Date (optional)</label>
+            <label className="ps-conf-label">{t('ncciEditRulesSection.modal.deletionDateLabel')}</label>
             <input className="ps-conf-input" type="date" value={deletionDate} onChange={e => setDeletionDate(e.target.value)} />
           </div>
           <p className="ps-billing-reason-hint">
-            Saving submits a new import for approval — a different, real reviewer must approve it before it
-            replaces the active table. See Pending Billing Rule Approvals.
+            {t('ncciEditRulesSection.modal.approvalHint')}
           </p>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary" disabled={busy} onClick={() => onSave({ ...pair, modifierIndicator, deletionDate: deletionDate || undefined })}>
-            {busy ? 'Submitting…' : 'Submit for Approval'}
+            {busy ? t('ncciEditRulesSection.submitting') : t('ncciEditRulesSection.modal.submitButton')}
           </button>
         </div>
       </div>
@@ -79,6 +84,7 @@ const PairEditModal: React.FC<{ pair: NcciPtpEditPair; onSave: (p: NcciPtpEditPa
 };
 
 const NcciEditRulesSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [pairs, setPairs] = useState<NcciPtpEditPair[]>([]);
   const [currentImport, setCurrentImport] = useState<NcciPtpEditImport | null>(null);
@@ -124,14 +130,23 @@ const NcciEditRulesSection: React.FC = () => {
     if (!file) return;
     if (!isCsvFile(file)) {
       setUploadPreview(null);
-      setUploadProblems([`"${file.name}" isn't a CSV file. Save CMS's file as .csv from your spreadsheet editor before importing.`]);
+      setUploadProblems([t('ncciEditRulesSection.upload.notCsvError', { filename: file.name })]);
       return;
     }
     const text = await readFileAsText(file);
     const rows = parseCsv(text);
     const { pairs: parsed, problems } = parseNcciUploadRows(rows);
     setUploadPreview(parsed);
-    setUploadProblems(problems);
+    setUploadProblems(problems.map(p => {
+      if (p.kind === 'missing_codes') return t('ncciEditRulesSection.upload.problems.missingCodes', { row: p.row });
+      if (p.kind === 'invalid_modifier') {
+        return t('ncciEditRulesSection.upload.problems.invalidModifier', {
+          row: p.row, col1: p.columnOneCode, col2: p.columnTwoCode,
+          modifierRaw: p.modifierRaw || t('ncciEditRulesSection.upload.blankPlaceholder'),
+        });
+      }
+      return t('ncciEditRulesSection.upload.problems.missingEffectiveDate', { row: p.row, col1: p.columnOneCode, col2: p.columnTwoCode });
+    }));
   };
 
   const handleDownloadTemplate = () => {
@@ -149,53 +164,55 @@ const NcciEditRulesSection: React.FC = () => {
   return (
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
-        <h2 className="ps-conf-section-title">NCCI Edit Rules (Bundling)</h2>
+        <h2 className="ps-conf-section-title">{t('ncciEditRulesSection.title')}</h2>
         <p className="ps-conf-section-subtitle">
-          Real, procedure-to-procedure bundling checks — flags a warning when two codes on the same specimen are a
-          genuine, never-bypassable NCCI conflict. PathScribe does not ship with real, current CMS data; whoever
-          holds the real AMA license downloads the current quarter's real file from CMS.gov → National Correct
-          Coding Initiative → PTP Edits → Practitioner, saves it as .csv from their spreadsheet editor, and imports
-          it below. A single pair can also be corrected directly (Edit, below) without a full re-upload — like
-          every change here, it goes through the same real Four-Eyes approval process before it takes effect.
+          {t('ncciEditRulesSection.subtitle')}
         </p>
       </div>
 
       {pendingCount > 0 && (
         <p className="ps-billing-reason-hint">
-          {pendingCount} import{pendingCount !== 1 ? 's' : ''} pending approval — see Pending Billing Rule Approvals.
+          {t('ncciEditRulesSection.pendingCount', { count: pendingCount })}
         </p>
       )}
 
       {currentImport?.isSyntheticSeed && (
-        <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>
-          ⚠ Showing a small, synthetic demo pair — not real, current CMS data. Import a real quarterly file below
-          before relying on this for a real bundling check.
+        <p className="ps-conf-hint ps-conf-hint--warning">
+          ⚠ {t('ncciEditRulesSection.syntheticSeedWarning')}
         </p>
       )}
 
       {currentImport && (
         <p className="ps-conf-hint">
-          Current: <strong>{currentImport.quarterVersion}</strong> — {currentImport.pairCount} pair{currentImport.pairCount === 1 ? '' : 's'},
-          imported {new Date(currentImport.importedAt).toLocaleDateString()} by {currentImport.importedBy}.
+          <Trans
+            i18nKey="ncciEditRulesSection.currentLabel"
+            count={currentImport.pairCount}
+            values={{
+              version: currentImport.quarterVersion,
+              date: new Date(currentImport.importedAt).toLocaleDateString(),
+              importedBy: currentImport.importedBy,
+            }}
+            components={{ bold: <strong /> }}
+          />
         </p>
       )}
 
       <div className="ps-conf-row-actions">
-        <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
-        <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
+        <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>{t('ncciEditRulesSection.downloadTemplateButton')}</button>
+        <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>{t('ncciEditRulesSection.uploadSpreadsheetButton')}</button>
         <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv" onChange={handleFileSelect} />
       </div>
 
       {uploadPreview && (
         <div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="ncci-quarter-version">Quarter Version <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="ncci-quarter-version">{t('ncciEditRulesSection.upload.quarterVersionLabel')} <span className="ps-conf-required">*</span></label>
             <input id="ncci-quarter-version" className="ps-conf-input" value={quarterVersion} onChange={e => setQuarterVersion(e.target.value)}
-              placeholder="e.g. 2026Q3, matching CMS's own real quarterly file naming" />
+              placeholder={t('ncciEditRulesSection.upload.quarterVersionPlaceholder')} />
           </div>
           {uploadProblems.length > 0 && (
-            <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>
-              ⚠ {uploadProblems.length} row{uploadProblems.length === 1 ? '' : 's'} skipped:
+            <p className="ps-conf-hint ps-conf-hint--warning">
+              ⚠ {t('ncciEditRulesSection.upload.rowsSkipped', { count: uploadProblems.length })}
               <ul>{uploadProblems.slice(0, 10).map((p, i) => <li key={i}>{p}</li>)}</ul>
             </p>
           )}
@@ -203,14 +220,14 @@ const NcciEditRulesSection: React.FC = () => {
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
                 <thead className="ps-conf-thead-sticky">
-                  <tr><th className="ps-conf-th">Column 1</th><th className="ps-conf-th">Column 2</th><th className="ps-conf-th">Modifier Indicator</th><th className="ps-conf-th">Effective</th></tr>
+                  <tr><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.column1')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.column2')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.modifierIndicator')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.effective')}</th></tr>
                 </thead>
                 <tbody>
                   {uploadPreview.slice(0, 50).map((p, i) => (
                     <tr key={i} className="ps-conf-tr">
                       <td className="ps-conf-td">{p.columnOneCode}</td>
                       <td className="ps-conf-td">{p.columnTwoCode}</td>
-                      <td className="ps-conf-td">{p.modifierIndicator} — {MODIFIER_LABEL[p.modifierIndicator]}</td>
+                      <td className="ps-conf-td">{p.modifierIndicator} — {t(MODIFIER_LABEL_KEY[p.modifierIndicator])}</td>
                       <td className="ps-conf-td">{p.effectiveDate}</td>
                     </tr>
                   ))}
@@ -219,9 +236,9 @@ const NcciEditRulesSection: React.FC = () => {
             </div>
           </div>
           <div className="ps-ms-footer">
-            <button className="ps-conf-btn-secondary" onClick={() => { setUploadPreview(null); setUploadProblems([]); }}>Cancel</button>
+            <button className="ps-conf-btn-secondary" onClick={() => { setUploadPreview(null); setUploadProblems([]); }}>{t('common.cancel')}</button>
             <button className="ps-conf-btn-primary" disabled={busy || uploadPreview.length === 0 || !quarterVersion.trim()} onClick={handleApplyUpload}>
-              {busy ? 'Submitting…' : `Submit for Approval (${uploadPreview.length} pairs)`}
+              {busy ? t('ncciEditRulesSection.submitting') : t('ncciEditRulesSection.upload.submitForApproval', { count: uploadPreview.length })}
             </button>
           </div>
         </div>
@@ -232,20 +249,20 @@ const NcciEditRulesSection: React.FC = () => {
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
-                <tr><th className="ps-conf-th">Column 1</th><th className="ps-conf-th">Column 2</th><th className="ps-conf-th">Modifier Indicator</th><th className="ps-conf-th">Effective</th><th className="ps-conf-th">Actions</th></tr>
+                <tr><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.column1')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.column2')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.modifierIndicator')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.effective')}</th><th className="ps-conf-th">{t('ncciEditRulesSection.table.headers.actions')}</th></tr>
               </thead>
               <tbody>
                 {pairs.map(p => (
                   <tr key={p.id} className="ps-conf-tr">
                     <td className="ps-conf-td">{p.columnOneCode}</td>
                     <td className="ps-conf-td">{p.columnTwoCode}</td>
-                    <td className="ps-conf-td">{p.modifierIndicator} — {MODIFIER_LABEL[p.modifierIndicator]}</td>
+                    <td className="ps-conf-td">{p.modifierIndicator} — {t(MODIFIER_LABEL_KEY[p.modifierIndicator])}</td>
                     <td className="ps-conf-td">{p.effectiveDate}</td>
-                    <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setEditingPair(p)}>Edit</button></td>
+                    <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setEditingPair(p)}>{t('common.edit')}</button></td>
                   </tr>
                 ))}
                 {pairs.length === 0 && (
-                  <tr><td className="ps-conf-empty-row" colSpan={5}>No NCCI edit pairs loaded.</td></tr>
+                  <tr><td className="ps-conf-empty-row" colSpan={5}>{t('ncciEditRulesSection.table.emptyState')}</td></tr>
                 )}
               </tbody>
             </table>

@@ -5,6 +5,18 @@
  * synonyms, and description, and navigates to the matched setting's tab on
  * selection.
  *
+ * i18n note: `entry.labelKey`/`entry.descriptionKey` are resolved with
+ * `t()` at render AND at scoring time (a search for the French wording of
+ * a setting should still find it) — see configSearchIndex.ts's own i18n
+ * note for how each key was chosen (reused exact-text key vs. a new
+ * `configSearchIndex.entries.<id>.*` key). `entry.synonyms` are real,
+ * internal search-matching data (not displayed anywhere) and are
+ * deliberately left as literal English keywords, out of scope. The result
+ * row's tab pill is resolved from `entry.tabId` via the same
+ * `configuration.tabs.<id>` keys the main Configuration page's own tab
+ * strip already uses, rather than storing a duplicate translated string
+ * per entry.
+ *
  * Real, per direct report ("the top level search in config found the
  * entry, but when clicked on, it did not go to the setting"): now also
  * deep-links to the specific section within a tab when the matched
@@ -18,25 +30,27 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CONFIG_SEARCH_INDEX, ConfigSearchEntry, ConfigTabId } from '../../../constants/configSearchIndex';
 
 interface ConfigSearchBarProps {
   onNavigate: (tabId: ConfigTabId, section?: string) => void;
 }
 
-function scoreEntry(entry: ConfigSearchEntry, query: string): number {
+function scoreEntry(entry: ConfigSearchEntry, query: string, t: (key: string) => string): number {
   const q = query.toLowerCase().trim();
-  const label = entry.label.toLowerCase();
+  const label = t(entry.labelKey).toLowerCase();
   if (!q) return 0;
   if (label === q) return 100;
   if (label.startsWith(q)) return 80;
   if (label.includes(q)) return 60;
   if (entry.synonyms.some(s => s.toLowerCase().includes(q))) return 40;
-  if (entry.description.toLowerCase().includes(q)) return 20;
+  if (t(entry.descriptionKey).toLowerCase().includes(q)) return 20;
   return 0;
 }
 
 const ConfigSearchBar: React.FC<ConfigSearchBarProps> = ({ onNavigate }) => {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -45,12 +59,12 @@ const ConfigSearchBar: React.FC<ConfigSearchBarProps> = ({ onNavigate }) => {
   const results = useMemo(() => {
     if (!query.trim()) return [];
     return CONFIG_SEARCH_INDEX
-      .map(entry => ({ entry, score: scoreEntry(entry, query) }))
+      .map(entry => ({ entry, score: scoreEntry(entry, query, t) }))
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(r => r.entry);
-  }, [query]);
+  }, [query, t]);
 
   useEffect(() => { setActiveIdx(0); }, [query]);
 
@@ -81,17 +95,17 @@ const ConfigSearchBar: React.FC<ConfigSearchBarProps> = ({ onNavigate }) => {
       <input
         className="ps-config-search__input"
         type="text"
-        placeholder="Search settings…"
+        placeholder={t('configSearchIndex.searchPlaceholder')}
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        aria-label="Search configuration settings"
+        aria-label={t('configSearchIndex.searchAriaLabel')}
       />
       {open && query.trim() && (
         <div className="ps-config-search__results">
           {results.length === 0
-            ? <div className="ps-config-search__empty">No settings found for "{query}"</div>
+            ? <div className="ps-config-search__empty">{t('configSearchIndex.noResults', { query })}</div>
             : results.map((entry, i) => (
               <button
                 key={entry.id}
@@ -100,9 +114,9 @@ const ConfigSearchBar: React.FC<ConfigSearchBarProps> = ({ onNavigate }) => {
                 onMouseEnter={() => setActiveIdx(i)}
                 onClick={() => selectEntry(entry)}
               >
-                <div className="ps-config-search__result-label">{entry.label}</div>
-                <div className="ps-config-search__result-desc">{entry.description}</div>
-                <span className="ps-config-search__result-tab">{entry.tabLabel}</span>
+                <div className="ps-config-search__result-label">{t(entry.labelKey)}</div>
+                <div className="ps-config-search__result-desc">{t(entry.descriptionKey)}</div>
+                <span className="ps-config-search__result-tab">{t(`configuration.tabs.${entry.tabId}`)}</span>
               </button>
             ))
           }

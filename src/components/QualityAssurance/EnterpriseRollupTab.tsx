@@ -1,5 +1,11 @@
 // src/components/QualityAssurance/EnterpriseRollupTab.tsx
 // ─────────────────────────────────────────────────────────────────────────────
+// i18n note: `JURISDICTION_LABELS` (types/systemConfig.ts) is a shared,
+// multi-consumer map used across seven other files — left as literal
+// English data, out of scope for this file's own batch. CSV export
+// column headers in `handleExport` stay literal English (persisted/
+// exported data convention).
+// ─────────────────────────────────────────────────────────────────────────────
 // Real, per the RFP-APLIS-2026-GLOBAL Enterprise Business Intelligence
 // Rollup Dashboard gap: a genuinely new, cross-facility view
 // aggregating operational, financial, diagnostic, and TAT metrics
@@ -25,6 +31,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockFacilityService } from '@/services/facilities/mockFacilityService';
 import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
@@ -38,6 +45,7 @@ import { JURISDICTION_LABELS } from '@/types/systemConfig';
 import { exportQaReportRows } from './qaReportUtils';
 
 export const EnterpriseRollupTab: React.FC = () => {
+  const { t } = useTranslation();
   const [result, setResult] = useState<EnterpriseRollupResult | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -101,46 +109,50 @@ export const EnterpriseRollupTab: React.FC = () => {
     exportQaReportRows(rows, `enterprise-rollup-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  if (loading) return <div className="ps-conf-page">Loading…</div>;
-  if (!result) return <div className="ps-conf-page">Unable to load enterprise rollup data.</div>;
+  if (loading) return <div className="ps-conf-page">{t('common.loading')}</div>;
+  if (!result) return <div className="ps-conf-page">{t('enterpriseRollupTab.unableToLoad')}</div>;
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Enterprise Rollup</h2>
+      <h2 className="ps-conf-section-title">{t('enterpriseRollupTab.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        Operational, financial, diagnostic, and TAT metrics aggregated within each performing-lab jurisdiction
-        first, then rolled up enterprise-wide — real case-level data is never combined or shown across a
-        jurisdiction boundary, only these aggregate numbers.
+        {t('enterpriseRollupTab.subtitle')}
       </p>
 
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Enterprise-Wide</div>
-        <div className="ps-conf-row"><span>Jurisdictions</span><span className="ps-conf-value">{result.enterpriseWide.jurisdictionCount}</span></div>
-        <div className="ps-conf-row"><span>Facilities</span><span className="ps-conf-value">{result.enterpriseWide.facilityCount}</span></div>
-        <div className="ps-conf-row"><span>Case Volume</span><span className="ps-conf-value">{result.enterpriseWide.caseVolume}</span></div>
-        <div className="ps-conf-row"><span>Total Work RVU</span><span className="ps-conf-value">{result.enterpriseWide.totalWorkRvu}</span></div>
-        <div className="ps-conf-row"><span>AI-Assisted</span><span className="ps-conf-value">{result.enterpriseWide.aiAssistedPct}%</span></div>
-        <div className="ps-conf-row"><span>On-Target TAT</span><span className="ps-conf-value">{result.enterpriseWide.onTargetPct}%</span></div>
+        <div className="ps-conf-card-title">{t('billingDictionarySection.enterpriseWideLabel')}</div>
+        <div className="ps-conf-row"><span>{t('qaConfigurationCenterSection.table.headers.jurisdictions')}</span><span className="ps-conf-value">{result.enterpriseWide.jurisdictionCount}</span></div>
+        <div className="ps-conf-row"><span>{t('physiciansSection.table.facilities')}</span><span className="ps-conf-value">{result.enterpriseWide.facilityCount}</span></div>
+        <div className="ps-conf-row"><span>{t('enterpriseRollupTab.caseVolumeLabel')}</span><span className="ps-conf-value">{result.enterpriseWide.caseVolume}</span></div>
+        <div className="ps-conf-row"><span>{t('enterpriseRollupTab.totalWorkRvuLabel')}</span><span className="ps-conf-value">{result.enterpriseWide.totalWorkRvu}</span></div>
+        <div className="ps-conf-row"><span>{t('aiContributionTab.comparison.aiLabel')}</span><span className="ps-conf-value">{result.enterpriseWide.aiAssistedPct}%</span></div>
+        <div className="ps-conf-row"><span>{t('enterpriseRollupTab.onTargetTatLabel')}</span><span className="ps-conf-value">{result.enterpriseWide.onTargetPct}%</span></div>
         {result.unresolvedCaseCount > 0 && (
-          <div className="ps-conf-saving-indicator">{result.unresolvedCaseCount} case(s) could not be resolved to a known Enterprise Facility and are excluded above.</div>
+          <div className="ps-conf-saving-indicator">{t('enterpriseRollupTab.unresolvedNotice', { count: result.unresolvedCaseCount })}</div>
         )}
       </div>
 
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">By Jurisdiction</div>
-          <button className="ps-conf-btn-secondary" onClick={handleExport}>Export</button>
+          <div className="ps-conf-card-title">{t('enterpriseRollupTab.byJurisdictionTitle')}</div>
+          <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('qualityAssurance.common.export')}</button>
         </div>
         {result.byJurisdiction.map(row => (
           <div key={row.jurisdiction} className="ps-conf-row">
             <span>{JURISDICTION_LABELS[row.jurisdiction]}</span>
             <span className="ps-conf-value">
-              {row.caseVolume} cases · {row.facilityCount} facilities · {row.totalWorkRvu} RVU · {row.aiAssistedPct}% AI · {row.onTargetPct}% on-target
+              {t('enterpriseRollupTab.rowSummary', {
+                caseVolume: row.caseVolume,
+                facilityCount: row.facilityCount,
+                totalWorkRvu: row.totalWorkRvu,
+                aiAssistedPct: row.aiAssistedPct,
+                onTargetPct: row.onTargetPct,
+              })}
             </span>
           </div>
         ))}
         {result.byJurisdiction.length === 0 && (
-          <div className="ps-conf-empty-row">No cases resolved to any known jurisdiction yet.</div>
+          <div className="ps-conf-empty-row">{t('enterpriseRollupTab.emptyState')}</div>
         )}
       </div>
     </div>

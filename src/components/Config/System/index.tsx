@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import '../../../pathscribe.css';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
@@ -147,7 +148,16 @@ type SystemSection =
 // list they lived in pre-PS-85. Integrations/index.tsx - which held
 // only this same navigation wiring, no real content of its own - is
 // deleted; nothing else referenced it.
-const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string }[] = [
+// labelKey (not label) below — this array lives at module scope, outside
+// any component's render, and can't call useTranslation() itself. Each
+// key is resolved via t() at the one real render site (the sidebar nav
+// button), same labelKey pattern established for GROSSING_TEMPLATES
+// (SpecimenCategoriesSection.tsx, batch 70) and ROUTING_STEPS
+// (CasePoolAssignmentSection.tsx, batch 67). `group` stays a literal,
+// internal identifier (SystemTab's own group-equality checks and the
+// GROUPS derivation below both key off it) — GROUP_LABEL_KEY, just
+// below, maps each one to its own translated display text.
+const SECTIONS: { id: SystemSection; emoji: string; labelKey: string; group: string }[] = [
   // ── Workstation & Hardware ──
   // Real, per direct follow-up ("Yes. It should be alpha within the
   // group"): every group below re-sorted alphabetically by label —
@@ -160,91 +170,107 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
   // (mostly the newer Financial & Revenue Lookups and Integrations
   // groups) and simply appended rather than re-sorted. Group order
   // itself (Workstation & Hardware → ... → Integrations) is
-  // unchanged — only the order of items within each group.
-  { id: 'print_settings',      emoji: '🖨️', label: 'Print Settings'        , group: 'Workstation & Hardware' },
-  { id: 'label_designer',      emoji: '🏷️', label: 'Label Designer'        , group: 'Workstation & Hardware' },
-  { id: 'printer_profiles',    emoji: '🖨️', label: 'Printer Profiles'      , group: 'Workstation & Hardware' },
-  { id: 'scan_stations',       emoji: '📍', label: 'Scan Stations'         , group: 'Workstation & Hardware' },
+  // unchanged — only the order of items within each group. (That
+  // alphabetization was by the real English label; it's left as-is
+  // per language rather than re-sorted per locale, same as every
+  // other alphabetized list elsewhere in this app.)
+  { id: 'print_settings',      emoji: '🖨️', labelKey: 'systemTab.sections.printSettings'        , group: 'Workstation & Hardware' },
+  { id: 'label_designer',      emoji: '🏷️', labelKey: 'systemTab.sections.labelDesigner'        , group: 'Workstation & Hardware' },
+  { id: 'printer_profiles',    emoji: '🖨️', labelKey: 'systemTab.sections.printerProfiles'      , group: 'Workstation & Hardware' },
+  { id: 'scan_stations',       emoji: '📍', labelKey: 'systemTab.sections.scanStations'         , group: 'Workstation & Hardware' },
 
   // ── Lab Materials & Workflows ──
-  { id: 'cassette_colors',     emoji: '🎨', label: 'Cassette Colors'       , group: 'Lab Materials & Workflows' },
-  { id: 'cassette_routing_rules', emoji: '🧊', label: 'Cassette Routing Rules', group: 'Lab Materials & Workflows' },
-  { id: 'container_types',     emoji: '🧪', label: 'Container Types'       , group: 'Lab Materials & Workflows' },
-  { id: 'reagent_lots',        emoji: '🧫', label: 'Reagent & Solution Lots', group: 'Lab Materials & Workflows' },
-  { id: 'workstation_groups',  emoji: '🗺️', label: 'Workstation Groups'    , group: 'Lab Materials & Workflows' },
-  { id: 'action_groups',       emoji: '⚡', label: 'Action Groups'          , group: 'Lab Materials & Workflows' },
-  { id: 'stains',              emoji: '🧪', label: 'Diagnostic Catalog'    , group: 'Lab Materials & Workflows' },
+  { id: 'cassette_colors',     emoji: '🎨', labelKey: 'systemTab.sections.cassetteColors'       , group: 'Lab Materials & Workflows' },
+  { id: 'cassette_routing_rules', emoji: '🧊', labelKey: 'systemTab.sections.cassetteRoutingRules', group: 'Lab Materials & Workflows' },
+  { id: 'container_types',     emoji: '🧪', labelKey: 'systemTab.sections.containerTypes'       , group: 'Lab Materials & Workflows' },
+  { id: 'reagent_lots',        emoji: '🧫', labelKey: 'systemTab.sections.reagentLots'          , group: 'Lab Materials & Workflows' },
+  { id: 'workstation_groups',  emoji: '🗺️', labelKey: 'systemTab.sections.workstationGroups'    , group: 'Lab Materials & Workflows' },
+  { id: 'action_groups',       emoji: '⚡', labelKey: 'systemTab.sections.actionGroups'          , group: 'Lab Materials & Workflows' },
+  { id: 'stains',              emoji: '🧪', labelKey: 'systemTab.sections.stains'               , group: 'Lab Materials & Workflows' },
   // Real, per this module's own DP/AI vendor integration plan's final
   // remaining item. Placed in the same real group as the diagnostic
   // catalog above — this is shared, cross-module infrastructure
   // (surgical pathology + cytology both order AI screenings from it),
   // never a cytology-only setting.
-  { id: 'vendor_integrations', emoji: '🔌', label: 'Vendor Integrations', group: 'Lab Materials & Workflows' },
-  { id: 'cytology_qc_rules', emoji: '🔬', label: 'Cytology QC Rules', group: 'Lab Materials & Workflows' },
+  { id: 'vendor_integrations', emoji: '🔌', labelKey: 'systemTab.sections.vendorIntegrations', group: 'Lab Materials & Workflows' },
+  { id: 'cytology_qc_rules', emoji: '🔬', labelKey: 'systemTab.sections.cytologyQcRules', group: 'Lab Materials & Workflows' },
   // Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
   // Intraoperative/Frozen Section Dashboard — same real group as the
   // other lab-hardware/workflow registries.
-  { id: 'or_suite_terminals',  emoji: '🏥', label: 'OR Suite Terminals'     , group: 'Lab Materials & Workflows' },
+  { id: 'or_suite_terminals',  emoji: '🏥', labelKey: 'systemTab.sections.orSuiteTerminals'     , group: 'Lab Materials & Workflows' },
   // PS-288 — data-only device registry for the five real Facility Ops
   // Dashboard wall displays. Same real group as OR Suite Terminals,
   // a genuinely analogous physical-display registry.
-  { id: 'display_profiles',    emoji: '🖥️', label: 'Display Profiles (Facility Ops Dashboards)', group: 'Lab Materials & Workflows' },
+  { id: 'display_profiles',    emoji: '🖥️', labelKey: 'systemTab.sections.displayProfiles', group: 'Lab Materials & Workflows' },
   // Real, per the RFP-APLIS-2026-GLOBAL Historical Data Migration
   // Engine gap.
-  { id: 'migration_field_mappings', emoji: '📦', label: 'Migration Field Mappings', group: 'Lab Materials & Workflows' },
+  { id: 'migration_field_mappings', emoji: '📦', labelKey: 'systemTab.sections.migrationFieldMappings', group: 'Lab Materials & Workflows' },
   // Real, per the RFP-APLIS-2026-GLOBAL Broader Cancer Registry
   // Exports gap — genuinely separate from Cytology's own Registry
   // Reporting subtab, per the RFP's own "Non-Cytology-Scoped" title.
-  { id: 'cancer_registry_settings', emoji: '🏛️', label: 'Cancer Registry Reporting', group: 'Lab Materials & Workflows' },
-  { id: 'flags',               emoji: '🚩', label: 'Flags'                 , group: 'Lab Materials & Workflows' },
-  { id: 'grossing_route_overrides', emoji: '🔀', label: 'Grossing Route Overrides', group: 'Lab Materials & Workflows' },
-  { id: 'specimens',           emoji: '🔬', label: 'Specimen Dictionary'   , group: 'Lab Materials & Workflows' },
-  { id: 'asset_locations',     emoji: '📍', label: 'Asset Location Dictionary', group: 'Lab Materials & Workflows' },
+  { id: 'cancer_registry_settings', emoji: '🏛️', labelKey: 'systemTab.sections.cancerRegistrySettings', group: 'Lab Materials & Workflows' },
+  { id: 'flags',               emoji: '🚩', labelKey: 'systemTab.sections.flags'                 , group: 'Lab Materials & Workflows' },
+  { id: 'grossing_route_overrides', emoji: '🔀', labelKey: 'systemTab.sections.grossingRouteOverrides', group: 'Lab Materials & Workflows' },
+  { id: 'specimens',           emoji: '🔬', labelKey: 'systemTab.sections.specimens'   , group: 'Lab Materials & Workflows' },
+  { id: 'asset_locations',     emoji: '📍', labelKey: 'systemTab.sections.assetLocations', group: 'Lab Materials & Workflows' },
 
   // ── Clinical Lookups ──
-  { id: 'governing_bodies',    emoji: '📋', label: 'Governing Bodies'      , group: 'Clinical Lookups' },
-  { id: 'abnormal_trigger_rules', emoji: '🚩', label: 'Abnormal Trigger Rules', group: 'Clinical Lookups' },
-  { id: 'participation_types', emoji: '👥', label: 'Participation Types'   , group: 'Clinical Lookups' },
-  { id: 'protocols',           emoji: '🧬', label: 'Protocol Dictionary'   , group: 'Clinical Lookups' },
-  { id: 'departments', emoji: '🗂️', label: 'Departments'   , group: 'Clinical Lookups' },
-  { id: 'subspecialties',      emoji: '🩺', label: 'Subspecialties'        , group: 'Clinical Lookups' },
+  { id: 'governing_bodies',    emoji: '📋', labelKey: 'systemTab.sections.governingBodies'      , group: 'Clinical Lookups' },
+  { id: 'abnormal_trigger_rules', emoji: '🚩', labelKey: 'systemTab.sections.abnormalTriggerRules', group: 'Clinical Lookups' },
+  { id: 'participation_types', emoji: '👥', labelKey: 'systemTab.sections.participationTypes'   , group: 'Clinical Lookups' },
+  { id: 'protocols',           emoji: '🧬', labelKey: 'systemTab.sections.protocols'   , group: 'Clinical Lookups' },
+  { id: 'departments', emoji: '🗂️', labelKey: 'systemTab.sections.departments'   , group: 'Clinical Lookups' },
+  { id: 'subspecialties',      emoji: '🩺', labelKey: 'systemTab.sections.subspecialties'        , group: 'Clinical Lookups' },
 
   // ── Financial & Revenue Lookups ──
-  { id: 'billing_dictionary',  emoji: '💲', label: 'Billing Dictionary (Charge Capture)', group: 'Financial & Revenue Lookups' },
-  { id: 'dft_export_preview',  emoji: '📄', label: 'Billing Export Preview', group: 'Financial & Revenue Lookups' },
-  { id: 'billing_type_triggers', emoji: '🚦', label: 'Charge Release Triggers (TC/26/Global)', group: 'Financial & Revenue Lookups' },
-  { id: 'modifier_dictionary', emoji: '🏷️', label: 'CPT Modifier Dictionary', group: 'Financial & Revenue Lookups' },
-  { id: 'jurisdiction_payment_mappings', emoji: '🌍', label: 'Jurisdiction Payment Mapping', group: 'Financial & Revenue Lookups' },
-  { id: 'master_payment_types', emoji: '💳', label: 'Master Payment Type Dictionary', group: 'Financial & Revenue Lookups' },
-  { id: 'ncci_edit_rules',     emoji: '🚫', label: 'NCCI Edit Rules (Bundling)', group: 'Financial & Revenue Lookups' },
-  { id: 'pending_approvals', emoji: '✅', label: 'Pending Billing Rule Approvals', group: 'Financial & Revenue Lookups' },
-  { id: 'rvu_code_map',        emoji: '📈', label: 'RVU Code Map (Productivity)', group: 'Financial & Revenue Lookups' },
+  { id: 'billing_dictionary',  emoji: '💲', labelKey: 'systemTab.sections.billingDictionary', group: 'Financial & Revenue Lookups' },
+  { id: 'dft_export_preview',  emoji: '📄', labelKey: 'systemTab.sections.dftExportPreview', group: 'Financial & Revenue Lookups' },
+  { id: 'billing_type_triggers', emoji: '🚦', labelKey: 'systemTab.sections.billingTypeTriggers', group: 'Financial & Revenue Lookups' },
+  { id: 'modifier_dictionary', emoji: '🏷️', labelKey: 'systemTab.sections.modifierDictionary', group: 'Financial & Revenue Lookups' },
+  { id: 'jurisdiction_payment_mappings', emoji: '🌍', labelKey: 'systemTab.sections.jurisdictionPaymentMappings', group: 'Financial & Revenue Lookups' },
+  { id: 'master_payment_types', emoji: '💳', labelKey: 'systemTab.sections.masterPaymentTypes', group: 'Financial & Revenue Lookups' },
+  { id: 'ncci_edit_rules',     emoji: '🚫', labelKey: 'systemTab.sections.ncciEditRules', group: 'Financial & Revenue Lookups' },
+  { id: 'pending_approvals', emoji: '✅', labelKey: 'systemTab.sections.pendingApprovals', group: 'Financial & Revenue Lookups' },
+  { id: 'rvu_code_map',        emoji: '📈', labelKey: 'systemTab.sections.rvuCodeMap', group: 'Financial & Revenue Lookups' },
 
   // ── Administration & Compliance ──
-  { id: 'fonts',               emoji: '🔤', label: 'Approved Fonts'        , group: 'Administration & Compliance' },
-  { id: 'contribution_settings', emoji: '📊', label: 'Contribution Dashboard' , group: 'Administration & Compliance' },
-  { id: 'retention',           emoji: '🗄️', label: 'Data Retention'        , group: 'Administration & Compliance' },
-  { id: 'delegation_types',    emoji: '🔀', label: 'Delegation Types'      , group: 'Administration & Compliance' },
-  { id: 'document_style',      emoji: '🖋', label: 'Document Style'        , group: 'Administration & Compliance' },
-  { id: 'external_resources',  emoji: '🌐', label: 'External Resources'    , group: 'Administration & Compliance' },
-  { id: 'release_buffer',      emoji: '⏳', label: 'Post-Sign-Out Release Buffer', group: 'Administration & Compliance' },
-  { id: 'concordance_review_settings', emoji: '⚖', label: 'Preliminary-vs-Final Concordance Review', group: 'Administration & Compliance' },
-  { id: 'delivery_rules', emoji: '📬', label: 'Delivery Configuration Rules', group: 'Administration & Compliance' },
-  { id: 'qa_config_center',    emoji: '✅', label: 'QA Configuration Center' , group: 'Administration & Compliance' },
-  { id: 'research_feed',       emoji: '📰', label: 'Research Feed'         , group: 'Administration & Compliance' },
-  { id: 'session_security',    emoji: '🔒', label: 'Session Security'      , group: 'Administration & Compliance' },
+  { id: 'fonts',               emoji: '🔤', labelKey: 'systemTab.sections.fonts'        , group: 'Administration & Compliance' },
+  { id: 'contribution_settings', emoji: '📊', labelKey: 'systemTab.sections.contributionSettings' , group: 'Administration & Compliance' },
+  { id: 'retention',           emoji: '🗄️', labelKey: 'systemTab.sections.retention'        , group: 'Administration & Compliance' },
+  { id: 'delegation_types',    emoji: '🔀', labelKey: 'systemTab.sections.delegationTypes'      , group: 'Administration & Compliance' },
+  { id: 'document_style',      emoji: '🖋', labelKey: 'systemTab.sections.documentStyle'        , group: 'Administration & Compliance' },
+  { id: 'external_resources',  emoji: '🌐', labelKey: 'systemTab.sections.externalResources'    , group: 'Administration & Compliance' },
+  { id: 'release_buffer',      emoji: '⏳', labelKey: 'systemTab.sections.releaseBuffer', group: 'Administration & Compliance' },
+  { id: 'concordance_review_settings', emoji: '⚖', labelKey: 'systemTab.sections.concordanceReviewSettings', group: 'Administration & Compliance' },
+  { id: 'delivery_rules', emoji: '📬', labelKey: 'systemTab.sections.deliveryRules', group: 'Administration & Compliance' },
+  { id: 'qa_config_center',    emoji: '✅', labelKey: 'systemTab.sections.qaConfigCenter' , group: 'Administration & Compliance' },
+  { id: 'research_feed',       emoji: '📰', labelKey: 'systemTab.sections.researchFeed'         , group: 'Administration & Compliance' },
+  { id: 'session_security',    emoji: '🔒', labelKey: 'systemTab.sections.sessionSecurity'      , group: 'Administration & Compliance' },
 
   // ── Integrations ──
-  { id: 'case_mask_config', emoji: '🔢', label: 'Case Mask Configuration', group: 'Integrations' },
-  { id: 'case_routing',     emoji: '🔀', label: 'Case Routing'           , group: 'Integrations' },
-  { id: 'clients',          emoji: '🏥', label: 'Facility Configuration' , group: 'Integrations' },
-  { id: 'crosswalk',        emoji: '🧩', label: 'Order Types & Inbound Rules', group: 'Integrations' },
-  { id: 'outbound_message_preview', emoji: '📤', label: 'Outbound Interface Message Preview', group: 'Integrations' },
-  { id: 'physicians',       emoji: '🩻', label: 'Physicians'             , group: 'Integrations' },
-  { id: 'routing_rules',    emoji: '📋', label: 'Routing Rules'          , group: 'Integrations' },
-  { id: 'deficiencies',     emoji: '⚠️', label: 'Specimen Deficiencies'  , group: 'Integrations' },
-  { id: 'terminology',      emoji: '🔌', label: 'Terminology Services'   , group: 'Integrations' },
+  { id: 'case_mask_config', emoji: '🔢', labelKey: 'systemTab.sections.caseMaskConfig', group: 'Integrations' },
+  { id: 'case_routing',     emoji: '🔀', labelKey: 'systemTab.sections.caseRouting'           , group: 'Integrations' },
+  { id: 'clients',          emoji: '🏥', labelKey: 'systemTab.sections.clients' , group: 'Integrations' },
+  { id: 'crosswalk',        emoji: '🧩', labelKey: 'systemTab.sections.crosswalk', group: 'Integrations' },
+  { id: 'outbound_message_preview', emoji: '📤', labelKey: 'systemTab.sections.outboundMessagePreview', group: 'Integrations' },
+  { id: 'physicians',       emoji: '🩻', labelKey: 'systemTab.sections.physicians'             , group: 'Integrations' },
+  { id: 'routing_rules',    emoji: '📋', labelKey: 'systemTab.sections.routingRules'          , group: 'Integrations' },
+  { id: 'deficiencies',     emoji: '⚠️', labelKey: 'systemTab.sections.deficiencies'  , group: 'Integrations' },
+  { id: 'terminology',      emoji: '🔌', labelKey: 'systemTab.sections.terminology'   , group: 'Integrations' },
 ];
+
+// Data-key-stays-English, label-is-translated: `group` above stays the
+// literal internal identifier (SystemTab's own equality checks key off
+// it directly); only the tab-button text shown for each group is
+// translated, via this map.
+const GROUP_LABEL_KEY: Record<string, string> = {
+  'Workstation & Hardware': 'systemTab.groups.workstationHardware',
+  'Lab Materials & Workflows': 'systemTab.groups.labMaterialsWorkflows',
+  'Clinical Lookups': 'systemTab.groups.clinicalLookups',
+  'Financial & Revenue Lookups': 'systemTab.groups.financialRevenueLookups',
+  'Administration & Compliance': 'systemTab.groups.administrationCompliance',
+  'Integrations': 'systemTab.groups.integrations',
+};
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -259,6 +285,7 @@ const SECTIONS: { id: SystemSection; emoji: string; label: string; group: string
 const GROUPS: string[] = Array.from(new Set(SECTIONS.map(s => s.group)));
 
 const SystemTab: React.FC = () => {
+  const { t } = useTranslation();
   const location = useLocation();
   const [active, setActiveRaw] = useState<SystemSection>(() => {
     const section = new URLSearchParams(location.search).get('section') as SystemSection | null;
@@ -390,7 +417,7 @@ const SystemTab: React.FC = () => {
             }}
             className={`ps-sub-tab-btn${activeGroup === g ? ' active' : ''}`}
           >
-            {g}
+            {t(GROUP_LABEL_KEY[g])}
           </button>
         ))}
       </div>
@@ -404,13 +431,13 @@ const SystemTab: React.FC = () => {
           relationship. */}
       {activeGroup === 'Workstation & Hardware' && (
         <div className="ps-conf-callout-banner ps-confsys-facility-selector">
-          <span className="ps-conf-callout-banner-text">Facility:</span>
+          <span className="ps-conf-callout-banner-text">{t('systemTab.facilityLabel')}</span>
           <select
             className="ps-conf-select"
             value={workstationFacilityId}
             onChange={e => setWorkstationFacilityId(e.target.value)}
           >
-            <option value="">All Facilities</option>
+            <option value="">{t('systemTab.allFacilitiesOption')}</option>
             {workstationLabs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
@@ -428,7 +455,7 @@ const SystemTab: React.FC = () => {
               onClick={() => { selectSection(s.id); resetConfigScroll(); }}
               className={`ps-confsys-nav-btn${active === s.id ? ' ps-confsys-nav-btn--active' : ''}`}
             >
-              {s.emoji} {s.label}
+              {s.emoji} {t(s.labelKey)}
             </button>
           ))}
         </div>

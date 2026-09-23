@@ -95,6 +95,7 @@ const MolecularOrderQueuePage = lazy(() =>
   import("./pages/MolecularOrderQueuePage/MolecularOrderQueuePage")
 );
 const CytologyQcQueuePage = lazy(() => import("./pages/CytologyQcQueuePage"));
+const SurgicalQaWorklistPage = lazy(() => import("./pages/SurgicalQaWorklistPage"));
 const FullReportPage = lazy(() => import("./pages/FullReportPage"));
 
 const SynopticEditor = lazy(() =>
@@ -115,29 +116,14 @@ const TemplateAssemblyPage = lazy(() =>
 );
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
+// Real, found while converting this file: the `ps-spin` keyframe below was
+// being redefined locally on every render via an inline <style> tag, when
+// it's already a real, global keyframe in pathscribe.css (reused by
+// .ps-autogen-toast-spinner elsewhere) — dead, redundant CSS. Uses the
+// existing global keyframe via a real class instead.
 const PageLoader: React.FC = () => (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "#0b1120",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 10000,
-    }}
-  >
-    <div
-      style={{
-        width: 36,
-        height: 36,
-        border: "3px solid rgba(8,145,178,0.15)",
-        borderTop: "3px solid #0891B2",
-        borderRadius: "50%",
-        animation: "ps-spin 0.7s linear infinite",
-      }}
-    />
-    <style>{`@keyframes ps-spin { to { transform: rotate(360deg); } }`}</style>
+  <div className="ps-app-loader-overlay">
+    <div className="ps-app-loader-spinner" />
   </div>
 );
 
@@ -229,6 +215,7 @@ const App: React.FC = () => (
                           <Route path="/intraop-queue" element={<IntraopQueuePage />} />
                           <Route path="/molecular-order-queue" element={<MolecularOrderQueuePage />} />
                           <Route path="/cytology-qc-queue" element={<CytologyQcQueuePage />} />
+                          <Route path="/surgical-qa-worklist" element={<SurgicalQaWorklistPage />} />
                           <Route path="/migration-jobs" element={<MigrationJobsPage />} />
                           <Route path="/search" element={<SearchPage />} />
                           <Route path="/audit" element={<AuditLogPage />} />

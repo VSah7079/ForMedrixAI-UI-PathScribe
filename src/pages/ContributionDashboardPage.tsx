@@ -1,5 +1,21 @@
 // src/pages/ContributionDashboardPage.tsx
+//
+// File-by-file cleanup sweep: all UI chrome (tab labels, tile titles/
+// subtitles, KPI labels, empty states) now goes through t() — new
+// `contributionDashboard` namespace. Real dead code removed: kpiExtras'
+// own `targetLabel` field was set on two of the three entries but never
+// once read anywhere in this file's JSX (confirmed via grep) — the %-of-
+// target figure renders with no label beside it, so the field was inert
+// from the start. The progress bar's `style={{ width: ... }}` became a
+// `--progress-width` custom property + `.ps-contrib-progress-fill--
+// dynamic-width` class, the same established pattern this file's own
+// WeeklyOverviewChart/TatPerformanceTile already use for their bars.
+// Also: `pathscribeTheme` was previously imported as `t` — a real naming
+// collision with i18next's own `t()`, surfaced only once this sweep added
+// useTranslation() here. Renamed to its own name at both of its two call
+// sites rather than aliasing around the clash.
 import React, { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { useAuth } from "@contexts/AuthContext";
 import { useSystemConfig } from "@/contexts/SystemConfigContext";
@@ -9,7 +25,8 @@ import CaseMixTile    from "@components/Contribution/CaseMixTile";
 import ProductivityTab from "../components/Contribution/ProductivityTab";
 import QualityTab      from "../components/Contribution/QualityTab";
 import AIContributionTab from "../components/Contribution/AIContributionTab";
-import { pathscribeTheme as t } from "@theme/pathscribeTheme";
+import MentorTab        from "../components/Contribution/MentorTab";
+import { pathscribeTheme } from "@theme/pathscribeTheme";
 import type {
   ContributionFlag,
   KpiTile,
@@ -18,7 +35,7 @@ import { getOrgOrchestratorDefault } from "@components/Config/AI/orchestratorMod
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../constants/systemActions';
 import { useNavigate } from 'react-router-dom';
-import { specimenDeficiencyService, deficiencyTypeService, qaActivityRecordService, intraoperativeService, subspecialtyService, countersignService } from '../services';
+import { specimenDeficiencyService, deficiencyTypeService, qaActivityRecordService, intraoperativeService, subspecialtyService, countersignService, qaSupervisionAssignmentService, qaSupervisionAssignmentTypeService } from '../services';
 import type { Subspecialty } from '../services';
 import { caseRouter } from '../services/cases/CaseRouter';
 import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '../services/quality/mockQaActivityTypeService';
@@ -29,15 +46,18 @@ import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@compon
 import type { TatEntryForResolution } from '@components/Contribution/qualityCalculations';
 import { toCsv, downloadCsv } from '../utils/csv';
 import type { SpecimenDeficiency, DeficiencyType } from '../services/deficiencies/IDeficiencyService';
+import type { QaSupervisionAssignment } from '@/types/quality/QaSupervisionAssignment';
+import type { QaSupervisionAssignmentType } from '@/types/quality/QaSupervisionAssignmentType';
+import { buildSubspecialtyBreakdown, applyExpectedCaseMix, describeSupervisionProgress, buildCaseMixExportRows } from '@components/Contribution/caseMixCalculations';
 
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 // Extended KPI data — peer averages and % of target (added alongside KpiTile)
 const kpiExtras = [
-  { peer: 109, targetPct: 107, targetLabel: "of volume target" },
-  { peer: 18,  targetPct: null, targetLabel: null },
-  { peer: 76,  targetPct: 72,  targetLabel: "AI adoption target" },
+  { peer: 109, targetPct: 107 },
+  { peer: 18,  targetPct: null },
+  { peer: 76,  targetPct: 72 },
 ];
 
 // mockKpis removed - real fix, now derived from overviewKpis state
@@ -66,18 +86,20 @@ const kpiExtras = [
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
-type DashboardTab = "overview" | "productivity" | "quality" | "ai";
+type DashboardTab = "overview" | "productivity" | "quality" | "ai" | "mentor";
 
-const TAB_LABELS: Record<DashboardTab, string> = {
-  overview:     "Overview",
-  productivity: "Productivity",
-  quality:      "Quality",
-  ai:           "AI Contribution",
+const TAB_LABEL_KEYS: Record<DashboardTab, string> = {
+  overview:     "contributionDashboard.tabLabels.overview",
+  productivity: "contributionDashboard.tabLabels.productivity",
+  quality:      "contributionDashboard.tabLabels.quality",
+  ai:           "contributionDashboard.tabLabels.ai",
+  mentor:       "contributionDashboard.tabLabels.mentor",
 };
 
 // ─── Inline Weekly Chart (Overview) ──────────────────────────────────────────
 
 const WeeklyOverviewChart: React.FC<{ data: RealDailyRvu[] }> = ({ data }) => {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState<number | null>(null);
   // Single shared scale — bars reflect true relative magnitude across both series
   const maxC    = Math.max(...data.map(d => d.cases), 1);
@@ -88,8 +110,8 @@ const WeeklyOverviewChart: React.FC<{ data: RealDailyRvu[] }> = ({ data }) => {
   return (
     <div className="ps-contrib-tile">
       <div className="ps-contrib-chart-header">
-        <div className="ps-contrib-chart-title">This Week</div>
-        <div className="ps-contrib-chart-subtitle">Daily cases and RVUs — shared scale</div>
+        <div className="ps-contrib-chart-title">{t('contributionDashboard.weeklyChart.title')}</div>
+        <div className="ps-contrib-chart-subtitle">{t('contributionDashboard.weeklyChart.subtitle')}</div>
       </div>
 
       <div className="ps-contrib-chart-bars">
@@ -124,11 +146,11 @@ const WeeklyOverviewChart: React.FC<{ data: RealDailyRvu[] }> = ({ data }) => {
       <div className="ps-contrib-chart-legend">
         <div className="ps-contrib-chart-legend-item">
           <div className="ps-contrib-chart-legend-swatch ps-contrib-chart-legend-swatch--cases" />
-          <span className="ps-contrib-chart-legend-text">Cases</span>
+          <span className="ps-contrib-chart-legend-text">{t('contributionDashboard.weeklyChart.casesLegend')}</span>
         </div>
         <div className="ps-contrib-chart-legend-item">
           <div className="ps-contrib-chart-legend-swatch ps-contrib-chart-legend-swatch--rvu" />
-          <span className="ps-contrib-chart-legend-text">RVUs</span>
+          <span className="ps-contrib-chart-legend-text">{t('contributionDashboard.weeklyChart.rvusLegend')}</span>
         </div>
       </div>
     </div>
@@ -138,23 +160,24 @@ const WeeklyOverviewChart: React.FC<{ data: RealDailyRvu[] }> = ({ data }) => {
 // ─── RVU 30-day tile ──────────────────────────────────────────────────────────
 
 const Rvu30Tile: React.FC<{ data: RealRvu30 }> = ({ data }) => {
-  const deltaLabel = data.deltaPct === null ? 'New' : `${data.deltaPct >= 0 ? '+' : ''}${data.deltaPct}%`;
+  const { t } = useTranslation();
+  const deltaLabel = data.deltaPct === null ? t('contributionDashboard.rvu30.deltaNew') : `${data.deltaPct >= 0 ? '+' : ''}${data.deltaPct}%`;
   const isUp = data.deltaPct === null || data.deltaPct >= 0;
   return (
   <div className="ps-contrib-tile">
     <div className="ps-contrib-rvu-header">
-      <span className="ps-contrib-rvu-label">RVUs — Last 30 Days</span>
+      <span className="ps-contrib-rvu-label">{t('contributionDashboard.rvu30.title')}</span>
       <span className="ps-contrib-rvu-icon">📊</span>
     </div>
     <div className="ps-contrib-rvu-value-row">
       <span className="ps-contrib-rvu-value">{data.total}</span>
-      <span className="ps-contrib-rvu-unit">RVUs</span>
+      <span className="ps-contrib-rvu-unit">{t('contributionDashboard.rvu30.unit')}</span>
     </div>
     <div className={`ps-contrib-rvu-delta ${isUp ? 'ps-contrib-rvu-delta--up' : 'ps-contrib-rvu-delta--down'}`}>
-      {isUp ? "▲" : "▼"} {deltaLabel} vs prev 30d
+      {isUp ? "▲" : "▼"} {deltaLabel} {t('contributionDashboard.rvu30.deltaVsPrev')}
     </div>
     <div className="ps-contrib-rvu-divider">
-      <span className="ps-contrib-rvu-avg-label">Avg / case</span>
+      <span className="ps-contrib-rvu-avg-label">{t('contributionDashboard.rvu30.avgPerCase')}</span>
       <span className="ps-contrib-rvu-avg-value">{data.avgPerCase}</span>
     </div>
   </div>
@@ -164,6 +187,7 @@ const Rvu30Tile: React.FC<{ data: RealRvu30 }> = ({ data }) => {
 // ─── TAT Performance tile ─────────────────────────────────────────────────────
 
 const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) => {
+  const { t } = useTranslation();
   const pct      = data.onTargetPct;
   const ftPct    = data.firstTouchTargetHrs > 0 ? Math.min(100, (data.firstTouchAvgHrs / data.firstTouchTargetHrs) * 100) : 0;
   const totalPct = data.totalTargetHrs      > 0 ? Math.min(100, (data.totalCaseAvgHrs  / data.totalTargetHrs)      * 100) : 0;
@@ -175,7 +199,7 @@ const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) =>
   return (
     <div className="ps-tat-tile">
       <div className="ps-tat-tile__header">
-        <span className="ps-tat-tile__eyebrow">TAT Performance</span>
+        <span className="ps-tat-tile__eyebrow">{t('contributionDashboard.tat.title')}</span>
         <span className="ps-tat-tile__icon">⏱</span>
       </div>
 
@@ -184,18 +208,18 @@ const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) =>
         <div className="ps-tat-tile__row">
           <div className="ps-tat-tile__row-left">
             <span className="ps-tat-tile__row-icon ps-tat-tile__row-icon--teal">⚡</span>
-            <span className="ps-tat-tile__metric-label">First Touch</span>
+            <span className="ps-tat-tile__metric-label">{t('contributionDashboard.tat.firstTouch')}</span>
           </div>
           <span className="ps-tat-tile__metric-value">
             {data.firstTouchAvgHrs}h{' '}
-            <span className="ps-tat-tile__metric-unit">avg</span>
+            <span className="ps-tat-tile__metric-unit">{t('contributionDashboard.tat.avg')}</span>
           </span>
         </div>
         <div className="ps-tat-tile__bar-track">
           <div className={`ps-tat-tile__bar-fill ps-tat-tile__bar-fill--dynamic-width ${ftColorClass}`} style={{ '--bar-width': `${ftPct}%` } as React.CSSProperties} />
         </div>
         <div className="ps-tat-tile__target-label">
-          {ftPct.toFixed(0)}% of {data.firstTouchTargetHrs}h target
+          {t('contributionDashboard.tat.targetOfHours', { pct: ftPct.toFixed(0), hours: data.firstTouchTargetHrs })}
         </div>
       </div>
 
@@ -204,25 +228,25 @@ const TatPerformanceTile: React.FC<{ data: RealTatPerformance }> = ({ data }) =>
         <div className="ps-tat-tile__row">
           <div className="ps-tat-tile__row-left">
             <span className="ps-tat-tile__row-icon ps-tat-tile__row-icon--green">✓</span>
-            <span className="ps-tat-tile__metric-label">Total Case</span>
+            <span className="ps-tat-tile__metric-label">{t('contributionDashboard.tat.totalCase')}</span>
           </div>
           <span className="ps-tat-tile__metric-value">
             {data.totalCaseAvgHrs}h{' '}
-            <span className="ps-tat-tile__metric-unit">avg</span>
+            <span className="ps-tat-tile__metric-unit">{t('contributionDashboard.tat.avg')}</span>
           </span>
         </div>
         <div className="ps-tat-tile__bar-track">
           <div className={`ps-tat-tile__bar-fill ps-tat-tile__bar-fill--dynamic-width ${totalColorClass}`} style={{ '--bar-width': `${totalPct}%` } as React.CSSProperties} />
         </div>
         <div className="ps-tat-tile__target-label">
-          {totalPct.toFixed(0)}% of {data.totalTargetHrs}h target
+          {t('contributionDashboard.tat.targetOfHours', { pct: totalPct.toFixed(0), hours: data.totalTargetHrs })}
         </div>
       </div>
 
       {/* Summary line */}
       <div className="ps-tat-tile__summary-line">
-        <span className={`ps-contrib-tat-summary ps-contrib-tat-summary--${pct >= 85 ? 'good' : pct >= 65 ? 'ok' : 'bad'}`}>{pct}% on target</span>
-        <span className="ps-contrib-tat-clients">weighted across {data.facilityCount} facilities</span>
+        <span className={`ps-contrib-tat-summary ps-contrib-tat-summary--${pct >= 85 ? 'good' : pct >= 65 ? 'ok' : 'bad'}`}>{t('contributionDashboard.tat.onTarget', { pct })}</span>
+        <span className="ps-contrib-tat-clients">{t('contributionDashboard.tat.weightedAcross', { count: data.facilityCount })}</span>
       </div>
     </div>
   );
@@ -237,9 +261,16 @@ const TeachingCasesTile: React.FC<{
   teachingRecords: import('@/types/quality/QaActivityRecord').QaActivityRecord[];
   countersignRecords: import('@/types/case/CountersignRecord').CountersignRecord[];
   subspecialties: Subspecialty[];
+  // Real, per direct follow-up ("I would like the Residents to know how
+  // they are doing relative to the expectations") — optional org-wide
+  // targets for the resident's OWN active supervision assignment, when
+  // one exists and its type has expectedCaseMix configured. Undefined/
+  // empty renders exactly as before: real coverage, no judgment.
+  caseMixTargets?: import('@/types/quality/QaSupervisionAssignmentType').ExpectedCaseMixTarget[];
   onOpen: () => void;
   onExport: (e: React.MouseEvent) => void;
-}> = ({ teachingRecords, countersignRecords, subspecialties, onOpen, onExport }) => {
+}> = ({ teachingRecords, countersignRecords, subspecialties, caseMixTargets, onOpen, onExport }) => {
+  const { t } = useTranslation();
   const concordantCount = teachingRecords.filter(r => r.outcome === 'concordant').length;
   const rate = teachingRecords.length > 0 ? (concordantCount / teachingRecords.length) * 100 : null;
   const withFeedback = [...teachingRecords].filter(r => r.reviewerFeedback).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
@@ -254,53 +285,60 @@ const TeachingCasesTile: React.FC<{
   // actually needs more work, not just how they're doing overall.
   // Records with no subspecialtyId (the case never had one set) group
   // under "Unspecified" rather than being silently dropped.
-  const bySubspecialty = new Map<string, { total: number; concordant: number }>();
-  teachingRecords.forEach(r => {
-    const key = r.subspecialtyId ?? '__unspecified__';
-    const bucket = bySubspecialty.get(key) ?? { total: 0, concordant: 0 };
-    bucket.total += 1;
-    if (r.outcome === 'concordant') bucket.concordant += 1;
-    bySubspecialty.set(key, bucket);
-  });
-  const subspecialtyName = (id: string) => id === '__unspecified__' ? 'Unspecified' : (subspecialties.find(s => s.id === id)?.name ?? id);
-  const breakdown = [...bySubspecialty.entries()]
-    .map(([id, b]) => ({ id, name: subspecialtyName(id), rate: (b.concordant / b.total) * 100, total: b.total }))
-    .sort((a, b) => a.rate - b.rate); // lowest concordance first — that's the actual learning opportunity, surface it first
+  //
+  // Real fix: pulled out to the shared buildSubspecialtyBreakdown (used
+  // identically by MentorTab.tsx for a supervisor's view of the same
+  // supervisee) rather than keeping a second, independently-maintained
+  // copy of this same logic here — that duplication was a real,
+  // explicitly-flagged loose end. applyExpectedCaseMix layers any real
+  // configured target on top, unchanged when there isn't one.
+  const breakdown = applyExpectedCaseMix(buildSubspecialtyBreakdown(teachingRecords, subspecialties), caseMixTargets, subspecialties);
 
   return (
     <div className="ps-contrib-tile ps-contrib-tile-clickable" onClick={onOpen}>
       <div className="ps-contrib-tile-header">
         <div>
-          <div className="ps-contrib-tile-title">My Teaching Cases</div>
-          <div className="ps-contrib-tile-subtitle">Cases you drafted that were reviewed by an attending</div>
+          <div className="ps-contrib-tile-title">{t('contributionDashboard.teaching.title')}</div>
+          <div className="ps-contrib-tile-subtitle">{t('contributionDashboard.teaching.subtitle')}</div>
         </div>
         <button
           className="ps-conf-btn-secondary ps-contrib-export-btn"
           onClick={onExport}
-          title="Trainee case reference for manual ACGME ADS entry — not an official ACGME file format"
+          title={t('contributionDashboard.teaching.exportTitle')}
         >
-          Export Case Log
+          {t('contributionDashboard.teaching.exportButton')}
         </button>
       </div>
       {rate !== null && (
         <div className="ps-contrib-tile-value-row">
           <span className="ps-contrib-tile-value">{rate.toFixed(0)}%</span>
-          <span className="ps-contrib-tile-value-sub">overall concordant (frozen section) · {teachingRecords.length} case{teachingRecords.length === 1 ? '' : 's'}</span>
+          <span className="ps-contrib-tile-value-sub">{t('contributionDashboard.teaching.overallConcordant', { count: teachingRecords.length })}</span>
         </div>
       )}
-      {breakdown.length > 1 && (
+      {/* Shown whenever there's more than one subspecialty group to
+          compare, OR at least one has a real configured target — a
+          single-subspecialty case with an unmet target (e.g. 0 of 3) is
+          exactly the actionable signal this section exists for, even
+          though there's nothing to "compare" it against. */}
+      {(breakdown.length > 1 || breakdown.some(b => b.target !== undefined)) && (
         <div className="ps-contrib-teaching-breakdown">
           {breakdown.map(b => (
             <div key={b.id} className="ps-contrib-teaching-row">
               <span className="ps-contrib-teaching-row-name">{b.name} ({b.total})</span>
-              <span className={`ps-contrib-teaching-row-rate ${b.rate < 90 ? 'ps-contrib-teaching-row-rate--low' : 'ps-contrib-teaching-row-rate--ok'}`}>{b.rate.toFixed(0)}%</span>
+              {b.target !== undefined ? (
+                <span className={`ps-contrib-teaching-row-rate ${b.metTarget ? 'ps-contrib-teaching-row-rate--ok' : 'ps-contrib-teaching-row-rate--low'}`}>
+                  {t('contributionDashboard.teaching.expectedOf', { total: b.total, target: b.target })}
+                </span>
+              ) : (
+                <span className={`ps-contrib-teaching-row-rate ${b.rate < 90 ? 'ps-contrib-teaching-row-rate--low' : 'ps-contrib-teaching-row-rate--ok'}`}>{b.rate.toFixed(0)}%</span>
+              )}
             </div>
           ))}
         </div>
       )}
       {withFeedback[0]?.reviewerFeedback && (
         <div className="ps-contrib-teaching-feedback">
-          Latest reconciliation feedback: "{withFeedback[0].reviewerFeedback}"
+          {t('contributionDashboard.teaching.latestReconciliationFeedback', { feedback: withFeedback[0].reviewerFeedback })}
         </div>
       )}
       {/* General countersign summary — the broader signal, covers every
@@ -313,13 +351,13 @@ const TeachingCasesTile: React.FC<{
           <div className="ps-contrib-teaching-countersign-row">
             <span className="ps-contrib-teaching-countersign-count">{countersignRecords.length}</span>
             <span className="ps-contrib-teaching-countersign-text">
-              case{countersignRecords.length === 1 ? '' : 's'} countersigned
-              {avgChangedFields !== null && ` · avg ${avgChangedFields.toFixed(1)} field${avgChangedFields === 1 ? '' : 's'} changed`}
+              {t('contributionDashboard.teaching.countersigned', { count: countersignRecords.length })}
+              {avgChangedFields !== null && ` · ${t('contributionDashboard.teaching.avgFieldsChanged', { avg: avgChangedFields.toFixed(1), count: avgChangedFields })}`}
             </span>
           </div>
           {csWithFeedback[0]?.attendingFeedback && (
             <div className="ps-contrib-teaching-countersign-feedback">
-              Latest countersign feedback: "{csWithFeedback[0].attendingFeedback}"
+              {t('contributionDashboard.teaching.latestCountersignFeedback', { feedback: csWithFeedback[0].attendingFeedback })}
             </div>
           )}
         </div>
@@ -331,6 +369,7 @@ const TeachingCasesTile: React.FC<{
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const ContributionDashboardPage: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { config } = useSystemConfig();
   const navigate = useNavigate();
@@ -338,7 +377,7 @@ const ContributionDashboardPage: React.FC = () => {
   const [activeTab,           setActiveTab]           = useState<DashboardTab>("overview");
   // Dashboard aggregates across clients/labs, so there's no single case to
   // resolve a per-lab override for — org default only (see orchestratorModeConfig.ts).
-  const finalCaseLabel = getOrgOrchestratorDefault() ? "Cases Signed Out" : "Cases Finalised";
+  const finalCaseLabel = getOrgOrchestratorDefault() ? t('contributionDashboard.finalCaseLabelSignedOut') : t('contributionDashboard.finalCaseLabelFinalised');
 
   // ── Quality Flags — real data, not the 3 permanently-fixed fake ───────────
   // entries this used to show. Severity isn't a real field anywhere on
@@ -454,12 +493,12 @@ const ContributionDashboardPage: React.FC = () => {
   // against, e.g. a pathologist too new to have one yet) as "New" rather
   // than fabricating a percentage.
   const formatDelta = (pct: number | null): { delta: string; up: boolean } =>
-    pct === null ? { delta: 'New', up: true } : { delta: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 };
+    pct === null ? { delta: t('contributionDashboard.rvu30.deltaNew'), up: true } : { delta: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 };
   const kpiTiles: KpiTile[] = overviewKpis ? [
     { label: 'CASE_LABEL_PLACEHOLDER', value: overviewKpis.casesFinalized30d, unit: '', icon: '✓',
       ...formatDelta(overviewKpis.casesFinalizedDeltaPct) },
-    { label: 'Cases In Progress', value: overviewKpis.casesInProgress, unit: '', delta: '', up: true, icon: '⏳' },
-    { label: 'AI‑Assisted Cases', value: overviewKpis.aiAssistedCases30d, unit: '', icon: '🤖',
+    { label: t('contributionDashboard.kpiCasesInProgress'), value: overviewKpis.casesInProgress, unit: '', delta: '', up: true, icon: '⏳' },
+    { label: t('contributionDashboard.kpiAiAssistedCases'), value: overviewKpis.aiAssistedCases30d, unit: '', icon: '🤖',
       ...formatDelta(overviewKpis.aiAssistedDeltaPct) },
   ] : [];
 
@@ -475,6 +514,14 @@ const ContributionDashboardPage: React.FC = () => {
   // frozen section.
   const [countersignRecords, setCountersignRecords] = useState<import('@/types/case/CountersignRecord').CountersignRecord[]>([]);
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
+  // My own active supervision assignment (as the SUPERVISEE), and its
+  // type — real, per direct follow-up ("I would like the Residents to
+  // know how they are doing relative to the expectations"). Nothing
+  // shown here when no such assignment exists (an attending with no
+  // active FPPE/supervision record, say) — same "only show what's
+  // real" convention this whole block already follows.
+  const [mySupervision, setMySupervision] = useState<QaSupervisionAssignment | null>(null);
+  const [mySupervisionType, setMySupervisionType] = useState<QaSupervisionAssignmentType | null>(null);
   useEffect(() => {
     if (!user?.id) return;
     qaActivityRecordService.getAll().then(res => {
@@ -484,7 +531,24 @@ const ContributionDashboardPage: React.FC = () => {
       if (res.ok) setCountersignRecords(res.data.filter(r => r.residentId === user.id && r.status === 'countersigned'));
     });
     subspecialtyService.getAll().then(res => { if (res.ok) setSubspecialties(res.data); });
+    qaSupervisionAssignmentService.getAll().then(res => {
+      const mine = res.ok ? res.data.find(a => a.superviseeUserId === user.id && a.status === 'active') ?? null : null;
+      setMySupervision(mine);
+      if (mine) {
+        qaSupervisionAssignmentTypeService.getAll().then(typeRes => {
+          setMySupervisionType(typeRes.ok ? typeRes.data.find(t => t.id === mine.activityTypeId) ?? null : null);
+        });
+      } else {
+        setMySupervisionType(null);
+      }
+    });
   }, [user?.id]);
+
+  // Same real subspecialty-scoping rule MentorTab.tsx applies: a
+  // single-subspecialty assignment only ever shows that subspecialty's
+  // own target, never an unrelated one from the same type.
+  const myCaseMixTargets = (mySupervisionType?.expectedCaseMix ?? [])
+    .filter(t => !mySupervision?.subspecialtyId || t.subspecialtyId === mySupervision.subspecialtyId);
 
   // Trainee Case & Procedure Reference export — deliberately NOT an
   // "ACGME export." Checked directly against ACGME's own documentation:
@@ -534,6 +598,21 @@ const ContributionDashboardPage: React.FC = () => {
     downloadCsv(`trainee-case-reference-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows));
   };
 
+  // ── Progress/case-mix summary export — real, per direct follow-up.
+  // Deliberately NOT framed as an "ACGME export" (see
+  // buildCaseMixExportRows's own header comment in
+  // caseMixCalculations.ts for the full reasoning) — a flat summary
+  // for the resident to hand to a mentor/program coordinator or open
+  // in Excel/a BI tool, not a file meant to be uploaded to ACGME.
+  const myCaseMixBreakdown = applyExpectedCaseMix(buildSubspecialtyBreakdown(teachingRecords, subspecialties), myCaseMixTargets, subspecialties);
+  const exportProgressSummary = () => {
+    if (!user?.id) return;
+    const rows = buildCaseMixExportRows(user.id, myCaseMixBreakdown);
+    downloadCsv(`case-mix-progress-summary-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, [
+      'Resident_ID', 'Category_Code', 'Category_Description', 'Logged_Count', 'Enterprise_Target_Goal', 'Variance', 'Concordance_Status', 'Compliance_Status',
+    ]));
+  };
+
   // ── Active Intraop Sessions — real, previously nothing on this
   // dashboard reflected intraop volume at all despite the feature
   // being real now. Filtered to entries this pathologist personally
@@ -571,22 +650,22 @@ const ContributionDashboardPage: React.FC = () => {
       {/* ─── Page Title ──────────────────────────────────────────────────── */}
       <div className="ps-contrib-title-block">
         <h1 className="ps-contrib-title">
-          Contribution Dashboard
+          {t('contributionDashboard.title')}
         </h1>
         <p className="ps-contrib-subtitle">
-          {user?.name} · Pathologist
+          {user?.name} · {t('contributionDashboard.subtitleRole')}
         </p>
       </div>
 
       {/* ─── Tabs ────────────────────────────────────────────────────────── */}
       <div className="ps-contrib-tab-bar">
-        {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
+        {(Object.keys(TAB_LABEL_KEYS) as DashboardTab[]).map((tab) => (
           <div
             key={tab}
             className={`ps-contrib-tab${activeTab === tab ? ' active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {TAB_LABELS[tab]}
+            {t(TAB_LABEL_KEYS[tab])}
           </div>
         ))}
       </div>
@@ -615,19 +694,19 @@ const ContributionDashboardPage: React.FC = () => {
                 </div>
                 {/* Delta vs prior period */}
                 <div className={`ps-contrib-kpi-delta ${kpi.up ? 'ps-contrib-kpi-delta--up' : 'ps-contrib-kpi-delta--down'}`}>
-                  {kpi.up ? "▲" : "▼"} {kpi.delta} vs prior period
+                  {kpi.up ? "▲" : "▼"} {kpi.delta} {t('contributionDashboard.vsPriorPeriod')}
                 </div>
                 {/* Divider */}
                 <div className="ps-contrib-kpi-divider" />
                 {/* Peer average */}
                 <div className="ps-contrib-kpi-row">
-                  <span className="ps-contrib-kpi-row-label">Peer avg</span>
+                  <span className="ps-contrib-kpi-row-label">{t('contributionDashboard.peerAvg')}</span>
                   <span className="ps-contrib-kpi-row-value">{ext?.peer ?? "—"}</span>
                 </div>
                 {/* % of target */}
                 {ext?.targetPct != null && (
                   <div className="ps-contrib-kpi-row">
-                    <span className="ps-contrib-kpi-row-label">% of target</span>
+                    <span className="ps-contrib-kpi-row-label">{t('contributionDashboard.percentOfTarget')}</span>
                     <span className={`ps-contrib-kpi-target ${ext.targetPct >= 100 ? 'ps-contrib-kpi-target--good' : ext.targetPct >= 75 ? 'ps-contrib-kpi-target--ok' : 'ps-contrib-kpi-target--bad'}`}>
                       {ext.targetPct}%
                     </span>
@@ -650,9 +729,9 @@ const ContributionDashboardPage: React.FC = () => {
 
               {/* Case Mix with counts */}
               <CaseMixTile
-                title="Case Mix"
+                title={t('contributionDashboard.caseMixTitle')}
                 data={caseMixData ?? { breast: 0, gi: 0, gu: 0, derm: 0, other: 0 }}
-                colors={t.colors.caseMix}
+                colors={pathscribeTheme.colors.caseMix}
                 showCounts={true}
               />
 
@@ -667,8 +746,8 @@ const ContributionDashboardPage: React.FC = () => {
               <div className="ps-contrib-tile">
                 <div className="ps-contrib-tile-header ps-contrib-tile-header--spaced">
                   <div>
-                    <div className="ps-contrib-tile-title">Quality Flags</div>
-                    <div className="ps-contrib-tile-subtitle">Recent cases with documentation or concordance issues</div>
+                    <div className="ps-contrib-tile-title">{t('contributionDashboard.qualityFlags.title')}</div>
+                    <div className="ps-contrib-tile-subtitle">{t('contributionDashboard.qualityFlags.subtitle')}</div>
                   </div>
                   {/* Real fix, found during this review: WarningIcon's stroke is
                       bound to its `color` prop, not CSS `color` — the previous
@@ -676,11 +755,11 @@ const ContributionDashboardPage: React.FC = () => {
                       stroke isn't currentColor), so the icon was rendering the
                       component's own default (#F59E0B) instead of the intended
                       warning color (#F97316). */}
-                  <WarningIcon size={18} color={t.colors.semantic.warning} />
+                  <WarningIcon size={18} color={pathscribeTheme.colors.semantic.warning} />
                 </div>
                 <div data-capture-hide="true" className="ps-contrib-col ps-contrib-col--tight">
                   {qualityFlags.length === 0 && (
-                    <div className="ps-contrib-tile-subtitle">No open quality items right now.</div>
+                    <div className="ps-contrib-tile-subtitle">{t('contributionDashboard.qualityFlags.empty')}</div>
                   )}
                   {qualityFlags.map((flag) => (
                     <FlagRow key={flag.id} {...flag} />
@@ -699,17 +778,57 @@ const ContributionDashboardPage: React.FC = () => {
                   teachingRecords={teachingRecords}
                   countersignRecords={countersignRecords}
                   subspecialties={subspecialties}
+                  caseMixTargets={myCaseMixTargets}
                   onOpen={() => navigate('/quality-assurance')}
                   onExport={(e) => { e.stopPropagation(); exportCaseLog(); }}
                 />
+              )}
+
+              {/* My progress toward graduation — real, per direct
+                  follow-up ("Residents to know how they are doing
+                  relative to the expectations"). Only shown when the
+                  current user actually has an active supervision
+                  assignment (as supervisee) — an attending with none
+                  sees nothing here, same real-data-only convention as
+                  every other tile on this dashboard. */}
+              {mySupervision && (
+                <div className="ps-contrib-tile">
+                  <div className="ps-contrib-tile-header">
+                    <div>
+                      <div className="ps-contrib-tile-title">{t('contributionDashboard.myProgress.title')}</div>
+                      <div className="ps-contrib-tile-subtitle">{mySupervisionType?.name ?? t('contributionDashboard.myProgress.activeAssignmentFallback')} · {t('contributionDashboard.myProgress.supervisedBy', { name: mySupervision.supervisorUserName })}</div>
+                    </div>
+                    <button
+                      className="ps-conf-btn-secondary ps-contrib-export-btn"
+                      onClick={exportProgressSummary}
+                      title={t('contributionDashboard.myProgress.exportTitle')}
+                    >
+                      {t('contributionDashboard.myProgress.exportButton')}
+                    </button>
+                  </div>
+                  {(() => {
+                    const progress = describeSupervisionProgress(mySupervision);
+                    return (
+                      <div className="ps-contrib-progress-wrap">
+                        <div className="ps-contrib-progress-label">
+                          <span>{t('contributionDashboard.myProgress.progressLabel')}</span>
+                          <span>{progress.label}</span>
+                        </div>
+                        <div className="ps-contrib-progress-track">
+                          <div className="ps-contrib-progress-fill ps-contrib-progress-fill--dynamic-width" style={{ '--progress-width': `${progress.pct}%` } as React.CSSProperties} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               )}
 
               {/* Active Intraop Sessions */}
               <div className="ps-contrib-tile ps-contrib-tile-clickable" onClick={() => navigate('/intraop-queue')}>
                 <div className="ps-contrib-tile-header">
                   <div>
-                    <div className="ps-contrib-tile-title">Active Intraop Sessions</div>
-                    <div className="ps-contrib-tile-subtitle">Unlinked entries awaiting a formal accession to merge into</div>
+                    <div className="ps-contrib-tile-title">{t('contributionDashboard.intraop.title')}</div>
+                    <div className="ps-contrib-tile-subtitle">{t('contributionDashboard.intraop.subtitle')}</div>
                   </div>
                   <span className="ps-contrib-rvu-icon">🧊</span>
                 </div>
@@ -718,7 +837,7 @@ const ContributionDashboardPage: React.FC = () => {
                     {activeIntraopCount === null ? "—" : activeIntraopCount}
                   </span>
                   <span className="ps-contrib-tile-value-sub">
-                    {activeIntraopCount === 0 ? "all merged" : "pending"}
+                    {activeIntraopCount === 0 ? t('contributionDashboard.intraop.allMerged') : t('contributionDashboard.intraop.pending')}
                   </span>
                 </div>
               </div>
@@ -735,6 +854,9 @@ const ContributionDashboardPage: React.FC = () => {
 
       {/* ─── AI Contribution Tab ─────────────────────────────────────────── */}
       {activeTab === "ai" && <AIContributionTab />}
+
+      {/* ─── Mentor Tab ──────────────────────────────────────────────────── */}
+      {activeTab === "mentor" && <MentorTab />}
     </div>
   );
 };

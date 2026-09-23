@@ -19,6 +19,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+// Initializes the real i18next instance so t() resolves to actual English
+// text at test time — this hook's toast strings are now i18n-driven, and
+// a few assertions below require exact-text equality, not just substring
+// containment.
+import '@/i18n/config';
 import { useReportGeneration } from '../useReportGeneration';
 import type { Case } from '@/types/case/Case';
 import type { OrchestratorSection } from '../../components/OrchestratorSectionEditor';

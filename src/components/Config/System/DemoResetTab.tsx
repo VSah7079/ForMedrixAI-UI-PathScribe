@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { IS_MOCK_BACKEND } from '@/services/index';
 
@@ -211,6 +212,11 @@ export const SETTINGS_KEYS = [
   'reason_dictionary_entries_v1', 'pathscribe_specimen_categories', 'pathscribe_abnormal_trigger_rules',
   'pathscribe_aiBehavior', 'pathscribe_locations', 'pathscribe_systemConfig',
   'qa_activity_types', 'qa_supervision_assignment_types', 'migrationFieldMappings',
+  // PS-324. mockSurgicalPeerReviewRiskWeightService.ts's own admin-
+  // configured subspecialty risk-weight dictionary — same real
+  // "admin config, not per-case data" bucket as qa_activity_types
+  // immediately above.
+  'surgical_peer_review_risk_weights_v1',
 
   // Real, per the same "review the whole system" follow-up — six more
   // real, verified-safe admin dictionaries/settings found by the same
@@ -317,6 +323,7 @@ export const CASE_KEYS = [
   // are admin-configured dictionaries.
   'access_requests', 'aiScreeningResults', 'batches', 'billing_deficiency_records_v1',
   'code_review_pool_v1', 'countersign_records', 'critical_result_notifications_v1',
+  'critical_alert_dispatches_v1',
   'cytology_review_records', 'cytology_sign_out_records', 'cytology_workload_ledger_v1',
   'fppe_assignments', 'informal_review_requests', 'migrationJobs', 'migrationRecordResults',
   'molecular_batches', 'pathscribe_abnormal_detection_signals', 'pathscribe_interface_exceptions',
@@ -550,6 +557,7 @@ type UIState = 'idle' | 'confirm-full' | 'confirm-user' | 'done';
 interface ResetResult { mode: Mode; cleared: string[]; }
 
 const DemoResetTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [uiState,    setUiState]    = useState<UIState>('idle');
   const [result,     setResult]     = useState<ResetResult | null>(null);
@@ -564,8 +572,8 @@ const DemoResetTab: React.FC = () => {
   useEffect(() => {
     if (uiState !== 'done') return;
     if (countdown <= 0) { window.location.href = '/worklist'; return; }
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
   }, [uiState, countdown]);
 
   const handleFullReset = () => {
@@ -583,6 +591,11 @@ const DemoResetTab: React.FC = () => {
   };
 
   const hospitalId = userId ? HOSPITAL_MAP[userId] : null;
+  // Real demo-account labels — actual names of the real people these
+  // demo hospital accounts belong to (Pete Nimmo, Paul Carter, Amber
+  // Fehrs-Battey, J. Mark Tuthill, Rossana Babakhani). Left in English
+  // as real reference data, same treatment as other real names/
+  // identifiers elsewhere in this sweep.
   const hospitalLabel: Record<string, string> = {
     'HOSP-001': 'PathScribe Demo (Pete Nimmo)',
     'HOSP-MFT': 'Manchester Foundation Trust (Paul Carter)',
@@ -599,19 +612,16 @@ const DemoResetTab: React.FC = () => {
     onConfirm: () => void; onCancel: () => void;
     confirmLabel: string; confirmColor: string;
   }) => (
-    <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style={{
-      background: 'rgba(0,0,0,0.2)', border: '1px solid var(--ps-conf-border)',
-      borderRadius: 8, padding: '20px 24px', marginTop: 16,
-    }}>
-      <h4 id="confirm-dialog-title" style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 700 }}>{title}</h4>
-      <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
+    <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" className="ps-demoreset__confirm-box">
+      <h4 id="confirm-dialog-title" className="ps-demoreset__confirm-title">{title}</h4>
+      <p className="ps-demoreset__confirm-desc">
         {description}
       </p>
-      <p style={{ margin: '0 0 16px', fontSize: 12, color: '#f87171', lineHeight: 1.6 }}>
+      <p className="ps-demoreset__confirm-warning">
         ⚠ {warning}
       </p>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button className="ps-conf-btn-secondary" onClick={onCancel}>Cancel</button>
+      <div className="ps-sub-footer-actions">
+        <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('common.cancel')}</button>
         <button
           onClick={onConfirm}
           className={confirmColor === '#dc2626' ? 'ps-btn-danger-solid' : 'ps-btn-primary'}
@@ -633,13 +643,11 @@ const DemoResetTab: React.FC = () => {
   //    comment for the full reasoning. ──
   if (!IS_MOCK_BACKEND) {
     return (
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+      <div className="ps-demoreset__page">
         <div className="ps-reset-disabled">
-          <div className="ps-reset-disabled__title">⛔ Demo Reset is disabled</div>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
-            This app is connected to a real, non-mock backend. Demo Reset only ever operates on
-            ForMedrixAI's own local verification/validation test data — it refuses to run at all
-            once real customer data could exist, rather than risk deleting it.
+          <div className="ps-reset-disabled__title">⛔ {t('demoResetTab.disabled.title')}</div>
+          <p className="ps-demoreset__subtitle">
+            {t('demoResetTab.disabled.description')}
           </p>
         </div>
       </div>
@@ -648,16 +656,15 @@ const DemoResetTab: React.FC = () => {
 
   if (uiState === 'done' && result) {
     return (
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+      <div className="ps-demoreset__page">
         <div className="ps-reset-success">
           <div className="ps-reset-success__title">
-            ✓ {result.mode === 'full' ? 'Full reset complete' : 'Your data has been reset'}
+            ✓ {result.mode === 'full' ? t('demoResetTab.done.fullResetComplete') : t('demoResetTab.done.userResetComplete')}
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ps-conf-text-3)' }}>
-            {result.cleared.length} item{result.cleared.length !== 1 ? 's' : ''} cleared.
-            Redirecting to Worklist in {countdown}s…
+          <p className="ps-demoreset__result-desc">
+            {t('demoResetTab.done.summary', { count: result.cleared.length, countdown })}
           </p>
-          <div style={{ fontSize: 11, color: 'var(--ps-conf-text-3)', fontFamily: 'monospace', lineHeight: 1.8 }}>
+          <div className="ps-demoreset__cleared-list">
             {result.cleared.map(k => <div key={k}>✓ {k}</div>)}
           </div>
         </div>
@@ -667,48 +674,46 @@ const DemoResetTab: React.FC = () => {
 
   // ── Main UI ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+    <div className="ps-demoreset__page">
 
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700 }}>Demo Data Reset</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
-          Restore mock data to a clean baseline without requiring developer access.
-          Choose between resetting only your data or performing a full system reset.
+      <div className="ps-demoreset__section-header">
+        <h2 className="ps-demoreset__title">{t('demoResetTab.title')}</h2>
+        <p className="ps-demoreset__subtitle">
+          {t('demoResetTab.subtitle')}
         </p>
       </div>
 
       {/* ── Option 1: My data only ── */}
       <div className="comp-reset-card comp-reset-card--user">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div className="ps-demoreset__card-row">
           <div>
             <div className="comp-reset-card-title">
-              Reset my data only
+              {t('demoResetTab.userCard.title')}
             </div>
             <div className="comp-reset-card-desc">
-              Removes your cases and restores your seed data. Other testers' work is preserved.
+              {t('demoResetTab.userCard.description')}
             </div>
             {hospitalId && (
               <div className="comp-reset-hospital-label">
-                Your hospital: {hospitalLabel[hospitalId] ?? hospitalId}
+                {t('demoResetTab.userCard.hospitalLabel', { hospital: hospitalLabel[hospitalId] ?? hospitalId })}
               </div>
             )}
           </div>
           <button
-            className="ps-conf-btn-secondary"
+            className="ps-conf-btn-secondary ps-demoreset__btn--nowrap"
             disabled={!userId || uiState === 'confirm-full'}
             onClick={() => { setUiState('confirm-user'); setCountdown(3); }}
-            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
           >
-            Reset my data…
+            {t('demoResetTab.userCard.resetBtn')}
           </button>
         </div>
 
         {uiState === 'confirm-user' && (
           <ConfirmDialog
-            title="Reset your data?"
-            description={`This will remove all cases for ${hospitalLabel[hospitalId ?? ''] ?? 'your hospital'} and restore them to the demo seed. Your flag configurations are not affected.`}
-            warning="This cannot be undone. The page will reload automatically."
-            confirmLabel="Yes, reset my data"
+            title={t('demoResetTab.userCard.confirmTitle')}
+            description={t('demoResetTab.userCard.confirmDescription', { hospital: hospitalLabel[hospitalId ?? ''] ?? t('demoResetTab.userCard.yourHospitalFallback') })}
+            warning={t('demoResetTab.userCard.confirmWarning')}
+            confirmLabel={t('demoResetTab.userCard.confirmBtn')}
             confirmColor="#0891B2"
             onConfirm={handleUserReset}
             onCancel={() => setUiState('idle')}
@@ -718,41 +723,33 @@ const DemoResetTab: React.FC = () => {
 
       {/* ── Option 2: Full reset ── */}
       <div className="comp-reset-card comp-reset-card--full">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div className="ps-demoreset__card-row">
           <div>
             <div className="comp-reset-card-title">
-              Full reset
+              {t('demoResetTab.fullCard.title')}
             </div>
             <div className="comp-reset-card-desc">
-              Clears all mock data for all users — cases, flags, messages, session, and UI state.
-              Use this to restore a completely clean baseline before a new testing session.
+              {t('demoResetTab.fullCard.description')}
             </div>
             <div className="comp-reset-card-warning">
-              Affects all testers. Use sparingly.
+              {t('demoResetTab.fullCard.warning')}
             </div>
           </div>
           <button
             disabled={uiState === 'confirm-user'}
             onClick={() => setUiState('confirm-full')}
-            style={{
-              flexShrink: 0, whiteSpace: 'nowrap',
-              padding: '8px 18px', fontSize: 13, fontWeight: 600,
-              background: 'transparent',
-              border: '1px solid rgba(239,68,68,0.5)',
-              borderRadius: 6, color: '#f87171', cursor: 'pointer',
-              opacity: uiState === 'confirm-user' ? 0.4 : 1,
-            }}
+            className={`ps-demoreset__btn-danger-outline${uiState === 'confirm-user' ? ' ps-demoreset__btn-danger-outline--disabled' : ''}`}
           >
-            Full reset…
+            {t('demoResetTab.fullCard.resetBtn')}
           </button>
         </div>
 
         {uiState === 'confirm-full' && (
           <ConfirmDialog
-            title="Full reset — are you sure?"
-            description="This will clear all mock data for every user including cases, flag configurations, messages, and sessions. All testers will lose their current state."
-            warning="This affects Paul, Amber, and Sarah. All work in progress will be lost."
-            confirmLabel="Yes, reset everything"
+            title={t('demoResetTab.fullCard.confirmTitle')}
+            description={t('demoResetTab.fullCard.confirmDescription')}
+            warning={t('demoResetTab.fullCard.confirmWarning')}
+            confirmLabel={t('demoResetTab.fullCard.confirmBtn')}
             confirmColor="#dc2626"
             onConfirm={handleFullReset}
             onCancel={() => setUiState('idle')}
@@ -769,27 +766,26 @@ const DemoResetTab: React.FC = () => {
           staff operator), so it moved here — same roof as this tab's
           own reset tools, rather than a Home tile aimed at every
           user. Same real /molecular-order-queue route underneath. ── */}
-      <div style={{ marginTop: 28 }}>
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700 }}>Testing &amp; Demo Tools</h2>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
-            Other real, testing-only surfaces — never linked from Home, since they simulate or fake real behavior rather than performing it.
+      <div className="ps-demoreset__extra-section">
+        <div className="ps-demoreset__extra-section-heading">
+          <h2 className="ps-demoreset__title">{t('demoResetTab.testingTools.title')}</h2>
+          <p className="ps-demoreset__subtitle">
+            {t('demoResetTab.testingTools.subtitle')}
           </p>
         </div>
         <div className="comp-reset-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+          <div className="ps-demoreset__card-row">
             <div>
-              <div className="comp-reset-card-title">Molecular Order Queue (Demo)</div>
+              <div className="comp-reset-card-title">{t('demoResetTab.testingTools.molecularOrderQueueTitle')}</div>
               <div className="comp-reset-card-desc">
-                Simulate outbound molecular assay/instrument orders and inbound results — including HPV reflex genotyping — against a fixed demo seed case.
+                {t('demoResetTab.testingTools.molecularOrderQueueDescription')}
               </div>
             </div>
             <button
-              className="ps-conf-btn-secondary"
+              className="ps-conf-btn-secondary ps-demoreset__btn--nowrap"
               onClick={() => navigate('/molecular-order-queue')}
-              style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
             >
-              🧬 Open Molecular Order Queue
+              🧬 {t('demoResetTab.testingTools.openBtn')}
             </button>
           </div>
         </div>

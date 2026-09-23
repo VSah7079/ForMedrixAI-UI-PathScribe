@@ -12,6 +12,7 @@
 // this prompt didn't exist at all.
 // ─────────────────────────────────────────────────────────────
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { EntryMatch } from '@/types/intraop/IntraoperativeEntry';
 
@@ -24,45 +25,46 @@ interface Props {
 }
 
 export const IntraopMergePromptModal: React.FC<Props> = ({ caseId, match, onMergeNow, onGoToQueueLater, onDismiss }) => {
+  const { t } = useTranslation();
   const { entry, matchType, matchReason, confidence } = match;
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Intraoperative Entry Found</div>
+        <div className="ps-ms-header">{t('accessionPage.intraopMergeModal.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-intraop-merge-intro">
-            An unlinked intraoperative entry looks like it belongs to case {caseId}.
+            {t('accessionPage.intraopMergeModal.intro', { caseId })}
           </p>
 
           <div className="ps-intraop-candidate-row">
             <span className="ps-intraop-candidate-case" data-phi="name">{entry.patientMatch.patientName}</span>
             <span className={`ps-intraop-candidate-badge ps-intraop-candidate-badge--${confidence}`}>
-              {matchType === 'mrn_exact' ? 'MRN match' : `Fuzzy · ${confidence}`}
+              {matchType === 'mrn_exact' ? t('accessionPage.intraopMergeModal.mrnMatch') : t('accessionPage.intraopMergeModal.fuzzyMatch', { confidence })}
             </span>
           </div>
           <div className="ps-intraop-candidate-reason">{matchReason}</div>
 
           <div className="ps-conf-form-field ps-intraop-note-group">
             <div className="ps-intraop-note">
-              <span className="ps-intraop-note-label">{entry.orNumber} · {entry.surgeon} · {entry.specimens.length} specimen{entry.specimens.length === 1 ? '' : 's'}</span>
+              <span className="ps-intraop-note-label">{t('accessionPage.intraopMergeModal.specimenCountLabel', { orNumber: entry.orNumber, surgeon: entry.surgeon, count: entry.specimens.length })}</span>
             </div>
             {entry.specimens.map(spec => (
               <div key={spec.id} className="ps-intraop-note">
                 <span className="ps-intraop-note-label">{spec.specimenLabel}</span>
-                {spec.quickGrossDictation || '(no Quick Gross logged)'}
+                {spec.quickGrossDictation || t('accessionPage.intraopMergeModal.noQuickGross')}
               </div>
             ))}
           </div>
 
           <p className="ps-intraop-merge-intro ps-intraop-merge-intro--footer">
-            Merging appends this to the case's Gross Description / Clinical History and attaches any mobile photos to the media gallery.
+            {t('accessionPage.intraopMergeModal.footerNote')}
           </p>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onDismiss}>Not this case</button>
-          <button className="ps-ms-btn-cancel" onClick={onGoToQueueLater}>Review in Intraop Queue</button>
-          <button className="ps-ms-btn-apply" onClick={onMergeNow}>Merge Now</button>
+          <button className="ps-ms-btn-cancel" onClick={onDismiss}>{t('accessionPage.intraopMergeModal.notThisCase')}</button>
+          <button className="ps-ms-btn-cancel" onClick={onGoToQueueLater}>{t('accessionPage.intraopMergeModal.reviewInQueue')}</button>
+          <button className="ps-ms-btn-apply" onClick={onMergeNow}>{t('accessionPage.intraopMergeModal.mergeNow')}</button>
         </div>
       </div>
     </div>

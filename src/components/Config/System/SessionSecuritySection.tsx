@@ -12,15 +12,28 @@
 // stays live) — also a natural home for Phase 2/3's related settings
 // (draft retention days, encryption toggle) once those are built, rather
 // than needing a second new section added later.
+//
+// i18n sweep (batch 38): inline layout styles moved to a new
+// `.ps-session-security*` class family — the header/title/card values
+// (22px title, #fff, #1f2937 border, 12px radius) sit close to but not
+// exactly on the established `.ps-conf-section-title`/`.ps-conf-card`
+// classes (20px, var(--ps-conf-text) #e2e8f0, var(--ps-conf-border)
+// #1e293b, 10px radius, 0 24px padding) — different enough on several
+// values at once that reusing them would visibly change this page, so
+// this keeps its own small family instead. The select's fixed 240px
+// width is a real, separate modifier combined with the existing
+// `.ps-conf-select` base class, whose own min-width is 160px.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockSessionTimeoutService } from '../../../services/session/mockSessionTimeoutService';
 
 const PRESET_MINUTES = [5, 10, 15, 20, 30, 60];
 
 const SessionSecuritySection: React.FC = () => {
+  const { t } = useTranslation();
   const [minutes, setMinutes] = useState<number>(15);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved]     = useState(false);
@@ -42,39 +55,34 @@ const SessionSecuritySection: React.FC = () => {
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: 640 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Session Security</h1>
-        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-          Automatic logoff after a period of inactivity — a HIPAA Security Rule
-          technical safeguard. Individual performing labs can require a
-          stricter or more relaxed value via their own entry in the Facility
-          Dictionary; this is the org-wide default used everywhere else.
+    <div className="ps-session-security">
+      <div className="ps-session-security__header">
+        <h1 className="ps-session-security__title">{t('sessionSecurity.title')}</h1>
+        <p className="ps-session-security__subtitle">
+          {t('sessionSecurity.description')}
         </p>
       </div>
 
-      <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Idle Timeout (org-wide default)
+      <div className="ps-session-security__card">
+        <div className="ps-session-security__card-label">
+          {t('sessionSecurity.idleTimeoutLabel')}
         </div>
         <select
           value={minutes}
           onChange={e => handleChange(Number(e.target.value))}
           disabled={loading}
-          className="ps-conf-select"
-          style={{ width: 240 }}
+          className="ps-conf-select ps-session-security__select"
         >
           {PRESET_MINUTES.map(m => (
-            <option key={m} value={m}>{m} minutes</option>
+            <option key={m} value={m}>{t('sessionSecurity.minutesOption', { count: m })}</option>
           ))}
         </select>
-        <p style={{ fontSize: 12, color: '#4b5563', marginTop: 12 }}>
-          A warning is shown 60 seconds before the session actually expires,
-          giving the user a chance to stay logged in.
+        <p className="ps-session-security__hint">
+          {t('sessionSecurity.warningNote')}
         </p>
         {saved && (
-          <div style={{ marginTop: 12, fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
-            ✓ Saved
+          <div className="ps-session-security__saved">
+            ✓ {t('sessionSecurity.saved')}
           </div>
         )}
       </div>

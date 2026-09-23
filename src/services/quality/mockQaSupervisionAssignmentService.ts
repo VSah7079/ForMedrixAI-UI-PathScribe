@@ -30,6 +30,25 @@ const STORAGE_KEY = 'qa_supervision_assignments';
  *  a string literal repeated in each file. */
 export const FPPE_ACTIVITY_TYPE_ID = 'qa-activity-fppe-credentialing';
 
+/** Real, per direct follow-up ("We also should account for Cytotecs
+ *  trained and new staff while we are here") — this archetype's own
+ *  second real activity type, alongside FPPE_ACTIVITY_TYPE_ID above.
+ *  Real, confirmed regulatory basis: CLIA '88, 42 CFR § 493.1451/1235
+ *  (Subpart M) requires a lab to assess the competency of new testing
+ *  personnel — which includes Cytotechnologists — twice during the
+ *  first year of independent testing, then at least annually
+ *  thereafter. Real, deliberate, honest scope boundary: this
+ *  bounded-assignment archetype (a supervision period that graduates
+ *  once an end condition is met — see QaSupervisionAssignmentType.ts)
+ *  is a genuine fit for the real "twice in year one" leg of that rule
+ *  (see this type's own seed record for exactly how), but NOT for the
+ *  "then annually thereafter, indefinitely" leg — a recurring
+ *  requirement that never graduates has no real end condition to
+ *  track here and is real, separate, not-yet-built work (most likely
+ *  its own periodic-reminder mechanism, not a QaSupervisionAssignment
+ *  at all). Not overstating what this covers. */
+export const CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID = 'qa-activity-cytotech-competency';
+
 const SEED_ASSIGNMENTS: QaSupervisionAssignment[] = [
   // Active, mid-progress — a real, common state to demo/verify against.
   {

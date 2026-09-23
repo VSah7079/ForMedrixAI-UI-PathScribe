@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   RoutingConfig,
@@ -49,30 +50,37 @@ import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import { prepareDuplicate } from '../../../utils/duplicateEntry';
 
 // ─── Routing logic explainer ──────────────────────────────────────────────────
+// Labels stored as translation keys, not raw text — this array lives
+// at module scope (outside any component), so the actual t() call
+// happens in RoutingDiagram's own render, where useTranslation() is
+// in scope.
 
-const ROUTING_STEPS: { step: string; label: string; tone: 'neutral' | 'good' | 'warn' | 'bad' }[] = [
-  { step: '1', label: 'Case arrives via HL7 or LIS', tone: 'neutral' },
-  { step: '2', label: 'PathScribe checks for a direct LIS assignment', tone: 'neutral' },
-  { step: '3', label: 'Assignment found → assigned directly to pathologist', tone: 'good' },
-  { step: '4', label: 'No assignment → match specimen type against this lab\u2019s own rules, then Global rules', tone: 'warn' },
-  { step: '5', label: 'Match found → routed to that pool', tone: 'good' },
-  { step: '6', label: 'No match → routed to this lab\u2019s fallback pool, or the Global fallback', tone: 'warn' },
-  { step: '7', label: 'No fallback configured → flagged for manual assignment', tone: 'bad' },
+const ROUTING_STEPS: { step: string; labelKey: string; tone: 'neutral' | 'good' | 'warn' | 'bad' }[] = [
+  { step: '1', labelKey: 'casePoolAssignmentSection.routingDiagram.step1', tone: 'neutral' },
+  { step: '2', labelKey: 'casePoolAssignmentSection.routingDiagram.step2', tone: 'neutral' },
+  { step: '3', labelKey: 'casePoolAssignmentSection.routingDiagram.step3', tone: 'good' },
+  { step: '4', labelKey: 'casePoolAssignmentSection.routingDiagram.step4', tone: 'warn' },
+  { step: '5', labelKey: 'casePoolAssignmentSection.routingDiagram.step5', tone: 'good' },
+  { step: '6', labelKey: 'casePoolAssignmentSection.routingDiagram.step6', tone: 'warn' },
+  { step: '7', labelKey: 'casePoolAssignmentSection.routingDiagram.step7', tone: 'bad' },
 ];
 
-const RoutingDiagram: React.FC = () => (
-  <div className="ps-conf-callout">
-    <div className="ps-conf-callout-title">How routing works</div>
-    <div className="ps-conf-callout-steps">
-      {ROUTING_STEPS.map(({ step, label, tone }) => (
-        <div key={step} className="ps-conf-callout-step">
-          <span className="ps-conf-callout-step-num">{step}</span>
-          <span className={`ps-conf-callout-step-label ps-conf-callout-step-label--${tone}`}>{label}</span>
-        </div>
-      ))}
+const RoutingDiagram: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-conf-callout">
+      <div className="ps-conf-callout-title">{t('casePoolAssignmentSection.routingDiagram.title')}</div>
+      <div className="ps-conf-callout-steps">
+        {ROUTING_STEPS.map(({ step, labelKey, tone }) => (
+          <div key={step} className="ps-conf-callout-step">
+            <span className="ps-conf-callout-step-num">{step}</span>
+            <span className={`ps-conf-callout-step-label ps-conf-callout-step-label--${tone}`}>{t(labelKey)}</span>
+          </div>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Rule modal ────────────────────────────────────────────────────────────────
 
@@ -91,6 +99,7 @@ interface RuleModalProps {
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, pools, labs, specimenEntries, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft]   = useState<RuleDraft>(draftFromRule(rule));
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [specimenSearch, setSpecimenSearch] = useState('');
@@ -119,9 +128,9 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, pools, labs, specimen
   const validate = () => {
     const e: typeof errors = {};
     const keywords = draft.keywordsText.split(',').map(k => k.trim()).filter(Boolean);
-    if (keywords.length === 0 && mappedIds.length === 0) e.keywordsText = 'At least one mapped specimen type or keyword is required.';
-    if (!draft.subspecialtyId) e.subspecialtyId = 'A destination pool is required.';
-    if (!draft.priority || draft.priority < 1) e.priority = 'Priority must be a positive number.';
+    if (keywords.length === 0 && mappedIds.length === 0) e.keywordsText = t('casePoolAssignmentSection.ruleModal.keywordsRequiredError');
+    if (!draft.subspecialtyId) e.subspecialtyId = t('casePoolAssignmentSection.ruleModal.poolRequiredError');
+    if (!draft.priority || draft.priority < 1) e.priority = t('casePoolAssignmentSection.ruleModal.priorityRequiredError');
     return e;
   };
 
@@ -136,95 +145,98 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, pools, labs, specimen
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'edit' ? `Edit Routing Rule${rule.builtIn ? ' (built-in)' : ''}` : 'Add Routing Rule'}
+          {mode === 'edit'
+            ? (rule.builtIn ? t('casePoolAssignmentSection.ruleModal.editHeaderBuiltIn') : t('casePoolAssignmentSection.ruleModal.editHeader'))
+            : t('casePoolAssignmentSection.ruleModal.addHeader')}
         </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Mapped Specimen Types</label>
-            <input className="ps-conf-search" placeholder="Search Specimen Dictionary..." value={specimenSearch} onChange={e => setSpecimenSearch(e.target.value)} />
-            <div className="ps-conf-table-scroll" style={{ maxHeight: 160, marginTop: 8 }}>
+            <label className="ps-conf-label">{t('casePoolAssignmentSection.ruleModal.mappedSpecimenTypesLabel')}</label>
+            <input className="ps-conf-search" placeholder={t('casePoolAssignmentSection.ruleModal.specimenSearchPlaceholder')} value={specimenSearch} onChange={e => setSpecimenSearch(e.target.value)} />
+            <div className="ps-conf-table-scroll ps-cpa-specimen-list">
               {filteredSpecimenEntries.length === 0
-                ? <p className="ps-conf-section-subtitle">No specimen dictionary entries match.</p>
+                ? <p className="ps-conf-section-subtitle">{t('casePoolAssignmentSection.ruleModal.noSpecimenEntriesMatch')}</p>
                 : filteredSpecimenEntries.map(s => (
-                    <label key={s.id} className="ps-conf-label" style={{ display: 'block' }}>
+                    <label key={s.id} className="ps-conf-label ps-cpa-specimen-label">
                       <input type="checkbox" checked={mappedIds.includes(s.id)} onChange={() => toggleSpecimen(s.id)} /> {' '}{s.name}
                     </label>
                   ))}
             </div>
             <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-              The real, deterministic match — a specimen entered via the Specimen Dictionary picker is matched by
-              this id directly, per FEAT-ROUT-01. {mappedIds.length} selected.
+              {t('casePoolAssignmentSection.ruleModal.mappedSpecimenTypesHint', { count: mappedIds.length })}
             </p>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Keyword Fallback <span className="ps-conf-label-opt">(optional)</span></label>
+            <label className="ps-conf-label">{t('casePoolAssignmentSection.ruleModal.keywordFallbackLabel')} <span className="ps-conf-label-opt">{t('casePoolAssignmentSection.ruleModal.optionalNote')}</span></label>
             <textarea className={`ps-conf-input ps-conf-textarea ${errors.keywordsText ? 'ps-conf-input--error' : ''}`}
               value={draft.keywordsText} onChange={e => set('keywordsText', e.target.value)}
-              placeholder="colon, colorectal, sigmoid, rectum..." />
+              placeholder={t('casePoolAssignmentSection.ruleModal.keywordFallbackPlaceholder')} />
             <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-              Comma-separated. Only ever consulted for a specimen with no Specimen Dictionary entry — a manual or legacy entry with no structured id to match on.
+              {t('casePoolAssignmentSection.ruleModal.keywordFallbackHint')}
             </p>
             {errors.keywordsText && <span className="ps-conf-error-text">{errors.keywordsText}</span>}
           </div>
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="rule-pool">Destination Pool <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="rule-pool">{t('casePoolAssignmentSection.ruleModal.destinationPoolLabel')} <span className="ps-conf-required">*</span></label>
               <select id="rule-pool" className={`ps-conf-select ${errors.subspecialtyId ? 'ps-conf-input--error' : ''}`}
                 value={draft.subspecialtyId} onChange={e => set('subspecialtyId', e.target.value)}>
-                <option value="">— Select a pool —</option>
+                <option value="">{t('casePoolAssignmentSection.ruleModal.selectPoolOption')}</option>
                 {compatiblePools.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.name}{p.performingLabFacilityId ? ` — ${labs.find(l => l.id === p.performingLabFacilityId)?.name ?? p.performingLabFacilityId}` : ' — Global'}
+                    {p.performingLabFacilityId
+                      ? t('casePoolAssignmentSection.ruleModal.poolOptionLab', { name: p.name, lab: labs.find(l => l.id === p.performingLabFacilityId)?.name ?? p.performingLabFacilityId })
+                      : t('casePoolAssignmentSection.ruleModal.poolOptionGlobal', { name: p.name })}
                   </option>
                 ))}
               </select>
               {errors.subspecialtyId && <span className="ps-conf-error-text">{errors.subspecialtyId}</span>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="rule-priority">Priority <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="rule-priority">{t('casePoolAssignmentSection.ruleModal.priorityLabel')} <span className="ps-conf-required">*</span></label>
               <input id="rule-priority" className={`ps-conf-input ${errors.priority ? 'ps-conf-input--error' : ''}`}
                 type="number" min="1" value={draft.priority} onChange={e => set('priority', parseInt(e.target.value) || 0)} />
               {errors.priority && <span className="ps-conf-error-text">{errors.priority}</span>}
-              <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">Lower checked first, within the same lab-specific/Global tier.</p>
+              <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">{t('casePoolAssignmentSection.ruleModal.priorityHint')}</p>
             </div>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="rule-lab">Performing Lab</label>
+            <label className="ps-conf-label" htmlFor="rule-lab">{t('casePoolAssignmentSection.ruleModal.performingLabLabel')}</label>
             <select id="rule-lab" className="ps-conf-select"
               value={draft.performingLabFacilityId ?? ''}
               onChange={e => set('performingLabFacilityId', e.target.value || undefined)}>
-              <option value="">— Global (checked for every lab) —</option>
+              <option value="">{t('casePoolAssignmentSection.ruleModal.globalLabOption')}</option>
               {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
             <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-              A lab-specific rule is checked before Global rules for that lab's own cases.
+              {t('casePoolAssignmentSection.ruleModal.performingLabHint')}
             </p>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Note</label>
-            <input className="ps-conf-input" value={draft.note ?? ''} onChange={e => set('note', e.target.value)} placeholder="Admin notes" />
+            <label className="ps-conf-label">{t('casePoolAssignmentSection.ruleModal.noteLabel')}</label>
+            <input className="ps-conf-input" value={draft.note ?? ''} onChange={e => set('note', e.target.value)} placeholder={t('casePoolAssignmentSection.ruleModal.notePlaceholder')} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('casePoolAssignmentSection.ruleModal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Rule' : 'Save Changes'}
+            {mode === 'add' ? t('casePoolAssignmentSection.ruleModal.addHeader') : t('casePoolAssignmentSection.saveChangesBtn')}
           </button>
         </div>
       </div>
@@ -235,6 +247,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, pools, labs, specimen
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const CasePoolAssignmentSection: React.FC = () => {
+  const { t } = useTranslation();
   const [config,     setConfig]     = useState<RoutingConfig>(getRoutingConfig());
   const [pools,      setPools]      = useState<Subspecialty[]>([]);
   const [labs,       setLabs]       = useState<Facility[]>([]);
@@ -264,7 +277,7 @@ const CasePoolAssignmentSection: React.FC = () => {
     setRules(loadRoutingRules());
   }, []);
 
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('casePoolAssignmentSection.globalLabel');
   const poolName = (id: string) => pools.find(p => p.id === id)?.name ?? id;
 
   const filteredRules = rules.filter(r => {
@@ -347,11 +360,9 @@ const CasePoolAssignmentSection: React.FC = () => {
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Case Routing</h3>
+          <h3 className="ps-conf-section-title">{t('casePoolAssignmentSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Configure how unassigned cases are automatically distributed to subspecialty pools when the LIS does
-            not provide a pathologist assignment. Rules and the fallback pool can be Global or scoped to one
-            performing lab — a lab-specific entry always wins over a Global one for that lab's own cases.
+            {t('casePoolAssignmentSection.subtitle')}
           </p>
         </div>
       </div>
@@ -362,53 +373,51 @@ const CasePoolAssignmentSection: React.FC = () => {
       <div className="ps-conf-form-field">
         <label className="ps-conf-label">
           <input type="checkbox" checked={config.enabled} onChange={e => setConfig(c => ({ ...c, enabled: e.target.checked }))} />
-          {' '}Automatic Pool Routing — when enabled, cases without a LIS assignment are routed automatically based on specimen type.
+          {' '}{t('casePoolAssignmentSection.enabledLabel')}
         </label>
       </div>
       <div className="ps-conf-form-field">
         <label className="ps-conf-label">
           <input type="checkbox" checked={config.statRoutesImmediately} onChange={e => setConfig(c => ({ ...c, statRoutesImmediately: e.target.checked }))} />
-          {' '}STAT Cases Route Immediately — bypasses the assignment timeout below.
+          {' '}{t('casePoolAssignmentSection.statImmediateLabel')}
         </label>
       </div>
 
       <div className="ps-conf-form-row">
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label">Assignment Timeout (seconds)</label>
+          <label className="ps-conf-label">{t('casePoolAssignmentSection.assignmentTimeoutLabel')}</label>
           <input className="ps-conf-input" type="number" min={0} max={3600}
             value={config.assignmentTimeoutSec}
             onChange={e => setConfig(c => ({ ...c, assignmentTimeoutSec: parseInt(e.target.value) || 0 }))} />
           <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-            How long PathScribe waits for the LIS to provide an assignment before routing to a pool. 0 = route immediately.
+            {t('casePoolAssignmentSection.assignmentTimeoutHint')}
           </p>
         </div>
       </div>
 
       {/* Fallback pool — Global + per-lab overrides */}
       <div className="ps-conf-section-header">
-        <h3 className="ps-conf-section-title">Fallback Pool</h3>
+        <h3 className="ps-conf-section-title">{t('casePoolAssignmentSection.fallbackPool.title')}</h3>
       </div>
       <p className="ps-conf-section-subtitle">
-        Cases where no rule matches are sent here — typically a "General Pathology" pool. A pool tagged
-        Default/Catch-All in Subspecialties config (per lab, or Global) takes precedence; the overrides below are
-        a secondary, manual fallback for a lab that hasn't tagged one yet.
+        {t('casePoolAssignmentSection.fallbackPool.subtitle')}
       </p>
 
       {pools.length === 0 ? (
         <p className="ps-conf-error-text">
-          No active pools found. Go to System → Subspecialties and enable "Pool / Workgroup" mode on at least one subspecialty.
+          {t('casePoolAssignmentSection.fallbackPool.noPoolsFound')}
         </p>
       ) : (
         <>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Global Fallback Pool</label>
+              <label className="ps-conf-label">{t('casePoolAssignmentSection.fallbackPool.globalFallbackLabel')}</label>
               <select className="ps-conf-select" value={config.fallbackPoolId}
                 onChange={e => {
                   const pool = pools.find(p => p.id === e.target.value);
                   setConfig(c => ({ ...c, fallbackPoolId: e.target.value, fallbackPoolName: pool?.name ?? e.target.value }));
                 }}>
-                <option value="">— None (manual assignment required) —</option>
+                <option value="">{t('casePoolAssignmentSection.fallbackPool.noneOption')}</option>
                 {pools.filter(p => !p.performingLabFacilityId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
@@ -418,7 +427,7 @@ const CasePoolAssignmentSection: React.FC = () => {
             <div className="ps-conf-table-wrap">
               <table className="ps-conf-table">
                 <thead>
-                  <tr><th className="ps-conf-th">Performing Lab</th><th className="ps-conf-th">Fallback Pool Override</th></tr>
+                  <tr><th className="ps-conf-th">{t('casePoolAssignmentSection.fallbackPool.performingLabHeader')}</th><th className="ps-conf-th">{t('casePoolAssignmentSection.fallbackPool.fallbackOverrideHeader')}</th></tr>
                 </thead>
                 <tbody>
                   {labs.map(lab => {
@@ -429,7 +438,7 @@ const CasePoolAssignmentSection: React.FC = () => {
                         <td className="ps-conf-td">{lab.name}</td>
                         <td className="ps-conf-td">
                           <select className="ps-conf-select" value={current} onChange={e => setLabFallback(lab.id, e.target.value)}>
-                            <option value="">— Use Global default —</option>
+                            <option value="">{t('casePoolAssignmentSection.fallbackPool.useGlobalDefaultOption')}</option>
                             {labPools.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                           </select>
                         </td>
@@ -445,31 +454,31 @@ const CasePoolAssignmentSection: React.FC = () => {
 
       <div className="ps-ms-footer">
         <button className={saved ? 'ps-conf-btn-secondary' : 'ps-conf-btn-primary'} onClick={handleSaveConfig}>
-          {saved ? '✓ Saved' : 'Save Routing Config'}
+          {saved ? `✓ ${t('casePoolAssignmentSection.savedBtn')}` : t('casePoolAssignmentSection.saveConfigBtn')}
         </button>
       </div>
 
       {/* Routing Rules table */}
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Routing Rules</h3>
+          <h3 className="ps-conf-section-title">{t('casePoolAssignmentSection.rulesTable.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Keyword rules matched against each specimen's description, in priority order within each lab-specific/Global tier.
+            {t('casePoolAssignmentSection.rulesTable.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={handleAddRule}>+ Add Rule</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={handleAddRule}>+ {t('casePoolAssignmentSection.ruleModal.addHeader')}</button>
       </div>
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by keyword or note..." value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
+        <input type="text" placeholder={t('casePoolAssignmentSection.rulesTable.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
+          <option value="All">{t('casePoolAssignmentSection.rulesTable.statusAll')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
         </select>
         <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
-          <option value="All">All Labs</option>
-          <option value="Global">Global only</option>
+          <option value="All">{t('casePoolAssignmentSection.rulesTable.allLabsOption')}</option>
+          <option value="Global">{t('casePoolAssignmentSection.rulesTable.globalOnlyOption')}</option>
           {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -479,7 +488,14 @@ const CasePoolAssignmentSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Priority', 'Match', 'Pool', 'Performing Lab', 'Status', 'Actions'].map(h => (
+                {[
+                  t('casePoolAssignmentSection.rulesTable.priorityHeader'),
+                  t('casePoolAssignmentSection.rulesTable.matchHeader'),
+                  t('casePoolAssignmentSection.rulesTable.poolHeader'),
+                  t('casePoolAssignmentSection.fallbackPool.performingLabHeader'),
+                  t('casePoolAssignmentSection.rulesTable.statusHeader'),
+                  t('casePoolAssignmentSection.rulesTable.actionsHeader'),
+                ].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}
               </tr>
@@ -491,9 +507,9 @@ const CasePoolAssignmentSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-identity-name">
                       {r.mappedSpecimenTypeIds?.length
-                        ? `${r.mappedSpecimenTypeIds.length} specimen type${r.mappedSpecimenTypeIds.length !== 1 ? 's' : ''}`
-                        : (r.keywords.slice(0, 4).join(', ') + (r.keywords.length > 4 ? `, +${r.keywords.length - 4} more` : ''))}
-                      {r.builtIn && <span className="ps-sub-system-badge" title="Ships with PathScribe — can be deactivated but not deleted">BUILT-IN</span>}
+                        ? t('casePoolAssignmentSection.rulesTable.specimenTypeCount', { count: r.mappedSpecimenTypeIds.length })
+                        : (r.keywords.slice(0, 4).join(', ') + (r.keywords.length > 4 ? t('casePoolAssignmentSection.rulesTable.moreKeywords', { count: r.keywords.length - 4 }) : ''))}
+                      {r.builtIn && <span className="ps-sub-system-badge" title={t('casePoolAssignmentSection.rulesTable.builtInTitle')}>{t('casePoolAssignmentSection.rulesTable.builtInBadge')}</span>}
                     </div>
                     {r.note && <div className="ps-conf-identity-sub">{r.note}</div>}
                   </td>
@@ -502,22 +518,22 @@ const CasePoolAssignmentSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${r.active ? 'ps-conf-status-dot--active' : ''}`} />
-                      <span className={`ps-conf-status-text ${r.active ? 'ps-conf-status-text--active' : ''}`}>{r.active ? 'Active' : 'Inactive'}</span>
+                      <span className={`ps-conf-status-text ${r.active ? 'ps-conf-status-text--active' : ''}`}>{r.active ? t('common.active') : t('common.inactive')}</span>
                     </div>
                   </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
-                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', rule: r })}>Edit</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleDuplicateRule(r)}>Duplicate</button>
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', rule: r })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleDuplicateRule(r)}>{t('common.duplicate')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleActive(r)}>
-                        {r.active ? 'Deactivate' : 'Reactivate'}
+                        {r.active ? t('casePoolAssignmentSection.rulesTable.deactivateBtn') : t('casePoolAssignmentSection.rulesTable.reactivateBtn')}
                       </button>
                     </div>
                   </td>
                 </tr>
               ))}
               {filteredRules.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={6}>No routing rules match the current filter.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={6}>{t('casePoolAssignmentSection.rulesTable.emptyRow')}</td></tr>
               )}
             </tbody>
           </table>
@@ -526,25 +542,25 @@ const CasePoolAssignmentSection: React.FC = () => {
 
       {/* Test routing preview */}
       <div className="ps-conf-section-header">
-        <h3 className="ps-conf-section-title">Test Routing</h3>
+        <h3 className="ps-conf-section-title">{t('casePoolAssignmentSection.testRouting.title')}</h3>
       </div>
       <div className="ps-conf-form-row">
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label">Specimen Dictionary Entry</label>
+          <label className="ps-conf-label">{t('casePoolAssignmentSection.testRouting.specimenEntryLabel')}</label>
           <select className="ps-conf-select" value={testSpecimenId} onChange={e => setTestSpecimenId(e.target.value)}>
-            <option value="">— None (test the keyword fallback instead) —</option>
+            <option value="">{t('casePoolAssignmentSection.testRouting.noneSpecimenOption')}</option>
             {specimenEntries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">Exercises the real, deterministic composite-key match.</p>
+          <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">{t('casePoolAssignmentSection.testRouting.specimenEntryHint')}</p>
         </div>
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label">Specimen Description <span className="ps-conf-label-opt">(keyword fallback only)</span></label>
-          <input className="ps-conf-input" value={testDescription} onChange={e => setTestDescription(e.target.value)} placeholder="e.g. right colon, sigmoid resection" />
+          <label className="ps-conf-label">{t('casePoolAssignmentSection.testRouting.descriptionLabel')} <span className="ps-conf-label-opt">{t('casePoolAssignmentSection.testRouting.descriptionOptNote')}</span></label>
+          <input className="ps-conf-input" value={testDescription} onChange={e => setTestDescription(e.target.value)} placeholder={t('casePoolAssignmentSection.testRouting.descriptionPlaceholder')} />
         </div>
         <div className="ps-conf-form-field">
-          <label className="ps-conf-label">As Performing Lab</label>
+          <label className="ps-conf-label">{t('casePoolAssignmentSection.testRouting.asLabLabel')}</label>
           <select className="ps-conf-select" value={testLabId} onChange={e => setTestLabId(e.target.value)}>
-            <option value="">— Global only —</option>
+            <option value="">{t('casePoolAssignmentSection.testRouting.globalOnlyOption')}</option>
             {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
@@ -552,29 +568,38 @@ const CasePoolAssignmentSection: React.FC = () => {
       {testResult && (
         <p className="ps-conf-section-subtitle">
           {testResult.matched
-            ? <>Would route to <span className="ps-conf-identity-name">{poolName(testResult.subspecialtyId!)}</span> via {testResult.rule?.mappedSpecimenTypeIds?.length ? 'a mapped specimen type' : `keyword "${testResult.rule?.keywords.join(', ')}"`} rule ({labName(testResult.rule?.performingLabFacilityId)}).</>
-            : 'No rule matches — would fall through to the fallback pool.'}
+            ? <Trans
+                i18nKey="casePoolAssignmentSection.testRouting.matchedResult"
+                values={{
+                  pool: poolName(testResult.subspecialtyId!),
+                  via: testResult.rule?.mappedSpecimenTypeIds?.length
+                    ? t('casePoolAssignmentSection.testRouting.viaMappedSpecimen')
+                    : t('casePoolAssignmentSection.testRouting.viaKeyword', { keywords: testResult.rule?.keywords.join(', ') }),
+                  lab: labName(testResult.rule?.performingLabFacilityId),
+                }}
+                components={{ poolSpan: <span className="ps-conf-identity-name" /> }}
+              />
+            : t('casePoolAssignmentSection.testRouting.noMatchResult')}
         </p>
       )}
 
       {/* Run routing now */}
       <div className="ps-conf-section-header">
-        <h3 className="ps-conf-section-title">Manual Routing Run</h3>
+        <h3 className="ps-conf-section-title">{t('casePoolAssignmentSection.manualRun.title')}</h3>
       </div>
       <p className="ps-conf-section-subtitle">
-        Immediately route all unassigned cases to their appropriate pools. Useful after changing routing
-        configuration or when recovering from a LIS outage.
+        {t('casePoolAssignmentSection.manualRun.subtitle')}
       </p>
       <button onClick={handleRunNow} disabled={running} className="ps-conf-btn-teal-accent">
-        {running ? '⏳ Running…' : '▶ Route Unassigned Cases Now'}
+        {running ? `⏳ ${t('casePoolAssignmentSection.manualRun.runningBtn')}` : `▶ ${t('casePoolAssignmentSection.manualRun.runBtn')}`}
       </button>
 
       {runResults && (
         <div className="ps-conf-callout">
           <div className="ps-conf-callout-steps">
-            <span>Routed: {runResults.routed}</span>{' · '}
-            <span>Skipped: {runResults.skipped}</span>{' · '}
-            <span>Failed: {runResults.failed}</span>
+            <span>{t('casePoolAssignmentSection.manualRun.routedCount', { count: runResults.routed })}</span>{' · '}
+            <span>{t('casePoolAssignmentSection.manualRun.skippedCount', { count: runResults.skipped })}</span>{' · '}
+            <span>{t('casePoolAssignmentSection.manualRun.failedCount', { count: runResults.failed })}</span>
           </div>
           <div className="ps-conf-table-scroll">
             {runResults.results.map(({ caseId, result }) => (

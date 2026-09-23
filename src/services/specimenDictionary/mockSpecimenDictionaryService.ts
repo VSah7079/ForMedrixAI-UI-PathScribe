@@ -41,6 +41,7 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Kidney Biopsy, Native',
     description: 'Native (non-transplant) renal core biopsy — splits into Light Microscopy, Immunofluorescence, and Electron Microscopy pathways.',
     type: 'Kidney', procedure: 'Core Biopsy',
+    site: 'Kidney',
     normalizedLabel: 'Kidney Biopsy, Native',
     synonyms: ['Native Kidney Biopsy', 'Renal Biopsy, Native', 'Medical Renal Biopsy'],
     active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
@@ -75,6 +76,7 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Heart, Autopsy',
     description: 'Whole heart submitted at autopsy for cardiac sectioning and coronary artery examination.',
     type: 'Heart', procedure: 'Autopsy Examination',
+    site: 'Heart',
     specimenCategory: 'AUTOPSY',
     normalizedLabel: 'Heart, Autopsy',
     synonyms: ['Autopsy Heart', 'Cardiac Autopsy Specimen', 'Heart, Whole (Autopsy)'],
@@ -104,6 +106,7 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Cervical/Vaginal Pap Smear',
     description: 'Cervical/vaginal Pap smear, liquid-based cytology.',
     type: 'Cytology', procedure: 'Pap Smear',
+    site: 'Cervix',
     specimenCategory: 'GYN_CYTOLOGY',
     normalizedLabel: 'Cervical/Vaginal Pap Smear',
     synonyms: ['Pap Smear', 'Cervical Cytology', 'ThinPrep Pap'],
@@ -114,6 +117,7 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Self-Collected Vaginal Swab (HPV Only)',
     description: 'Self-collected vaginal swab for primary HPV screening only \u2014 no real cytology interpretation performed on this real specimen type.',
     type: 'Cytology', procedure: 'Self-Collected Vaginal Swab',
+    site: 'Vagina',
     specimenCategory: 'GYN_CYTOLOGY',
     isSelfCollected: true,
     normalizedLabel: 'Self-Collected Vaginal Swab (HPV Only)',
@@ -125,7 +129,23 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Thyroid Fine Needle Aspiration',
     description: 'Fine needle aspiration of the thyroid \u2014 a real, non-GYN cytology specimen.',
     type: 'FNA', procedure: 'Fine Needle Aspiration',
+    site: 'Thyroid',
     specimenCategory: 'NON_GYN_CYTOLOGY',
+    // Real fix (PS-295 \u2014 "Cytology case has no associated template"):
+    // this was the one real, seeded Non-GYN cytology dictionary entry
+    // with neither field below ever set, despite an exact-matching
+    // real template already existing in
+    // cytologySynopticTemplateRegistry.ts (thyroid_fna_cytology,
+    // CAP/Bethesda Thyroid System) \u2014 so every real thyroid FNA case
+    // hit CytologyScreeningPage.tsx's own documented "no real default
+    // configured" fallback and showed no associated template at all,
+    // requiring a fully manual pick every time even though this
+    // specimen type has exactly one real, correct answer. organSite
+    // wires up the matching real Non-GYN "Organ/Site Quick-Filter"
+    // chip on CytologyWorklistPage.tsx the same way \u2014 same real gap,
+    // same real dictionary entry, never populated.
+    organSite: 'THYROID',
+    defaultSynopticTemplateId: 'thyroid_fna_cytology',
     normalizedLabel: 'Thyroid Fine Needle Aspiration',
     synonyms: ['Thyroid FNA', 'Thyroid Fine Needle Aspirate'],
     active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),

@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { abnormalTriggerRuleService } from '../../../services';
 import { useSystemConfig } from '../../../contexts/SystemConfigContext';
@@ -21,7 +22,14 @@ import { findDuplicate } from '../../../utils/validateUnique';
 
 const SEVERITIES: AbnormalSeverity[] = ['Abnormal', 'Critical', 'Malignant'];
 
+const SEVERITY_LABEL_KEY: Record<AbnormalSeverity, string> = {
+  Abnormal: 'abnormalTriggerRulesSection.severityLabels.abnormal',
+  Critical: 'abnormalTriggerRulesSection.severityLabels.critical',
+  Malignant: 'abnormalTriggerRulesSection.severityLabels.malignant',
+};
+
 const AbnormalTriggerRulesSection: React.FC = () => {
+  const { t } = useTranslation();
   const { enterpriseConfig, updateEnterpriseConfig } = useSystemConfig();
   const enterpriseEnabled = enterpriseConfig.features.abnormalDetectionEnabled;
   const [items, setItems] = useState<AbnormalTriggerRule[]>([]);
@@ -51,23 +59,28 @@ const AbnormalTriggerRulesSection: React.FC = () => {
     setFieldError('');
   }, [modal]);
 
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('abnormalTriggerRulesSection.global');
 
   const filteredItems = items.filter(item =>
     labFilter === 'All' || (labFilter === 'Global' ? !item.performingLabFacilityId : item.performingLabFacilityId === labFilter)
   );
 
   const handleSave = async () => {
-    if (!draft.fieldLabel.trim()) { setFieldError('Field label is required'); return; }
+    if (!draft.fieldLabel.trim()) { setFieldError(t('abnormalTriggerRulesSection.errors.fieldLabelRequired')); return; }
     const triggerValues = draft.triggerValues.split(',').map(v => v.trim()).filter(Boolean);
-    if (triggerValues.length === 0) { setFieldError('At least one trigger value is required'); return; }
+    if (triggerValues.length === 0) { setFieldError(t('abnormalTriggerRulesSection.errors.triggerValueRequired')); return; }
 
     // Same real, scope-aware uniqueness check as DeficienciesSection.tsx's
     // own dictionaries — a collision only blocks the save within the
     // same scope (same lab, or both Global).
     const excludeId = modal?.mode === 'edit' ? modal.item?.id : undefined;
     const collision = findDuplicate(items, { performingLabFacilityId: draft.performingLabFacilityId || undefined, fieldLabel: draft.fieldLabel.trim() }, ['performingLabFacilityId', 'fieldLabel'], excludeId);
-    if (collision) { setFieldError(`A rule for "${collision.fieldLabel}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`); return; }
+    if (collision) {
+      setFieldError(draft.performingLabFacilityId
+        ? t('abnormalTriggerRulesSection.errors.duplicateRuleForLab', { label: collision.fieldLabel })
+        : t('abnormalTriggerRulesSection.errors.duplicateRuleGlobal', { label: collision.fieldLabel }));
+      return;
+    }
 
     const payload = {
       fieldLabel: draft.fieldLabel.trim(), triggerValues, severity: draft.severity,
@@ -92,15 +105,12 @@ const AbnormalTriggerRulesSection: React.FC = () => {
 
   const severityBadgeClass = (s: AbnormalSeverity) => s === 'Malignant' ? 'ps-defic-status-badge--inactive' : s === 'Critical' ? 'ps-defic-status-badge--inactive' : 'ps-defic-status-badge--active';
 
-  if (loading) return <div className="ps-defic-loading">Loading trigger rules...</div>;
+  if (loading) return <div className="ps-defic-loading">{t('abnormalTriggerRulesSection.loading')}</div>;
 
   return (
     <div className="ps-defic-section">
-      <h3 className="ps-defic-title">Abnormal Detection — High-Risk Trigger Rules</h3>
-      <p className="ps-defic-subtitle">
-        Configure which synoptic field/value combinations flag a case as Abnormal, Critical, or Malignant.
-        A match is always a suggestion the pathologist confirms or disputes at sign-out — never an automatic determination.
-      </p>
+      <h3 className="ps-defic-title">{t('abnormalTriggerRulesSection.title')}</h3>
+      <p className="ps-defic-subtitle">{t('abnormalTriggerRulesSection.subtitle')}</p>
 
       {/* Real, per direct guidance (PS-105): "If the enterprise level
           is disabled then the performing facility level is disabled
@@ -109,37 +119,33 @@ const AbnormalTriggerRulesSection: React.FC = () => {
           capability everywhere, for every facility, regardless of any
           facility's own setting (FacilityEditorModal.tsx's own toggle
           becomes non-functional while this is off). */}
-      <div style={{
-        border: `1.5px solid ${enterpriseEnabled ? 'rgba(8,145,178,0.4)' : 'rgba(239,68,68,0.5)'}`,
-        borderRadius: 8, padding: 14, marginBottom: 18,
-        background: enterpriseEnabled ? 'rgba(8,145,178,0.06)' : 'rgba(239,68,68,0.08)',
-      }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+      <div className={`ps-defic-enterprise-toggle-box ${enterpriseEnabled ? '' : 'ps-defic-enterprise-toggle-box--disabled'}`}>
+        <label className="ps-defic-enterprise-toggle-label">
           <input
             type="checkbox"
             checked={enterpriseEnabled}
             onChange={e => updateEnterpriseConfig({ features: { ...enterpriseConfig.features, abnormalDetectionEnabled: e.target.checked } })}
-            style={{ width: 16, height: 16, accentColor: '#0891b2', cursor: 'pointer' }}
+            className="ps-defic-enterprise-toggle-checkbox"
           />
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Enabled enterprise-wide</span>
+          <span className="ps-defic-enterprise-toggle-text">{t('abnormalTriggerRulesSection.enterpriseToggle.label')}</span>
         </label>
-        <div style={{ fontSize: 11, color: enterpriseEnabled ? '#94a3b8' : '#fca5a5', marginTop: 6 }}>
+        <div className={`ps-defic-enterprise-toggle-hint ${enterpriseEnabled ? '' : 'ps-defic-enterprise-toggle-hint--disabled'}`}>
           {enterpriseEnabled
-            ? 'The Abnormal Detection capability is available; each performing facility can still further restrict it for itself in Facility Configuration.'
-            : 'Abnormal Detection is disabled for the entire enterprise. No performing facility can re-enable it for itself while this is off.'}
+            ? t('abnormalTriggerRulesSection.enterpriseToggle.enabledHint')
+            : t('abnormalTriggerRulesSection.enterpriseToggle.disabledHint')}
         </div>
       </div>
 
       <div className="ps-defic-tab-header">
-        <p className="ps-defic-tab-desc">Manage the discrete high-risk trigger dictionary.</p>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Trigger Rule</button>
+        <p className="ps-defic-tab-desc">{t('abnormalTriggerRulesSection.tabDesc')}</p>
+        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>{t('abnormalTriggerRulesSection.addButton')}</button>
       </div>
 
       {labs.length > 0 && (
         <div className="ps-conf-form-row">
           <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
-            <option value="All">All Labs</option>
-            <option value="Global">Global only</option>
+            <option value="All">{t('abnormalTriggerRulesSection.labFilter.all')}</option>
+            <option value="Global">{t('abnormalTriggerRulesSection.labFilter.globalOnly')}</option>
             {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
@@ -148,33 +154,41 @@ const AbnormalTriggerRulesSection: React.FC = () => {
       <div className="ps-defic-table-wrap">
         <table className="ps-defic-table">
           <thead>
-            <tr><th>Field Label</th><th>Trigger Value(s)</th><th>Severity</th><th>Description</th>{labs.length > 0 && <th>Performing Lab</th>}<th>Status</th><th>Actions</th></tr>
+            <tr>
+              <th>{t('abnormalTriggerRulesSection.table.headers.fieldLabel')}</th>
+              <th>{t('abnormalTriggerRulesSection.table.headers.triggerValues')}</th>
+              <th>{t('abnormalTriggerRulesSection.table.headers.severity')}</th>
+              <th>{t('abnormalTriggerRulesSection.table.headers.description')}</th>
+              {labs.length > 0 && <th>{t('abnormalTriggerRulesSection.table.headers.performingLab')}</th>}
+              <th>{t('abnormalTriggerRulesSection.table.headers.status')}</th>
+              <th>{t('abnormalTriggerRulesSection.table.headers.actions')}</th>
+            </tr>
           </thead>
           <tbody>
             {filteredItems.map(item => (
               <tr key={item.id}>
                 <td className="ps-defic-cell-name">{item.fieldLabel}</td>
                 <td>{item.triggerValues.join(', ')}</td>
-                <td><span className={`ps-defic-status-badge ${severityBadgeClass(item.severity)}`}>{item.severity}</span></td>
+                <td><span className={`ps-defic-status-badge ${severityBadgeClass(item.severity)}`}>{t(SEVERITY_LABEL_KEY[item.severity])}</span></td>
                 <td className="ps-defic-cell-desc">{item.description || '—'}</td>
                 {labs.length > 0 && <td>{labName(item.performingLabFacilityId)}</td>}
                 <td>
                   <span className={`ps-defic-status-badge ${item.status === 'Active' ? 'ps-defic-status-badge--active' : 'ps-defic-status-badge--inactive'}`}>
-                    {item.status}
+                    {item.status === 'Active' ? t('common.active') : t('common.inactive')}
                   </span>
                 </td>
                 <td>
                   <div className="ps-defic-row-actions">
-                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', item })}>Edit</button>
+                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', item })}>{t('common.edit')}</button>
                     <button className="ps-conf-btn-row" onClick={() => handleToggleActive(item)}>
-                      {item.status === 'Active' ? 'Deactivate' : 'Activate'}
+                      {item.status === 'Active' ? t('abnormalTriggerRulesSection.table.deactivateButton') : t('abnormalTriggerRulesSection.table.activateButton')}
                     </button>
                   </div>
                 </td>
               </tr>
             ))}
             {filteredItems.length === 0 && (
-              <tr><td colSpan={(labs.length > 0 ? 1 : 0) + 6} className="ps-defic-empty">No trigger rules match.</td></tr>
+              <tr><td colSpan={(labs.length > 0 ? 1 : 0) + 6} className="ps-defic-empty">{t('abnormalTriggerRulesSection.table.emptyState')}</td></tr>
             )}
           </tbody>
         </table>
@@ -183,43 +197,43 @@ const AbnormalTriggerRulesSection: React.FC = () => {
       {modal && (
         <div className="ps-ms-overlay" onClick={() => setModal(null)}>
           <div className="ps-ms-modal" onClick={e => e.stopPropagation()}>
-            <div className="ps-ms-header">{modal.mode === 'add' ? 'Add Trigger Rule' : 'Edit Trigger Rule'}</div>
+            <div className="ps-ms-header">{modal.mode === 'add' ? t('abnormalTriggerRulesSection.modal.addTitle') : t('abnormalTriggerRulesSection.modal.editTitle')}</div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Synoptic Field Label</label>
-              <input className="ps-ms-input" value={draft.fieldLabel} onChange={e => setDraft(d => ({ ...d, fieldLabel: e.target.value }))} placeholder='e.g. "Margin Status"' />
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.fieldLabelLabel')}</label>
+              <input className="ps-ms-input" value={draft.fieldLabel} onChange={e => setDraft(d => ({ ...d, fieldLabel: e.target.value }))} placeholder={t('abnormalTriggerRulesSection.modal.fieldLabelPlaceholder')} />
             </div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Trigger Value(s)</label>
-              <input className="ps-ms-input" value={draft.triggerValues} onChange={e => setDraft(d => ({ ...d, triggerValues: e.target.value }))} placeholder='e.g. "Positive" — comma-separated for more than one' />
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.triggerValuesLabel')}</label>
+              <input className="ps-ms-input" value={draft.triggerValues} onChange={e => setDraft(d => ({ ...d, triggerValues: e.target.value }))} placeholder={t('abnormalTriggerRulesSection.modal.triggerValuesPlaceholder')} />
               {fieldError && <span className="ps-conf-error-text">{fieldError}</span>}
             </div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Severity</label>
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.severityLabel')}</label>
               <select className="ps-ms-select" value={draft.severity} onChange={e => setDraft(d => ({ ...d, severity: e.target.value as AbnormalSeverity }))}>
-                {SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
+                {SEVERITIES.map(s => <option key={s} value={s}>{t(SEVERITY_LABEL_KEY[s])}</option>)}
               </select>
             </div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Description</label>
-              <textarea className="ps-ms-textarea" value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder="Shown to the pathologist as the reasoning behind the suggestion" />
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.descriptionLabel')}</label>
+              <textarea className="ps-ms-textarea" value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder={t('abnormalTriggerRulesSection.modal.descriptionPlaceholder')} />
             </div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Performing Lab</label>
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.performingLabLabel')}</label>
               <select className="ps-ms-select" value={draft.performingLabFacilityId} onChange={e => setDraft(d => ({ ...d, performingLabFacilityId: e.target.value }))}>
-                <option value="">— Global (every performing lab) —</option>
+                <option value="">{t('abnormalTriggerRulesSection.modal.globalOption')}</option>
                 {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
             <div className="ps-ms-field-group">
-              <label className="ps-ms-label">Status</label>
+              <label className="ps-ms-label">{t('abnormalTriggerRulesSection.modal.statusLabel')}</label>
               <select className="ps-ms-select" value={draft.active ? 'active' : 'inactive'} onChange={e => setDraft(d => ({ ...d, active: e.target.value === 'active' }))}>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="active">{t('common.active')}</option>
+                <option value="inactive">{t('common.inactive')}</option>
               </select>
             </div>
             <div className="ps-ms-footer">
-              <button className="ps-ms-btn-cancel" onClick={() => setModal(null)}>Cancel</button>
-              <button className="ps-ms-btn-apply" onClick={handleSave}>{modal.mode === 'add' ? 'Add' : 'Save Changes'}</button>
+              <button className="ps-ms-btn-cancel" onClick={() => setModal(null)}>{t('common.cancel')}</button>
+              <button className="ps-ms-btn-apply" onClick={handleSave}>{modal.mode === 'add' ? t('abnormalTriggerRulesSection.modal.addButton') : t('abnormalTriggerRulesSection.modal.saveChangesButton')}</button>
             </div>
           </div>
         </div>

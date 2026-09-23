@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import '../../pathscribe.css';
 import { mockMolecularAssayControlRuleService } from '../../services/molecular/mockMolecularAssayControlRuleService';
@@ -26,6 +27,7 @@ const CONTROL_TYPES_FOR_RULES: MolecularSampleType[] = ['CONTROL_NTC', 'CONTROL_
 const emptyRequiredControl = (): MolecularRequiredControl => ({ sampleType: 'CONTROL_NTC', positionMode: 'fixed', fixedWellPosition: 'A01' });
 
 const MolecularControlRulesPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [rules, setRules] = useState<MolecularAssayControlRule[]>([]);
   // Real, per direct follow-up ("wouldn't we use the existing process
@@ -68,10 +70,10 @@ const MolecularControlRulesPage: React.FC = () => {
 
   const handleSave = async () => {
     setSaveError(null);
-    if (!draftAssayCode.trim()) { setSaveError('Assay code is required.'); return; }
+    if (!draftAssayCode.trim()) { setSaveError(t('molecularControlRulesPage.assayCodeRequired')); return; }
     for (const c of draftControls) {
       if (c.positionMode === 'fixed' && !c.fixedWellPosition?.trim()) {
-        setSaveError(`${c.sampleType} is set to a fixed position but no well was given.`);
+        setSaveError(t('molecularControlRulesPage.fixedPositionMissingWell', { sampleType: c.sampleType }));
         return;
       }
     }
@@ -81,7 +83,7 @@ const MolecularControlRulesPage: React.FC = () => {
       const res = editingId === 'new'
         ? await mockMolecularAssayControlRuleService.create(payload)
         : await mockMolecularAssayControlRuleService.update(editingId!, payload);
-      if (!res.ok) { setSaveError('error' in res ? res.error : 'Unknown error saving this rule.'); return; }
+      if (!res.ok) { setSaveError('error' in res ? res.error : t('molecularControlRulesPage.genericSaveError')); return; }
       setEditingId(null);
       load();
     } finally {
@@ -100,18 +102,18 @@ const MolecularControlRulesPage: React.FC = () => {
 
   return (
     <div className="ps-app-root ps-page-container ps-page-container--narrow">
-      <button className="ps-btn-small ps-back-btn" onClick={() => navigate('/molecular')}>← Back to Batches</button>
+      <button className="ps-btn-small ps-back-btn" onClick={() => navigate('/molecular')}>{t('molecularControlRulesPage.backToBatches')}</button>
       <div className="ps-page-header-row">
         <div>
-          <h1 className="ps-page-title">Assay Control Rules</h1>
+          <h1 className="ps-page-title">{t('molecularControlRulesPage.title')}</h1>
           <p className="ps-page-subtitle">
-            Define which controls a given assay requires before a batch can be created, and whether each one is fixed to a specific well or allowed anywhere on the plate.
+            {t('molecularControlRulesPage.subtitle')}
           </p>
         </div>
-        {editingId === null && <button className="ps-conf-btn-secondary" onClick={startNew}>+ New Rule</button>}
+        {editingId === null && <button className="ps-conf-btn-secondary" onClick={startNew}>{t('molecularControlRulesPage.newRule')}</button>}
       </div>
 
-      {loading && <div className="ps-conf-loading">Loading…</div>}
+      {loading && <div className="ps-conf-loading">{t('molecularControlRulesPage.loading')}</div>}
 
       {!loading && editingId === null && (
         <div className="ps-conf-table-wrap">
@@ -119,24 +121,24 @@ const MolecularControlRulesPage: React.FC = () => {
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
                 <tr>
-                  <th className="ps-conf-th">Assay Code</th>
-                  <th className="ps-conf-th">Required Controls</th>
-                  <th className="ps-conf-th">Actions</th>
+                  <th className="ps-conf-th">{t('molecularControlRulesPage.colAssayCode')}</th>
+                  <th className="ps-conf-th">{t('molecularControlRulesPage.colRequiredControls')}</th>
+                  <th className="ps-conf-th">{t('molecularControlRulesPage.colActions')}</th>
                 </tr>
               </thead>
               <tbody>
-                {rules.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={3}>No control rules defined yet.</td></tr>)}
+                {rules.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={3}>{t('molecularControlRulesPage.emptyRules')}</td></tr>)}
                 {rules.map(rule => (
                   <tr key={rule.id} className="ps-conf-tr">
                     <td className="ps-conf-td">{molecularAssayTypes.find(t => t.id === rule.assayCode)?.name ?? rule.assayCode}</td>
                     <td className="ps-conf-td">
                       {rule.requiredControls.map((c, i) => (
-                        <div key={i}>{c.sampleType} — {c.positionMode === 'fixed' ? `fixed at ${c.fixedWellPosition}` : 'random position'}</div>
+                        <div key={i}>{c.sampleType} — {c.positionMode === 'fixed' ? t('molecularControlRulesPage.fixedAt', { position: c.fixedWellPosition }) : t('molecularControlRulesPage.randomPosition')}</div>
                       ))}
                     </td>
                     <td className="ps-conf-td">
-                      <button className="ps-btn-small ps-mr-8" onClick={() => startEdit(rule)}>Edit</button>
-                      <button className="ps-btn-small" onClick={() => handleDelete(rule.id)}>Delete</button>
+                      <button className="ps-btn-small ps-mr-8" onClick={() => startEdit(rule)}>{t('molecularControlRulesPage.edit')}</button>
+                      <button className="ps-btn-small" onClick={() => handleDelete(rule.id)}>{t('molecularControlRulesPage.delete')}</button>
                     </td>
                   </tr>
                 ))}
@@ -148,35 +150,35 @@ const MolecularControlRulesPage: React.FC = () => {
 
       {editingId !== null && (
         <div className="ps-panel-box">
-          <h3 className="ps-panel-title">{editingId === 'new' ? 'New Control Rule' : 'Edit Control Rule'}</h3>
-          <label className="ps-label" htmlFor="rule-assay-code">Assay</label>
+          <h3 className="ps-panel-title">{editingId === 'new' ? t('molecularControlRulesPage.newRuleTitle') : t('molecularControlRulesPage.editRuleTitle')}</h3>
+          <label className="ps-label" htmlFor="rule-assay-code">{t('molecularControlRulesPage.assayLabel')}</label>
           <select id="rule-assay-code" className="ps-input-dark ps-w-full ps-mb-16" value={draftAssayCode} onChange={e => setDraftAssayCode(e.target.value)}>
-            <option value="">— select assay —</option>
-            {molecularAssayTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <option value="">{t('molecularControlRulesPage.selectAssayOption')}</option>
+            {molecularAssayTypes.map(at => <option key={at.id} value={at.id}>{at.name}</option>)}
           </select>
 
-          <label className="ps-label">Required Controls</label>
+          <label className="ps-label">{t('molecularControlRulesPage.colRequiredControls')}</label>
           {draftControls.map((c, i) => (
             <div key={i} className="ps-control-row">
               <select className="ps-input-dark" value={c.sampleType} onChange={e => updateDraftControl(i, { sampleType: e.target.value as MolecularSampleType })}>
-                {CONTROL_TYPES_FOR_RULES.map(t => <option key={t} value={t}>{t}</option>)}
+                {CONTROL_TYPES_FOR_RULES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
               </select>
               <select className="ps-input-dark" value={c.positionMode} onChange={e => updateDraftControl(i, { positionMode: e.target.value as 'fixed' | 'random' })}>
-                <option value="fixed">Fixed position</option>
-                <option value="random">Random position</option>
+                <option value="fixed">{t('molecularControlRulesPage.fixedPositionOption')}</option>
+                <option value="random">{t('molecularControlRulesPage.randomPositionOption')}</option>
               </select>
               {c.positionMode === 'fixed' && (
                 <input className="ps-input-dark ps-input-well-position" value={c.fixedWellPosition ?? ''} onChange={e => updateDraftControl(i, { fixedWellPosition: e.target.value })} placeholder="A01" />
               )}
-              <button className="ps-btn-small" onClick={() => setDraftControls(prev => prev.filter((_, idx) => idx !== i))}>Remove</button>
+              <button className="ps-btn-small" onClick={() => setDraftControls(prev => prev.filter((_, idx) => idx !== i))}>{t('molecularControlRulesPage.removeButton')}</button>
             </div>
           ))}
-          <button className="ps-btn-small ps-mb-16" onClick={() => setDraftControls(prev => [...prev, emptyRequiredControl()])}>+ Add Required Control</button>
+          <button className="ps-btn-small ps-mb-16" onClick={() => setDraftControls(prev => [...prev, emptyRequiredControl()])}>{t('molecularControlRulesPage.addRequiredControl')}</button>
 
           {saveError && <div className="ps-error-text">{saveError}</div>}
           <div className="ps-flex-row-gap-8">
-            <button className="ps-conf-btn-secondary" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : 'Save Rule'}</button>
-            <button className="ps-btn-small" onClick={() => setEditingId(null)}>Cancel</button>
+            <button className="ps-conf-btn-secondary" disabled={saving} onClick={handleSave}>{saving ? t('molecularControlRulesPage.saving') : t('molecularControlRulesPage.saveRule')}</button>
+            <button className="ps-btn-small" onClick={() => setEditingId(null)}>{t('molecularControlRulesPage.cancel')}</button>
           </div>
         </div>
       )}

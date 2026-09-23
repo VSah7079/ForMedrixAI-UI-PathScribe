@@ -21,6 +21,7 @@
 // account — could point the dashboard at a phishing host.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   mockResearchFeedConfigService,
@@ -32,33 +33,36 @@ import type {
   ResearchFeedHealth,
 } from '@/services/research/IResearchFeedConfigService';
 
-const OUTCOME_LABELS: Record<string, string> = {
-  success: 'Succeeded',
-  empty: 'No matching article',
-  'rate-limited': 'Rate limited by NCBI',
-  error: 'Failed',
+const OUTCOME_LABEL_KEY: Record<string, string> = {
+  success: 'researchFeedSection.outcomeLabels.success',
+  empty: 'researchFeedSection.outcomeLabels.empty',
+  'rate-limited': 'researchFeedSection.outcomeLabels.rateLimited',
+  error: 'researchFeedSection.outcomeLabels.error',
 };
 
-function formatWhen(ts: number | null): string {
-  if (!ts) return 'Never';
+function formatWhen(ts: number | null, neverLabel: string): string {
+  if (!ts) return neverLabel;
   return new Date(ts).toLocaleString();
 }
 
 /** Surfaces a silently-dead feed. Everything here fails quietly by design,
- *  so without an explicit staleness read nobody would ever notice. */
-function stalenessNote(health: ResearchFeedHealth): string | null {
+ *  so without an explicit staleness read nobody would ever notice. Returns
+ *  a translation key (plus interpolation values) rather than a rendered
+ *  string, since this plain helper has no hook access to `t()`. */
+function stalenessStatus(health: ResearchFeedHealth): { key: string; values?: { days: number } } | null {
   if (!health.lastSuccessAt) {
     return health.lastAttemptAt
-      ? 'This feed has never successfully retrieved an article.'
+      ? { key: 'researchFeedSection.health.neverRetrieved' }
       : null;
   }
   const days = Math.floor((Date.now() - health.lastSuccessAt) / 86_400_000);
   return days >= 3
-    ? `No successful retrieval for ${days} days — the feed may be blocked or the endpoint may have moved.`
+    ? { key: 'researchFeedSection.health.staleWarning', values: { days } }
     : null;
 }
 
 const ResearchFeedSection: React.FC = () => {
+  const { t } = useTranslation();
   const defaults = mockResearchFeedConfigService.getDefaults();
   const [config, setConfig] = useState<ResearchFeedConfig>(defaults);
   const [health, setHealth] = useState<ResearchFeedHealth>(
@@ -83,19 +87,19 @@ const ResearchFeedSection: React.FC = () => {
 
   const handleSave = async () => {
     if (!isAllowedUrl(config.apiBaseUrl)) {
-      setError(`API endpoint must be https and on an approved host (${ALLOWED_HOSTS.join(', ')}).`);
+      setError(t('researchFeedSection.errors.apiEndpointInvalid', { hosts: ALLOWED_HOSTS.join(', ') }));
       return;
     }
     if (!config.articleUrlTemplate.includes('{PMID}')) {
-      setError('Article URL must contain {PMID}, or every article would link to the same page.');
+      setError(t('researchFeedSection.errors.articleUrlMissingPmid'));
       return;
     }
     if (!isAllowedUrl(config.articleUrlTemplate)) {
-      setError(`Article URL must be https and on an approved host (${ALLOWED_HOSTS.join(', ')}).`);
+      setError(t('researchFeedSection.errors.articleUrlInvalid', { hosts: ALLOWED_HOSTS.join(', ') }));
       return;
     }
     if (!config.query.trim()) {
-      setError('Search query cannot be empty.');
+      setError(t('researchFeedSection.errors.queryEmpty'));
       return;
     }
     const stored = await mockResearchFeedConfigService.saveConfig(config);
@@ -111,40 +115,37 @@ const ResearchFeedSection: React.FC = () => {
     setError(null);
   };
 
-  if (loading) return <div className="ps-rf-loading">Loading…</div>;
+  if (loading) return <div className="ps-rf-loading">{t('researchFeedSection.loading')}</div>;
 
-  const staleness = stalenessNote(health);
+  const staleness = stalenessStatus(health);
+  const outcomeKey = health.lastOutcome ? OUTCOME_LABEL_KEY[health.lastOutcome] : undefined;
+  const outcomeText = health.lastOutcome ? (outcomeKey ? t(outcomeKey) : health.lastOutcome) : null;
 
   return (
     <div className="ps-rf">
       <header className="ps-rf-header">
-        <h1 className="ps-rf-title">Research Feed</h1>
-        <p className="ps-rf-subtitle">
-          The literature headline shown on the Home dashboard. Articles come
-          straight from NCBI PubMed, sorted by publication date — this is an
-          automated feed, not a curated or reviewed selection, and should never
-          be presented to clinicians as guidance.
-        </p>
+        <h1 className="ps-rf-title">{t('researchFeedSection.title')}</h1>
+        <p className="ps-rf-subtitle">{t('researchFeedSection.subtitle')}</p>
       </header>
 
       {/* Health — the whole reason this panel is worth opening */}
       <section className="ps-rf-health">
         <div className="ps-rf-health-row">
-          <span className="ps-rf-health-label">Last successful retrieval</span>
-          <span className="ps-rf-health-value">{formatWhen(health.lastSuccessAt)}</span>
+          <span className="ps-rf-health-label">{t('researchFeedSection.health.lastSuccess')}</span>
+          <span className="ps-rf-health-value">{formatWhen(health.lastSuccessAt, t('researchFeedSection.health.never'))}</span>
         </div>
         <div className="ps-rf-health-row">
-          <span className="ps-rf-health-label">Last attempt</span>
+          <span className="ps-rf-health-label">{t('researchFeedSection.health.lastAttempt')}</span>
           <span className="ps-rf-health-value">
-            {formatWhen(health.lastAttemptAt)}
-            {health.lastOutcome && ` — ${OUTCOME_LABELS[health.lastOutcome] ?? health.lastOutcome}`}
+            {formatWhen(health.lastAttemptAt, t('researchFeedSection.health.never'))}
+            {outcomeText && ` — ${outcomeText}`}
           </span>
         </div>
-        {staleness && <div className="ps-rf-health-warning">{staleness}</div>}
+        {staleness && <div className="ps-rf-health-warning">{t(staleness.key, staleness.values)}</div>}
       </section>
 
       <div className="ps-rf-field ps-rf-field--inline">
-        <label className="ps-conf-label" htmlFor="rf-enabled">Show the feed on the dashboard</label>
+        <label className="ps-conf-label" htmlFor="rf-enabled">{t('researchFeedSection.fields.enabledLabel')}</label>
         <input
           id="rf-enabled"
           type="checkbox"
@@ -154,7 +155,7 @@ const ResearchFeedSection: React.FC = () => {
       </div>
 
       <div className="ps-rf-field">
-        <label className="ps-conf-label" htmlFor="rf-query">Search query</label>
+        <label className="ps-conf-label" htmlFor="rf-query">{t('researchFeedSection.fields.queryLabel')}</label>
         <textarea
           id="rf-query"
           className="ps-conf-input ps-rf-textarea"
@@ -162,16 +163,11 @@ const ResearchFeedSection: React.FC = () => {
           value={config.query}
           onChange={(e) => update('query', e.target.value)}
         />
-        <p className="ps-rf-hint">
-          PubMed search syntax. The exclusions for retracted publications,
-          preprints, editorials, comments and letters are the only quality
-          filter this feed has — removing them means the dashboard can surface
-          a retracted paper.
-        </p>
+        <p className="ps-rf-hint">{t('researchFeedSection.fields.queryHint')}</p>
       </div>
 
       <div className="ps-rf-field">
-        <label className="ps-conf-label" htmlFor="rf-article">Article URL</label>
+        <label className="ps-conf-label" htmlFor="rf-article">{t('researchFeedSection.fields.articleUrlLabel')}</label>
         <input
           id="rf-article"
           className="ps-conf-input ps-rf-input"
@@ -179,34 +175,30 @@ const ResearchFeedSection: React.FC = () => {
           onChange={(e) => update('articleUrlTemplate', e.target.value)}
         />
         <p className="ps-rf-hint">
-          Where the headline links. Must contain <code>{'{PMID}'}</code>.
-          Approved hosts: {ALLOWED_HOSTS.join(', ')}.
+          <Trans i18nKey="researchFeedSection.fields.articleUrlHint" values={{ hosts: ALLOWED_HOSTS.join(', ') }} components={{ code: <code /> }} />
         </p>
       </div>
 
       <div className="ps-rf-field">
-        <label className="ps-conf-label" htmlFor="rf-api">API endpoint</label>
+        <label className="ps-conf-label" htmlFor="rf-api">{t('researchFeedSection.fields.apiEndpointLabel')}</label>
         <input
           id="rf-api"
           className="ps-conf-input ps-rf-input"
           value={config.apiBaseUrl}
           onChange={(e) => update('apiBaseUrl', e.target.value)}
         />
-        <p className="ps-rf-hint">
-          NCBI eUtils base URL, no trailing slash. Change this only if NCBI
-          moves the service.
-        </p>
+        <p className="ps-rf-hint">{t('researchFeedSection.fields.apiEndpointHint')}</p>
       </div>
 
       {error && <div className="ps-rf-error" role="alert">{error}</div>}
-      {saved && <div className="ps-rf-saved" role="status">Saved. Existing cached articles refresh within 24 hours.</div>}
+      {saved && <div className="ps-rf-saved" role="status">{t('researchFeedSection.saved')}</div>}
 
       <div className="ps-rf-actions">
         <button type="button" className="ps-conf-btn-secondary" onClick={handleReset}>
-          Restore defaults
+          {t('researchFeedSection.actions.restoreDefaults')}
         </button>
         <button type="button" className="ps-conf-btn-primary" onClick={handleSave}>
-          Save
+          {t('researchFeedSection.actions.save')}
         </button>
       </div>
     </div>

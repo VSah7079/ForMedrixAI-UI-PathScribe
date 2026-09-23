@@ -20,14 +20,22 @@
 // reasonably reviewed later via the QA dashboard.
 //
 // Matches this folder's own established banner pattern
-// (ReleaseBufferBanner.tsx/InformalReviewBanner.tsx) — a self-contained
-// component, inline styles (no dedicated banner CSS class family exists
-// for these one-offs, confirmed directly against pathscribe.css, same
-// as those two files' own header comments already establish).
+// (ReleaseBufferBanner.tsx/InformalReviewBanner.tsx). Inline styles
+// promoted to a new .ps-revision-feedback-banner class as part of the
+// i18n sweep's own CSS-cleanup pass, same as InformalReviewBanner.tsx
+// before it.
+//
+// i18n note: `record.attendingName` and `record.attendingFeedback`
+// (a pathologist's own free-text feedback) are real case data, not
+// UI chrome, so they stay untranslated; the "the attending" fallback
+// text (shown only when no name is on record) is this file's own UI
+// copy and is translated.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { countersignService } from '@/services';
 import type { CountersignRecord } from '@/types/case/CountersignRecord';
+import '@/pathscribe.css';
 
 interface RevisionFeedbackBannerProps {
   caseId?: string;
@@ -39,6 +47,7 @@ interface RevisionFeedbackBannerProps {
 }
 
 export const RevisionFeedbackBanner: React.FC<RevisionFeedbackBannerProps> = ({ caseId, isReturned }) => {
+  const { t } = useTranslation();
   const [record, setRecord] = useState<CountersignRecord | null>(null);
 
   useEffect(() => {
@@ -52,18 +61,16 @@ export const RevisionFeedbackBanner: React.FC<RevisionFeedbackBannerProps> = ({ 
   if (!isReturned || !record) return null;
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: '4px',
-      padding: '10px 14px', margin: '0 0 12px', borderRadius: '6px',
-      background: 'rgba(120,53,15,0.10)', border: '1px solid rgba(120,53,15,0.35)',
-      color: '#e2e8f0', fontSize: '13px',
-    }}>
+    <div className="ps-revision-feedback-banner">
       <span>
-        ↩️ <strong>Returned for Revision</strong> by {record.attendingName ?? 'the attending'} —
-        please address the feedback below and re-submit.
+        ↩️ <Trans
+          i18nKey="revisionFeedbackBanner.returnedMessage"
+          values={{ name: record.attendingName ?? t('revisionFeedbackBanner.theAttendingFallback') }}
+          components={{ strong: <strong /> }}
+        />
       </span>
       {record.attendingFeedback && (
-        <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>
+        <span className="ps-revision-feedback-quote">
           "{record.attendingFeedback}"
         </span>
       )}

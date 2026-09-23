@@ -4,9 +4,23 @@
 // gap — same real 2-tier cascade UI pattern as
 // CytologyRegistrySettingsSection.tsx, for the genuinely distinct real
 // cancer-registry class (services/cancerRegistry/).
+//
+// i18n sweep (batch 40): registry display labels resolved via
+// REGISTRY_LABEL_KEY + t() — the same "data key stays English, display
+// label is translated" shape used for AIContributionTab.tsx's
+// SUBSPECIALTY_LABELS (batch 34) and FontsSection.tsx's
+// CATEGORY_LABEL_KEY (batch 37). Each registry's real acronym (NAACCR,
+// CPAC, COSD, INCa, ADT/GEKID, AIHW, KCCR) is a proper noun and stays
+// as-is inside the translated string, matching the "exported/persisted
+// data stays English" convention's treatment of real names elsewhere
+// (e.g. font names in FontsSection.tsx) — only the surrounding country
+// name and the "None" description are actually translated per locale.
+// No inline CSS in this file — it already uses the established
+// `.ps-conf-*` class family throughout.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCancerRegistrySettingsService } from '../../../services/cancerRegistry/mockCancerRegistrySettingsService';
 import { mockFacilityCancerRegistryOverrideService } from '../../../services/cancerRegistry/mockFacilityCancerRegistryOverrideService';
@@ -15,19 +29,25 @@ import type { CancerRegistryId } from '../../../services/cancerRegistry/ICancerR
 import type { FacilityCancerRegistryOverride } from '../../../services/cancerRegistry/IFacilityCancerRegistryOverrideService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 
-const REGISTRIES: { id: CancerRegistryId; label: string }[] = [
-  { id: 'none', label: 'None — no centralized registry obligation' },
-  { id: 'naaccr_us', label: 'NAACCR (United States)' },
-  { id: 'cpac_canada', label: 'CPAC (Canada)' },
-  { id: 'cosd_uk', label: 'COSD (United Kingdom)' },
-  { id: 'inca_france', label: 'INCa (France)' },
-  { id: 'adt_gekid_germany', label: 'ADT/GEKID (Germany)' },
-  { id: 'aihw_australia', label: 'AIHW (Australia)' },
-  { id: 'nz_cancer_registry', label: 'NZ Cancer Registry (New Zealand)' },
-  { id: 'kccr_korea', label: 'KCCR (Korea)' },
+const REGISTRIES: CancerRegistryId[] = [
+  'none', 'naaccr_us', 'cpac_canada', 'cosd_uk', 'inca_france',
+  'adt_gekid_germany', 'aihw_australia', 'nz_cancer_registry', 'kccr_korea',
 ];
 
+const REGISTRY_LABEL_KEY: Record<CancerRegistryId, string> = {
+  none:               'cancerRegistrySection.registries.none',
+  naaccr_us:          'cancerRegistrySection.registries.naaccrUs',
+  cpac_canada:        'cancerRegistrySection.registries.cpacCanada',
+  cosd_uk:            'cancerRegistrySection.registries.cosdUk',
+  inca_france:        'cancerRegistrySection.registries.incaFrance',
+  adt_gekid_germany:  'cancerRegistrySection.registries.adtGekidGermany',
+  aihw_australia:     'cancerRegistrySection.registries.aihwAustralia',
+  nz_cancer_registry: 'cancerRegistrySection.registries.nzCancerRegistry',
+  kccr_korea:         'cancerRegistrySection.registries.kccrKorea',
+};
+
 const CancerRegistrySettingsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [enterpriseDraft, setEnterpriseDraft] = useState<CancerRegistryId>('none');
   const [savedEnterprise, setSavedEnterprise] = useState<CancerRegistryId>('none');
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -56,35 +76,31 @@ const CancerRegistrySettingsSection: React.FC = () => {
   };
 
   const facilityName = (id: string) => facilities.find(f => f.id === id)?.name ?? id;
-  const registryLabel = (id: CancerRegistryId) => REGISTRIES.find(r => r.id === id)?.label ?? id;
+  const registryLabel = (id: CancerRegistryId) => t(REGISTRY_LABEL_KEY[id] ?? id);
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Cancer Registry Reporting</h2>
+      <h2 className="ps-conf-section-title">{t('cancerRegistrySection.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        Which real, national central cancer registry a facility's confirmed surgical pathology diagnoses are
-        reported to. Genuinely separate from Cytology Registry Reporting — a cytology screening result never
-        triggers a cancer-registry report, only a confirmed surgical pathology sign-out does. Two-tier cascade —
-        Enterprise default, with an optional Facility override for labs reporting to a different real
-        jurisdiction's own registry.
+        {t('cancerRegistrySection.subtitle')}
       </p>
 
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Enterprise Default</div>
+        <div className="ps-conf-card-title">{t('cancerRegistrySection.enterpriseCard.title')}</div>
         <div className="ps-conf-row-actions">
           <select className="ps-conf-select" value={enterpriseDraft} onChange={e => setEnterpriseDraft(e.target.value as CancerRegistryId)}>
-            {REGISTRIES.map(r => (<option key={r.id} value={r.id}>{r.label}</option>))}
+            {REGISTRIES.map(id => (<option key={id} value={id}>{t(REGISTRY_LABEL_KEY[id])}</option>))}
           </select>
-          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>Save</button>
+          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>{t('cancerRegistrySection.save')}</button>
         </div>
-        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">Unsaved change</div>}
+        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">{t('cancerRegistrySection.unsavedChange')}</div>}
       </div>
 
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">Facility Overrides</div>
+          <div className="ps-conf-card-title">{t('cancerRegistrySection.facilityCard.title')}</div>
           {!addingFacility && (
-            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', registryId: enterpriseDraft })}>+ Add Override</button>
+            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', registryId: enterpriseDraft })}>{t('cancerRegistrySection.addOverride')}</button>
           )}
         </div>
 
@@ -93,12 +109,12 @@ const CancerRegistrySettingsSection: React.FC = () => {
             <span className="ps-conf-value">{facilityName(o.facilityId)}</span>
             <div className="ps-conf-row-actions">
               <span className="ps-conf-value">{o.overrides.registryId ? registryLabel(o.overrides.registryId) : '—'}</span>
-              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCancerRegistryOverrideService.remove(o.facilityId); refresh(); }}>Remove</button>
+              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCancerRegistryOverrideService.remove(o.facilityId); refresh(); }}>{t('cancerRegistrySection.remove')}</button>
             </div>
           </div>
         ))}
         {facilityOverrides.length === 0 && !addingFacility && (
-          <div className="ps-conf-empty-row">No facility overrides — every facility uses the Enterprise default.</div>
+          <div className="ps-conf-empty-row">{t('cancerRegistrySection.noOverrides')}</div>
         )}
 
         {addingFacility && (
@@ -108,13 +124,13 @@ const CancerRegistrySettingsSection: React.FC = () => {
             </select>
             <div className="ps-conf-row-actions">
               <select className="ps-conf-select" value={addingFacility.registryId} onChange={e => setAddingFacility({ ...addingFacility, registryId: e.target.value as CancerRegistryId })}>
-                {REGISTRIES.map(r => (<option key={r.id} value={r.id}>{r.label}</option>))}
+                {REGISTRIES.map(id => (<option key={id} value={id}>{t(REGISTRY_LABEL_KEY[id])}</option>))}
               </select>
               <button className="ps-conf-btn-primary" onClick={async () => {
                 await mockFacilityCancerRegistryOverrideService.create(addingFacility.facilityId, { registryId: addingFacility.registryId });
                 setAddingFacility(null); refresh();
-              }}>Save</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>Cancel</button>
+              }}>{t('cancerRegistrySection.save')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>{t('cancerRegistrySection.cancel')}</button>
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -233,7 +234,14 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
+const STATUS_LABEL_KEY: Record<string, string> = {
+  'in-progress': 'caseSearchBar.status.inProgress', 'pending': 'caseSearchBar.status.pending',
+  'finalized': 'caseSearchBar.status.finalized', 'signed-out': 'caseSearchBar.status.signedOut',
+  'pool': 'caseSearchBar.status.pool',
+};
+
 const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
+  const { t } = useTranslation();
   const [caseNumber, setCaseNumber] = useState('');
   const [scanFlash,  setScanFlash]  = useState(false);
   const [searching,  setSearching]  = useState(false);
@@ -385,12 +393,6 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
   const iconSize = compact ? 14 : 18;
 
-  const statusLabel: Record<string, string> = {
-    'in-progress': 'In Progress', 'pending': 'Pending',
-    'finalized': 'Finalized', 'signed-out': 'Signed Out',
-    'pool': 'Pool',
-  };
-
   return (
     <div className="ps-search-wrap">
       <input
@@ -399,8 +401,8 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
         value={caseNumber}
         onChange={e => { setCaseNumber(e.target.value.toUpperCase()); setHits([]); setNotFound(false); }}
         onKeyDown={handleKeyDown}
-        placeholder={compact ? 'Scan or enter ID…' : 'Scan or enter any case identifier…'}
-        aria-label="Search or scan case number"
+        placeholder={compact ? t('caseSearchBar.placeholderCompact') : t('caseSearchBar.placeholder')}
+        aria-label={t('caseSearchBar.ariaLabel')}
         className={inputClass}
       />
 
@@ -425,14 +427,14 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       {/* Scan success indicator */}
       {scanFlash && (
         <div className={`ps-search-scanned${compact ? ' ps-search-scanned--compact' : ''}`}>
-          ✓ Scanned
+          {'✓ '}{t('caseSearchBar.scanned')}
         </div>
       )}
 
       {/* Not found — inline under input */}
       {notFound && (
         <div className="ps-search-not-found">
-          No case found for &ldquo;{caseNumber}&rdquo;
+          {t('caseSearchBar.noCaseFound', { query: caseNumber })}
         </div>
       )}
 
@@ -443,7 +445,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
           unresponsive app. */}
       {fetchingFromLis && (
         <div className="ps-search-fetching-lis">
-          Fetching Accession {fetchingFromLis} from LIS…
+          {t('caseSearchBar.fetchingFromLis', { accession: fetchingFromLis })}
         </div>
       )}
 
@@ -456,20 +458,20 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
             <div className="ps-casebar-modal__header">
               <div className="ps-casebar-modal__title">
                 {searching
-                  ? 'Searching…'
-                  : `${hits.length} case${hits.length !== 1 ? 's' : ''} match “${caseNumber}”`}
+                  ? t('caseSearchBar.searching')
+                  : t('caseSearchBar.matchCount', { count: hits.length, query: caseNumber })}
               </div>
               <button className="ps-casebar-modal__close" onClick={() => setHits([])}>✕</button>
             </div>
 
             {/* Column headers */}
             <div className="ps-casebar-dropdown__col-headers">
-              <span className="ps-casebar-dropdown__col-header">Accession</span>
-              <span className="ps-casebar-dropdown__col-header">Patient</span>
-              <span className="ps-casebar-dropdown__col-header">DOB · Sex</span>
-              <span className="ps-casebar-dropdown__col-header">Priority</span>
-              <span className="ps-casebar-dropdown__col-header">Status</span>
-              <span className="ps-casebar-dropdown__col-header">Facility</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.accession')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.patient')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.dobSex')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.priority')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.status')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.facility')}</span>
             </div>
 
             {/* Results */}
@@ -484,12 +486,12 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
               <div className="ps-casebar-dropdown__grid">
                 <span className="ps-casebar-dropdown__accession" data-phi="accession">{highlight(hit.accession, caseNumber)}</span>
                 <span className="ps-casebar-dropdown__patient" data-phi="name">{hit.patientName}</span>
-                <span className="ps-casebar-dropdown__dob">{hit.dob} · {hit.sex}</span>
+                <span className="ps-casebar-dropdown__dob" data-phi="true">{hit.dob} · {hit.sex}</span>
                 <span className={`ps-casebar-dropdown__priority${hit.priority === 'STAT' ? ' ps-casebar-dropdown__priority--stat' : ''}`}>
                   {hit.priority !== '—' ? hit.priority : ''}
                 </span>
                 <span className={`ps-casebar-dropdown__status ps-casebar-dropdown__status--${hit.status.replace(/\s+/g, '-').toLowerCase()}`}>
-                  {statusLabel[hit.status] ?? hit.status}
+                  {STATUS_LABEL_KEY[hit.status] ? t(STATUS_LABEL_KEY[hit.status]) : hit.status}
                 </span>
                 <span className="ps-casebar-dropdown__client">{hit.facilityName}</span>
               </div>
@@ -497,7 +499,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
               {(hit.specimenCount > 0 || hit.flags.length > 0 || (hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, ''))) && (
                 <div className="ps-casebar-dropdown__sub">
                   <span className="ps-casebar-dropdown__specimens">
-                    {hit.specimenCount} specimen{hit.specimenCount !== 1 ? 's' : ''}
+                    {t('caseSearchBar.specimenCount', { count: hit.specimenCount })}
                   </span>
                   {hit.flags.map((f, i) => (
                     <span key={i} className="ps-casebar-dropdown__flag-chip"
@@ -507,7 +509,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
                   ))}
                   {hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, '') && (
                     <span className="ps-casebar-dropdown__match-hint">
-                      matched: <span className="ps-casebar-dropdown__match-value">{highlight(hit.matchedValue, caseNumber)}</span>
+                      {t('caseSearchBar.matchedPrefix')} <span className="ps-casebar-dropdown__match-value">{highlight(hit.matchedValue, caseNumber)}</span>
                     </span>
                   )}
                 </div>

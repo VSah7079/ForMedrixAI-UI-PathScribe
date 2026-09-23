@@ -22,8 +22,16 @@
 // with) already happened in resolveDecantCassetteColor.ts, before
 // this component ever renders.
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// i18n note: `resolvedColor.displayName`/`c.displayName` and
+// `resolvedColor.hexCode` are real, admin-configured dictionary data,
+// not UI chrome. "Cassette Color" and the "— Select a color —"
+// placeholder reuse `cassetteRoutingRulesSection.modal
+// .cassetteColorLabel`/`.selectColorPlaceholder` — exact-text matches
+// from the sibling cassette-color routing screen.
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CassetteColorDefinition } from '@/services/cassetteColors/ICassetteColorService';
 
 interface CassetteColorControlProps {
@@ -34,12 +42,13 @@ interface CassetteColorControlProps {
 }
 
 const CassetteColorControl: React.FC<CassetteColorControlProps> = ({ colorId, overridden, colors, onChange }) => {
+  const { t } = useTranslation();
   const resolvedColor = colors.find(c => c.id === colorId);
   const activeColors = colors.filter(c => c.active);
 
   return (
     <div className="ps-cassette-color-control">
-      <label className="ps-conf-label">Cassette Color</label>
+      <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.cassetteColorLabel')}</label>
       <div className="ps-cassette-color-row">
         {resolvedColor ? (
           <>
@@ -50,17 +59,17 @@ const CassetteColorControl: React.FC<CassetteColorControlProps> = ({ colorId, ov
                 fixed styling choice. */}
             <span className="ps-cassette-color-swatch" style={{ background: resolvedColor.hexCode }} />
             <span className="ps-cassette-color-name">{resolvedColor.displayName}</span>
-            {overridden && <span className="ps-cassette-color-overridden-badge">Overridden</span>}
+            {overridden && <span className="ps-cassette-color-overridden-badge">{t('cassetteColorControl.overriddenBadge')}</span>}
           </>
         ) : (
-          <span className="ps-cassette-color-unresolved">Not yet resolved</span>
+          <span className="ps-cassette-color-unresolved">{t('cassetteColorControl.notYetResolved')}</span>
         )}
         <select
           className="ps-conf-select"
           value={colorId ?? ''}
           onChange={e => onChange(e.target.value)}
         >
-          <option value="">— Select a color —</option>
+          <option value="">{t('cassetteRoutingRulesSection.modal.selectColorPlaceholder')}</option>
           {activeColors.map(c => <option key={c.id} value={c.id}>{c.displayName}</option>)}
         </select>
       </div>

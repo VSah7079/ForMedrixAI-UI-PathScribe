@@ -12,15 +12,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { assetLocationDictionaryService } from '../../../services';
 import { caseRouter } from '../../../services/cases/CaseRouter';
 import type { AssetLocationEntry, AssetLocationType } from '@/types/assetLocation/AssetLocationEntry';
 import { resolveMortuaryStorageOccupancy } from '@/services/autopsy/resolveMortuaryStorageOccupancy';
 
-const LOCATION_TYPE_LABEL: Record<AssetLocationType, string> = {
-  building: 'Building', room: 'Room', storage_unit: 'Storage Unit', storage_slot: 'Storage Slot',
-  workstation: 'Workstation', archive_shelf: 'Archive Shelf', other: 'Other',
+// Real, persisted enum values stay as the option value/stored data;
+// only the on-screen label is translated — same `{ value, labelKey }`
+// split established for every other real enum lookup table this sweep
+// has already converted.
+const LOCATION_TYPE_LABEL_KEY: Record<AssetLocationType, string> = {
+  building: 'assetLocationDictionarySection.locationTypes.building',
+  room: 'assetLocationDictionarySection.locationTypes.room',
+  storage_unit: 'assetLocationDictionarySection.locationTypes.storageUnit',
+  storage_slot: 'assetLocationDictionarySection.locationTypes.storageSlot',
+  workstation: 'assetLocationDictionarySection.locationTypes.workstation',
+  archive_shelf: 'assetLocationDictionarySection.locationTypes.archiveShelf',
+  other: 'assetLocationDictionarySection.locationTypes.other',
 };
 
 type Draft = Omit<AssetLocationEntry, 'id' | 'status' | 'autoCreated' | 'autoCreatedAt' | 'autoCreatedNote' | 'normalizedLabel' | 'synonyms' | 'version' | 'updatedBy' | 'updatedAt'> & { active: boolean };
@@ -36,6 +46,7 @@ interface EditorModalProps {
 }
 
 const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, allLocations, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     entry ? { name: entry.name, locationType: entry.locationType, parentLocationId: entry.parentLocationId, description: entry.description ?? '', active: entry.status !== 'Inactive' } : emptyDraft(),
   );
@@ -45,47 +56,47 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, allLocations, on
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'add' ? 'Add Asset Location' : `Edit — ${entry?.name}`}</div>
+        <div className="ps-ms-header">{mode === 'add' ? t('assetLocationDictionarySection.modal.addTitle') : t('assetLocationDictionarySection.modal.editTitle', { name: entry?.name })}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-            <input className="ps-conf-input" value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Mortuary Cooler 1 — Tray A" />
+            <label className="ps-conf-label">{t('assetLocationDictionarySection.modal.nameLabel')} <span className="ps-conf-required">*</span></label>
+            <input className="ps-conf-input" value={draft.name} onChange={e => set('name', e.target.value)} placeholder={t('assetLocationDictionarySection.modal.namePlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Location Type</label>
+            <label className="ps-conf-label">{t('assetLocationDictionarySection.modal.locationTypeLabel')}</label>
             <select className="ps-conf-select" value={draft.locationType} onChange={e => set('locationType', e.target.value as AssetLocationType)}>
-              {(Object.keys(LOCATION_TYPE_LABEL) as AssetLocationType[]).map(t => (
-                <option key={t} value={t}>{LOCATION_TYPE_LABEL[t]}</option>
+              {(Object.keys(LOCATION_TYPE_LABEL_KEY) as AssetLocationType[]).map(lt => (
+                <option key={lt} value={lt}>{t(LOCATION_TYPE_LABEL_KEY[lt])}</option>
               ))}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Parent Location (optional)</label>
+            <label className="ps-conf-label">{t('assetLocationDictionarySection.modal.parentLocationLabel')}</label>
             <select className="ps-conf-select" value={draft.parentLocationId ?? ''} onChange={e => set('parentLocationId', e.target.value || undefined)}>
-              <option value="">— none —</option>
+              <option value="">{t('assetLocationDictionarySection.modal.noneOption')}</option>
               {allLocations.filter(l => l.id !== entry?.id).map(l => (
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
+            <label className="ps-conf-label">{t('assetLocationDictionarySection.modal.descriptionLabel')}</label>
             <textarea className="ps-conf-input ps-conf-textarea" value={draft.description ?? ''} onChange={e => set('description', e.target.value)} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('assetLocationDictionarySection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" disabled={!canSave} onClick={() => onSave(draft)}>
-            {mode === 'add' ? 'Add Location' : 'Save Changes'}
+            {mode === 'add' ? t('assetLocationDictionarySection.modal.addButton') : t('assetLocationDictionarySection.modal.saveChangesButton')}
           </button>
         </div>
       </div>
@@ -94,6 +105,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, allLocations, on
 };
 
 const AssetLocationDictionarySection: React.FC = () => {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState<AssetLocationEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -152,38 +164,50 @@ const AssetLocationDictionarySection: React.FC = () => {
     if (res.ok) setLocations(prev => prev.map(l => l.id === id ? res.data : l));
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading asset locations...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('assetLocationDictionarySection.loading')}</div>;
+
+  const dictionaryHeaders = [
+    t('assetLocationDictionarySection.table.headers.name'),
+    t('assetLocationDictionarySection.table.headers.type'),
+    t('assetLocationDictionarySection.table.headers.parent'),
+    t('assetLocationDictionarySection.table.headers.status'),
+    t('assetLocationDictionarySection.table.headers.actions'),
+  ];
+  const occupancyHeaders = [
+    t('assetLocationDictionarySection.occupancy.headers.storageSlot'),
+    t('assetLocationDictionarySection.occupancy.headers.status'),
+  ];
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Asset Location Dictionary</h3>
+          <h3 className="ps-conf-section-title">{t('assetLocationDictionarySection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            The governed reference list for physical/asset locations — mortuary storage, workstations, archive shelves — that MaterialLocation's own free-text entries are checked against.
+            {t('assetLocationDictionarySection.subtitle')}
           </p>
         </div>
         {tab === 'dictionary' && (
-          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Location</button>
+          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ {t('assetLocationDictionarySection.addButton')}</button>
         )}
       </div>
 
       <div className="ps-conf-form-row">
-        <button className={tab === 'dictionary' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'} onClick={() => setTab('dictionary')}>Dictionary</button>
-        <button className={tab === 'occupancy' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'} onClick={() => setTab('occupancy')}>Mortuary Storage Occupancy</button>
+        <button className={tab === 'dictionary' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'} onClick={() => setTab('dictionary')}>{t('assetLocationDictionarySection.tabs.dictionary')}</button>
+        <button className={tab === 'occupancy' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'} onClick={() => setTab('occupancy')}>{t('assetLocationDictionarySection.tabs.occupancy')}</button>
       </div>
 
       {tab === 'dictionary' && (
         <>
           <div className="ps-conf-form-row">
-            <input type="text" placeholder="Search by name or description..." value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
+            <input type="text" placeholder={t('assetLocationDictionarySection.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
                 <thead className="ps-conf-thead-sticky">
                   <tr>
-                    {['Name', 'Type', 'Parent', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}
+                    {dictionaryHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -193,27 +217,31 @@ const AssetLocationDictionarySection: React.FC = () => {
                         <div className="ps-conf-identity-name">{l.name}</div>
                         {l.description && <div className="ps-conf-identity-sub">{l.description}</div>}
                       </td>
-                      <td className="ps-conf-td">{LOCATION_TYPE_LABEL[l.locationType]}</td>
+                      <td className="ps-conf-td">{t(LOCATION_TYPE_LABEL_KEY[l.locationType])}</td>
                       <td className="ps-conf-td">{l.parentLocationId ? (locations.find(p => p.id === l.parentLocationId)?.name ?? '—') : '—'}</td>
                       <td className="ps-conf-td">
                         <div className="ps-conf-status-cell">
                           <span className={`ps-conf-status-dot ${l.status === 'Active' ? 'ps-conf-status-dot--active' : l.status === 'Unverified' ? 'ps-conf-status-dot--pending' : ''}`} />
-                          <span className={`ps-conf-status-text ${l.status === 'Active' ? 'ps-conf-status-text--active' : l.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>{l.status}</span>
+                          <span className={`ps-conf-status-text ${l.status === 'Active' ? 'ps-conf-status-text--active' : l.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>
+                            {l.status === 'Active' ? t('common.active') : l.status === 'Inactive' ? t('common.inactive') : t('assetLocationDictionarySection.table.statusUnverified')}
+                          </span>
                         </div>
                         {l.autoCreated && (
-                          <div className="ps-conf-auto-note" title={l.autoCreatedNote}>Auto-created{l.autoCreatedAt ? ` ${l.autoCreatedAt}` : ''}</div>
+                          <div className="ps-conf-auto-note" title={l.autoCreatedNote}>
+                            {l.autoCreatedAt ? t('assetLocationDictionarySection.table.autoCreatedWithDate', { date: l.autoCreatedAt }) : t('assetLocationDictionarySection.table.autoCreated')}
+                          </div>
                         )}
                       </td>
                       <td className="ps-conf-td">
                         <div className="ps-conf-row-actions">
-                          {l.status === 'Unverified' && <button className="ps-conf-btn-verify" onClick={() => handleVerify(l.id)}>Verify</button>}
-                          <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: l })}>Edit</button>
+                          {l.status === 'Unverified' && <button className="ps-conf-btn-verify" onClick={() => handleVerify(l.id)}>{t('assetLocationDictionarySection.verify')}</button>}
+                          <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: l })}>{t('common.edit')}</button>
                         </div>
                       </td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td className="ps-conf-empty-row" colSpan={5}>No asset locations match the current filter.</td></tr>
+                    <tr><td className="ps-conf-empty-row" colSpan={5}>{t('assetLocationDictionarySection.table.emptyState')}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -225,12 +253,12 @@ const AssetLocationDictionarySection: React.FC = () => {
       {tab === 'occupancy' && (
         <div className="ps-conf-table-wrap">
           {occupancyLoading ? (
-            <div className="ps-conf-loading">Loading occupancy...</div>
+            <div className="ps-conf-loading">{t('assetLocationDictionarySection.occupancy.loading')}</div>
           ) : (
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
                 <thead className="ps-conf-thead-sticky">
-                  <tr>{['Storage Slot', 'Status'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+                  <tr>{occupancyHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {occupancy.map(entry => (
@@ -238,13 +266,13 @@ const AssetLocationDictionarySection: React.FC = () => {
                       <td className="ps-conf-td">{entry.location.name}</td>
                       <td className="ps-conf-td">
                         <span className={`ps-conf-status-text ${entry.occupied ? 'ps-conf-status-text--pending' : 'ps-conf-status-text--active'}`}>
-                          {entry.occupied ? 'Occupied' : 'Available'}
+                          {entry.occupied ? t('assetLocationDictionarySection.occupancy.occupied') : t('assetLocationDictionarySection.occupancy.available')}
                         </span>
                       </td>
                     </tr>
                   ))}
                   {occupancy.length === 0 && (
-                    <tr><td className="ps-conf-empty-row" colSpan={2}>No real storage_slot locations defined yet — add one from the Dictionary tab.</td></tr>
+                    <tr><td className="ps-conf-empty-row" colSpan={2}>{t('assetLocationDictionarySection.occupancy.emptyState')}</td></tr>
                   )}
                 </tbody>
               </table>

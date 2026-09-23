@@ -21,12 +21,21 @@ import type { IntraoperativeEntry, MilestoneType } from '@/types/intraop/Intraop
  *  data. 'touch_prep_performed'/'touch_prep_skipped' both mean the
  *  same real next step (sectioning) — the board doesn't need to
  *  distinguish which path got there. */
-export function resolveCurrentWorkflowStep(milestones: { milestone: MilestoneType }[]): string {
+// Real i18n-sweep fix: this used to return the display string directly
+// ("Pathologist Review", "Sectioning", etc.), so the on-screen board row
+// (OrBoardRow.tsx) had no way to translate it — the real business-rule
+// output stays here as a stable key; OrBoardRow.tsx's own
+// WORKFLOW_STEP_LABEL_KEY map translates it for display, the same
+// label-key-map pattern already used elsewhere in this sweep (e.g.
+// WorklistPage's FILTER_LABEL_KEY).
+export type CurrentWorkflowStep = 'grossing' | 'touch_prep' | 'sectioning' | 'pathologist_review';
+
+export function resolveCurrentWorkflowStep(milestones: { milestone: MilestoneType }[]): CurrentWorkflowStep {
   const types = new Set(milestones.map(m => m.milestone));
-  if (types.has('frozen_section_cut')) return 'Pathologist Review';
-  if (types.has('touch_prep_performed') || types.has('touch_prep_skipped')) return 'Sectioning';
-  if (types.has('gross_logged')) return 'Touch Prep';
-  return 'Grossing';
+  if (types.has('frozen_section_cut')) return 'pathologist_review';
+  if (types.has('touch_prep_performed') || types.has('touch_prep_skipped')) return 'sectioning';
+  if (types.has('gross_logged')) return 'touch_prep';
+  return 'grossing';
 }
 
 export interface ActiveIntraopRequest {
@@ -69,7 +78,7 @@ export interface ActiveIntraopRequest {
   /** Real, per the same spec's State 1 ask — see
    *  resolveCurrentWorkflowStep's own doc comment. Meaningless (and
    *  not computed as anything specific) once diagnosisRendered. */
-  currentWorkflowStep: string;
+  currentWorkflowStep: CurrentWorkflowStep;
   /** Real, per the dismissal workflow — a row with diagnosisRendered
    *  true and dismissed false is State 2 (Completed, awaiting
    *  dismissal); dismissed true means it has already left the active

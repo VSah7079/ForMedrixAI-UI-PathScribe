@@ -1,5 +1,18 @@
 // src/components/TemplateBuilder/TemplateCanvas.tsx
+//
+// i18n (file-by-file sweep):
+//   This file already had a full ps-tc-* CSS class family from earlier
+//   work, so this batch is i18n-only — no CSS changes. `repeat-group`'s
+//   `↺ {iterateOver}` chip and `expression-value`'s template-snippet chip
+//   both surface raw internal schema identifiers/expression syntax
+//   (iterateOver values, {{...}} template content) and are left
+//   untranslated, same "internal schema/data-key identifiers stay
+//   English" convention used throughout this sweep. The "AI" and "IF"
+//   property badges are ordinary UI chrome (not fixed clinical
+//   vocabulary like SNOMED/CPT codes) and are translated, same posture
+//   as the AND/OR logic-operator labels translated in TemplateInspector.
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   type TemplateNode,
   type TemplateNodeType,
@@ -162,6 +175,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
   onDrop,
   onDelete,
 }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const [hovered, setHovered] = useState(false);
   const isSelected = selectedId === node.id;
@@ -179,35 +193,39 @@ const NodeCard: React.FC<NodeCardProps> = ({
   // so the designer can see why certain things appear in the preview.
   const propertyChips: string[] = [];
   if (node.type === 'header') {
-    if ((node as import('../../types/template').HeaderNode).showLogo)        propertyChips.push('Logo');
-    if ((node as import('../../types/template').HeaderNode).showAccession)   propertyChips.push('Accession #');
-    if ((node as import('../../types/template').HeaderNode).showPatientName) propertyChips.push('Patient');
+    if ((node as import('../../types/template').HeaderNode).showLogo)        propertyChips.push(t('templateCanvas.chip.logo'));
+    if ((node as import('../../types/template').HeaderNode).showAccession)   propertyChips.push(t('templateCanvas.chip.accessionHash'));
+    if ((node as import('../../types/template').HeaderNode).showPatientName) propertyChips.push(t('templateCanvas.chip.patient'));
     const scope = (node as import('../../types/template').HeaderNode).scope;
-    if (scope && scope !== 'all') propertyChips.push(scope === 'page1' ? 'Page 1 only' : 'Pages 2+');
+    if (scope && scope !== 'all') propertyChips.push(scope === 'page1' ? t('templateCanvas.chip.page1Only') : t('templateCanvas.chip.pages2Plus'));
   }
   if (node.type === 'footer') {
-    if ((node as import('../../types/template').FooterNode).showPageNumbers) propertyChips.push('Page #');
+    if ((node as import('../../types/template').FooterNode).showPageNumbers) propertyChips.push(t('templateCanvas.chip.pageHash'));
     const scope = (node as import('../../types/template').FooterNode).scope;
-    if (scope && scope !== 'all') propertyChips.push(scope === 'page1' ? 'Page 1 only' : 'Pages 2+');
+    if (scope && scope !== 'all') propertyChips.push(scope === 'page1' ? t('templateCanvas.chip.page1Only') : t('templateCanvas.chip.pages2Plus'));
   }
   if (node.type === 'repeat-group') {
+    // iterateOver is a real internal context-array identifier (schema
+    // syntax), left untranslated — see file header.
     propertyChips.push(`↺ ${(node as import('../../types/template').RepeatGroupNode).iterateOver}`);
   }
   if (node.type === 'expression-value') {
+    // Template content is the actual expression the author typed — real
+    // schema syntax, left untranslated — see file header.
     const tpl = (node as import('../../types/template').ExpressionValueNode).template;
     if (tpl) propertyChips.push(tpl.length > 22 ? tpl.slice(0, 22) + '…' : tpl);
   }
   if (node.type === 'page-break') {
-    propertyChips.push('Always');
+    propertyChips.push(t('templateCanvas.chip.always'));
   }
   if (node.type === 'column-layout') {
     const n = (node as import('../../types/template').ColumnLayoutNode).numColumns;
-    propertyChips.push(`${n} col · flows`);
+    propertyChips.push(t('templateCanvas.chip.colFlows', { n }));
   }
   // Column width chip — always show when not full-width
   const colSpan = node.colSpan ?? 12;
   if (colSpan < 12) {
-    propertyChips.push(`${colSpan}/12 col`);
+    propertyChips.push(t('templateCanvas.chip.colSpan', { colSpan }));
   }
 
   const showGrid  = useContext(GridContext);
@@ -313,14 +331,14 @@ const NodeCard: React.FC<NodeCardProps> = ({
         {/* AI badge — WCAG: #065f46 on #d1fae5 = 7.5:1 ✓ */}
         {hasBadge && (
           <span className="ps-tc-badge ps-tc-badge--ai">
-            AI
+            {t('templateCanvas.badge.ai')}
           </span>
         )}
 
         {/* showWhen badge — WCAG: #713f12 on #fef3c7 = 8.1:1 ✓ */}
         {node.showWhen && (
           <span className="ps-tc-badge ps-tc-badge--if">
-            IF
+            {t('templateCanvas.badge.if')}
           </span>
         )}
 
@@ -329,7 +347,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
           <button
             onClick={e => { e.stopPropagation(); onDelete(node.id); }}
             className="ps-tc-node-delete-btn"
-            title="Remove"
+            title={t('templateCanvas.removeTooltip')}
           >
             ✕
           </button>
@@ -339,7 +357,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
       {/* ── Resize handle — drag right edge to change column width ── */}
       <div
         onMouseDown={handleResizeMouseDown}
-        title="Drag to resize column width"
+        title={t('templateCanvas.resizeTooltip')}
         style={{ ['--node-color' as string]: color }}
         className={`ps-tc-resize-handle${hovered || isSelected ? ' ps-tc-resize-handle--visible' : ''}`}
       >
@@ -368,7 +386,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
                 </React.Fragment>
               ))}
               <span className="ps-tc-collayout-label">
-                {numCols} col · flows ↓→
+                {t('templateCanvas.collayout.indicator', { numCols })}
               </span>
             </div>
 
@@ -389,7 +407,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
               ))}
               {colNode.children.length === 0 && (
                 <div className="ps-tc-collayout-empty">
-                  Drop content here — flows across {numCols} columns in preview
+                  {t('templateCanvas.collayout.empty', { numCols })}
                 </div>
               )}
             </div>
@@ -432,7 +450,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
 
           {children.length === 0 && (
             <div className="ps-tc-grid-empty">
-              Drop components here
+              {t('templateCanvas.grid.empty')}
             </div>
           )}
         </div>
@@ -451,6 +469,7 @@ export const TemplateCanvas: React.FC<Props> = ({
   showGrid = false,
   partType,
 }) => {
+  const { t } = useTranslation();
   // isDragging is set on dragenter/dragleave on the canvas root so drop zones show
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0); // prevents flicker on child dragenter/dragleave
@@ -516,7 +535,7 @@ export const TemplateCanvas: React.FC<Props> = ({
 
         {/* Page 1 Header — only shown for header parts or generic templates */}
         {partType !== 'body' && partType !== 'footer' && (
-          <PageZone label="Page 1 — Header" hint="Drop a Header component here (first page only)"
+          <PageZone label={t('templateCanvas.zone.page1HeaderLabel')} hint={t('templateCanvas.zone.page1HeaderHint')}
             nodes={nodes.filter(n => n.type === 'header' && (n as import('../../types/template').HeaderNode).scope !== 'pages2plus')}
             zoneNodes={nodes} selectedId={selectedId} isDragging={isDragging}
             onSelect={onSelect} onDrop={handleDrop} onDelete={handleDelete}
@@ -526,7 +545,7 @@ export const TemplateCanvas: React.FC<Props> = ({
 
         {/* Pages 2+ Header — only shown for header parts or generic */}
         {partType !== 'body' && partType !== 'footer' && (
-          <PageZone label="Pages 2+ — Header" hint="Drop a Header component here (page 2 onwards)"
+          <PageZone label={t('templateCanvas.zone.pages2HeaderLabel')} hint={t('templateCanvas.zone.pages2HeaderHint')}
             nodes={nodes.filter(n => n.type === 'header' && (n as import('../../types/template').HeaderNode).scope === 'pages2plus')}
             zoneNodes={nodes} selectedId={selectedId} isDragging={isDragging}
             onSelect={onSelect} onDrop={handleDrop} onDelete={handleDelete}
@@ -549,10 +568,10 @@ export const TemplateCanvas: React.FC<Props> = ({
             <div className={`ps-tc-body-empty${isDragging ? ' ps-tc-body-empty--dragging' : ''}`}>
               <div className="ps-tc-body-empty-icon">⊞</div>
               <div className="ps-tc-body-empty-title">
-                {isDragging ? '↓ Release to drop here' : 'Drag components here'}
+                {isDragging ? t('templateCanvas.body.releaseHint') : t('templateCanvas.body.dragHint')}
               </div>
               {!isDragging && <div className="ps-tc-body-empty-sub">
-                Drag any item from the left panel. Drop it anywhere in this area.
+                {t('templateCanvas.body.dragSub')}
               </div>}
             </div>
           )}
@@ -592,7 +611,7 @@ export const TemplateCanvas: React.FC<Props> = ({
                         onDragOver={e => e.preventDefault()}
                         onDrop={e => { e.stopPropagation(); handleDrop(null, lastIdx + 1, e); }}
                       >
-                        {isDragging ? '↓ Drop here' : `${free}/12 free`}
+                        {isDragging ? t('templateCanvas.freeSlot.dropHere') : t('templateCanvas.freeSlot.free', { free })}
                       </div>
                     )}
                   </div>
@@ -611,7 +630,7 @@ export const TemplateCanvas: React.FC<Props> = ({
 
         {/* Pages 2+ Footer — only shown for footer parts or generic */}
         {partType !== 'body' && partType !== 'header' && (
-          <PageZone label="Pages 2+ — Footer" hint="Drop a Footer here (page 2 onwards)"
+          <PageZone label={t('templateCanvas.zone.pages2FooterLabel')} hint={t('templateCanvas.zone.pages2FooterHint')}
             nodes={nodes.filter(n => n.type === 'footer' && (n as import('../../types/template').FooterNode).scope === 'pages2plus')}
             zoneNodes={nodes} selectedId={selectedId} isDragging={isDragging}
             onSelect={onSelect} onDrop={handleDrop} onDelete={handleDelete}
@@ -622,7 +641,7 @@ export const TemplateCanvas: React.FC<Props> = ({
 
         {/* Page 1 Footer — only shown for footer parts or generic */}
         {partType !== 'body' && partType !== 'header' && (
-          <PageZone label="Page 1 — Footer" hint="Drop a Footer here (first page only)"
+          <PageZone label={t('templateCanvas.zone.page1FooterLabel')} hint={t('templateCanvas.zone.page1FooterHint')}
             nodes={nodes.filter(n => n.type === 'footer' && (n as import('../../types/template').FooterNode).scope !== 'pages2plus')}
             zoneNodes={nodes} selectedId={selectedId} isDragging={isDragging}
             onSelect={onSelect} onDrop={handleDrop} onDelete={handleDelete}
@@ -667,6 +686,7 @@ const PageZone: React.FC<PageZoneProps> = ({
   label, hint, nodes, zoneNodes: _zoneNodes, selectedId, isDragging,
   onSelect, onDrop, onDelete, zoneVariant, insertOffset,
 }) => {
+  const { t } = useTranslation();
   const [zoneOver, setZoneOver] = useState(false);
   const isEmpty = nodes.length === 0;
 
@@ -686,14 +706,14 @@ const PageZone: React.FC<PageZoneProps> = ({
         {/* Surface active toggle properties from the first header/footer node */}
         {nodes[0] && nodes[0].type === 'header' && (
           <div className="ps-tc-zone-chips">
-            {(nodes[0] as import('../../types/template').HeaderNode).showLogo        && <ZoneChip>Logo</ZoneChip>}
-            {(nodes[0] as import('../../types/template').HeaderNode).showAccession   && <ZoneChip>Accession #</ZoneChip>}
-            {(nodes[0] as import('../../types/template').HeaderNode).showPatientName && <ZoneChip>Patient name</ZoneChip>}
+            {(nodes[0] as import('../../types/template').HeaderNode).showLogo        && <ZoneChip>{t('templateCanvas.chip.logo')}</ZoneChip>}
+            {(nodes[0] as import('../../types/template').HeaderNode).showAccession   && <ZoneChip>{t('templateCanvas.chip.accessionHash')}</ZoneChip>}
+            {(nodes[0] as import('../../types/template').HeaderNode).showPatientName && <ZoneChip>{t('templateCanvas.zoneChip.patientName')}</ZoneChip>}
           </div>
         )}
         {nodes[0] && nodes[0].type === 'footer' && (
           <div className="ps-tc-zone-chips">
-            {(nodes[0] as import('../../types/template').FooterNode).showPageNumbers && <ZoneChip>Page numbers</ZoneChip>}
+            {(nodes[0] as import('../../types/template').FooterNode).showPageNumbers && <ZoneChip>{t('templateCanvas.zoneChip.pageNumbers')}</ZoneChip>}
           </div>
         )}
       </div>

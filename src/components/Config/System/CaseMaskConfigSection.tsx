@@ -33,6 +33,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCaseMaskService } from '@/services/caseRegistry/mockCaseMaskService';
 import type { CaseMask, CaseMaskScopeType } from '@/types/config/CaseMask';
@@ -41,14 +42,24 @@ import { getSessionUser } from '@/services/auth/caseAccessControl';
 import { departmentService } from '@/services';
 import type { Department } from '@/services/departments/IDepartmentService';
 import { mockFacilityService, type Facility } from '@/services/facilities/mockFacilityService';
-import { getFacilityDateParts } from '@/utils/facilityTime';
+import { renderCaseMask } from '@/services/caseRegistry/renderCaseMask';
 
-const TOKEN_HELP = '{PREFIX} {YEAR:4} {YEAR:2} {SEQ:N} — e.g. "{PREFIX}{YEAR:2}-{SEQ:4}" → "MFT26-0029"';
-
-const SCOPE_LABELS: Record<CaseMaskScopeType, string> = {
-  enterprise: 'Enterprise',
-  facility: 'Facility',
-  department: 'Department',
+// Real i18n keys, not raw strings — SCOPE_LABEL_KEY is the Title Case
+// form (dropdown options, headers, modal field labels); SCOPE_LABEL_LOWER_KEY
+// is a separately-authored lowercase/mid-sentence form rather than a
+// JS .toLowerCase() of the translated string, since case-folding an
+// already-translated noun is wrong for languages that don't lowercase
+// nouns the way English does (e.g. German keeps "Abteilung" capitalized
+// regardless of sentence position).
+const SCOPE_LABEL_KEY: Record<CaseMaskScopeType, string> = {
+  enterprise: 'caseMaskConfigSection.scopeLabels.enterprise',
+  facility: 'caseMaskConfigSection.scopeLabels.facility',
+  department: 'caseMaskConfigSection.scopeLabels.department',
+};
+const SCOPE_LABEL_LOWER_KEY: Record<CaseMaskScopeType, string> = {
+  enterprise: 'caseMaskConfigSection.scopeLabelsLower.enterprise',
+  facility: 'caseMaskConfigSection.scopeLabelsLower.facility',
+  department: 'caseMaskConfigSection.scopeLabelsLower.department',
 };
 
 interface CaseMaskModalProps {
@@ -63,6 +74,7 @@ interface CaseMaskModalProps {
 }
 
 const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, performingLabFacilities, enterpriseFacilities, existingScopeKeys, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [scopeType, setScopeType] = useState<CaseMaskScopeType>(mask?.scopeType ?? 'department');
   const [scopeId, setScopeId] = useState(mask?.scopeId ?? '');
   const [prefix, setPrefix] = useState(mask?.prefix ?? '');
@@ -91,24 +103,17 @@ const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, 
     const digits = Number(sequenceDigits) || DEFAULT_FALLBACK_SEQUENCE_DIGITS;
     const seq = (mask?.currentSequence ?? 0) + 1;
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const { year: year4num } = getFacilityDateParts(new Date(), timezone);
-    const year4 = String(year4num);
-    const year2 = year4.slice(-2);
-    const rendered = maskPattern.trim()
-      .split('{PREFIX}').join(prefix.trim())
-      .split('{YEAR:4}').join(year4)
-      .split('{YEAR:2}').join(year2)
-      .replace(/\{SEQ:(\d+)\}/, (_m: string, d: string) => String(seq).padStart(Number(d) || digits, '0'));
+    const rendered = renderCaseMask(maskPattern.trim(), prefix.trim(), seq, digits, timezone);
     setBusy(false);
     setPreview(rendered);
   };
 
   const handleSave = async () => {
-    if (!scopeId) { setError('Select a real scope for this Case Mask.'); return; }
+    if (!scopeId) { setError(t('caseMaskConfigSection.modal.errors.scopeRequired')); return; }
     const digits = Number(sequenceDigits);
-    if (!prefix.trim()) { setError('A real prefix is required.'); return; }
-    if (!maskPattern.trim()) { setError('A real mask pattern is required.'); return; }
-    if (!digits || digits < 1) { setError('Sequence digits must be a real, positive number.'); return; }
+    if (!prefix.trim()) { setError(t('caseMaskConfigSection.modal.errors.prefixRequired')); return; }
+    if (!maskPattern.trim()) { setError(t('caseMaskConfigSection.modal.errors.maskPatternRequired')); return; }
+    if (!digits || digits < 1) { setError(t('caseMaskConfigSection.modal.errors.sequenceDigitsInvalid')); return; }
 
     setBusy(true);
     const draft: CaseMask = {
@@ -136,7 +141,7 @@ const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, 
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Case Mask' : `Edit Case Mask — ${SCOPE_LABELS[scopeType]}`}
+          {mode === 'add' ? t('caseMaskConfigSection.modal.addTitle') : t('caseMaskConfigSection.modal.editTitle', { scope: t(SCOPE_LABEL_KEY[scopeType]) })}
         </div>
 
         <div className="ps-ms-body">
@@ -144,23 +149,23 @@ const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, 
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Scope <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t('caseMaskConfigSection.modal.scopeLabel')} <span className="ps-conf-required">*</span></label>
               <select className="ps-conf-select" value={scopeType} disabled={mode === 'edit'}
                 onChange={e => { setScopeType(e.target.value as CaseMaskScopeType); setScopeId(''); }}>
-                <option value="department">Department</option>
-                <option value="facility">Facility (Performing Lab)</option>
-                <option value="enterprise">Enterprise</option>
+                <option value="department">{t('caseMaskConfigSection.modal.scopeTypeOptions.department')}</option>
+                <option value="facility">{t('caseMaskConfigSection.modal.scopeTypeOptions.facility')}</option>
+                <option value="enterprise">{t('caseMaskConfigSection.modal.scopeTypeOptions.enterprise')}</option>
               </select>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">{SCOPE_LABELS[scopeType]} <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t(SCOPE_LABEL_KEY[scopeType])} <span className="ps-conf-required">*</span></label>
               <select className="ps-conf-select" value={scopeId} disabled={mode === 'edit'} onChange={e => setScopeId(e.target.value)}>
-                <option value="">Select a real {SCOPE_LABELS[scopeType].toLowerCase()}…</option>
+                <option value="">{t('caseMaskConfigSection.modal.selectScopePlaceholder', { scope: t(SCOPE_LABEL_LOWER_KEY[scopeType]) })}</option>
                 {availableOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
               {scopeType === 'facility' && availableOptions.length === 0 && (
                 <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                  Every real performing-lab facility already has its own Case Mask.
+                  {t('caseMaskConfigSection.modal.allFacilitiesConfigured')}
                 </p>
               )}
             </div>
@@ -168,49 +173,49 @@ const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, 
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Prefix <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={prefix} onChange={e => setPrefix(e.target.value)} placeholder="e.g. MFT" />
+              <label className="ps-conf-label">{t('caseMaskConfigSection.modal.prefixLabel')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={prefix} onChange={e => setPrefix(e.target.value)} placeholder={t('caseMaskConfigSection.modal.prefixPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Sequence Digits <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t('caseMaskConfigSection.modal.sequenceDigitsLabel')} <span className="ps-conf-required">*</span></label>
               <input className="ps-conf-input" type="number" min="1" value={sequenceDigits} onChange={e => setSequenceDigits(e.target.value)} />
             </div>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Mask Pattern <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('caseMaskConfigSection.modal.maskPatternLabel')} <span className="ps-conf-required">*</span></label>
             <input className="ps-conf-input" value={maskPattern} onChange={e => setMaskPattern(e.target.value)} />
-            <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">{TOKEN_HELP}</p>
+            <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">{t('caseMaskConfigSection.modal.tokenHelp')}</p>
           </div>
 
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">
               <input type="checkbox" checked={resetSequenceAnnually} onChange={e => setResetSequenceAnnually(e.target.checked)} />
-              {' '}Reset sequence annually (real, facility-timezone-anchored — never resets on device/browser local time)
+              {' '}{t('caseMaskConfigSection.modal.resetAnnuallyLabel')}
             </label>
           </div>
 
           <div className="ps-conf-form-row">
-            <button className="ps-conf-btn-secondary" onClick={runPreview} disabled={busy || !scopeId}>Preview Next Number</button>
+            <button className="ps-conf-btn-secondary" onClick={runPreview} disabled={busy || !scopeId}>{t('caseMaskConfigSection.modal.previewButton')}</button>
             {preview && (
               <span className="ps-conf-section-subtitle">
-                Next: <span className="ps-conf-identity-name">{preview}</span> — does not consume a real sequence number.
+                <Trans i18nKey="caseMaskConfigSection.modal.previewResult" values={{ preview }} components={{ value: <span className="ps-conf-identity-name" /> }} />
               </span>
             )}
           </div>
 
           {mask && (
             <p className="ps-conf-section-subtitle">
-              Current sequence: {mask.currentSequence}
-              {mask.lastResetYear ? ` · Last reset: ${mask.lastResetYear}` : ''}
-              {` · Last updated by ${mask.updatedBy} on ${new Date(mask.updatedAt).toLocaleDateString()}`}
+              {t('caseMaskConfigSection.modal.currentSequenceLabel', { count: mask.currentSequence })}
+              {mask.lastResetYear ? t('caseMaskConfigSection.modal.lastResetLabel', { year: mask.lastResetYear }) : ''}
+              {t('caseMaskConfigSection.modal.lastUpdatedLabel', { user: mask.updatedBy, date: new Date(mask.updatedAt).toLocaleDateString() })}
             </p>
           )}
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-conf-btn-primary" onClick={handleSave} disabled={busy}>Save</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-conf-btn-primary" onClick={handleSave} disabled={busy}>{t('common.save')}</button>
         </div>
       </div>
     </div>
@@ -218,6 +223,7 @@ const CaseMaskModal: React.FC<CaseMaskModalProps> = ({ mode, mask, departments, 
 };
 
 const CaseMaskConfigSection: React.FC = () => {
+  const { t } = useTranslation();
   const [masks, setMasks] = useState<CaseMask[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -274,36 +280,38 @@ const CaseMaskConfigSection: React.FC = () => {
     loadAll();
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading Case Mask Configuration...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('caseMaskConfigSection.loading')}</div>;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Case Mask Configuration</h3>
+          <h3 className="ps-conf-section-title">{t('caseMaskConfigSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Every real, currently-defined accession-number mask, grouped by scope. Each Case Mask is fully
-            self-contained — its own prefix, pattern, and sequence counter, never merged with any other level.
-            An accession number is a permanent, legally-binding identifier tied to physical tissue and chain of
-            custody — saving a mask changes the pattern going forward only; the current sequence counter is
-            never reset by a pattern change. A case with no Case Mask anywhere in its own chain (Department →
-            performing-lab Facility → Enterprise) uses the default {DEFAULT_FALLBACK_PREFIX}{'{YEAR:2}'}-{'{SEQ:4}'} scheme.
+            {t('caseMaskConfigSection.subtitle', { prefix: DEFAULT_FALLBACK_PREFIX })}
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Case Mask</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>{t('caseMaskConfigSection.addButton')}</button>
       </div>
 
       {errorMsg && <p className="ps-conf-error-text">{errorMsg}</p>}
 
       {(['enterprise', 'facility', 'department'] as CaseMaskScopeType[]).map(scopeType => (
-        <div key={scopeType} style={{ marginTop: 20 }}>
-          <h4 className="ps-conf-section-title" style={{ fontSize: 14 }}>{SCOPE_LABELS[scopeType]}</h4>
+        <div key={scopeType} className="ps-mt-20">
+          <h4 className="ps-conf-section-title ps-conf-section-title--sm">{t(SCOPE_LABEL_KEY[scopeType])}</h4>
           {grouped[scopeType].length === 0 ? (
-            <p className="ps-conf-section-subtitle">No {SCOPE_LABELS[scopeType].toLowerCase()}-level Case Mask defined yet.</p>
+            <p className="ps-conf-section-subtitle">{t('caseMaskConfigSection.emptyState', { scope: t(SCOPE_LABEL_LOWER_KEY[scopeType]) })}</p>
           ) : (
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
-                <tr>{[SCOPE_LABELS[scopeType], 'Prefix', 'Mask Pattern', 'Current Sequence', 'Reset Annually', 'Actions'].map(h => (
+                <tr>{[
+                  t(SCOPE_LABEL_KEY[scopeType]),
+                  t('caseMaskConfigSection.headers.prefix'),
+                  t('caseMaskConfigSection.headers.maskPattern'),
+                  t('caseMaskConfigSection.headers.currentSequence'),
+                  t('caseMaskConfigSection.headers.resetAnnually'),
+                  t('caseMaskConfigSection.headers.actions'),
+                ].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}</tr>
               </thead>
@@ -314,11 +322,11 @@ const CaseMaskConfigSection: React.FC = () => {
                     <td className="ps-conf-td">{mask.prefix}</td>
                     <td className="ps-conf-td">{mask.maskPattern}</td>
                     <td className="ps-conf-td">{mask.currentSequence}</td>
-                    <td className="ps-conf-td">{mask.resetSequenceAnnually ? 'Yes' : 'No'}</td>
+                    <td className="ps-conf-td">{mask.resetSequenceAnnually ? t('common.yes') : t('common.no')}</td>
                     <td className="ps-conf-td">
-                      <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'edit', mask })}>Edit</button>
+                      <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'edit', mask })}>{t('common.edit')}</button>
                       {' '}
-                      <button className="ps-conf-btn-secondary" onClick={() => handleDelete(mask)}>Delete</button>
+                      <button className="ps-conf-btn-secondary" onClick={() => handleDelete(mask)}>{t('common.delete')}</button>
                     </td>
                   </tr>
                 ))}

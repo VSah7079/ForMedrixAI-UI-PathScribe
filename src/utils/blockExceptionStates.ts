@@ -9,6 +9,7 @@
 // specimen is in one of these states.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { TFunction } from 'i18next';
 import type { Case } from '@/types/case/Case';
 import type { HistologyBlock, Specimen } from '@/types/case/Specimen';
 
@@ -50,10 +51,13 @@ export function isEntirelySubmitted(specimen: Pick<Specimen, 'blocks'>): boolean
 
 /** "Entirely submitted in blocks B1–B2" — real block labels, not a
  *  generic "all blocks" phrase, so a tech can see at a glance exactly
- *  which cassettes accounted for all the tissue. */
-export function entirelySubmittedBlockRangeText(specimen: Pick<Specimen, 'label' | 'blocks'>): string {
+ *  which cassettes accounted for all the tissue. Takes `t` explicitly
+ *  (shared by two already-translated surfaces, ManageReprintsModal.tsx
+ *  and MaterialTreePanel.tsx) since this is a plain function, not a
+ *  component or hook. */
+export function entirelySubmittedBlockRangeText(specimen: Pick<Specimen, 'label' | 'blocks'>, t: TFunction): string {
   const labels = (specimen.blocks ?? []).map(b => `${specimen.label}${b.label}`);
   if (labels.length === 0) return '';
-  if (labels.length === 1) return `Entirely submitted in block ${labels[0]}`;
-  return `Entirely submitted in blocks ${labels[0]}–${labels[labels.length - 1]}`;
+  const range = labels.length === 1 ? labels[0] : `${labels[0]}–${labels[labels.length - 1]}`;
+  return t('blockExceptionStates.entirelySubmittedRange', { count: labels.length, range });
 }

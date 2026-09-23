@@ -18,6 +18,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLatestResearch } from '@hooks/useLatestResearch';
 import { useCompanionWindow } from '@hooks/useCompanionWindow';
 import { parsePubMedInput } from '@/utils/parsePubMedInput';
@@ -45,6 +46,7 @@ const ExternalLinkIcon: React.FC = () => (
 type PasteState = { kind: 'idle' } | { kind: 'loading' } | { kind: 'success' } | { kind: 'error'; message: string };
 
 const PubMedTicker: React.FC = () => {
+  const { t } = useTranslation();
   const { article, isLoading, setFeatured, refresh, isRefreshing } = useLatestResearch();
 
   // Reference material, not patient context: closeOnUnmount is false so
@@ -80,7 +82,7 @@ const PubMedTicker: React.FC = () => {
   const handlePasteSubmit = async () => {
     const pmid = parsePubMedInput(pasteValue);
     if (!pmid) {
-      setPasteState({ kind: 'error', message: "Couldn't find a PMID or PubMed link in that." });
+      setPasteState({ kind: 'error', message: t('pubMedTicker.pasteInput.errors.noPmidFound') });
       return;
     }
     setPasteState({ kind: 'loading' });
@@ -90,7 +92,7 @@ const PubMedTicker: React.FC = () => {
       setPasteValue('');
       window.setTimeout(() => setPasteState({ kind: 'idle' }), 2500);
     } else {
-      setPasteState({ kind: 'error', message: "Couldn't find that article — check the ID and try again." });
+      setPasteState({ kind: 'error', message: t('pubMedTicker.pasteInput.errors.articleNotFound') });
     }
   };
 
@@ -99,7 +101,7 @@ const PubMedTicker: React.FC = () => {
       <div className="ps-litfeed" aria-hidden="true">
         <span className="ps-litfeed-badge">
           <span className="ps-litfeed-dot" />
-          From PubMed
+          {t('pubMedTicker.badge')}
         </span>
         <span className="ps-litfeed-skeleton" />
       </div>
@@ -147,10 +149,10 @@ const PubMedTicker: React.FC = () => {
           className="ps-litfeed-badge ps-litfeed-badge--button"
           onClick={() => void refresh()}
           disabled={isRefreshing}
-          title={isRefreshing ? 'Checking for a more recent article…' : 'Click to check for a more recent article'}
+          title={isRefreshing ? t('pubMedTicker.refreshTooltip.checking') : t('pubMedTicker.refreshTooltip.idle')}
         >
           <span className={`ps-litfeed-dot${isRefreshing ? ' ps-litfeed-dot--refreshing' : ''}`} />
-          From PubMed
+          {t('pubMedTicker.badge')}
         </button>
 
         <a
@@ -159,7 +161,7 @@ const PubMedTicker: React.FC = () => {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleClick}
-          aria-label={`Open the PubMed listing for "${article.title}" in a companion window`}
+          aria-label={t('pubMedTicker.openAriaLabel', { title: article.title })}
         >
           <span className="ps-litfeed-title">{article.title}</span>
           {metadata && <span className="ps-litfeed-meta">{metadata}</span>}
@@ -174,7 +176,7 @@ const PubMedTicker: React.FC = () => {
           value={pasteValue}
           onChange={e => { setPasteValue(e.target.value); if (pasteState.kind === 'error') setPasteState({ kind: 'idle' }); }}
           onKeyDown={e => { if (e.key === 'Enter') void handlePasteSubmit(); }}
-          placeholder="Found a better one? Paste the PMID or PubMed link"
+          placeholder={t('pubMedTicker.pasteInput.placeholder')}
           disabled={pasteState.kind === 'loading'}
         />
         {pasteValue.trim().length > 0 && pasteState.kind !== 'success' && (
@@ -183,11 +185,11 @@ const PubMedTicker: React.FC = () => {
             onClick={() => void handlePasteSubmit()}
             disabled={pasteState.kind === 'loading'}
           >
-            {pasteState.kind === 'loading' ? 'Checking…' : 'Apply'}
+            {pasteState.kind === 'loading' ? t('pubMedTicker.pasteInput.checkingButton') : t('pubMedTicker.pasteInput.applyButton')}
           </button>
         )}
         {pasteState.kind === 'success' && (
-          <span className="ps-litfeed-paste-success">✓ Updated</span>
+          <span className="ps-litfeed-paste-success">{t('pubMedTicker.pasteInput.successMessage')}</span>
         )}
         {pasteState.kind === 'error' && (
           <span className="ps-litfeed-paste-error">{pasteState.message}</span>

@@ -4,9 +4,17 @@
 // Financial Class Architecture Specification, Section 3.2 + "Step 1
 // should be under System / Financial"): admin CRUD for the per-country
 // local-scheme mappings, each pointing at a real Master Payment Type.
+//
+// i18n sweep (batch 50): real, admin-entered data (countryCode,
+// localSchemeCode, localDisplayTerminology, primaryOutboundFormat,
+// notes, and the resolved masterTypeName() display) stays as typed/
+// stored — only the surrounding page chrome (headers, labels,
+// buttons, placeholders) goes through the new
+// `jurisdictionPaymentMappingSection` namespace.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockJurisdictionPaymentMappingService } from '../../../services/billing/mockJurisdictionPaymentMappingService';
 import { mockMasterPaymentTypeService } from '../../../services/billing/mockMasterPaymentTypeService';
@@ -18,6 +26,7 @@ function blankDraft(): Partial<JurisdictionPaymentMapping> {
 }
 
 const JurisdictionPaymentMappingSection: React.FC = () => {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<JurisdictionPaymentMapping[]>([]);
   const [masterTypes, setMasterTypes] = useState<MasterPaymentType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,60 +82,59 @@ const JurisdictionPaymentMappingSection: React.FC = () => {
     .filter(e => !countryFilter || e.countryCode === countryFilter)
     .sort((a, b) => a.countryCode.localeCompare(b.countryCode) || a.localSchemeCode.localeCompare(b.localSchemeCode));
 
-  if (loading) return <div className="ps-conf-loading">Loading Jurisdiction Payment Mappings…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('jurisdictionPaymentMappingSection.loading')}</div>;
 
   return (
     <div>
       <div className="ps-defic-page-header">
-        <h2 className="ps-defic-page-title">🌍 Jurisdiction Payment Mapping</h2>
+        <h2 className="ps-defic-page-title">🌍 {t('jurisdictionPaymentMappingSection.title')}</h2>
         <p className="ps-defic-page-subtitle">
-          Real, per-country local payment schemes, each mapped to a jurisdiction-agnostic Master Payment Type.
-          The Accessioning Screen's own Primary Jurisdiction selector resolves against these.
+          {t('jurisdictionPaymentMappingSection.subtitle')}
         </p>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div className="ps-jpm__toolbar">
+        <div className="ps-jpm__toolbar-left">
           <select className="ps-conf-select" value={countryFilter} onChange={e => setCountryFilter(e.target.value)}>
-            <option value="">All Countries</option>
+            <option value="">{t('jurisdictionPaymentMappingSection.filters.allCountries')}</option>
             {countries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <label className="ps-sub-toggle-wrap" style={{ cursor: 'pointer' }}>
+          <label className="ps-sub-toggle-wrap ps-jpm__toggle-wrap">
             <div onClick={() => setShowInactive(v => !v)} className={showInactive ? 'ps-sub-toggle-track ps-sub-toggle-track--on' : 'ps-sub-toggle-track ps-sub-toggle-track--off'}>
               <div className={showInactive ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
             </div>
-            <span className="ps-tat-hint-text">Show inactive</span>
+            <span className="ps-tat-hint-text">{t('common.showInactive')}</span>
           </label>
         </div>
-        <button className="ps-conf-btn-primary" onClick={openAdd}>+ Add Mapping</button>
+        <button className="ps-conf-btn-primary" onClick={openAdd}>{t('jurisdictionPaymentMappingSection.addMappingBtn')}</button>
       </div>
 
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
           <thead>
             <tr>
-              <th className="ps-conf-th">Country</th>
-              <th className="ps-conf-th">Local Scheme</th>
-              <th className="ps-conf-th">Local Terminology</th>
-              <th className="ps-conf-th">Master Payment Type</th>
-              <th className="ps-conf-th">Outbound Format</th>
-              <th className="ps-conf-th">Status</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.country')}</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.localScheme')}</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.localTerminology')}</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.masterPaymentType')}</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.outboundFormat')}</th>
+              <th className="ps-conf-th">{t('jurisdictionPaymentMappingSection.table.status')}</th>
               <th className="ps-conf-th"></th>
             </tr>
           </thead>
           <tbody>
-            {displayed.length === 0 && <tr><td className="ps-conf-td" colSpan={7}>No mappings match.</td></tr>}
+            {displayed.length === 0 && <tr><td className="ps-conf-td" colSpan={7}>{t('jurisdictionPaymentMappingSection.emptyRow')}</td></tr>}
             {displayed.map(e => (
-              <tr key={e.id} style={{ opacity: e.active ? 1 : 0.5 }}>
+              <tr key={e.id} className={e.active ? '' : 'ps-jpm__row--inactive'}>
                 <td className="ps-conf-td">{e.countryCode}</td>
-                <td className="ps-conf-td"><code style={{ fontSize: 12 }}>{e.localSchemeCode}</code></td>
+                <td className="ps-conf-td"><code className="ps-jpm__scheme-code">{e.localSchemeCode}</code></td>
                 <td className="ps-conf-td">{e.localDisplayTerminology}</td>
                 <td className="ps-conf-td">{masterTypeName(e.masterPaymentTypeId)}</td>
                 <td className="ps-conf-td">{e.primaryOutboundFormat}</td>
-                <td className="ps-conf-td">{e.active ? 'Active' : 'Inactive'}</td>
-                <td className="ps-conf-td" style={{ textAlign: 'right' }}>
-                  <button className="ps-conf-btn-secondary" onClick={() => openEdit(e)} style={{ marginRight: 6 }}>Edit</button>
-                  <button className="ps-conf-btn-secondary" onClick={() => toggleActive(e)}>{e.active ? 'Deactivate' : 'Reactivate'}</button>
+                <td className="ps-conf-td">{e.active ? t('common.active') : t('common.inactive')}</td>
+                <td className="ps-conf-td ps-jpm__actions-cell">
+                  <button className="ps-conf-btn-secondary ps-jpm__edit-btn" onClick={() => openEdit(e)}>{t('common.edit')}</button>
+                  <button className="ps-conf-btn-secondary" onClick={() => toggleActive(e)}>{e.active ? t('common.deactivate') : t('common.reactivate')}</button>
                 </td>
               </tr>
             ))}
@@ -137,36 +145,36 @@ const JurisdictionPaymentMappingSection: React.FC = () => {
       {modal && (
         <div className="ps-conf-backdrop" onClick={() => setModal(null)}>
           <div className="ps-macro-import-modal" onClick={e => e.stopPropagation()}>
-            <div className="ps-ose-quicktext-title">{modal.mode === 'add' ? 'Add Jurisdiction Mapping' : `Edit ${modal.entry?.localSchemeCode}`}</div>
+            <div className="ps-ose-quicktext-title">{modal.mode === 'add' ? t('jurisdictionPaymentMappingSection.modal.addTitle') : t('jurisdictionPaymentMappingSection.modal.editTitle', { scheme: modal.entry?.localSchemeCode })}</div>
 
-            <label className="ps-conf-label">Country Code</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.countryCodeLabel')}</label>
             <input className="ps-conf-input" value={draft.countryCode ?? ''} onChange={e => setDraft(d => ({ ...d, countryCode: e.target.value }))}
-              placeholder='e.g. "US", "UK", "DE", "CA_ON" (province-specific where relevant)' />
+              placeholder={t('jurisdictionPaymentMappingSection.modal.countryCodePlaceholder')} />
 
-            <label className="ps-conf-label">Local Scheme Code</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.localSchemeCodeLabel')}</label>
             <input className="ps-conf-input" value={draft.localSchemeCode ?? ''} onChange={e => setDraft(d => ({ ...d, localSchemeCode: e.target.value }))}
-              placeholder="e.g. DE_GKV" />
+              placeholder={t('jurisdictionPaymentMappingSection.modal.localSchemeCodePlaceholder')} />
 
-            <label className="ps-conf-label">Local Display Terminology</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.localTerminologyLabel')}</label>
             <input className="ps-conf-input" value={draft.localDisplayTerminology ?? ''} onChange={e => setDraft(d => ({ ...d, localDisplayTerminology: e.target.value }))}
-              placeholder="e.g. Gesetzliche Krankenversicherung — real local-language name" />
+              placeholder={t('jurisdictionPaymentMappingSection.modal.localTerminologyPlaceholder')} />
 
-            <label className="ps-conf-label">Master Payment Type</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.masterPaymentTypeLabel')}</label>
             <select className="ps-conf-select" value={draft.masterPaymentTypeId ?? ''} onChange={e => setDraft(d => ({ ...d, masterPaymentTypeId: e.target.value }))}>
-              <option value="">— Select —</option>
-              {masterTypes.filter(t => t.active).map(t => <option key={t.id} value={t.id}>{t.displayName}</option>)}
+              <option value="">{t('jurisdictionPaymentMappingSection.modal.selectPlaceholder')}</option>
+              {masterTypes.filter(t2 => t2.active).map(t2 => <option key={t2.id} value={t2.id}>{t2.displayName}</option>)}
             </select>
 
-            <label className="ps-conf-label">Primary Outbound Format</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.outboundFormatLabel')}</label>
             <input className="ps-conf-input" value={draft.primaryOutboundFormat ?? ''} onChange={e => setDraft(d => ({ ...d, primaryOutboundFormat: e.target.value }))}
-              placeholder="e.g. X12 837P" />
+              placeholder={t('jurisdictionPaymentMappingSection.modal.outboundFormatPlaceholder')} />
 
-            <label className="ps-conf-label">Notes (optional)</label>
+            <label className="ps-conf-label">{t('jurisdictionPaymentMappingSection.modal.notesLabel')}</label>
             <input className="ps-conf-input" value={draft.notes ?? ''} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} />
 
             <div className="ps-ose-quicktext-actions">
-              <button className="ps-btn-ghost-dark" onClick={() => setModal(null)}>Cancel</button>
-              <button className="ps-conf-btn-primary" disabled={!canSave} onClick={handleSave}>{modal.mode === 'add' ? 'Create' : 'Save Changes'}</button>
+              <button className="ps-btn-ghost-dark" onClick={() => setModal(null)}>{t('common.cancel')}</button>
+              <button className="ps-conf-btn-primary" disabled={!canSave} onClick={handleSave}>{modal.mode === 'add' ? t('jurisdictionPaymentMappingSection.modal.createBtn') : t('jurisdictionPaymentMappingSection.modal.saveChangesBtn')}</button>
             </div>
           </div>
         </div>

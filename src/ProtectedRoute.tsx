@@ -42,7 +42,7 @@ const ProtectedRoute = () => {
   }, [superseded, logout]);
 
   if (loading) {
-    return <div style={{ background: "#0f172a", height: "100vh" }} />;
+    return <div className="ps-auth-check-loading" />;
   }
 
   if (!isAuthenticated) {

@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   testTerminologyEndpoints,
@@ -31,58 +32,56 @@ const Toggle: React.FC<{
 }> = ({ checked, onChange, disabled = false, color = '#0891B2' }) => (
   <div
     onClick={() => !disabled && onChange(!checked)}
-    style={{
-      width: '36px', height: '20px', borderRadius: '10px', flexShrink: 0,
-      background:  checked ? color : '#334155',
-      cursor:      disabled ? 'not-allowed' : 'pointer',
-      opacity:     disabled ? 0.4 : 1,
-      position:    'relative',
-      transition:  'background 0.2s',
-    }}
+    className={`ps-termsvc-toggle-track${disabled ? ' ps-termsvc-toggle-track--disabled' : ''}`}
+    style={{ '--toggle-bg': checked ? color : '#334155' } as React.CSSProperties}
   >
-    <div style={{
-      position:     'absolute',
-      top:          '3px',
-      left:         checked ? '19px' : '3px',
-      width:        '14px', height: '14px',
-      borderRadius: '50%',
-      background:   '#f1f5f9',
-      transition:   'left 0.2s',
-      boxShadow:    '0 1px 3px rgba(0,0,0,0.3)',
-    }} />
+    <div className={`ps-termsvc-toggle-knob${checked ? ' ps-termsvc-toggle-knob--on' : ''}`} />
   </div>
 );
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<ServiceStatus, {
-  bg: string; color: string; dot: string; label: string;
-}> = {
-  live:             { bg: 'rgba(16,185,129,0.1)',  color: '#10b981', dot: '#10b981', label: 'Live'             },
-  degraded:         { bg: 'rgba(245,158,11,0.1)',  color: '#f59e0b', dot: '#f59e0b', label: 'Degraded'         },
-  down:             { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', dot: '#ef4444', label: 'Down'             },
-  not_configured:   { bg: 'rgba(100,116,139,0.1)', color: '#64748b', dot: '#475569', label: 'Not configured'   },
-  license_required: { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', dot: '#fbbf24', label: 'License required' },
-  checking:         { bg: 'rgba(100,116,139,0.1)', color: '#94a3b8', dot: '#334155', label: 'Checking…'        },
+// Real, per-status styling only — the bg/color/dot values are real,
+// fixed design tokens (not translatable text), applied via CSS custom
+// properties at the call site, same established pattern as this app's
+// own .ps-status-badge. The displayed label lives separately in
+// STATUS_LABEL_KEY below, since ServiceStatus is a real, code-driven
+// enum (never persisted, but still not translatable text itself).
+const STATUS_STYLES: Record<ServiceStatus, { bg: string; color: string; dot: string }> = {
+  live:             { bg: 'rgba(16,185,129,0.1)',  color: '#10b981', dot: '#10b981' },
+  degraded:         { bg: 'rgba(245,158,11,0.1)',  color: '#f59e0b', dot: '#f59e0b' },
+  down:             { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', dot: '#ef4444' },
+  not_configured:   { bg: 'rgba(100,116,139,0.1)', color: '#64748b', dot: '#475569' },
+  license_required: { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', dot: '#fbbf24' },
+  checking:         { bg: 'rgba(100,116,139,0.1)', color: '#94a3b8', dot: '#334155' },
+};
+
+const STATUS_LABEL_KEY: Record<ServiceStatus, string> = {
+  live:             'terminologyServicesSection.statusLabels.live',
+  degraded:         'terminologyServicesSection.statusLabels.degraded',
+  down:             'terminologyServicesSection.statusLabels.down',
+  not_configured:   'terminologyServicesSection.statusLabels.notConfigured',
+  license_required: 'terminologyServicesSection.statusLabels.licenseRequired',
+  checking:         'terminologyServicesSection.statusLabels.checking',
 };
 
 const StatusBadge: React.FC<{ status: ServiceStatus; latencyMs?: number }> = ({
   status,
   latencyMs,
 }) => {
+  const { t } = useTranslation();
   const s = STATUS_STYLES[status];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: '5px',
-        padding: '2px 8px', borderRadius: '20px',
-        background: s.bg, fontSize: '11px', fontWeight: 700, color: s.color,
-      }}>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: s.dot }} />
-        {s.label}
+    <div className="ps-termsvc-status-wrap">
+      <div
+        className="ps-termsvc-status-badge"
+        style={{ '--termsvc-status-bg': s.bg, '--termsvc-status-color': s.color } as React.CSSProperties}
+      >
+        <div className="ps-termsvc-status-dot" style={{ '--termsvc-status-dot': s.dot } as React.CSSProperties} />
+        {t(STATUS_LABEL_KEY[status])}
       </div>
       {latencyMs !== undefined && status === 'live' && (
-        <span style={{ fontSize: '10px', color: '#475569', fontFamily: 'monospace' }}>
+        <span className="ps-termsvc-status-latency">
           {latencyMs}ms
         </span>
       )}
@@ -95,67 +94,75 @@ const StatusBadge: React.FC<{ status: ServiceStatus; latencyMs?: number }> = ({
 interface ServiceDef {
   key:         string;
   name:        string;
-  description: string;
-  source:      string;
+  descriptionKey: string;
+  sourceKey:   string;
   envVar?:     string;
   envValue?:   string;
   docsUrl?:    string;
 }
 
+// Real, fixed clinical-nomenclature/standards-body names (SNOMED CT,
+// ICD-10-CM, ICD-11, LOINC, ICD-O, CPT, NLM, WHO, AMA) stay literal in
+// every locale, per this app's established convention for
+// standardized international clinical vocabulary and governing-body
+// abbreviations. Only the surrounding descriptive prose translates —
+// via descriptionKey/sourceKey below, since the real English text mixes
+// full sentences with these fixed tokens in a way a single
+// interpolated template would make fragile to translate correctly.
 const SERVICE_DEFS: ServiceDef[] = [
   {
-    key:         'snomed',
-    name:        'SNOMED CT',
-    description: 'Morphology, anatomy, specimen, and organism concepts',
-    source:      'NLM Clinical Tables (free)',
-    envVar:      'VITE_NLM_BASE_URL',
-    envValue:    TERMINOLOGY_CONFIG.nlm.baseUrl,
-    docsUrl:     'https://clinicaltables.nlm.nih.gov/apidoc/snomed/v3/doc.html',
+    key:            'snomed',
+    name:           'SNOMED CT',
+    descriptionKey: 'terminologyServicesSection.services.snomed.description',
+    sourceKey:      'terminologyServicesSection.services.snomed.source',
+    envVar:         'VITE_NLM_BASE_URL',
+    envValue:       TERMINOLOGY_CONFIG.nlm.baseUrl,
+    docsUrl:        'https://clinicaltables.nlm.nih.gov/apidoc/snomed/v3/doc.html',
   },
   {
-    key:         'icd10',
-    name:        'ICD-10-CM',
-    description: 'US diagnostic codes via NLM · Non-US variants (ICD-10-AM, ICD-10 WHO) require backend proxy',
-    source:      'NLM Clinical Tables (free)',
-    envVar:      'VITE_NLM_BASE_URL',
-    envValue:    TERMINOLOGY_CONFIG.nlm.baseUrl,
-    docsUrl:     'https://clinicaltables.nlm.nih.gov/apidoc/icd10cm/v3/doc.html',
+    key:            'icd10',
+    name:           'ICD-10-CM',
+    descriptionKey: 'terminologyServicesSection.services.icd10.description',
+    sourceKey:      'terminologyServicesSection.services.icd10.source',
+    envVar:         'VITE_NLM_BASE_URL',
+    envValue:       TERMINOLOGY_CONFIG.nlm.baseUrl,
+    docsUrl:        'https://clinicaltables.nlm.nih.gov/apidoc/icd10cm/v3/doc.html',
   },
   {
-    key:         'icd11',
-    name:        'ICD-11',
-    description: 'WHO ICD-11 codes — served directly by NLM, no OAuth required',
-    source:      'NLM Clinical Tables (free)',
-    envVar:      'VITE_NLM_BASE_URL',
-    envValue:    TERMINOLOGY_CONFIG.nlm.baseUrl,
-    docsUrl:     'https://clinicaltables.nlm.nih.gov/apidoc/icd11_codes/v3/doc.html',
+    key:            'icd11',
+    name:           'ICD-11',
+    descriptionKey: 'terminologyServicesSection.services.icd11.description',
+    sourceKey:      'terminologyServicesSection.services.icd11.source',
+    envVar:         'VITE_NLM_BASE_URL',
+    envValue:       TERMINOLOGY_CONFIG.nlm.baseUrl,
+    docsUrl:        'https://clinicaltables.nlm.nih.gov/apidoc/icd11_codes/v3/doc.html',
   },
   {
-    key:         'loinc',
-    name:        'LOINC',
-    description: 'Laboratory and clinical observation identifiers',
-    source:      'NLM Clinical Tables (free)',
-    envVar:      'VITE_NLM_BASE_URL',
-    envValue:    TERMINOLOGY_CONFIG.nlm.baseUrl,
-    docsUrl:     'https://clinicaltables.nlm.nih.gov/apidoc/loinc_items/v3/doc.html',
+    key:            'loinc',
+    name:           'LOINC',
+    descriptionKey: 'terminologyServicesSection.services.loinc.description',
+    sourceKey:      'terminologyServicesSection.services.loinc.source',
+    envVar:         'VITE_NLM_BASE_URL',
+    envValue:       TERMINOLOGY_CONFIG.nlm.baseUrl,
+    docsUrl:        'https://clinicaltables.nlm.nih.gov/apidoc/loinc_items/v3/doc.html',
   },
   {
-    key:         'icdo',
-    name:        'ICD-O',
-    description: 'Oncology morphology codes via SNOMED morphology subset',
-    source:      'NLM Clinical Tables (free, SNOMED subset)',
-    envVar:      'VITE_NLM_BASE_URL',
-    envValue:    TERMINOLOGY_CONFIG.nlm.baseUrl,
-    docsUrl:     'https://www.who.int/standards/classifications/other-classifications/international-classification-of-diseases-for-oncology',
+    key:            'icdo',
+    name:           'ICD-O',
+    descriptionKey: 'terminologyServicesSection.services.icdo.description',
+    sourceKey:      'terminologyServicesSection.services.icdo.source',
+    envVar:         'VITE_NLM_BASE_URL',
+    envValue:       TERMINOLOGY_CONFIG.nlm.baseUrl,
+    docsUrl:        'https://www.who.int/standards/classifications/other-classifications/international-classification-of-diseases-for-oncology',
   },
   {
-    key:         'cpt',
-    name:        'CPT',
-    description: 'Procedure codes — AMA licensed, requires backend proxy',
-    source:      'AMA (backend proxy required)',
-    envVar:      'VITE_CPT_PROXY_URL',
-    envValue:    TERMINOLOGY_CONFIG.cpt.proxyUrl,
-    docsUrl:     'https://www.ama-assn.org/practice-management/cpt',
+    key:            'cpt',
+    name:           'CPT',
+    descriptionKey: 'terminologyServicesSection.services.cpt.description',
+    sourceKey:      'terminologyServicesSection.services.cpt.source',
+    envVar:         'VITE_CPT_PROXY_URL',
+    envValue:       TERMINOLOGY_CONFIG.cpt.proxyUrl,
+    docsUrl:        'https://www.ama-assn.org/practice-management/cpt',
   },
 ];
 
@@ -165,35 +172,24 @@ const ServiceRow: React.FC<{
   def:         ServiceDef;
   status:      TerminologyServiceStatus | undefined;
   showEnvVars: boolean;
-}> = ({ def, status, showEnvVars }) => (
-  <div style={{
-    display: 'grid',
-    gridTemplateColumns: '160px 1fr 170px',
-    gap: '0 16px',
-    alignItems: 'center',
-    padding: '12px 16px',
-    marginBottom: '6px',
-    background: 'rgba(255,255,255,0.03)',
-    borderRadius: '9px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    transition: 'all 0.15s',
-  }}>
+}> = ({ def, status, showEnvVars }) => {
+  const { t } = useTranslation();
+  return (
+  <div className="ps-termsvc-row">
 
     {/* Name + source */}
     <div>
-      <div style={{ fontSize: '12px', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace' }}>
+      <div className="ps-termsvc-name">
         {def.name}
       </div>
-      <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>
-        {def.source}
+      <div className="ps-termsvc-source">
+        {t(def.sourceKey)}
         {def.docsUrl && (
           <a
             href={def.docsUrl}
             target="_blank"
             rel="noreferrer"
-            style={{ color: '#334155', marginLeft: '6px', textDecoration: 'none' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#0891B2')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#334155')}
+            className="ps-termsvc-docs-link"
           >↗</a>
         )}
       </div>
@@ -201,29 +197,27 @@ const ServiceRow: React.FC<{
 
     {/* Description + env var + note */}
     <div>
-      <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
-        {def.description}
+      <div className="ps-termsvc-description">
+        {t(def.descriptionKey)}
       </div>
       {showEnvVars && def.envVar && (
-        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <span style={{
-            fontSize: '10px', fontFamily: 'monospace', color: '#475569',
-            background: 'rgba(255,255,255,0.04)', padding: '1px 6px',
-            borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)',
-          }}>
+        <div className="ps-termsvc-envvar-row">
+          <span className="ps-termsvc-envvar-name">
             {def.envVar}
           </span>
-          <span style={{ fontSize: '10px', color: '#334155' }}>→</span>
-          <span style={{
-            fontSize: '10px', fontFamily: 'monospace', color: '#64748b',
-            maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <span className="ps-termsvc-envvar-arrow">→</span>
+          <span className="ps-termsvc-envvar-value">
             {def.envValue}
           </span>
         </div>
       )}
+      {/* Real, per-check diagnostic text (raw HTTP status / connectivity
+          detail from testTerminologyEndpoints() in terminologyConfig.ts)
+          — kept English as diagnostic output, same convention as this
+          sweep's persisted/diagnostic-text carve-out; also pinned
+          verbatim in terminologyConfig.test.ts. */}
       {status?.note && (
-        <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>
+        <div className="ps-termsvc-note">
           {status.note}
         </div>
       )}
@@ -237,13 +231,15 @@ const ServiceRow: React.FC<{
       />
     </div>
   </div>
-);
+  );
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const TerminologyServicesSection: React.FC<{ isSuperAdmin?: boolean }> = ({
   isSuperAdmin = false,
 }) => {
+  const { t } = useTranslation();
   const [statuses,    setStatuses]    = useState<Record<string, TerminologyServiceStatus>>({});
   const [checking,    setChecking]    = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -276,46 +272,35 @@ const TerminologyServicesSection: React.FC<{ isSuperAdmin?: boolean }> = ({
     <div>
 
       {/* Section header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px' }}>
+      <div className="ps-termsvc-header-row">
         <div>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
-            Terminology Services
+          <h3 className="ps-termsvc-title">
+            {t('terminologyServicesSection.header.title')}
           </h3>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: 1.6 }}>
-            Connectivity check only — confirms PathScribe can reach these coding
-            systems for code search and AI suggestions. Nothing to add or upload
-            here: every system below is maintained by its own standards body
-            (SNOMED International, NLM, WHO, AMA, etc.), not versioned within
-            PathScribe.
+          <p className="ps-termsvc-intro">
+            {t('terminologyServicesSection.header.intro')}
             {lastChecked && (
-              <span style={{ color: '#475569' }}>
-                {' '}· Last checked {lastChecked.toLocaleTimeString()}
+              <span className="ps-termsvc-last-checked">
+                {' '}{t('terminologyServicesSection.header.lastChecked', { time: lastChecked.toLocaleTimeString() })}
               </span>
             )}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginLeft: '16px', alignItems: 'center' }}>
+        <div className="ps-termsvc-header-actions">
 
           {/* Overall status */}
           {Object.keys(statuses).length > 0 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '5px',
-              fontSize: '11px', fontWeight: 600,
-              color: allOperational ? '#10b981' : '#f59e0b',
-            }}>
-              <div style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: allOperational ? '#10b981' : '#f59e0b',
-              }} />
-              {allOperational ? 'All systems operational' : 'Some services need attention'}
+            <div className={`ps-termsvc-overall-status${allOperational ? ' ps-termsvc-overall-status--ok' : ' ps-termsvc-overall-status--warn'}`}>
+              <div className="ps-termsvc-overall-dot" />
+              {allOperational ? t('terminologyServicesSection.status.allOperational') : t('terminologyServicesSection.status.needsAttention')}
             </div>
           )}
 
           {/* Env vars toggle — super admin only */}
           {isSuperAdmin && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#475569' }}>Show env vars</span>
+            <div className="ps-termsvc-envtoggle-row">
+              <span className="ps-termsvc-envtoggle-label">{t('terminologyServicesSection.showEnvVars')}</span>
               <Toggle checked={showEnvVars} onChange={setShowEnvVars} color="#7c3aed" />
             </div>
           )}
@@ -324,46 +309,34 @@ const TerminologyServicesSection: React.FC<{ isSuperAdmin?: boolean }> = ({
           <button
             onClick={runChecks}
             disabled={checking}
-            className="ps-conf-btn-teal-accent"
-            style={{ cursor: checking ? 'wait' : 'pointer' }}
+            className={`ps-conf-btn-teal-accent${checking ? ' ps-termsvc-test-btn--busy' : ''}`}
           >
-            {checking ? 'Testing…' : '↻ Test All'}
+            {checking ? t('terminologyServicesSection.testButton.testing') : `↻ ${t('terminologyServicesSection.testButton.testAll')}`}
           </button>
         </div>
       </div>
 
       {/* ICD-10 variant callout */}
-      <div style={{
-        padding: '12px 16px', marginBottom: '20px', borderRadius: '9px',
-        background: 'rgba(8,145,178,0.06)', border: '1px solid rgba(8,145,178,0.2)',
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-      }}>
-        <span style={{ fontSize: '18px', flexShrink: 0 }}>🌐</span>
+      <div className="ps-termsvc-callout ps-termsvc-callout--info">
+        <span className="ps-termsvc-callout-icon">🌐</span>
         <div>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#38bdf8', marginBottom: '3px' }}>
-            Region-Aware ICD-10 Variants
+          <div className="ps-termsvc-callout-title ps-termsvc-callout-title--info">
+            {t('terminologyServicesSection.icd10Callout.title')}
           </div>
-          <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
-            ICD-10-CM (US/CAP) is served directly by NLM at no cost.
-            Non-US variants — ICD-10 WHO (RCPath/ICCR) and ICD-10-AM (RCPA) — require a
-            backend proxy configured via{' '}
-            <span style={{ fontFamily: 'monospace', color: '#475569' }}>VITE_ICD10_PROXY_URL</span>.
-            The correct variant is automatically selected based on your active Governing Bodies.
+          <div className="ps-termsvc-callout-body">
+            <Trans
+              i18nKey="terminologyServicesSection.icd10Callout.description"
+              components={{ envVar: <span className="ps-termsvc-mono" /> }}
+            />
           </div>
         </div>
       </div>
 
       {/* Column headers */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '160px 1fr 170px',
-        gap: '0 16px', padding: '0 16px 8px', marginBottom: '4px',
-      }}>
-        {['Service', 'Details', 'Status'].map(h => (
-          <div key={h} style={{
-            fontSize: '10px', fontWeight: 700, color: '#475569',
-            textTransform: 'uppercase', letterSpacing: '0.08em',
-          }}>{h}</div>
-        ))}
+      <div className="ps-termsvc-col-headers">
+        <div className="ps-termsvc-col-header">{t('terminologyServicesSection.columns.service')}</div>
+        <div className="ps-termsvc-col-header">{t('terminologyServicesSection.columns.details')}</div>
+        <div className="ps-termsvc-col-header">{t('terminologyServicesSection.columns.status')}</div>
       </div>
 
       {/* Service rows */}
@@ -377,32 +350,27 @@ const TerminologyServicesSection: React.FC<{ isSuperAdmin?: boolean }> = ({
       ))}
 
       {/* CPT licensing callout */}
-      <div style={{
-        padding: '12px 16px', marginTop: '16px', borderRadius: '9px',
-        background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)',
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-      }}>
-        <span style={{ fontSize: '18px', flexShrink: 0 }}>⚠️</span>
+      <div className="ps-termsvc-callout ps-termsvc-callout--warning">
+        <span className="ps-termsvc-callout-icon">⚠️</span>
         <div>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '3px' }}>
-            CPT License Required Before Go-Live
+          <div className="ps-termsvc-callout-title ps-termsvc-callout-title--warning">
+            {t('terminologyServicesSection.cptCallout.title')}
           </div>
-          <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
-            CPT codes are AMA-licensed and cannot be served via a public API. Procure an{' '}
-            <a href="https://www.ama-assn.org/practice-management/cpt" target="_blank"
-              rel="noreferrer" style={{ color: '#0891B2' }}>AMA CPT data license</a>{' '}
-            (~$3–10k/year depending on usage) and build a backend proxy at{' '}
-            <span style={{ fontFamily: 'monospace', color: '#475569' }}>
-              {TERMINOLOGY_CONFIG.cpt.proxyUrl}
-            </span>.
-            Both the pathologist professional component (26 modifier) and lab technical
-            component (TC modifier) billing depend on this.
+          <div className="ps-termsvc-callout-body">
+            <Trans
+              i18nKey="terminologyServicesSection.cptCallout.description"
+              values={{ proxyUrl: TERMINOLOGY_CONFIG.cpt.proxyUrl }}
+              components={{
+                link: <a href="https://www.ama-assn.org/practice-management/cpt" target="_blank" rel="noreferrer" className="ps-termsvc-callout-link" />,
+                envVar: <span className="ps-termsvc-mono" />,
+              }}
+            />
           </div>
         </div>
       </div>
 
       {/* Bottom spacer */}
-      <div style={{ height: 32 }} />
+      <div className="ps-termsvc-spacer" />
 
     </div>
   );

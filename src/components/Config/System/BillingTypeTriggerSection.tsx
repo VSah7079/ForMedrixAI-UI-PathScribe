@@ -16,9 +16,19 @@
 // settings"): the "Viewing: Enterprise-Wide / [Site]" selector below
 // mirrors BillingDictionarySection.tsx's own established pattern
 // exactly - a facility can legitimately want its own release timing.
+//
+// i18n sweep (batch 53): the persisted `auditService.logEvent()`
+// detail/event strings keep using the real, raw internal
+// `billingType`/trigger enum values and the English `scopeLabel` —
+// a real audit-trail record, not on-screen chrome, so it must never
+// shift with the UI locale. A separate `scopeLabelDisplay` was added
+// for the on-screen button/badge text so the enterprise-wide fallback
+// can be translated there without touching the persisted string. Real
+// site names (`s.name`) stay as stored.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
 import type { BillingTypeTriggerMap } from '@/services/billing/mockBillingTypeTriggerConfigService';
 import { BILLING_TYPE_DEFAULT_TRIGGER } from '@/services/billing/codeMapTable';
@@ -27,18 +37,19 @@ import type { Site } from '@/services/organisation/organisationService';
 import { auditService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 
-const BILLING_TYPE_LABEL: Record<keyof BillingTypeTriggerMap, string> = {
-  TC: 'TC (Technical Component)',
-  '26': '26 (Professional Component)',
-  Global: 'Global (Combined)',
+const BILLING_TYPE_LABEL_KEY: Record<keyof BillingTypeTriggerMap, string> = {
+  TC: 'billingTypeTriggerSection.billingTypes.tc',
+  '26': 'billingTypeTriggerSection.billingTypes.professional',
+  Global: 'billingTypeTriggerSection.billingTypes.global',
 };
 
-const TRIGGER_LABEL: Record<'SPECIMEN_GROSSED' | 'CASE_SIGNED_OUT', string> = {
-  SPECIMEN_GROSSED: 'Specimen grossed',
-  CASE_SIGNED_OUT: 'Case signed out',
+const TRIGGER_LABEL_KEY: Record<'SPECIMEN_GROSSED' | 'CASE_SIGNED_OUT', string> = {
+  SPECIMEN_GROSSED: 'billingTypeTriggerSection.triggers.specimenGrossed',
+  CASE_SIGNED_OUT: 'billingTypeTriggerSection.triggers.caseSignedOut',
 };
 
 const BillingTypeTriggerSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [triggerMap, setTriggerMap] = useState<BillingTypeTriggerMap>(BILLING_TYPE_DEFAULT_TRIGGER);
   const [loading, setLoading] = useState(true);
@@ -67,7 +78,11 @@ const BillingTypeTriggerSection: React.FC = () => {
   };
   useEffect(() => { load(); }, [viewingSiteId]);
 
+  // Real, English, used only in the persisted audit-trail record below —
+  // never rendered on screen. See scopeLabelDisplay for the translated
+  // on-screen equivalent.
   const scopeLabel = activeSiteId ? (sites.find(s => s.id === activeSiteId)?.name ?? activeSiteId) : 'Enterprise-Wide';
+  const scopeLabelDisplay = activeSiteId ? (sites.find(s => s.id === activeSiteId)?.name ?? activeSiteId) : t('billingTypeTriggerSection.enterpriseWide');
 
   const handleChange = async (billingType: keyof BillingTypeTriggerMap, trigger: 'SPECIMEN_GROSSED' | 'CASE_SIGNED_OUT') => {
     const previous = triggerMap[billingType];
@@ -118,25 +133,18 @@ const BillingTypeTriggerSection: React.FC = () => {
   return (
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
-        <h2 className="ps-conf-section-title">Charge Release Triggers</h2>
+        <h2 className="ps-conf-section-title">{t('billingTypeTriggerSection.title')}</h2>
         <p className="ps-conf-section-subtitle">
-          Which real clinical event releases each billing component to the outbound dispatch queue.
-          TC (technical component) releases as soon as its own specimen's grossing work is done by
-          default; 26 (professional) and Global both hold until the whole case signs out. This is the
-          real, admin-configurable override the Outbound Billing &amp; Charge Event Engine's own
-          acceptance criteria calls for — leave a row on its default unless a real, specific reason
-          requires releasing that component at a different real event. A facility with its own release
-          timing can override just that site below; every other site keeps inheriting the enterprise-wide
-          setting.
+          {t('billingTypeTriggerSection.subtitle')}
         </p>
       </div>
 
       <div className="ps-conf-row-actions">
         <select value={viewingSiteId} onChange={e => setViewingSiteId(e.target.value)} className="ps-conf-select">
-          <option value="">Viewing: Enterprise-Wide</option>
+          <option value="">{t('billingTypeTriggerSection.viewingEnterpriseWide')}</option>
           {sites.map(s => (
             <option key={s.id} value={s.id}>
-              Viewing: {s.name}{siteIdsWithOverrides.includes(s.id) ? ' (has override)' : ''}
+              {t('billingTypeTriggerSection.viewingSite', { site: s.name })}{siteIdsWithOverrides.includes(s.id) ? ` ${t('billingTypeTriggerSection.hasOverride')}` : ''}
             </option>
           ))}
         </select>
@@ -147,15 +155,15 @@ const BillingTypeTriggerSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">Billing Type</th>
-                <th className="ps-conf-th">Releases At</th>
-                <th className="ps-conf-th">Real Default</th>
+                <th className="ps-conf-th">{t('billingTypeTriggerSection.table.billingType')}</th>
+                <th className="ps-conf-th">{t('billingTypeTriggerSection.table.releasesAt')}</th>
+                <th className="ps-conf-th">{t('billingTypeTriggerSection.table.realDefault')}</th>
               </tr>
             </thead>
             <tbody>
-              {(Object.keys(BILLING_TYPE_LABEL) as Array<keyof BillingTypeTriggerMap>).map(billingType => (
+              {(Object.keys(BILLING_TYPE_LABEL_KEY) as Array<keyof BillingTypeTriggerMap>).map(billingType => (
                 <tr key={billingType} className="ps-conf-tr">
-                  <td className="ps-conf-td">{BILLING_TYPE_LABEL[billingType]}</td>
+                  <td className="ps-conf-td">{t(BILLING_TYPE_LABEL_KEY[billingType])}</td>
                   <td className="ps-conf-td">
                     <select
                       className="ps-conf-select"
@@ -163,11 +171,11 @@ const BillingTypeTriggerSection: React.FC = () => {
                       disabled={loading}
                       onChange={e => handleChange(billingType, e.target.value as 'SPECIMEN_GROSSED' | 'CASE_SIGNED_OUT')}
                     >
-                      <option value="SPECIMEN_GROSSED">{TRIGGER_LABEL.SPECIMEN_GROSSED}</option>
-                      <option value="CASE_SIGNED_OUT">{TRIGGER_LABEL.CASE_SIGNED_OUT}</option>
+                      <option value="SPECIMEN_GROSSED">{t(TRIGGER_LABEL_KEY.SPECIMEN_GROSSED)}</option>
+                      <option value="CASE_SIGNED_OUT">{t(TRIGGER_LABEL_KEY.CASE_SIGNED_OUT)}</option>
                     </select>
                   </td>
-                  <td className="ps-conf-td">{TRIGGER_LABEL[BILLING_TYPE_DEFAULT_TRIGGER[billingType]]}</td>
+                  <td className="ps-conf-td">{t(TRIGGER_LABEL_KEY[BILLING_TYPE_DEFAULT_TRIGGER[billingType]])}</td>
                 </tr>
               ))}
             </tbody>
@@ -177,9 +185,9 @@ const BillingTypeTriggerSection: React.FC = () => {
 
       <div className="ps-conf-form-field">
         <button className="ps-conf-btn-secondary" onClick={handleResetToDefault} disabled={!isOverridden}>
-          Reset {activeSiteId ? `${scopeLabel} to Enterprise-Wide` : 'all to real default'}
+          {activeSiteId ? t('billingTypeTriggerSection.resetSiteBtn', { scope: scopeLabelDisplay }) : t('billingTypeTriggerSection.resetAllBtn')}
         </button>
-        {saved && <span className="ps-billing-reason-hint">✓ Saved ({scopeLabel})</span>}
+        {saved && <span className="ps-billing-reason-hint">{t('billingTypeTriggerSection.savedMessage', { scope: scopeLabelDisplay })}</span>}
       </div>
     </div>
   );

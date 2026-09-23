@@ -12,9 +12,25 @@
 // lives on Facility.concordanceReviewSettingsOverride (see
 // services/facilities/IFacilityService.ts's own doc comment), set on
 // the Facility Configuration edit modal, not duplicated here.
+//
+// i18n sweep (batch 45): this file had zero existing CSS classes —
+// entirely hand-rolled inline `style={{...}}`, including its own local
+// Toggle (its header comment already flags this as a repeated local
+// pattern also kept by ReleaseBufferSection.tsx/FontsSection.tsx). The
+// toggle shares FontsSection.tsx's `.config-toggle-btn*` (batch 37)
+// 3-state colors (#0891B2/#475569/#334155) and 18px thumb, but its
+// track is a genuinely different size (44×24px + 12px radius, vs
+// FontsSection's 40×22px + 11px radius, and a 3px/23px thumb inset/
+// travel vs FontsSection's 2px/20px) — too many small differences at
+// once to force a reuse, so it gets its own `.ps-concordance-toggle*`
+// family. Its title, though, is an exact match for the existing
+// `.config-fonts-title` class (18px/700/#f1f5f9/margin 0 0 4px) and is
+// reused directly. Everything else is a new `.ps-concordance__*`
+// family, following the file's own header's naming intent.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockConcordanceReviewSettingsService } from '../../../services/qualitySettings/mockConcordanceReviewSettingsService';
 import type { ConcordanceReviewOrgConfig } from '../../../services/qualitySettings/IConcordanceReviewSettingsService';
@@ -36,21 +52,9 @@ const Toggle: React.FC<ToggleProps> = ({ enabled, onChange, disabled = false, ar
     aria-label={ariaLabel}
     disabled={disabled}
     onClick={() => !disabled && onChange(!enabled)}
-    style={{
-      width: '44px', height: '24px', borderRadius: '12px', border: 'none',
-      background: disabled ? '#334155' : enabled ? '#0891B2' : '#475569',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-      opacity: disabled ? 0.5 : 1,
-    }}
+    className={`ps-concordance-toggle ps-concordance-toggle--${disabled ? 'disabled' : enabled ? 'on' : 'off'}`}
   >
-    <span style={{
-      position: 'absolute', top: '3px',
-      left: enabled ? '23px' : '3px',
-      width: '18px', height: '18px', borderRadius: '50%',
-      background: 'white', transition: 'left 0.2s',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-    }} />
+    <span className={`ps-concordance-toggle__thumb${enabled ? ' ps-concordance-toggle__thumb--on' : ''}`} />
   </button>
 );
 
@@ -62,29 +66,23 @@ interface SettingRowProps {
 }
 
 const SettingRow: React.FC<SettingRowProps> = ({ label, description, children, indented = false }) => (
-  <div style={{
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '14px 16px',
-    marginLeft: indented ? '20px' : '0',
-    borderLeft: indented ? '2px solid rgba(8,145,178,0.3)' : 'none',
-    background: 'rgba(255,255,255,0.03)',
-    borderRadius: '8px', marginBottom: '8px',
-  }}>
-    <div style={{ flex: 1, marginRight: '16px' }}>
-      <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', marginBottom: '3px' }}>
+  <div className={`ps-concordance__row${indented ? ' ps-concordance__row--indented' : ''}`}>
+    <div className="ps-concordance__row-text">
+      <div className="ps-concordance__row-label">
         {label}
       </div>
-      <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5' }}>
+      <div className="ps-concordance__row-desc">
         {description}
       </div>
     </div>
-    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', paddingTop: '2px' }}>
+    <div className="ps-concordance__row-control">
       {children}
     </div>
   </div>
 );
 
 const ConcordanceReviewSettingsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ConcordanceReviewOrgConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -107,43 +105,38 @@ const ConcordanceReviewSettingsSection: React.FC = () => {
 
   if (loading || !config) return null;
 
+  const autoComparisonLabel = t('concordanceReviewSettingsSection.autoComparison.label');
+  const reviewScreenLabel = t('concordanceReviewSettingsSection.reviewScreen.label');
+
   return (
     <div>
-      <div style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
-          ⚖ Preliminary-vs-Final Concordance Review
+      <div className="ps-concordance__header">
+        <h2 className="config-fonts-title">
+          ⚖ {t('concordanceReviewSettingsSection.title')}
         </h2>
-        <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, lineHeight: '1.5' }}>
-          Controls the automatic comparison of a preliminary finding (e.g. a frozen section
-          diagnosis) against the corresponding final diagnosis, and the optional review screen
-          shown at sign-out. The pathologist always makes the actual concordance determination —
-          these settings control whether the system helps surface it, never whether the
-          pathologist's own judgment is required. This is the org-wide default — individual
-          performing labs can inherit it or define their own values on the Facility
-          Configuration edit modal, and individual staff members can further override either
-          setting for themselves, per the same real Enterprise → Facility → Staff cascade this
-          app already uses for Cytology QC sampling rates.
+        <p className="ps-concordance__subtitle">
+          {t('concordanceReviewSettingsSection.subtitle')}
         </p>
       </div>
 
       <SettingRow
-        label="Enable Automatic Comparison"
-        description="When on, the system compares a preliminary finding against the corresponding final diagnosis and flags a real discordance for pathologist review — the pathologist always confirms or adjusts the determination; this never auto-grades a result on its own."
+        label={autoComparisonLabel}
+        description={t('concordanceReviewSettingsSection.autoComparison.description')}
       >
-        <Toggle enabled={config.aiComparisonEnabled} onChange={val => persist({ ...config, aiComparisonEnabled: val })} ariaLabel="Enable Automatic Comparison" />
+        <Toggle enabled={config.aiComparisonEnabled} onChange={val => persist({ ...config, aiComparisonEnabled: val })} ariaLabel={autoComparisonLabel} />
       </SettingRow>
 
       <SettingRow
-        label="Require Review Screen at Sign-Out"
-        description="When on, an extra screen appears at sign-out showing the preliminary-vs-final comparison before the pathologist can complete sign-out — real, deliberate friction so the comparison is actively reviewed rather than left to whether a flag happened to fire."
+        label={reviewScreenLabel}
+        description={t('concordanceReviewSettingsSection.reviewScreen.description')}
         indented
       >
-        <Toggle enabled={config.reviewScreenEnabled} onChange={val => persist({ ...config, reviewScreenEnabled: val })} ariaLabel="Require Review Screen at Sign-Out" />
+        <Toggle enabled={config.reviewScreenEnabled} onChange={val => persist({ ...config, reviewScreenEnabled: val })} ariaLabel={reviewScreenLabel} />
       </SettingRow>
 
       {saved && (
-        <div style={{ marginTop: '4px', marginLeft: '16px', fontSize: '12px', color: '#22c55e', fontWeight: 600 }}>
-          ✓ Saved
+        <div className="ps-concordance__saved">
+          ✓ {t('concordanceReviewSettingsSection.saved')}
         </div>
       )}
     </div>

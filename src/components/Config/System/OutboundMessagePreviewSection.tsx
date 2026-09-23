@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { buildAdt08Payload, buildAdt40Payload, buildAdt47Payload } from '@/services/patients/buildPatientAdtPayload';
 import { buildOruR01Payload } from '@/services/reports/buildOruR01Payload';
@@ -30,11 +31,11 @@ import type { OruResultState } from '@/types/case/OutboundResultQueueEntry';
 
 type MessageType = 'A08' | 'A40' | 'A47' | 'ORU_R01';
 
-const MESSAGE_TYPE_LABELS: Record<MessageType, string> = {
-  A08: 'ADT^A08 — Demographic Update',
-  A40: 'ADT^A40 — Merge Patient',
-  A47: 'ADT^A47 — Change Identifier',
-  ORU_R01: 'ORU^R01 — Pathology Result',
+const MESSAGE_TYPE_LABEL_KEY: Record<MessageType, string> = {
+  A08: 'outboundMessagePreviewSection.messageTypeLabels.a08',
+  A40: 'outboundMessagePreviewSection.messageTypeLabels.a40',
+  A47: 'outboundMessagePreviewSection.messageTypeLabels.a47',
+  ORU_R01: 'outboundMessagePreviewSection.messageTypeLabels.oruR01',
 };
 
 function downloadJson(payload: unknown, filename: string) {
@@ -46,6 +47,7 @@ function downloadJson(payload: unknown, filename: string) {
 }
 
 const OutboundMessagePreviewSection: React.FC = () => {
+  const { t } = useTranslation();
   const [messageType, setMessageType] = useState<MessageType>('A08');
 
   // A08
@@ -75,29 +77,29 @@ const OutboundMessagePreviewSection: React.FC = () => {
     try {
       if (messageType === 'A08') {
         const record = await mockPatientIndexService.getById(patientId.trim());
-        if (!record) { setError(`No patient found with id "${patientId.trim()}".`); return; }
+        if (!record) { setError(t('outboundMessagePreviewSection.errors.patientNotFound', { id: patientId.trim() })); return; }
         const result = await buildAdt08Payload(record.id, record.organisationId);
         setPayload(result);
-        if (!result) setError('Payload builder returned null — check the patient id.');
+        if (!result) setError(t('outboundMessagePreviewSection.errors.a08NullPayload'));
       } else if (messageType === 'A40') {
         const prior = await mockPatientIndexService.getById(priorPatientId.trim());
-        if (!prior) { setError(`No prior/merged-away patient found with id "${priorPatientId.trim()}".`); return; }
+        if (!prior) { setError(t('outboundMessagePreviewSection.errors.a40PriorNotFound', { id: priorPatientId.trim() })); return; }
         const result = await buildAdt40Payload(prior.id, survivingPatientId.trim(), prior.organisationId, 0, 0);
         setPayload(result);
-        if (!result) setError('Payload builder returned null — check both patient ids.');
+        if (!result) setError(t('outboundMessagePreviewSection.errors.nullPayloadBothIds'));
       } else if (messageType === 'A47') {
         const priorRecord = await mockPatientIndexService.getById(a47PriorId.trim());
-        if (!priorRecord) { setError(`No downtime/temporary patient found with id "${a47PriorId.trim()}".`); return; }
+        if (!priorRecord) { setError(t('outboundMessagePreviewSection.errors.a47PriorNotFound', { id: a47PriorId.trim() })); return; }
         const result = await buildAdt47Payload(priorRecord.id, a47ConfirmedId.trim(), priorRecord.organisationId, reasonCode.trim(), notes.trim(), 0);
         setPayload(result);
-        if (!result) setError('Payload builder returned null — check both patient ids.');
+        if (!result) setError(t('outboundMessagePreviewSection.errors.nullPayloadBothIds'));
       } else {
         const result = await buildOruR01Payload(caseId.trim(), instanceId.trim(), resultState);
         setPayload(result);
-        if (!result) setError('Payload builder returned null — check the case is reportingMode "orchestrator" and the instance id is a real, finalized synoptic report on it.');
+        if (!result) setError(t('outboundMessagePreviewSection.errors.oruNullPayload'));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Real, unexpected error building this payload.');
+      setError(e instanceof Error ? e.message : t('outboundMessagePreviewSection.errors.unexpectedError'));
     } finally {
       setBusy(false);
     }
@@ -118,93 +120,74 @@ const OutboundMessagePreviewSection: React.FC = () => {
   return (
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
-        <h2 className="ps-conf-section-title">Outbound Interface Message Preview</h2>
-        <p className="ps-conf-section-subtitle">
-          Preview and export the real JSON packages PathScribe builds for your interface engine — ADT^A08/A40/A47
-          (services/patients/) and ORU^R01 (services/reports/). PathScribe never builds or sends HL7 itself; this
-          tool lets you verify exactly what the engine receives to work from, and download real example files for
-          your own integration testing.
-        </p>
-        <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>
-          ⚠ A40/A47 previews here show real patient identity data for real, already-existing patients, but
-          casesRepointed/encountersRepointed are shown as 0 — this tool builds a payload on demand, it doesn't
-          perform the real merge/rebind operation, so those real counts aren't available outside an actual
-          operation. Every other field is the real, accurate shape.
-        </p>
+        <h2 className="ps-conf-section-title">{t('outboundMessagePreviewSection.title')}</h2>
+        <p className="ps-conf-section-subtitle">{t('outboundMessagePreviewSection.subtitle')}</p>
+        <p className="ps-conf-hint ps-conf-hint--warning">{t('outboundMessagePreviewSection.warnings.adtRepointed')}</p>
       </div>
 
-      <div className="ps-qa-tab-toolbar" style={{ flexWrap: 'wrap' }}>
+      <div className="ps-qa-tab-toolbar ps-qa-tab-toolbar--wrap">
         <select className="ps-conf-select" value={messageType} onChange={e => { setMessageType(e.target.value as MessageType); reset(); }}>
-          {(Object.keys(MESSAGE_TYPE_LABELS) as MessageType[]).map(t => (
-            <option key={t} value={t}>{MESSAGE_TYPE_LABELS[t]}</option>
+          {(Object.keys(MESSAGE_TYPE_LABEL_KEY) as MessageType[]).map(mt => (
+            <option key={mt} value={mt}>{t(MESSAGE_TYPE_LABEL_KEY[mt])}</option>
           ))}
         </select>
       </div>
 
-      <div className="ps-conf-form-grid" style={{ marginTop: 12 }}>
+      <div className="ps-conf-form-grid ps-mt-12">
         {messageType === 'A08' && (
-          <input className="ps-conf-input" placeholder="Patient ID" value={patientId} onChange={e => setPatientId(e.target.value)} />
+          <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.patientId')} value={patientId} onChange={e => setPatientId(e.target.value)} />
         )}
         {messageType === 'A40' && (
           <>
-            <input className="ps-conf-input" placeholder="Prior (merged-away) Patient ID" value={priorPatientId} onChange={e => setPriorPatientId(e.target.value)} />
-            <input className="ps-conf-input" placeholder="Surviving Patient ID" value={survivingPatientId} onChange={e => setSurvivingPatientId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.priorPatientId')} value={priorPatientId} onChange={e => setPriorPatientId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.survivingPatientId')} value={survivingPatientId} onChange={e => setSurvivingPatientId(e.target.value)} />
           </>
         )}
         {messageType === 'A47' && (
           <>
-            <input className="ps-conf-input" placeholder="Downtime/Temporary Patient ID" value={a47PriorId} onChange={e => setA47PriorId(e.target.value)} />
-            <input className="ps-conf-input" placeholder="Confirmed Patient ID" value={a47ConfirmedId} onChange={e => setA47ConfirmedId(e.target.value)} />
-            <input className="ps-conf-input" placeholder="Reason Code" value={reasonCode} onChange={e => setReasonCode(e.target.value)} />
-            <input className="ps-conf-input" placeholder="Notes" value={notes} onChange={e => setNotes(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.a47PriorId')} value={a47PriorId} onChange={e => setA47PriorId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.a47ConfirmedId')} value={a47ConfirmedId} onChange={e => setA47ConfirmedId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.reasonCode')} value={reasonCode} onChange={e => setReasonCode(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.notes')} value={notes} onChange={e => setNotes(e.target.value)} />
           </>
         )}
         {messageType === 'ORU_R01' && (
           <>
-            <input className="ps-conf-input" placeholder="Case ID" value={caseId} onChange={e => setCaseId(e.target.value)} />
-            <input className="ps-conf-input" placeholder="Synoptic Instance ID" value={instanceId} onChange={e => setInstanceId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.caseId')} value={caseId} onChange={e => setCaseId(e.target.value)} />
+            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.instanceId')} value={instanceId} onChange={e => setInstanceId(e.target.value)} />
             <select className="ps-conf-select" value={resultState} onChange={e => setResultState(e.target.value as OruResultState)}>
-              <option value="FINAL">Final</option>
-              <option value="CORRECTED">Corrected</option>
-              <option value="ADDENDUM">Addendum</option>
+              <option value="FINAL">{t('outboundMessagePreviewSection.resultStates.final')}</option>
+              <option value="CORRECTED">{t('outboundMessagePreviewSection.resultStates.corrected')}</option>
+              <option value="ADDENDUM">{t('outboundMessagePreviewSection.resultStates.addendum')}</option>
             </select>
           </>
         )}
       </div>
 
       {messageType === 'ORU_R01' && (
-        <p className="ps-conf-hint" style={{ color: '#f59e0b', marginTop: 8 }}>
-          ⚠ reportPdfBase64/reportNarrativeText will show as absent here — generating either requires the real
-          report-rendering pipeline (SynopticReportPage.tsx's own closures), which this standalone admin tool
-          doesn't have access to. Every other field — patient identity, narrative fields, structuredDiagnosisAnswers
-          — is the real, accurate shape from your actual case data.
-        </p>
+        <p className="ps-conf-hint ps-conf-hint--warning ps-mt-8">{t('outboundMessagePreviewSection.warnings.oruMissingFields')}</p>
       )}
 
-      <div className="ps-qa-tab-toolbar" style={{ marginTop: 12 }}>
+      <div className="ps-qa-tab-toolbar ps-mt-12">
         <button className="ps-conf-btn-primary" disabled={busy || !canPreview} onClick={handlePreview}>
-          {busy ? 'Building…' : 'Preview Payload'}
+          {busy ? t('outboundMessagePreviewSection.buttons.building') : t('outboundMessagePreviewSection.buttons.preview')}
         </button>
         <button className="ps-conf-btn-secondary" disabled={!payload} onClick={handleDownload}>
-          ⬇ Download JSON
+          {t('outboundMessagePreviewSection.buttons.download')}
         </button>
       </div>
 
-      {error && <p className="ps-conf-hint" style={{ color: '#ef4444' }}>⚠ {error}</p>}
+      {error && <p className="ps-conf-hint ps-conf-hint--danger">⚠ {error}</p>}
 
       {payload !== null && payload !== undefined && (
         <>
-          <div className="ps-conf-section-header" style={{ marginTop: 20 }}>
-            <h2 className="ps-conf-section-title">Real Output — JSON Payload to Interface Engine</h2>
-            <p className="ps-conf-section-subtitle">
-              This is exactly what PathScribe would enqueue for this real operation — use "Download JSON" to save a
-              real example file for your own format verification.
-            </p>
+          <div className="ps-conf-section-header ps-mt-20">
+            <h2 className="ps-conf-section-title">{t('outboundMessagePreviewSection.output.title')}</h2>
+            <p className="ps-conf-section-subtitle">{t('outboundMessagePreviewSection.output.subtitle')}</p>
           </div>
           <textarea
             readOnly
-            className="ps-conf-input"
-            style={{ width: '100%', minHeight: 380, fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre' }}
+            className="ps-conf-input ps-dft-export__mono-textarea ps-outbound-preview__mono-textarea--json"
             value={JSON.stringify(payload, null, 2)}
           />
         </>

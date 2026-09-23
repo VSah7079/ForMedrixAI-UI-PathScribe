@@ -8,9 +8,24 @@
 
 import type { NcciPtpEditPair } from '@/types/billing/NcciPtpEdit';
 
+// `problems` carries translation descriptors, not pre-built English
+// sentences — this is a pure, non-hook function with no access to
+// `useTranslation()`'s `t`, and its only consumer
+// (NcciEditRulesSection.tsx) needs translatable messages. Same
+// "return a descriptor, not English text" pattern
+// resolveCassetteLabelFitWarning.ts's own CassetteLabelFitWarning
+// already established (batch 92).
+export interface NcciUploadProblem {
+  row: number;
+  kind: 'missing_codes' | 'invalid_modifier' | 'missing_effective_date';
+  columnOneCode?: string;
+  columnTwoCode?: string;
+  modifierRaw?: string;
+}
+
 export interface ParsedNcciUpload {
   pairs: Omit<NcciPtpEditPair, 'id'>[];
-  problems: string[];
+  problems: NcciUploadProblem[];
 }
 
 /** Real, per direct guidance: parses a real, uploaded PTP edit
@@ -22,7 +37,7 @@ export interface ParsedNcciUpload {
  *  quarter/export tool. */
 export function parseNcciUploadRows(rows: any[]): ParsedNcciUpload {
   const pairs: Omit<NcciPtpEditPair, 'id'>[] = [];
-  const problems: string[] = [];
+  const problems: NcciUploadProblem[] = [];
 
   rows.forEach((row, i) => {
     const get = (...keys: string[]) => { for (const k of keys) if (row[k] !== undefined && row[k] !== '') return String(row[k]).trim(); return ''; };
@@ -35,15 +50,15 @@ export function parseNcciUploadRows(rows: any[]): ParsedNcciUpload {
     if (!columnOneCode && !columnTwoCode) return; // skip genuinely blank rows silently
 
     if (!columnOneCode || !columnTwoCode) {
-      problems.push(`Row ${i + 2}: needs both a real Column One and Column Two code.`);
+      problems.push({ row: i + 2, kind: 'missing_codes' });
       return;
     }
     if (!['0', '1', '9'].includes(modifierRaw)) {
-      problems.push(`Row ${i + 2}: "${columnOneCode}/${columnTwoCode}" needs a real modifier indicator (0, 1, or 9), got "${modifierRaw || '(blank)'}".`);
+      problems.push({ row: i + 2, kind: 'invalid_modifier', columnOneCode, columnTwoCode, modifierRaw });
       return;
     }
     if (!effectiveDate) {
-      problems.push(`Row ${i + 2}: "${columnOneCode}/${columnTwoCode}" needs a real effective date.`);
+      problems.push({ row: i + 2, kind: 'missing_effective_date', columnOneCode, columnTwoCode });
       return;
     }
     pairs.push({

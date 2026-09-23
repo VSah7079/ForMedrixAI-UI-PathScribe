@@ -2,6 +2,7 @@
 // Config tab — browse, create, edit and duplicate Report Parts.
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { ReportPart, ReportPartType } from '../../types/reportPart';
 import { mockReportPartService, onReportPartsChanged } from '../../services/reportParts/mockReportPartService';
@@ -10,12 +11,49 @@ import type { Facility } from '../../services/facilities/IFacilityService';
 
 const svc = mockReportPartService;
 
-// ── Type config (labels/icons only — colours handled via CSS modifier classes) ──
+// ── Type config (icons only — colours handled via CSS modifier classes) ──
 
-const TYPE_CONFIG: Record<ReportPartType, { label: string; icon: string }> = {
-  header: { label: 'Header', icon: '▲' },
-  footer: { label: 'Footer', icon: '▼' },
-  body:   { label: 'Body',   icon: '▬' },
+const TYPE_CONFIG: Record<ReportPartType, { icon: string }> = {
+  header: { icon: '▲' },
+  footer: { icon: '▼' },
+  body:   { icon: '▬' },
+};
+
+// Real, persisted ReportPartType enum values stay as data; only the
+// displayed label is translated (this sweep's usual LABEL_KEY pattern).
+// Kept as this file's own singular/plural keys rather than reusing
+// PartBuilderPage.tsx's differently-worded "Header Part"/"Footer Part"/
+// "Body Part" labels, which serve a different per-instance-type context.
+const TYPE_LABEL_KEY: Record<ReportPartType, string> = {
+  header: 'partLibraryTab.type.header',
+  footer: 'partLibraryTab.type.footer',
+  body:   'partLibraryTab.type.body',
+};
+
+// Real fix: the original code built the plural via `${label}s`, which
+// produced "Bodys" for the body group's plural heading — a genuine
+// English grammar bug, not just an i18n gap. Each plural form now has
+// its own real, correct translation instead of a suffix rule.
+const TYPE_LABEL_PLURAL_KEY: Record<ReportPartType, string> = {
+  header: 'partLibraryTab.typePlural.header',
+  footer: 'partLibraryTab.typePlural.footer',
+  body:   'partLibraryTab.typePlural.body',
+};
+
+const EMPTY_GROUP_KEY: Record<ReportPartType, string> = {
+  header: 'partLibraryTab.emptyGroup.header',
+  footer: 'partLibraryTab.emptyGroup.footer',
+  body:   'partLibraryTab.emptyGroup.body',
+};
+
+// ReportPartStatus ('draft'/'published'/'archived') is the same real,
+// persisted enum as ReportTemplate['status'] (batch 147's TemplateListTab.tsx)
+// with identical wording, so this reuses those exact keys rather than
+// duplicating the translation content.
+const STATUS_LABEL_KEY: Record<ReportPart['status'], string> = {
+  published: 'templateListTab.status.published',
+  draft: 'templateListTab.status.draft',
+  archived: 'templateListTab.status.archived',
 };
 
 // ── Protected built-in part IDs ───────────────────────────────────────────────
@@ -38,6 +76,7 @@ const PartCard: React.FC<{
   isProtected:   boolean;
   isDuplicating: boolean;
 }> = ({ part, labName, onEdit, onDuplicate, onArchive, isProtected, isDuplicating }) => {
+  const { t } = useTranslation();
   const [confirmArchive, setConfirmArchive] = useState(false);
   const tc = TYPE_CONFIG[part.partType];
 
@@ -56,15 +95,15 @@ const PartCard: React.FC<{
         <div className="ps-plib-card__name-row">
           <span className="ps-plib-card__name">{part.name}</span>
           <span className={`ps-plib-card__badge ps-plib-card__badge--${part.status}`}>
-            {part.status}
+            {t(STATUS_LABEL_KEY[part.status])}
           </span>
           {isProtected && (
-            <span className="ps-plib-card__badge ps-plib-card__badge--builtin">BUILT-IN</span>
+            <span className="ps-plib-card__badge ps-plib-card__badge--builtin">{t('casePoolAssignmentSection.rulesTable.builtInBadge')}</span>
           )}
           <span className="ps-plib-card__badge ps-plib-card__badge--lab">{labName}</span>
         </div>
         <div className="ps-plib-card__desc">
-          {tc.label} · {part.specialty}{part.subspecialty ? ` — ${part.subspecialty}` : ''}
+          {t(TYPE_LABEL_KEY[part.partType])} · {part.specialty}{part.subspecialty ? ` — ${part.subspecialty}` : ''}
           {part.description && ` · ${part.description}`}
         </div>
       </div>
@@ -73,7 +112,7 @@ const PartCard: React.FC<{
       <div className="ps-plib-card__actions">
         {!isProtected && (
           <button onClick={onEdit} className="ps-plib-card__btn ps-plib-card__btn--primary">
-            Edit
+            {t('common.edit')}
           </button>
         )}
         <button
@@ -81,18 +120,18 @@ const PartCard: React.FC<{
           disabled={isDuplicating}
           className="ps-plib-card__btn ps-plib-card__btn--secondary"
         >
-          {isDuplicating ? 'Duplicating…' : 'Duplicate'}
+          {isDuplicating ? t('partLibraryTab.duplicatingLabel') : t('common.duplicate')}
         </button>
         {!isProtected && (
           confirmArchive ? (
             <>
-              <span className="ps-plib-card__confirm-text">Archive?</span>
-              <button onClick={onArchive}                    className="ps-plib-card__btn ps-plib-card__btn--danger">Yes</button>
-              <button onClick={() => setConfirmArchive(false)} className="ps-plib-card__btn ps-plib-card__btn--cancel">No</button>
+              <span className="ps-plib-card__confirm-text">{t('templateListTab.confirmArchiveLabel')}</span>
+              <button onClick={onArchive}                    className="ps-plib-card__btn ps-plib-card__btn--danger">{t('common.yes')}</button>
+              <button onClick={() => setConfirmArchive(false)} className="ps-plib-card__btn ps-plib-card__btn--cancel">{t('common.no')}</button>
             </>
           ) : (
             <button onClick={() => setConfirmArchive(true)} className="ps-plib-card__btn ps-plib-card__btn--cancel">
-              Archive
+              {t('common.archive')}
             </button>
           )
         )}
@@ -104,6 +143,7 @@ const PartCard: React.FC<{
 // ── Main tab ──────────────────────────────────────────────────────────────────
 
 const PartLibraryTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [parts,      setParts]      = useState<ReportPart[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -115,7 +155,7 @@ const PartLibraryTab: React.FC = () => {
   const [labFilter, setLabFilter] = useState<'all' | 'global' | string>('all');
 
   useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('abnormalTriggerRulesSection.global');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -157,16 +197,16 @@ const PartLibraryTab: React.FC = () => {
       {/* Header */}
       <div className="ps-plib__header">
         <div>
-          <h2 className="ps-plib__title">Part Library</h2>
+          <h2 className="ps-plib__title">{t('templateAssemblyPage.partLibraryTitle')}</h2>
           <p className="ps-plib__subtitle">
-            Reusable report parts — headers, footers and body sections assembled into templates
+            {t('partLibraryTab.subtitle')}
           </p>
         </div>
         <button
           className="ps-conf-btn-primary"
           onClick={() => navigate('/admin/parts/new')}
         >
-          + New Part
+          + {t('partLibraryTab.newPartButton')}
         </button>
       </div>
 
@@ -187,7 +227,7 @@ const PartLibraryTab: React.FC = () => {
               onClick={() => setTypeFilter(f)}
               className={`ps-plib__filter-btn${typeFilter === f ? ' active' : ''}`}
             >
-              {f === 'all' ? 'All' : `${TYPE_CONFIG[f].icon} ${TYPE_CONFIG[f].label}s`}
+              {f === 'all' ? t('partLibraryTab.filterAll') : `${TYPE_CONFIG[f].icon} ${t(TYPE_LABEL_PLURAL_KEY[f])}`}
             </button>
           ))}
         </div>
@@ -195,12 +235,12 @@ const PartLibraryTab: React.FC = () => {
           className="ps-plib__search"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search parts…"
+          placeholder={t('templateAssemblyPage.searchPartsPlaceholder')}
         />
         {labs.length > 0 && (
           <select className="ps-conf-select" value={labFilter} onChange={e => setLabFilter(e.target.value as any)}>
-            <option value="all">All Labs</option>
-            <option value="global">Global only</option>
+            <option value="all">{t('abnormalTriggerRulesSection.labFilter.all')}</option>
+            <option value="global">{t('abnormalTriggerRulesSection.labFilter.globalOnly')}</option>
             {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         )}
@@ -208,7 +248,7 @@ const PartLibraryTab: React.FC = () => {
 
       {/* Content */}
       {loading ? (
-        <div className="ps-plib__loading">Loading parts…</div>
+        <div className="ps-plib__loading">{t('partLibraryTab.loadingParts')}</div>
       ) : (
         (['header', 'body', 'footer'] as ReportPartType[]).map(type => {
           if (typeFilter !== 'all' && typeFilter !== type) return null;
@@ -222,14 +262,14 @@ const PartLibraryTab: React.FC = () => {
                   {tc.icon}
                 </span>
                 <span className={`ps-plib__group-label ps-plib__group-label--${type}`}>
-                  {tc.label}s
+                  {t(TYPE_LABEL_PLURAL_KEY[type])}
                 </span>
                 <span className="ps-plib__group-count">{group.length}</span>
               </div>
 
               {group.length === 0 ? (
                 <div className="ps-plib__empty">
-                  No {tc.label.toLowerCase()} parts yet
+                  {t(EMPTY_GROUP_KEY[type])}
                 </div>
               ) : (
                 group.map(p => (

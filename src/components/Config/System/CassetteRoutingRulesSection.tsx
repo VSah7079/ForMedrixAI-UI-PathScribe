@@ -7,6 +7,7 @@
 // invented for this.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCassetteRoutingRuleService } from '../../../services/cassetteRouting/mockCassetteRoutingRuleService';
 import { mockProtocolService } from '../../../services/protocols/mockProtocolService';
@@ -20,6 +21,12 @@ import type { Facility } from '../../../services/facilities/IFacilityService';
 import type { CassetteColorDefinition } from '../../../services/cassetteColors/ICassetteColorService';
 
 const PRIORITY_OPTIONS: CassetteRuleOrderPriority[] = ['Routine', 'Rush', 'STAT'];
+
+const PRIORITY_LABEL_KEY: Record<CassetteRuleOrderPriority, string> = {
+  Routine: 'cassetteRoutingRulesSection.priorityLabels.routine',
+  Rush: 'cassetteRoutingRulesSection.priorityLabels.rush',
+  STAT: 'cassetteRoutingRulesSection.priorityLabels.stat',
+};
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 type Draft = Omit<CassetteRoutingRule, 'id' | 'createdAt' | 'updatedAt'>;
@@ -49,6 +56,7 @@ interface RuleModalProps {
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, facilities, colors, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(rule ? { ...rule } : emptyDraft);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
 
@@ -63,9 +71,9 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
 
   const validate = () => {
     const e: typeof errors = {};
-    if (!draft.name.trim()) e.name = 'Required';
-    if (!draft.colorId.trim()) e.colorId = 'Required — the whole point of this rule is what color it routes to';
-    if (!Number.isFinite(draft.priorityWeight)) e.priorityWeight = 'Required — determines which rule wins when more than one matches';
+    if (!draft.name.trim()) e.name = t('common.required');
+    if (!draft.colorId.trim()) e.colorId = t('cassetteRoutingRulesSection.modal.errors.colorRequired');
+    if (!Number.isFinite(draft.priorityWeight)) e.priorityWeight = t('cassetteRoutingRulesSection.modal.errors.priorityWeightRequired');
     return e;
   };
 
@@ -77,78 +85,80 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
 
   return (
     <div className="ps-ms-overlay">
-      <div className="ps-ms-modal" style={{ maxWidth: 560 }}>
-        <div className="ps-ms-header">{mode === 'add' ? 'Add Cassette Routing Rule' : `Edit — ${rule?.name}`}</div>
+      <div className="ps-ms-modal ps-ms-modal--medium">
+        <div className="ps-ms-header">
+          {mode === 'add' ? t('cassetteRoutingRulesSection.modal.addTitle') : t('cassetteRoutingRulesSection.modal.editTitle', { name: rule?.name })}
+        </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Rule Name <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.nameLabel')} <span className="ps-conf-required">*</span></label>
             <input className={`ps-conf-input ${errors.name ? 'ps-conf-input--error' : ''}`}
-              value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. STAT Override" />
+              value={draft.name} onChange={e => set('name', e.target.value)} placeholder={t('cassetteRoutingRulesSection.modal.namePlaceholder')} />
             {errors.name && <span className="ps-conf-error-text">{errors.name}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.descriptionLabel')}</label>
             <textarea className="ps-conf-input" rows={2} value={draft.description ?? ''} onChange={e => set('description', e.target.value)} />
           </div>
 
-          <div className="ps-conf-section-divider">Conditions — every set condition must match (unset = matches anything)</div>
+          <div className="ps-conf-section-divider">{t('cassetteRoutingRulesSection.modal.conditionsDivider')}</div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="rule-protocol">Protocol</label>
+            <label className="ps-conf-label" htmlFor="rule-protocol">{t('cassetteRoutingRulesSection.modal.protocolLabel')}</label>
             <select id="rule-protocol" className="ps-conf-select" value={draft.conditions.protocolId ?? ''} onChange={e => setCondition('protocolId', e.target.value)}>
-              <option value="">— Any protocol —</option>
+              <option value="">{t('cassetteRoutingRulesSection.modal.protocolPlaceholder')}</option>
               {protocols.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <span className="ps-conf-field-hint">Also the real source for cassette type/form factor — see this rule's own output below.</span>
+            <span className="ps-conf-field-hint">{t('cassetteRoutingRulesSection.modal.protocolHint')}</span>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Order Priority</label>
-            <div className="ps-conf-toggle-row" style={{ gap: 14 }}>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.orderPriorityLabel')}</label>
+            <div className="ps-conf-toggle-row ps-conf-toggle-row--gap14">
               {PRIORITY_OPTIONS.map(p => (
-                <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
+                <label key={p} className="ps-cassrr-priority-label">
                   <input type="checkbox" checked={(draft.conditions.priority ?? []).includes(p)} onChange={() => togglePriority(p)} />
-                  {p}
+                  {t(PRIORITY_LABEL_KEY[p])}
                 </label>
               ))}
             </div>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="rule-station">Origin Station</label>
+            <label className="ps-conf-label" htmlFor="rule-station">{t('cassetteRoutingRulesSection.modal.originStationLabel')}</label>
             <select id="rule-station" className="ps-conf-select" value={draft.conditions.originStationId ?? ''} onChange={e => setCondition('originStationId', e.target.value)}>
-              <option value="">— Any station —</option>
+              <option value="">{t('cassetteRoutingRulesSection.modal.originStationPlaceholder')}</option>
               {stations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="rule-facility">Ordering Facility</label>
+            <label className="ps-conf-label" htmlFor="rule-facility">{t('cassetteRoutingRulesSection.modal.orderingFacilityLabel')}</label>
             <select id="rule-facility" className="ps-conf-select" value={draft.conditions.orderingFacilityId ?? ''} onChange={e => setCondition('orderingFacilityId', e.target.value)}>
-              <option value="">— Any facility —</option>
+              <option value="">{t('cassetteRoutingRulesSection.modal.orderingFacilityPlaceholder')}</option>
               {facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Case Type</label>
-            <input className="ps-conf-input" value={draft.conditions.caseType ?? ''} onChange={e => setCondition('caseType', e.target.value)} placeholder="e.g. Consultation, Reference Lab" />
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.caseTypeLabel')}</label>
+            <input className="ps-conf-input" value={draft.conditions.caseType ?? ''} onChange={e => setCondition('caseType', e.target.value)} placeholder={t('cassetteRoutingRulesSection.modal.caseTypePlaceholder')} />
           </div>
 
-          <div className="ps-conf-section-divider">Output</div>
+          <div className="ps-conf-section-divider">{t('cassetteRoutingRulesSection.modal.outputDivider')}</div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="rule-color">Cassette Color <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="rule-color">{t('cassetteRoutingRulesSection.modal.cassetteColorLabel')} <span className="ps-conf-required">*</span></label>
             <select id="rule-color" className={`ps-conf-select ${errors.colorId ? 'ps-conf-input--error' : ''}`}
               value={draft.colorId} onChange={e => set('colorId', e.target.value)}>
-              <option value="">— Select a color —</option>
-              {colors.map(c => <option key={c.id} value={c.id}>{c.displayName}{!c.active ? ' (inactive)' : ''}</option>)}
+              <option value="">{t('cassetteRoutingRulesSection.modal.selectColorPlaceholder')}</option>
+              {colors.map(c => <option key={c.id} value={c.id}>{c.displayName}{!c.active ? t('cassetteRoutingRulesSection.modal.inactiveColorSuffix') : ''}</option>)}
             </select>
             {draft.colorId && colors.find(c => c.id === draft.colorId) && (
-              <span className="ps-conf-field-hint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: colors.find(c => c.id === draft.colorId)!.hexCode, border: '1px solid rgba(255,255,255,0.2)' }} />
+              <span className="ps-conf-field-hint ps-cassrr-color-hint">
+                <span className="ps-cassrr-color-swatch" style={{ '--swatch-hex': colors.find(c => c.id === draft.colorId)!.hexCode } as React.CSSProperties} />
                 {colors.find(c => c.id === draft.colorId)!.key}
               </span>
             )}
@@ -156,42 +166,42 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Print Template Key</label>
-            <input className="ps-conf-input" value={draft.printTemplateKey ?? ''} onChange={e => set('printTemplateKey', e.target.value)} placeholder="Optional" />
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.printTemplateKeyLabel')}</label>
+            <input className="ps-conf-input" value={draft.printTemplateKey ?? ''} onChange={e => set('printTemplateKey', e.target.value)} placeholder={t('cassetteRoutingRulesSection.modal.printTemplateKeyPlaceholder')} />
           </div>
 
-          <div className="ps-conf-section-divider">Rule Metadata</div>
+          <div className="ps-conf-section-divider">{t('cassetteRoutingRulesSection.modal.metadataDivider')}</div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Priority Weight (1–100, higher wins) <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.priorityWeightLabel')} <span className="ps-conf-required">*</span></label>
             <input type="number" min={1} max={100} className={`ps-conf-input ${errors.priorityWeight ? 'ps-conf-input--error' : ''}`}
               value={draft.priorityWeight} onChange={e => set('priorityWeight', parseInt(e.target.value, 10))} />
             {errors.priorityWeight && <span className="ps-conf-error-text">{errors.priorityWeight}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Effective From</label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.effectiveFromLabel')}</label>
             <input type="date" className="ps-conf-input" value={draft.effectiveFrom?.slice(0, 10) ?? ''} onChange={e => set('effectiveFrom', e.target.value ? new Date(e.target.value).toISOString() : undefined)} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Effective To</label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.effectiveToLabel')}</label>
             <input type="date" className="ps-conf-input" value={draft.effectiveTo?.slice(0, 10) ?? ''} onChange={e => set('effectiveTo', e.target.value ? new Date(e.target.value).toISOString() : undefined)} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('cassetteRoutingRulesSection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'add' ? 'Add Rule' : 'Save Changes'}</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'add' ? t('cassetteRoutingRulesSection.modal.addButton') : t('cassetteRoutingRulesSection.modal.saveChangesButton')}</button>
         </div>
       </div>
     </div>
@@ -200,6 +210,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ mode, rule, protocols, stations, 
 
 // ─── Main section ────────────────────────────────────────────────────────────
 const CassetteRoutingRulesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [rules, setRules]     = useState<CassetteRoutingRule[]>([]);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stations, setStations]   = useState<ScanStation[]>([]);
@@ -232,12 +243,12 @@ const CassetteRoutingRulesSection: React.FC = () => {
 
   const conditionsSummary = (rule: CassetteRoutingRule): string => {
     const parts: string[] = [];
-    if (rule.conditions.protocolId) parts.push(`Protocol: ${protocolName(rule.conditions.protocolId)}`);
-    if (rule.conditions.priority?.length) parts.push(`Priority: ${rule.conditions.priority.join(', ')}`);
-    if (rule.conditions.originStationId) parts.push(`Station: ${stationName(rule.conditions.originStationId)}`);
-    if (rule.conditions.orderingFacilityId) parts.push(`Facility: ${facilityName(rule.conditions.orderingFacilityId)}`);
-    if (rule.conditions.caseType) parts.push(`Case type: ${rule.conditions.caseType}`);
-    return parts.length > 0 ? parts.join(' · ') : 'Any (catch-all)';
+    if (rule.conditions.protocolId) parts.push(t('cassetteRoutingRulesSection.conditionsSummary.protocol', { name: protocolName(rule.conditions.protocolId) }));
+    if (rule.conditions.priority?.length) parts.push(t('cassetteRoutingRulesSection.conditionsSummary.priority', { list: rule.conditions.priority.map(p => t(PRIORITY_LABEL_KEY[p])).join(', ') }));
+    if (rule.conditions.originStationId) parts.push(t('cassetteRoutingRulesSection.conditionsSummary.station', { name: stationName(rule.conditions.originStationId) }));
+    if (rule.conditions.orderingFacilityId) parts.push(t('cassetteRoutingRulesSection.conditionsSummary.facility', { name: facilityName(rule.conditions.orderingFacilityId) }));
+    if (rule.conditions.caseType) parts.push(t('cassetteRoutingRulesSection.conditionsSummary.caseType', { type: rule.conditions.caseType }));
+    return parts.length > 0 ? parts.join(' · ') : t('cassetteRoutingRulesSection.conditionsSummary.catchAll');
   };
 
   const handleSave = async (draft: Draft) => {
@@ -256,23 +267,27 @@ const CassetteRoutingRulesSection: React.FC = () => {
     if (res.ok) setRules(prev => prev.map(r => r.id === rule.id ? res.data : r));
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading cassette routing rules...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('cassetteRoutingRulesSection.loading')}</div>;
 
   const sorted = [...rules].sort((a, b) => b.priorityWeight - a.priorityWeight);
+
+  const headers: Array<{ key: string; label: string }> = [
+    { key: 'weight', label: t('cassetteRoutingRulesSection.table.headers.weight') },
+    { key: 'rule', label: t('cassetteRoutingRulesSection.table.headers.rule') },
+    { key: 'conditions', label: t('cassetteRoutingRulesSection.table.headers.conditions') },
+    { key: 'color', label: t('cassetteRoutingRulesSection.table.headers.color') },
+    { key: 'status', label: t('cassetteRoutingRulesSection.table.headers.status') },
+    { key: 'actions', label: t('cassetteRoutingRulesSection.table.headers.actions') },
+  ];
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Cassette Routing Rules</h3>
-          <p className="ps-conf-section-subtitle">
-            Determines cassette color for an order based on protocol, priority, origin station, and ordering facility.
-            Cassette type/form factor always comes from the matched protocol's own processing format — never set
-            separately here, so it can never drift from the real protocol definition. Higher priority weight wins
-            when more than one rule genuinely matches the same order.
-          </p>
+          <h3 className="ps-conf-section-title">{t('cassetteRoutingRulesSection.title')}</h3>
+          <p className="ps-conf-section-subtitle">{t('cassetteRoutingRulesSection.subtitle')}</p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Rule</button>
+        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>{t('cassetteRoutingRulesSection.addButton')}</button>
       </div>
 
       <div className="ps-conf-table-wrap">
@@ -280,8 +295,8 @@ const CassetteRoutingRulesSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Weight', 'Rule', 'Conditions', 'Color', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="ps-conf-th">{h}</th>
+                {headers.map(h => (
+                  <th key={h.key} className="ps-conf-th">{h.label}</th>
                 ))}
               </tr>
             </thead>
@@ -293,11 +308,11 @@ const CassetteRoutingRulesSection: React.FC = () => {
                     <div className="ps-conf-identity-name">{rule.name}</div>
                     {rule.description && <div className="ps-conf-field-hint">{rule.description}</div>}
                   </td>
-                  <td className="ps-conf-td" style={{ fontSize: 12, color: '#94a3b8' }}>{conditionsSummary(rule)}</td>
+                  <td className="ps-conf-td ps-cassrr-conditions-summary">{conditionsSummary(rule)}</td>
                   <td className="ps-conf-td">
                     {colorFor(rule.colorId) ? (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: colorFor(rule.colorId)!.hexCode, border: '1px solid rgba(255,255,255,0.2)' }} />
+                      <span className="ps-cassrr-color-hint">
+                        <span className="ps-cassrr-color-swatch" style={{ '--swatch-hex': colorFor(rule.colorId)!.hexCode } as React.CSSProperties} />
                         {colorFor(rule.colorId)!.displayName}
                       </span>
                     ) : '—'}
@@ -305,19 +320,19 @@ const CassetteRoutingRulesSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${rule.active ? 'ps-conf-status-dot--active' : ''}`} />
-                      <span className={`ps-conf-status-text ${rule.active ? 'ps-conf-status-text--active' : ''}`}>{rule.active ? 'Active' : 'Inactive'}</span>
+                      <span className={`ps-conf-status-text ${rule.active ? 'ps-conf-status-text--active' : ''}`}>{rule.active ? t('common.active') : t('common.inactive')}</span>
                     </div>
                   </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
-                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', rule })}>Edit</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(rule)}>{rule.active ? 'Deactivate' : 'Reactivate'}</button>
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', rule })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(rule)}>{rule.active ? t('cassetteRoutingRulesSection.table.deactivateButton') : t('cassetteRoutingRulesSection.table.reactivateButton')}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {sorted.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={6}>No cassette routing rules configured yet.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={6}>{t('cassetteRoutingRulesSection.table.emptyState')}</td></tr>
               )}
             </tbody>
           </table>

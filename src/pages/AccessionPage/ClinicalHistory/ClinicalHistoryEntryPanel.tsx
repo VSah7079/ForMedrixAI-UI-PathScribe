@@ -25,18 +25,27 @@
 //
 // Real, per pathscribe.css reuse guidance: named CSS classes
 // throughout (ps-input-dark, ps-label, ps-conf-btn-secondary,
-// ps-conf-empty-row), no inline styles.
+// ps-conf-empty-row, plus the ps-clinhist-* set added in the batch-10
+// i18n/inline-CSS cleanup pass — this file previously had ~15 inline
+// style={{...}} objects despite this comment's own claim otherwise;
+// those are now gone and the classes below are the real, current
+// state), no inline styles.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockClinicalHistoryDictionaryService } from '../../../services/clinicalHistory/mockClinicalHistoryDictionaryService';
 import type { ClinicalHistoryDictionaryEntry } from '../../../services/clinicalHistory/IClinicalHistoryDictionaryService';
 import type { ClinicalHistoryCategoryCode, RecordedClinicalHistoryEntry } from '@/types/clinicalHistory/RecordedClinicalHistoryEntry';
 
-const CATEGORY_LABELS: Record<ClinicalHistoryCategoryCode, string> = {
-  SCR: 'Screening', SYM: 'Symptoms', RAD_LAB: 'Radiology / Lab',
-  PRIOR_PATH: 'Prior Pathology', MAL_STAGE: 'Malignancy / Staging', HIGH_RISK: 'High-Risk Factors',
+const CATEGORY_LABEL_KEY: Record<ClinicalHistoryCategoryCode, string> = {
+  SCR: 'accessionPage.clinicalHistory.categoryLabel.screening',
+  SYM: 'accessionPage.clinicalHistory.categoryLabel.symptoms',
+  RAD_LAB: 'accessionPage.clinicalHistory.categoryLabel.radiologyLab',
+  PRIOR_PATH: 'accessionPage.clinicalHistory.categoryLabel.priorPathology',
+  MAL_STAGE: 'accessionPage.clinicalHistory.categoryLabel.malignancyStaging',
+  HIGH_RISK: 'accessionPage.clinicalHistory.categoryLabel.highRiskFactors',
 };
 
 /** Real, per the spec's own explicit numbering (User Story 1's own
@@ -67,6 +76,7 @@ interface ClinicalHistoryEntryPanelProps {
 }
 
 const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ specimenTypes, targets, onChangeTarget, requestedCategory }) => {
+  const { t } = useTranslation();
   const [dictionary, setDictionary] = useState<ClinicalHistoryDictionaryEntry[]>([]);
   const [targetId, setTargetId] = useState<string>(targets[0]?.id ?? 'case');
   const [specimenType, setSpecimenType] = useState<string>(specimenTypes[0] ?? '');
@@ -91,7 +101,7 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
   useEffect(() => { if (!specimenType && specimenTypes[0]) setSpecimenType(specimenTypes[0]); }, [specimenTypes]);
 
   useEffect(() => {
-    if (!targets.some(t => t.id === targetId) && targets[0]) setTargetId(targets[0].id);
+    if (!targets.some(tg => tg.id === targetId) && targets[0]) setTargetId(targets[0].id);
   }, [targets, targetId]);
 
   // Real, per direct guidance ("Check the actions ts as that is where
@@ -108,7 +118,7 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fires once per real, distinct dispatch (nonce), not on every render.
   }, [requestedCategory?.nonce]);
 
-  const activeTarget = targets.find(t => t.id === targetId) ?? targets[0];
+  const activeTarget = targets.find(tg => tg.id === targetId) ?? targets[0];
 
   const forSpecimenType = useMemo(
     () => dictionary.filter(e => !e.specimenFamilyFilter || e.specimenFamilyFilter.includes(specimenType)),
@@ -160,10 +170,10 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
   const handleAdd = () => {
     setError(null);
     if (!activeTarget) return;
-    if (!selectedEntry) { setError('Select a history code before adding.'); return; }
+    if (!selectedEntry) { setError(t('accessionPage.clinicalHistory.selectHistoryCodeError')); return; }
     const missing = selectedEntry.requiredMetadataSchema.filter(f => f.required && !metadataDraft[f.key]?.trim());
     if (missing.length > 0) {
-      setError(`Missing required field${missing.length > 1 ? 's' : ''}: ${missing.map(f => f.label).join(', ')}.`);
+      setError(t('accessionPage.clinicalHistory.missingFieldsError', { count: missing.length, fields: missing.map(f => f.label).join(', ') }));
       setMissingFields(new Set(missing.map(f => f.key)));
       return;
     }
@@ -182,79 +192,79 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
   const displayTextFor = (code: string | null) => code ? (dictionary.find(e => e.id === code)?.displayText ?? code) : null;
 
   return (
-    <div ref={panelRef} className="ps-card-dark" style={{ padding: 16 }}>
-      <div className="ps-label" style={{ marginBottom: 4, fontWeight: 700 }}>Structured Clinical History</div>
-      <div style={{ fontSize: 11, color: 'var(--ps-conf-text-3, #94a3b8)', marginBottom: 10 }}>
-        Alt+1–6 jumps to a category · type to search · Enter selects · Esc closes
+    <div ref={panelRef} className="ps-card-dark ps-clinhist-panel">
+      <div className="ps-label ps-clinhist-heading">{t('accessionPage.clinicalHistory.heading')}</div>
+      <div className="ps-clinhist-hint">
+        {t('accessionPage.clinicalHistory.hint')}
       </div>
 
       {targets.map(target => target.entries.length > 0 && (
-        <div key={target.id} style={{ marginBottom: 14 }}>
+        <div key={target.id} className="ps-clinhist-target-group">
           {targets.length > 1 && (
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ps-conf-text-3, #94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <div className="ps-clinhist-target-label">
               {target.label}
             </div>
           )}
           {target.entries.map((entry, i) => (
             <div key={i} className="ps-conf-row">
               <span className="ps-conf-value">
-                {displayTextFor(entry.historyCode) ?? entry.unmappedTextFallback} <em style={{ color: 'var(--ps-conf-text-3, #94a3b8)' }}>({CATEGORY_LABELS[entry.categoryCode]})</em>
+                {displayTextFor(entry.historyCode) ?? entry.unmappedTextFallback} <em className="ps-clinhist-entry-category">({t(CATEGORY_LABEL_KEY[entry.categoryCode])})</em>
                 {Object.keys(entry.metadata).length > 0 && (
-                  <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
+                  <span className="ps-clinhist-entry-metadata">
                     {Object.entries(entry.metadata).map(([k, v]) => `${k}: ${v}`).join(' · ')}
                   </span>
                 )}
               </span>
-              <button className="ps-conf-btn-secondary" onClick={() => handleRemove(target, i)}>Remove</button>
+              <button className="ps-conf-btn-secondary" onClick={() => handleRemove(target, i)}>{t('accessionPage.clinicalHistory.remove')}</button>
             </div>
           ))}
         </div>
       ))}
-      {targets.every(t => t.entries.length === 0) && <div className="ps-conf-empty-row">No structured clinical history added yet.</div>}
+      {targets.every(tg => tg.entries.length === 0) && <div className="ps-conf-empty-row">{t('accessionPage.clinicalHistory.noEntries')}</div>}
 
       {targets.length > 1 && (
-        <div style={{ marginTop: 14 }}>
-          <label className="ps-label" htmlFor="ch-target">Applies To</label>
+        <div className="ps-clinhist-applies-to">
+          <label className="ps-label" htmlFor="ch-target">{t('accessionPage.clinicalHistory.appliesTo')}</label>
           <select id="ch-target" className="ps-input-dark" value={targetId} onChange={e => setTargetId(e.target.value)}>
-            {targets.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            {targets.map(tg => <option key={tg.id} value={tg.id}>{tg.label}</option>)}
           </select>
         </div>
       )}
 
-      <div className="ps-accession-specimen-row-3col" style={{ marginTop: 14 }}>
+      <div className="ps-accession-specimen-row-3col ps-clinhist-fields-row">
         <div>
-          <label className="ps-label" htmlFor="ch-specimen-type">Specimen Type</label>
+          <label className="ps-label" htmlFor="ch-specimen-type">{t('accessionPage.clinicalHistory.specimenType')}</label>
           <select id="ch-specimen-type" className="ps-input-dark" value={specimenType}
             onChange={e => { setSpecimenType(e.target.value); setCategoryCode(''); setHistoryCode(''); setQuery(''); }}>
-            {specimenTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            {specimenTypes.map(st => <option key={st} value={st}>{st}</option>)}
           </select>
         </div>
         <div>
-          <label className="ps-label" htmlFor="ch-category">Category (Alt+1–6)</label>
+          <label className="ps-label" htmlFor="ch-category">{t('accessionPage.clinicalHistory.category')}</label>
           <select ref={categorySelectRef} id="ch-category" className="ps-input-dark" value={categoryCode}
             onChange={e => { setCategoryCode(e.target.value as ClinicalHistoryCategoryCode); setHistoryCode(''); setQuery(''); }}>
-            <option value="">— select category —</option>
+            <option value="">{t('accessionPage.clinicalHistory.selectCategory')}</option>
             {CATEGORY_ORDER.filter(c => availableCategories.includes(c)).map((c, i) => (
-              <option key={c} value={c}>{i + 1}. {CATEGORY_LABELS[c]}</option>
+              <option key={c} value={c}>{i + 1}. {t(CATEGORY_LABEL_KEY[c])}</option>
             ))}
           </select>
         </div>
-        <div style={{ position: 'relative' }}>
-          <label className="ps-label" htmlFor="ch-history-search">History Item</label>
+        <div className="ps-clinhist-typeahead-wrap">
+          <label className="ps-label" htmlFor="ch-history-search">{t('accessionPage.clinicalHistory.historyItem')}</label>
           <input
             id="ch-history-search" className="ps-input-dark" disabled={!categoryCode}
             value={query}
-            placeholder="Type to search…"
+            placeholder={t('accessionPage.clinicalHistory.typeToSearch')}
             onChange={e => { setQuery(e.target.value); setSuggestionsOpen(true); if (historyCode) setHistoryCode(''); }}
             onFocus={() => setSuggestionsOpen(true)}
             onBlur={() => setTimeout(() => setSuggestionsOpen(false), 120)}
             onKeyDown={handleTypeaheadKeyDown}
           />
           {suggestionsOpen && matches.length > 0 && (
-            <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: '#161616', border: '1px solid #2a2a2a', borderRadius: 8, marginTop: 3, maxHeight: 220, overflowY: 'auto' }}>
+            <div className="ps-clinhist-suggestions">
               {matches.map((e, i) => (
                 <div key={e.id} onMouseDown={() => commit(e)}
-                  style={{ padding: '7px 10px', fontSize: 12, color: '#d1d5db', cursor: 'pointer', background: i === highlightIdx ? '#1f2937' : 'transparent' }}>
+                  className={`ps-clinhist-suggestion-item${i === highlightIdx ? ' ps-clinhist-suggestion-item--highlighted' : ''}`}>
                   {e.displayText}
                 </div>
               ))}
@@ -264,7 +274,7 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
       </div>
 
       {selectedEntry && selectedEntry.requiredMetadataSchema.length > 0 && (
-        <div className="ps-accession-specimen-row-3col" style={{ marginTop: 12 }}>
+        <div className="ps-accession-specimen-row-3col ps-clinhist-metadata-row">
           {selectedEntry.requiredMetadataSchema.map((field, i) => (
             <div key={field.key}>
               <label className="ps-label" htmlFor={`ch-meta-${field.key}`}>{field.label}{field.required && <span className="ps-conf-required"> *</span>}</label>
@@ -281,10 +291,10 @@ const ClinicalHistoryEntryPanel: React.FC<ClinicalHistoryEntryPanelProps> = ({ s
         </div>
       )}
 
-      {error && <div className="ps-conf-error-text" style={{ marginTop: 8 }}>{error}</div>}
+      {error && <div className="ps-conf-error-text ps-clinhist-error">{error}</div>}
 
-      <button ref={addButtonRef} className="ps-conf-btn-secondary" style={{ marginTop: 12 }} onClick={handleAdd} disabled={!historyCode}>
-        + Add to Clinical History{targets.length > 1 ? ` (${activeTarget?.label})` : ''}
+      <button ref={addButtonRef} className="ps-conf-btn-secondary ps-clinhist-add-btn" onClick={handleAdd} disabled={!historyCode}>
+        {t('accessionPage.clinicalHistory.addToHistory')}{targets.length > 1 ? ` (${activeTarget?.label})` : ''}
       </button>
     </div>
   );

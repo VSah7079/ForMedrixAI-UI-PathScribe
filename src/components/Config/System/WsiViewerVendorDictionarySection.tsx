@@ -7,9 +7,29 @@
 // launchUrlTemplate. Same real list/add-edit-modal/deactivate pattern
 // as DpVendorDictionarySection.tsx (this app's own established
 // dictionary-editor shape), not a new one invented for this section.
+//
+// i18n sweep (batch 44): real dictionary content (vendor/product name,
+// the launch URL template itself, which is a real, admin-entered
+// technical value) stays as typed/stored — same convention as
+// DpVendorDictionarySection.tsx (batch 41). Only the surrounding page/
+// modal chrome goes through the new `wsiViewerVendorSection` namespace.
+// The recurring "toggle-row margin"/"meta line" inline-style pair seen
+// in DpVendorDictionarySection.tsx and OrSuiteTerminalsSection.tsx
+// (batches 41/43) showed up here a third time — real enough repetition
+// to converge into two new SHARED classes on the base `.ps-conf-*`
+// family (`.ps-conf-toggle-label-row--gap-below`,
+// `.ps-conf-row-meta`) rather than adding yet another one-off
+// `.ps-wsivendor__*` pair; those earlier two files' own per-file
+// classes are left as-is (out of this batch's scope), but any future
+// file hitting the same pattern should reach for these shared ones
+// directly. The hint/warning paragraph's `marginTop: 4` inline style
+// was also a genuine exact match for the already-existing
+// `.ps-conf-section-subtitle--top-gap` modifier — reused directly,
+// combined with a new `--danger` color modifier for the warning state.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockWsiViewerVendorService } from '../../../services/digitalPathology/mockWsiViewerVendorService';
 import type { WsiViewerVendorEntry, NewWsiViewerVendorEntry } from '../../../services/digitalPathology/IWsiViewerVendorService';
@@ -24,36 +44,36 @@ const VendorModal: React.FC<{
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }> = ({ mode, entry, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(entry ? { ...entry } : emptyDraft());
   const missingPlaceholder = draft.launchUrlTemplate.trim().length > 0 && !draft.launchUrlTemplate.includes('{{wsiUniqueId}}');
 
   return (
     <div data-capture-hide="true" className="ps-conf-backdrop" onClick={onClose}>
       <div className="ps-conf-modal ps-conf-modal--narrow" onClick={e => e.stopPropagation()}>
-        <div className="ps-conf-modal-header">{mode === 'add' ? 'Add WSI Viewer Vendor' : 'Edit WSI Viewer Vendor'}</div>
+        <div className="ps-conf-modal-header">{mode === 'add' ? t('wsiViewerVendorSection.modal.addTitle') : t('wsiViewerVendorSection.modal.editTitle')}</div>
         <div className="ps-conf-modal-body">
-          <label className="ps-label" htmlFor="wsi-vendor-name">Vendor / Product Name</label>
+          <label className="ps-label" htmlFor="wsi-vendor-name">{t('wsiViewerVendorSection.modal.nameLabel')}</label>
           <input id="wsi-vendor-name" className="ps-conf-input" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} />
 
-          <label className="ps-label" htmlFor="wsi-vendor-url">Launch URL Template</label>
+          <label className="ps-label" htmlFor="wsi-vendor-url">{t('wsiViewerVendorSection.modal.urlLabel')}</label>
           <input
             id="wsi-vendor-url" className="ps-conf-input" value={draft.launchUrlTemplate}
             onChange={e => setDraft({ ...draft, launchUrlTemplate: e.target.value })}
             placeholder="https://viewer.yourlab.org/view?slideId={{wsiUniqueId}}"
           />
-          <p className="ps-conf-section-subtitle" style={{ marginTop: 4 }}>
-            Must contain the literal placeholder <code>{'{{wsiUniqueId}}'}</code> — replaced with the slide's own
-            barcode at launch time. Leave blank until this vendor's real viewer URL is known.
+          <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+            <Trans i18nKey="wsiViewerVendorSection.modal.urlHint" values={{ placeholder: '{{wsiUniqueId}}' }} components={{ code: <code /> }} />
           </p>
           {missingPlaceholder && (
-            <p className="ps-conf-section-subtitle" style={{ marginTop: 4, color: '#f87171' }}>
-              This URL doesn't contain <code>{'{{wsiUniqueId}}'}</code> — launching will fail until it does.
+            <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap ps-conf-section-subtitle--danger">
+              <Trans i18nKey="wsiViewerVendorSection.modal.urlWarning" values={{ placeholder: '{{wsiUniqueId}}' }} components={{ code: <code /> }} />
             </p>
           )}
         </div>
         <div className="ps-conf-modal-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="ps-conf-btn-primary" onClick={() => onSave(draft)} disabled={!draft.name.trim()}>Save</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('wsiViewerVendorSection.modal.cancel')}</button>
+          <button className="ps-conf-btn-primary" onClick={() => onSave(draft)} disabled={!draft.name.trim()}>{t('wsiViewerVendorSection.modal.save')}</button>
         </div>
       </div>
     </div>
@@ -61,6 +81,7 @@ const VendorModal: React.FC<{
 };
 
 const WsiViewerVendorDictionarySection: React.FC = () => {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<WsiViewerVendorEntry[]>([]);
   const [showInactive, setShowInactive] = useState(false);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: WsiViewerVendorEntry } | null>(null);
@@ -93,19 +114,17 @@ const WsiViewerVendorDictionarySection: React.FC = () => {
     <div className="ps-conf-page">
       <div className="ps-conf-row">
         <div>
-          <h2 className="ps-conf-section-title">WSI Viewer Vendors</h2>
+          <h2 className="ps-conf-section-title">{t('wsiViewerVendorSection.title')}</h2>
           <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-            Real, launchable whole-slide-image viewer platforms — configure each vendor's real launch URL here once
-            it's known. PathScribe never renders the slide itself; it opens the vendor's own viewer with the slide's
-            barcode substituted into this URL.
+            {t('wsiViewerVendorSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>+ Add Vendor</button>
+        <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>{t('wsiViewerVendorSection.addVendor')}</button>
       </div>
 
-      <label className="ps-conf-toggle-label-row" style={{ marginBottom: 12 }}>
+      <label className="ps-conf-toggle-label-row ps-conf-toggle-label-row--gap-below">
         <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="ps-conf-radio-input" />
-        <span className="ps-conf-option-text">Show inactive</span>
+        <span className="ps-conf-option-text">{t('wsiViewerVendorSection.showInactive')}</span>
       </label>
 
       <div className="ps-conf-card">
@@ -113,18 +132,18 @@ const WsiViewerVendorDictionarySection: React.FC = () => {
           <div key={e.id} className="ps-conf-row">
             <span className="ps-conf-value">
               {e.name}
-              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
-                {e.launchUrlTemplate.trim() ? e.launchUrlTemplate : 'No launch URL configured yet'}
-                {!e.active ? ' · Inactive' : ''}
+              <span className="ps-conf-row-meta">
+                {e.launchUrlTemplate.trim() ? e.launchUrlTemplate : t('wsiViewerVendorSection.noUrlConfigured')}
+                {!e.active ? ` · ${t('wsiViewerVendorSection.inactive')}` : ''}
               </span>
             </span>
             <div className="ps-conf-row-actions">
-              <button className="ps-conf-btn-secondary" onClick={() => toggleActive(e)}>{e.active ? 'Deactivate' : 'Reactivate'}</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'edit', entry: e })}>Edit</button>
+              <button className="ps-conf-btn-secondary" onClick={() => toggleActive(e)}>{e.active ? t('wsiViewerVendorSection.actions.deactivate') : t('wsiViewerVendorSection.actions.reactivate')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'edit', entry: e })}>{t('wsiViewerVendorSection.actions.edit')}</button>
             </div>
           </div>
         ))}
-        {visible.length === 0 && <div className="ps-conf-empty-row">No WSI viewer vendors on file.</div>}
+        {visible.length === 0 && <div className="ps-conf-empty-row">{t('wsiViewerVendorSection.emptyRow')}</div>}
       </div>
 
       {modal && <VendorModal mode={modal.mode} entry={modal.entry} onSave={handleSave} onClose={() => setModal(null)} />}

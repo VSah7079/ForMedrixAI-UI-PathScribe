@@ -12,8 +12,16 @@
 // templateService/generateAiSuggestionsForReport) are mocked — this hook's
 // own sequencing and branching logic is under test, not whether the mock
 // services themselves behave correctly (they have their own tests).
+//
+// Real update alongside this hook's own i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and the showToast(...) assertions below would
+// see the raw key string instead of its English text.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAmendmentWorkflow } from '../useAmendmentWorkflow';

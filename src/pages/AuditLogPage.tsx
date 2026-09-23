@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
@@ -50,6 +51,13 @@ type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality' | 'financial';
 // Pending/Countersigned) rather than forcing one fake shared status set.
 type QaGroup = 'deficiency' | 'intraop-linkage' | 'reconciliation' | 'countersign' | 'fppe' | 'drift' | 'patient-match' | 'management-review';
 
+// Kept as a plain, always-English record — used for the CSV exports'
+// own "Group" meta-header value and row data (a compliance record
+// that has to hold up as a self-explanatory document however it's
+// downloaded, matching the same "exported data stays English"
+// convention already established for every other CSV export in this
+// sweep). The on-screen, translated equivalent is GROUP_LABEL_KEY
+// below, looked up with t() at each on-screen call site.
 const GROUP_LABELS: Record<QaGroup, string> = {
   'deficiency': 'Deficiencies',
   'intraop-linkage': 'Intraoperative Linkage',
@@ -61,6 +69,17 @@ const GROUP_LABELS: Record<QaGroup, string> = {
   'management-review': 'Management Reviews',
 };
 
+const GROUP_LABEL_KEY: Record<QaGroup, string> = {
+  'deficiency': 'auditLog.groupLabels.deficiency',
+  'intraop-linkage': 'auditLog.groupLabels.intraopLinkage',
+  'reconciliation': 'auditLog.groupLabels.reconciliation',
+  'countersign': 'auditLog.groupLabels.countersign',
+  'fppe': 'auditLog.groupLabels.fppe',
+  'drift': 'auditLog.groupLabels.drift',
+  'patient-match': 'auditLog.groupLabels.patientMatch',
+  'management-review': 'auditLog.groupLabels.managementReview',
+};
+
 // Status options per group — 'all' plus whatever that group's own real
 // status values are. Management Reviews and Patient Match Review each have
 // only one real status ('Completed' / 'Needs Review' respectively) — kept
@@ -68,15 +87,41 @@ const GROUP_LABELS: Record<QaGroup, string> = {
 // review or a flagged match is itself the compliance evidence, status
 // vocabulary or not. See Pete's own point: not having a multi-value status
 // isn't a reason to leave something out of the permanent record.
-const GROUP_STATUS_OPTIONS: Record<QaGroup, { value: string; label: string }[]> = {
-  'deficiency': [{ value: 'open', label: 'Open' }, { value: 'pending-verification', label: 'Pending Verification' }, { value: 'closed', label: 'Closed' }],
-  'intraop-linkage': [{ value: 'pending', label: 'Pending' }, { value: 'merged', label: 'Merged' }],
-  'reconciliation': [{ value: 'concordant', label: 'Concordant' }, { value: 'discordant', label: 'Discordant' }],
-  'countersign': [{ value: 'pending', label: 'Pending' }, { value: 'countersigned', label: 'Countersigned' }],
-  'fppe': [{ value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }],
-  'drift': [{ value: 'Post-Finalization Drift Detected', label: 'Detected' }, { value: 'Post-Finalization Drift Auto-Corrected', label: 'Auto-Corrected' }, { value: 'Post-Finalization Drift Correction Deferred', label: 'Deferred' }, { value: 'Post-Finalization Drift Correction Failed', label: 'Failed' }],
-  'patient-match': [{ value: 'needs-review', label: 'Needs Review' }],
-  'management-review': [{ value: 'completed', label: 'Completed' }],
+// 'label' stays the plain-English display text (used for the CSV
+// exports' own Status column/meta value, same "exported data stays
+// English" convention as GROUP_LABELS above); 'labelKey' is the
+// translated equivalent, looked up with t() for every on-screen
+// use (the <select> filter options below).
+const GROUP_STATUS_OPTIONS: Record<QaGroup, { value: string; label: string; labelKey: string }[]> = {
+  'deficiency': [
+    { value: 'open', label: 'Open', labelKey: 'auditLog.statusLabels.open' },
+    { value: 'pending-verification', label: 'Pending Verification', labelKey: 'auditLog.statusLabels.pendingVerification' },
+    { value: 'closed', label: 'Closed', labelKey: 'auditLog.statusLabels.closed' },
+  ],
+  'intraop-linkage': [
+    { value: 'pending', label: 'Pending', labelKey: 'auditLog.statusLabels.pending' },
+    { value: 'merged', label: 'Merged', labelKey: 'auditLog.statusLabels.merged' },
+  ],
+  'reconciliation': [
+    { value: 'concordant', label: 'Concordant', labelKey: 'auditLog.statusLabels.concordant' },
+    { value: 'discordant', label: 'Discordant', labelKey: 'auditLog.statusLabels.discordant' },
+  ],
+  'countersign': [
+    { value: 'pending', label: 'Pending', labelKey: 'auditLog.statusLabels.pending' },
+    { value: 'countersigned', label: 'Countersigned', labelKey: 'auditLog.statusLabels.countersigned' },
+  ],
+  'fppe': [
+    { value: 'active', label: 'Active', labelKey: 'auditLog.statusLabels.active' },
+    { value: 'completed', label: 'Completed', labelKey: 'auditLog.statusLabels.completed' },
+  ],
+  'drift': [
+    { value: 'Post-Finalization Drift Detected', label: 'Detected', labelKey: 'auditLog.statusLabels.driftDetected' },
+    { value: 'Post-Finalization Drift Auto-Corrected', label: 'Auto-Corrected', labelKey: 'auditLog.statusLabels.driftAutoCorrected' },
+    { value: 'Post-Finalization Drift Correction Deferred', label: 'Deferred', labelKey: 'auditLog.statusLabels.driftDeferred' },
+    { value: 'Post-Finalization Drift Correction Failed', label: 'Failed', labelKey: 'auditLog.statusLabels.driftFailed' },
+  ],
+  'patient-match': [{ value: 'needs-review', label: 'Needs Review', labelKey: 'auditLog.statusLabels.needsReview' }],
+  'management-review': [{ value: 'completed', label: 'Completed', labelKey: 'auditLog.statusLabels.completed' }],
 };
 
 // One normalized shape every group's real records get mapped into, so one
@@ -89,7 +134,17 @@ interface QualityRecord {
   specimen?: string;
   detail: string;      // main descriptive text (issue/event/finding)
   statusValue: string; // matches a GROUP_STATUS_OPTIONS[group] value, for filtering
-  statusLabel: string; // display text
+  statusLabel: string; // plain-English display text — CSV export only (see GROUP_STATUS_OPTIONS)
+  statusLabelKey: string; // translated equivalent of statusLabel, for on-screen display
+  // Real fix found while converting this table's status badge to i18n:
+  // the badge's own color previously matched on statusLabel's literal
+  // English text (e.g. `['Closed', 'Merged', ...].includes(r.statusLabel)`)
+  // — once statusLabel's on-screen counterpart is translated, that
+  // string match would have silently stopped working (and silently
+  // mis-colored badges) in every non-English locale. statusTone is a
+  // stable, locale-independent classification computed once here,
+  // instead of re-derived from display text at render time.
+  statusTone: 'resolved' | 'open' | 'pending';
   user?: string;        // who's associated, for user-filtering
 }
 
@@ -196,26 +251,30 @@ const VALIDATION_EVENTS = new Set([
 // Return a class-name modifier + label rather than raw colors — the actual
 // color values live in pathscribe.css's .ps-auditlog-badge-- family.
 
-const TYPE_LABELS: Record<string, string> = { ai: 'AI', user: 'User', system: 'System' };
-function getTypeBadge(type: string): { className: string; label: string } {
+const TYPE_LABEL_KEY: Record<string, string> = { ai: 'auditLog.typeLabels.ai', user: 'auditLog.typeLabels.user', system: 'auditLog.typeLabels.system' };
+// Plain-function `t` param, not a hook — same convention this sweep
+// already established for label-resolving helpers that live outside
+// component scope (e.g. resolveSynopticFieldLabel.ts).
+function getTypeBadge(type: string, t: (key: string) => string): { className: string; label: string } {
   const known = type === 'ai' || type === 'user' || type === 'system';
   return {
     className: known ? `ps-auditlog-badge--${type}` : 'ps-auditlog-badge--default',
-    label: TYPE_LABELS[type] ?? type,
+    label: known ? t(TYPE_LABEL_KEY[type]) : type,
   };
 }
 
-const SEVERITY_LABELS: Record<string, string> = { error: 'Error', warning: 'Warning', info: 'Info' };
-function getSeverityBadge(sev: string): { className: string; label: string } {
+const SEVERITY_LABEL_KEY: Record<string, string> = { error: 'auditLog.severityLabels.error', warning: 'auditLog.severityLabels.warning', info: 'auditLog.severityLabels.info' };
+function getSeverityBadge(sev: string, t: (key: string) => string): { className: string; label: string } {
   const known = sev === 'error' || sev === 'warning' || sev === 'info';
   return {
     className: known ? `ps-auditlog-badge--${sev}` : 'ps-auditlog-badge--default',
-    label: SEVERITY_LABELS[sev] ?? sev,
+    label: known ? t(SEVERITY_LABEL_KEY[sev]) : sev,
   };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 const AuditLogPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { config } = useSystemConfig();
 
@@ -362,7 +421,7 @@ const AuditLogPage: React.FC = () => {
   const [qualityDateTo,    setQualityDateTo]    = useState('');
 
   useEffect(() => {
-    const t = setTimeout(() => setIsLoaded(true), 100);
+    const loadTimer = setTimeout(() => setIsLoaded(true), 100);
     // Load audit and error logs from service layer
     auditService.getAuditLogs().then(r => { if (r.ok) setAuditLogs(r.data); });
     auditService.getErrorLogs().then(r => { if (r.ok) setErrorLogs(r.data); });
@@ -388,7 +447,7 @@ const AuditLogPage: React.FC = () => {
       const perOrg = await Promise.all(orgs.map(o => mockPatientIndexService.listPendingReview(o.id)));
       setPatientMatchLogs(perOrg.flat());
     });
-    return () => clearTimeout(t);
+    return () => clearTimeout(loadTimer);
   }, []);
 
   /** Real feature, per direct confirmation. Callable reload, distinct
@@ -465,7 +524,18 @@ const AuditLogPage: React.FC = () => {
   });
 
   const qualityTypeName = (id: string) => deficiencyTypes.find(t => t.id === id)?.name ?? id;
-  const driftStatusLabel = (event: string) => GROUP_STATUS_OPTIONS.drift.find(o => o.value === event)?.label ?? event;
+  const driftStatusOption = (event: string) => GROUP_STATUS_OPTIONS.drift.find(o => o.value === event);
+  const driftStatusLabel = (event: string) => driftStatusOption(event)?.label ?? event;
+  const driftStatusLabelKey = (event: string) => driftStatusOption(event)?.labelKey;
+  // Real, locale-independent tone for the drift group specifically —
+  // computed from the stable event value, not the (now translatable)
+  // label text. Mirrors, event-for-event, the resolved/open/pending
+  // split the old label-text-matching ternary used to encode.
+  const driftTone = (event: string): QualityRecord['statusTone'] => {
+    if (event === 'Post-Finalization Drift Auto-Corrected') return 'resolved';
+    if (event === 'Post-Finalization Drift Correction Failed') return 'open';
+    return 'pending'; // Detected, Correction Deferred
+  };
 
   // Normalizes whichever group is currently selected into the one shared
   // QualityRecord shape — only the active group's own source data is
@@ -475,47 +545,71 @@ const AuditLogPage: React.FC = () => {
     switch (qualityGroup) {
       case 'deficiency': return deficiencyLogs.map(d => ({
         id: d.id, group: 'deficiency' as const, date: d.raisedAt, caseId: d.caseId,
-        specimen: d.specimenLabel ?? 'Case-level',
+        specimen: d.specimenLabel ?? t('auditLog.qualityTab.caseLevelFallback'),
         detail: `${qualityTypeName(d.deficiencyTypeId)}${d.status === 'open' ? (d.comment ? ' — ' + d.comment : '') : (d.correctiveAction ? ' — ' + d.correctiveAction : '')}`,
-        statusValue: d.status, statusLabel: d.status === 'open' ? 'Open' : d.status === 'pending-verification' ? 'Pending Verification' : 'Closed',
-        user: d.raisedBy === 'system' ? 'System' : d.raisedBy,
+        statusValue: d.status,
+        statusLabel: d.status === 'open' ? 'Open' : d.status === 'pending-verification' ? 'Pending Verification' : 'Closed',
+        statusLabelKey: d.status === 'open' ? 'auditLog.statusLabels.open' : d.status === 'pending-verification' ? 'auditLog.statusLabels.pendingVerification' : 'auditLog.statusLabels.closed',
+        statusTone: d.status === 'open' ? 'open' as const : d.status === 'pending-verification' ? 'pending' as const : 'resolved' as const,
+        user: d.raisedBy === 'system' ? t('auditLog.typeLabels.system') : d.raisedBy,
       }));
       case 'intraop-linkage': return intraopEntries.map(e => ({
         id: e.id, group: 'intraop-linkage' as const, date: e.mergedAt ?? e.createdAt, caseId: e.mergedIntoCaseId,
-        detail: `OR ${e.orNumber}`, statusValue: e.status, statusLabel: e.status === 'merged' ? 'Merged' : 'Pending',
+        detail: t('auditLog.qualityTab.orPrefix', { orNumber: e.orNumber }),
+        statusValue: e.status,
+        statusLabel: e.status === 'merged' ? 'Merged' : 'Pending',
+        statusLabelKey: e.status === 'merged' ? 'auditLog.statusLabels.merged' : 'auditLog.statusLabels.pending',
+        statusTone: e.status === 'merged' ? 'resolved' as const : 'pending' as const,
         user: e.performedBy?.userName,
       }));
       case 'reconciliation': return reconciliationLogs.map(r => ({
         id: r.id, group: 'reconciliation' as const, date: r.recordedAt, caseId: r.caseId, specimen: r.caseType,
         detail: r.outcome === 'discordant' ? `${r.fieldValues.frozenDx} → ${r.fieldValues.finalDx}${r.comments ? ' — ' + r.comments : ''}` : `${r.fieldValues.frozenDx} → ${r.fieldValues.finalDx}`,
-        statusValue: r.outcome, statusLabel: r.outcome === 'concordant' ? 'Concordant' : 'Discordant',
+        statusValue: r.outcome,
+        statusLabel: r.outcome === 'concordant' ? 'Concordant' : 'Discordant',
+        statusLabelKey: r.outcome === 'concordant' ? 'auditLog.statusLabels.concordant' : 'auditLog.statusLabels.discordant',
+        statusTone: r.outcome === 'concordant' ? 'resolved' as const : 'open' as const,
         user: r.recordedBy?.userName,
       }));
       case 'countersign': return countersignLogs.map(c => ({
         id: c.id, group: 'countersign' as const, date: c.countersignedAt ?? c.releasedAt, caseId: c.caseId,
-        detail: `${c.residentName} → ${c.attendingName ?? 'pending'}${c.attendingFeedback ? ' — ' + c.attendingFeedback : ''}`,
-        statusValue: c.status, statusLabel: c.status === 'countersigned' ? 'Countersigned' : 'Pending',
+        detail: `${c.residentName} → ${c.attendingName ?? t('auditLog.qualityTab.attendingPending')}${c.attendingFeedback ? ' — ' + c.attendingFeedback : ''}`,
+        statusValue: c.status,
+        statusLabel: c.status === 'countersigned' ? 'Countersigned' : 'Pending',
+        statusLabelKey: c.status === 'countersigned' ? 'auditLog.statusLabels.countersigned' : 'auditLog.statusLabels.pending',
+        statusTone: c.status === 'countersigned' ? 'resolved' as const : 'pending' as const,
         user: c.residentName,
       }));
       case 'fppe': return fppeLogs.map(a => ({
         id: a.id, group: 'fppe' as const, date: a.completedAt ?? a.startedAt,
-        detail: `${a.provisionalUserName} (proctor: ${a.proctorUserName}) — ${a.casesReviewedCount} cases reviewed`,
-        statusValue: a.status, statusLabel: a.status === 'completed' ? 'Completed' : 'Active',
+        detail: `${a.provisionalUserName} (${t('auditLog.qualityTab.proctorParenthetical', { name: a.proctorUserName })}) — ${t('auditLog.qualityTab.casesReviewed', { count: a.casesReviewedCount })}`,
+        statusValue: a.status,
+        statusLabel: a.status === 'completed' ? 'Completed' : 'Active',
+        statusLabelKey: a.status === 'completed' ? 'auditLog.statusLabels.completed' : 'auditLog.statusLabels.active',
+        statusTone: a.status === 'completed' ? 'resolved' as const : 'pending' as const,
         user: a.provisionalUserName,
       }));
       case 'drift': return driftLogs.map(l => ({
         id: l.id, group: 'drift' as const, date: l.timestamp, caseId: l.caseId ?? undefined,
-        detail: l.detail, statusValue: l.event, statusLabel: driftStatusLabel(l.event), user: l.user,
+        detail: l.detail, statusValue: l.event, statusLabel: driftStatusLabel(l.event),
+        statusLabelKey: driftStatusLabelKey(l.event) ?? '',
+        statusTone: driftTone(l.event),
+        user: l.user,
       }));
       case 'patient-match': return patientMatchLogs.map(p => ({
         id: p.id, group: 'patient-match' as const, date: p.createdAt,
-        detail: `${p.lastName}, ${p.firstName} (MRN ${p.mrn}) — ${p.reviewReason}`,
+        detail: `${p.lastName}, ${p.firstName} (${t('auditLog.qualityTab.mrnParenthetical', { mrn: p.mrn })}) — ${p.reviewReason}`,
         statusValue: 'needs-review', statusLabel: 'Needs Review',
+        statusLabelKey: 'auditLog.statusLabels.needsReview',
+        statusTone: 'pending' as const,
       }));
       case 'management-review': return managementReviews.map(r => ({
         id: r.id, group: 'management-review' as const, date: r.reviewedAt,
-        detail: `${r.deficiencyIds.length} item${r.deficiencyIds.length === 1 ? '' : 's'} — ${r.findings}`,
-        statusValue: 'completed', statusLabel: 'Completed', user: r.reviewedBy,
+        detail: `${t('auditLog.qualityTab.items', { count: r.deficiencyIds.length })} — ${r.findings}`,
+        statusValue: 'completed', statusLabel: 'Completed',
+        statusLabelKey: 'auditLog.statusLabels.completed',
+        statusTone: 'resolved' as const,
+        user: r.reviewedBy,
       }));
     }
   })();
@@ -577,11 +671,11 @@ const AuditLogPage: React.FC = () => {
           {/* Header + Tab switcher */}
           <div className="ps-auditlog-header-row">
             <div>
-              <h1 className="ps-auditlog-title">System Logs</h1>
-              <p className="ps-auditlog-subtitle">Complete record of AI actions, user changes, system events, errors, and quality assurance activity</p>
+              <h1 className="ps-auditlog-title">{t('auditLog.page.title')}</h1>
+              <p className="ps-auditlog-subtitle">{t('auditLog.page.subtitle')}</p>
               {isPathologist && (
                 <div className="ps-auditlog-role-notice">
-                  Showing your case activity only — validation study events are not visible to pathologists
+                  {t('auditLog.page.roleNotice')}
                 </div>
               )}
             </div>
@@ -592,7 +686,7 @@ const AuditLogPage: React.FC = () => {
                   onClick={() => setActiveTab(tab)}
                   className={`ps-auditlog-tabswitch-btn${activeTab === tab ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
                 >
-                  {tab === 'audit' ? '📋 Audit Log' : tab === 'errors' ? '⚠️ Error Log' : tab === 'interfaces' ? '🔌 Interface Log' : tab === 'quality' ? '✓ Quality Assurance' : '🧾 Financial'}
+                  {t(`auditLog.tabs.${tab}`)}
                   {tab === 'errors' && openErrors > 0 && <span className="ps-auditlog-tabswitch-badge">{openErrors}</span>}
                   {tab === 'interfaces' && pendingInterfaceCount > 0 && <span className="ps-auditlog-tabswitch-badge">{pendingInterfaceCount}</span>}
                   {tab === 'quality' && openQualityCount > 0 && <span className="ps-auditlog-tabswitch-badge">{openQualityCount}</span>}
@@ -609,13 +703,13 @@ const AuditLogPage: React.FC = () => {
                 {/* Type pills — real counts, per direct redesign, replacing the removed stat cards */}
                 <div className="ps-auditlog-pill-group">
                   {([
-                    { id: 'all', label: 'All', count: roleFilteredLogs.length },
-                    { id: 'ai', label: '🤖 AI', count: roleFilteredLogs.filter(l => l.type === 'ai').length },
-                    { id: 'user', label: '👤 User', count: roleFilteredLogs.filter(l => l.type === 'user').length },
-                    { id: 'system', label: '⚙️ System', count: roleFilteredLogs.filter(l => l.type === 'system').length },
+                    { id: 'all', labelKey: 'auditLog.auditTab.allPill', count: roleFilteredLogs.length },
+                    { id: 'ai', labelKey: 'auditLog.auditTab.aiPill', count: roleFilteredLogs.filter(l => l.type === 'ai').length },
+                    { id: 'user', labelKey: 'auditLog.auditTab.userPill', count: roleFilteredLogs.filter(l => l.type === 'user').length },
+                    { id: 'system', labelKey: 'auditLog.auditTab.systemPill', count: roleFilteredLogs.filter(l => l.type === 'system').length },
                   ] as const).map(f => (
                     <button key={f.id} onClick={() => setTypeFilter(f.id)} className={`ps-auditlog-pill${typeFilter === f.id ? ' ps-auditlog-pill--active-teal' : ''}`}>
-                      {f.label}
+                      {t(f.labelKey)}
                       <span className="ps-auditlog-pill-badge">{f.count}</span>
                     </button>
                   ))}
@@ -626,31 +720,31 @@ const AuditLogPage: React.FC = () => {
                     Rebind/demographic-update events, filterable
                     independently of (and combinable with) the type
                     pills above. */}
-                <label className="ps-auditlog-pill" style={{ cursor: 'pointer', gap: 6 }}>
+                <label className="ps-auditlog-pill ps-auditlog-pill--checkbox">
                   <input type="checkbox" checked={patientManagementOnly} onChange={e => setPatientManagementOnly(e.target.checked)} />
-                  🧬 Patient Management Only
+                  {t('auditLog.auditTab.patientManagementOnly')}
                   <span className="ps-auditlog-pill-badge">{roleFilteredLogs.filter(l => l.event.startsWith('mpi.')).length}</span>
                 </label>
                 {/* User filter — superadmin only to prevent bias in validation studies */}
                 {isSuperAdmin && (
-                <select value={userFilter} onChange={e => setUserFilter(e.target.value)} aria-label="Filter by user" className="ps-auditlog-select ps-auditlog-select--wide">
+                <select value={userFilter} onChange={e => setUserFilter(e.target.value)} aria-label={t('auditLog.auditTab.userFilterAria')} className="ps-auditlog-select ps-auditlog-select--wide">
                   {['all', ...Array.from(new Set(roleFilteredLogs.map(l => l.user))).sort()].map(u => (
-                    <option key={u} value={u}>{u === 'all' ? 'All Users' : u}</option>
+                    <option key={u} value={u}>{u === 'all' ? t('auditLog.auditTab.allUsersOption') : u}</option>
                   ))}
                 </select>
                 )}
                 {/* Date range */}
-                <select value={dateRange} onChange={e => setDateRange(e.target.value)} aria-label="Filter by date range" className="ps-auditlog-select">
-                  <option value="today">Today</option>
-                  <option value="7days">Last 7 Days</option>
-                  <option value="30days">Last 30 Days</option>
-                  <option value="90days">Last 90 Days</option>
-                  <option value="custom">Custom Range…</option>
+                <select value={dateRange} onChange={e => setDateRange(e.target.value)} aria-label={t('auditLog.shared.dateRangeAria')} className="ps-auditlog-select">
+                  <option value="today">{t('auditLog.shared.today')}</option>
+                  <option value="7days">{t('auditLog.shared.last7Days')}</option>
+                  <option value="30days">{t('auditLog.shared.last30Days')}</option>
+                  <option value="90days">{t('auditLog.shared.last90Days')}</option>
+                  <option value="custom">{t('auditLog.shared.customRange')}</option>
                 </select>
                 {dateRange === 'custom' && (
                   <>
                     <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="ps-auditlog-select ps-auditlog-select--date" />
-                    <span className="ps-auditlog-date-to">to</span>
+                    <span className="ps-auditlog-date-to">{t('auditLog.shared.dateToSeparator')}</span>
                     <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="ps-auditlog-select ps-auditlog-select--date" />
                   </>
                 )}
@@ -659,32 +753,35 @@ const AuditLogPage: React.FC = () => {
                   <div className="ps-auditlog-search-icon">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </div>
-                  <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search event, detail, case ID…" className="ps-auditlog-select ps-auditlog-search-input" />
+                  <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={t('auditLog.auditTab.searchPlaceholder')} className="ps-auditlog-select ps-auditlog-search-input" />
                 </div>
-                {/* Export */}
+                {/* Export — filter names/values in the CSV's own meta
+                    header stay in English, same "exported data stays
+                    English" convention as every other export on this
+                    page (and this whole sweep). */}
                 <button onClick={() => exportAuditCSV(
                     filteredAuditLogs,
                     requestedByLabel,
                     { 'Type': typeFilter, 'Patient Management Only': patientManagementOnly ? 'Yes' : 'No', 'User': userFilter, 'Date Range': dateRange === 'custom' ? `${dateFrom} to ${dateTo}` : dateRange, 'Search': searchQuery }
                   )} className="ps-auditlog-export-btn">
-                  ↓ Export CSV
+                  {t('auditLog.shared.exportCsv')}
                 </button>
               </div>
 
               {/* Table */}
-              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Audit log entries, scrollable table">
+              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label={t('auditLog.auditTab.scrollAria')}>
               <div className="ps-auditlog-table ps-auditlog-table--audit">
                 <div className="ps-auditlog-thead ps-auditlog-thead--audit">
-                  <div>Timestamp</div><div>Type</div><div>Event</div><div>Detail</div><div>User</div><div>Case</div>
+                  <div>{t('auditLog.auditTab.colTimestamp')}</div><div>{t('auditLog.auditTab.colType')}</div><div>{t('auditLog.auditTab.colEvent')}</div><div>{t('auditLog.auditTab.colDetail')}</div><div>{t('auditLog.auditTab.colUser')}</div><div>{t('auditLog.auditTab.colCase')}</div>
                 </div>
                 <div className="ps-auditlog-tbody">
                   {filteredAuditLogs.length === 0 ? (
                     <div className="ps-auditlog-empty">
                       <div className="ps-auditlog-empty-icon">📋</div>
-                      <div className="ps-auditlog-empty-text">No logs match your filters</div>
+                      <div className="ps-auditlog-empty-text">{t('auditLog.auditTab.emptyText')}</div>
                     </div>
                   ) : filteredAuditLogs.map((log) => {
-                    const typeBadge = getTypeBadge(log.type);
+                    const typeBadge = getTypeBadge(log.type, t);
                     return (
                       <div key={log.id} className="ps-auditlog-row ps-auditlog-row--audit">
                         <div className="ps-auditlog-cell-time">{formatAuditTimestamp(log.timestamp)}</div>
@@ -699,7 +796,7 @@ const AuditLogPage: React.FC = () => {
                 </div>
               </div>
               </div>{/* end ps-table-scroll-wrap */}
-              <div className="ps-auditlog-count-footer">Showing {filteredAuditLogs.length} of {roleFilteredLogs.length} events</div>
+              <div className="ps-auditlog-count-footer">{t('auditLog.auditTab.footerCount', { shown: filteredAuditLogs.length, total: roleFilteredLogs.length })}</div>
             </>
           )}
 
@@ -710,52 +807,52 @@ const AuditLogPage: React.FC = () => {
               <div className="ps-auditlog-filter-row">
                 <div className="ps-auditlog-pill-group">
                   {([
-                    { id: 'all', label: 'All', count: errorLogs.length },
-                    { id: 'error', label: '🚨 Error', count: errorLogs.filter(e => e.severity === 'error').length },
-                    { id: 'warning', label: '⚠️ Warning', count: errorLogs.filter(e => e.severity === 'warning').length },
-                    { id: 'info', label: 'ℹ️ Info', count: errorLogs.filter(e => e.severity === 'info').length },
+                    { id: 'all', labelKey: 'auditLog.errorTab.allPill', count: errorLogs.length },
+                    { id: 'error', labelKey: 'auditLog.errorTab.errorPill', count: errorLogs.filter(e => e.severity === 'error').length },
+                    { id: 'warning', labelKey: 'auditLog.errorTab.warningPill', count: errorLogs.filter(e => e.severity === 'warning').length },
+                    { id: 'info', labelKey: 'auditLog.errorTab.infoPill', count: errorLogs.filter(e => e.severity === 'info').length },
                   ] as const).map(f => (
                     <button key={f.id} onClick={() => setErrorSeverity(f.id)} className={`ps-auditlog-pill${errorSeverity === f.id ? ' ps-auditlog-pill--active-red' : ''}`}>
-                      {f.label}
+                      {t(f.labelKey)}
                       <span className="ps-auditlog-pill-badge">{f.count}</span>
                     </button>
                   ))}
                 </div>
                 <div className="ps-auditlog-filter-divider" />
-                <select value={errorResolved} onChange={e => setErrorResolved(e.target.value as 'all' | 'open' | 'resolved')} aria-label="Filter by resolution status" className="ps-auditlog-select">
-                  <option value="all">All Status</option>
-                  <option value="open">Open Only</option>
-                  <option value="resolved">Resolved Only</option>
+                <select value={errorResolved} onChange={e => setErrorResolved(e.target.value as 'all' | 'open' | 'resolved')} aria-label={t('auditLog.errorTab.statusAria')} className="ps-auditlog-select">
+                  <option value="all">{t('auditLog.errorTab.allStatus')}</option>
+                  <option value="open">{t('auditLog.errorTab.openOnly')}</option>
+                  <option value="resolved">{t('auditLog.errorTab.resolvedOnly')}</option>
                 </select>
                 <div className="ps-auditlog-search-wrap">
                   <div className="ps-auditlog-search-icon">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </div>
-                  <input type="text" value={errorSearch} onChange={e => setErrorSearch(e.target.value)} placeholder="Search message, code, source…" className="ps-auditlog-select ps-auditlog-search-input" />
+                  <input type="text" value={errorSearch} onChange={e => setErrorSearch(e.target.value)} placeholder={t('auditLog.errorTab.searchPlaceholder')} className="ps-auditlog-select ps-auditlog-search-input" />
                 </div>
                 <button onClick={() => exportErrorCSV(
                     filteredErrorLogs,
                     requestedByLabel,
                     { 'Severity': errorSeverity, 'Status': errorResolved, 'Search': errorSearch }
                   )} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
-                  ↓ Export CSV
+                  {t('auditLog.shared.exportCsv')}
                 </button>
               </div>
 
               {/* Error Table */}
-              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Error log entries, scrollable table">
+              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label={t('auditLog.errorTab.scrollAria')}>
               <div className="ps-auditlog-table ps-auditlog-table--error">
                 <div className="ps-auditlog-thead ps-auditlog-thead--error">
-                  <div>Timestamp</div><div>Severity</div><div>Code</div><div>Message</div><div>Source</div><div>Case</div><div>Status</div>
+                  <div>{t('auditLog.errorTab.colTimestamp')}</div><div>{t('auditLog.errorTab.colSeverity')}</div><div>{t('auditLog.errorTab.colCode')}</div><div>{t('auditLog.errorTab.colMessage')}</div><div>{t('auditLog.errorTab.colSource')}</div><div>{t('auditLog.errorTab.colCase')}</div><div>{t('auditLog.errorTab.colStatus')}</div>
                 </div>
                 <div className="ps-auditlog-tbody">
                   {filteredErrorLogs.length === 0 ? (
                     <div className="ps-auditlog-empty">
                       <div className="ps-auditlog-empty-icon">✅</div>
-                      <div className="ps-auditlog-empty-text">No errors match your filters</div>
+                      <div className="ps-auditlog-empty-text">{t('auditLog.errorTab.emptyText')}</div>
                     </div>
                   ) : filteredErrorLogs.map((log) => {
-                    const severityBadge = getSeverityBadge(log.severity);
+                    const severityBadge = getSeverityBadge(log.severity, t);
                     return (
                       <div key={log.id} className="ps-auditlog-row ps-auditlog-row--error">
                         <div className="ps-auditlog-cell-time">{formatAuditTimestamp(log.timestamp)}</div>
@@ -764,14 +861,14 @@ const AuditLogPage: React.FC = () => {
                         <div className="ps-auditlog-cell-detail">{log.message}</div>
                         <div className="ps-auditlog-cell-user">{log.source}</div>
                         <div>{log.caseId ? <span className="ps-auditlog-case-link" onClick={() => navigate(`/case/${log.caseId}/synoptic`)}>{log.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
-                        <div><span className={`ps-auditlog-status-badge ${log.resolved ? 'ps-auditlog-status-badge--resolved' : 'ps-auditlog-status-badge--open'}`}>{log.resolved ? 'Resolved' : 'Open'}</span></div>
+                        <div><span className={`ps-auditlog-status-badge ${log.resolved ? 'ps-auditlog-status-badge--resolved' : 'ps-auditlog-status-badge--open'}`}>{log.resolved ? t('auditLog.errorTab.statusResolved') : t('auditLog.errorTab.statusOpen')}</span></div>
                       </div>
                     );
                   })}
                 </div>
               </div>
               </div>{/* end ps-table-scroll-wrap */}
-              <div className="ps-auditlog-count-footer">Showing {filteredErrorLogs.length} of {errorLogs.length} errors</div>
+              <div className="ps-auditlog-count-footer">{t('auditLog.errorTab.footerCount', { shown: filteredErrorLogs.length, total: errorLogs.length })}</div>
             </>
           )}
 
@@ -785,17 +882,17 @@ const AuditLogPage: React.FC = () => {
               real, distinct domain, not one flavor of general error. */}
           {activeTab === 'interfaces' && (
             <>
-              <div className="ps-auditlog-tabswitch" style={{ marginBottom: 16 }}>
+              <div className="ps-auditlog-tabswitch ps-auditlog-tabswitch--spaced">
                 {([
-                  { key: 'exceptions' as const, label: 'Interface Exceptions' },
-                  { key: 'outbound_dlq' as const, label: 'Outbound Interface DLQ' },
-                ]).map(t => (
+                  { key: 'exceptions' as const, labelKey: 'auditLog.interfacesTab.subTabExceptions' },
+                  { key: 'outbound_dlq' as const, labelKey: 'auditLog.interfacesTab.subTabOutboundDlq' },
+                ]).map(sub => (
                   <button
-                    key={t.key}
-                    className={`ps-auditlog-tabswitch-btn${interfacesSubTab === t.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
-                    onClick={() => setInterfacesSubTab(t.key)}
+                    key={sub.key}
+                    className={`ps-auditlog-tabswitch-btn${interfacesSubTab === sub.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+                    onClick={() => setInterfacesSubTab(sub.key)}
                   >
-                    {t.label}
+                    {t(sub.labelKey)}
                   </button>
                 ))}
               </div>
@@ -807,13 +904,13 @@ const AuditLogPage: React.FC = () => {
               <div className="ps-auditlog-filter-row">
                 <div className="ps-auditlog-pill-group">
                   {([
-                    { id: 'all', label: 'All', count: interfaceExceptions.length },
-                    { id: 'pending', label: '🔓 Pending', count: interfaceExceptions.filter(e => e.status === 'pending').length },
-                    { id: 'resolved', label: '✅ Resolved', count: interfaceExceptions.filter(e => e.status === 'resolved').length },
-                    { id: 'dismissed', label: '🚫 Dismissed', count: interfaceExceptions.filter(e => e.status === 'dismissed').length },
+                    { id: 'all', labelKey: 'auditLog.interfacesTab.allPill', count: interfaceExceptions.length },
+                    { id: 'pending', labelKey: 'auditLog.interfacesTab.pendingPill', count: interfaceExceptions.filter(e => e.status === 'pending').length },
+                    { id: 'resolved', labelKey: 'auditLog.interfacesTab.resolvedPill', count: interfaceExceptions.filter(e => e.status === 'resolved').length },
+                    { id: 'dismissed', labelKey: 'auditLog.interfacesTab.dismissedPill', count: interfaceExceptions.filter(e => e.status === 'dismissed').length },
                   ] as const).map(f => (
                     <button key={f.id} onClick={() => setInterfaceStatus(f.id)} className={`ps-auditlog-pill${interfaceStatus === f.id ? ' ps-auditlog-pill--active-red' : ''}`}>
-                      {f.label}
+                      {t(f.labelKey)}
                       <span className="ps-auditlog-pill-badge">{f.count}</span>
                     </button>
                   ))}
@@ -823,7 +920,7 @@ const AuditLogPage: React.FC = () => {
                   <div className="ps-auditlog-search-icon">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </div>
-                  <input type="text" value={interfaceSearch} onChange={e => setInterfaceSearch(e.target.value)} placeholder="Search event type, reason…" className="ps-auditlog-select ps-auditlog-search-input" />
+                  <input type="text" value={interfaceSearch} onChange={e => setInterfaceSearch(e.target.value)} placeholder={t('auditLog.interfacesTab.searchPlaceholder')} className="ps-auditlog-select ps-auditlog-search-input" />
                 </div>
                 {/* Real, per direct request: a real CSV export for
                     Interface Log, matching the exact same real
@@ -837,7 +934,7 @@ const AuditLogPage: React.FC = () => {
                     requestedByLabel,
                     { 'Status': interfaceStatus, 'Search': interfaceSearch }
                   )} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
-                  ↓ Export CSV
+                  {t('auditLog.shared.exportCsv')}
                 </button>
                 {/* Real feature, per direct confirmation, building
                     Phase B of the "Interface Exception & Case-Binding
@@ -845,7 +942,7 @@ const AuditLogPage: React.FC = () => {
                     a rare, exceptional tool, not a general action. */}
                 {isAdmin && storedUser?.organisationId && (
                   <button onClick={() => setBreakGlassOpen(true)} className="ps-auditlog-export-btn ps-auditlog-export-btn--danger">
-                    🔗 Map Patient
+                    {t('auditLog.interfacesTab.mapPatient')}
                   </button>
                 )}
               </div>
@@ -857,16 +954,16 @@ const AuditLogPage: React.FC = () => {
                   Review; see services/interfaceExceptions/README.md
                   for the real resolve()/dismiss() methods this wires
                   up to. */}
-              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Interface exception entries, scrollable table">
+              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label={t('auditLog.interfacesTab.scrollAria')}>
                 <div className="ps-auditlog-table ps-auditlog-table--error">
                   <div className="ps-auditlog-thead ps-auditlog-thead--interfaces">
-                    <div>Timestamp</div><div>Event Type</div><div>Reason</div><div>Source Patient</div><div>Target Patient</div><div>Status</div>
+                    <div>{t('auditLog.interfacesTab.colTimestamp')}</div><div>{t('auditLog.interfacesTab.colEventType')}</div><div>{t('auditLog.interfacesTab.colReason')}</div><div>{t('auditLog.interfacesTab.colSourcePatient')}</div><div>{t('auditLog.interfacesTab.colTargetPatient')}</div><div>{t('auditLog.interfacesTab.colStatus')}</div>
                   </div>
                   <div className="ps-auditlog-tbody">
                     {filteredInterfaceExceptions.length === 0 ? (
                       <div className="ps-auditlog-empty">
                         <div className="ps-auditlog-empty-icon">✅</div>
-                        <div className="ps-auditlog-empty-text">No interface exceptions match your filters</div>
+                        <div className="ps-auditlog-empty-text">{t('auditLog.interfacesTab.emptyText')}</div>
                       </div>
                     ) : filteredInterfaceExceptions.map((e) => (
                       <div key={e.id} className="ps-auditlog-row ps-auditlog-row--interfaces">
@@ -887,11 +984,11 @@ const AuditLogPage: React.FC = () => {
                               onClick={() => setReviewingException(e)}
                               className="ps-auditlog-status-badge ps-auditlog-status-badge--open ps-iexc-review-btn"
                             >
-                              Review
+                              {t('auditLog.interfacesTab.review')}
                             </button>
                           ) : (
                             <span className="ps-auditlog-status-badge ps-auditlog-status-badge--resolved">
-                              {e.status === 'resolved' ? 'Resolved' : 'Dismissed'}
+                              {e.status === 'resolved' ? t('auditLog.interfacesTab.resolved') : t('auditLog.interfacesTab.dismissed')}
                             </span>
                           )}
                         </div>
@@ -900,7 +997,7 @@ const AuditLogPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="ps-auditlog-count-footer">Showing {filteredInterfaceExceptions.length} of {interfaceExceptions.length} interface exceptions</div>
+              <div className="ps-auditlog-count-footer">{t('auditLog.interfacesTab.footerCount', { shown: filteredInterfaceExceptions.length, total: interfaceExceptions.length })}</div>
             </>
               )}
             </>
@@ -926,21 +1023,21 @@ const AuditLogPage: React.FC = () => {
               {/* Filters — Group, then Status (that group's own real
                   vocabulary), then User, then Date, then Search. */}
               <div className="ps-auditlog-filter-row">
-                <select value={qualityGroup} onChange={e => setQualityGroup(e.target.value as QaGroup)} aria-label="Filter by group" className="ps-auditlog-select ps-auditlog-select--wide">
-                  {(Object.keys(GROUP_LABELS) as QaGroup[]).map(g => <option key={g} value={g}>{GROUP_LABELS[g]}</option>)}
+                <select value={qualityGroup} onChange={e => setQualityGroup(e.target.value as QaGroup)} aria-label={t('auditLog.qualityTab.groupAria')} className="ps-auditlog-select ps-auditlog-select--wide">
+                  {(Object.keys(GROUP_LABELS) as QaGroup[]).map(g => <option key={g} value={g}>{t(GROUP_LABEL_KEY[g])}</option>)}
                 </select>
                 <div className="ps-auditlog-filter-divider" />
-                <select value={qualityStatus} onChange={e => setQualityStatus(e.target.value)} aria-label="Filter by status" className="ps-auditlog-select">
-                  <option value="all">All Statuses</option>
-                  {GROUP_STATUS_OPTIONS[qualityGroup].map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                <select value={qualityStatus} onChange={e => setQualityStatus(e.target.value)} aria-label={t('auditLog.qualityTab.statusAria')} className="ps-auditlog-select">
+                  <option value="all">{t('auditLog.qualityTab.allStatuses')}</option>
+                  {GROUP_STATUS_OPTIONS[qualityGroup].map(opt => <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>)}
                 </select>
                 {/* User filter — superadmin only, same as the Audit
                     tab's own user filter above, and for the same
                     reason (avoid biasing validation/review work by
                     letting non-admins single out an individual). */}
                 {isSuperAdmin && (
-                  <select value={qualityUser} onChange={e => setQualityUser(e.target.value)} aria-label="Filter by user" className="ps-auditlog-select ps-auditlog-select--wide">
-                    <option value="all">All Users</option>
+                  <select value={qualityUser} onChange={e => setQualityUser(e.target.value)} aria-label={t('auditLog.qualityTab.userAria')} className="ps-auditlog-select ps-auditlog-select--wide">
+                    <option value="all">{t('auditLog.qualityTab.allUsers')}</option>
                     {qualityUniqueUsers.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 )}
@@ -948,18 +1045,18 @@ const AuditLogPage: React.FC = () => {
                     default of last 7 days, since this is meant to be
                     the complete historical record, not a recent-activity
                     feed. */}
-                <select value={qualityDateRange} onChange={e => setQualityDateRange(e.target.value)} aria-label="Filter by date range" className="ps-auditlog-select">
-                  <option value="all">All Time</option>
-                  <option value="today">Today</option>
-                  <option value="7days">Last 7 Days</option>
-                  <option value="30days">Last 30 Days</option>
-                  <option value="90days">Last 90 Days</option>
-                  <option value="custom">Custom Range…</option>
+                <select value={qualityDateRange} onChange={e => setQualityDateRange(e.target.value)} aria-label={t('auditLog.shared.dateRangeAria')} className="ps-auditlog-select">
+                  <option value="all">{t('auditLog.qualityTab.allTime')}</option>
+                  <option value="today">{t('auditLog.shared.today')}</option>
+                  <option value="7days">{t('auditLog.shared.last7Days')}</option>
+                  <option value="30days">{t('auditLog.shared.last30Days')}</option>
+                  <option value="90days">{t('auditLog.shared.last90Days')}</option>
+                  <option value="custom">{t('auditLog.shared.customRange')}</option>
                 </select>
                 {qualityDateRange === 'custom' && (
                   <>
                     <input type="date" value={qualityDateFrom} onChange={e => setQualityDateFrom(e.target.value)} className="ps-auditlog-select ps-auditlog-select--date" />
-                    <span className="ps-auditlog-date-to">to</span>
+                    <span className="ps-auditlog-date-to">{t('auditLog.shared.dateToSeparator')}</span>
                     <input type="date" value={qualityDateTo}   onChange={e => setQualityDateTo(e.target.value)}   className="ps-auditlog-select ps-auditlog-select--date" />
                   </>
                 )}
@@ -968,9 +1065,12 @@ const AuditLogPage: React.FC = () => {
                   <div className="ps-auditlog-search-icon">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   </div>
-                  <input type="text" value={qualitySearch} onChange={e => setQualitySearch(e.target.value)} placeholder="Search case, detail, user…" className="ps-auditlog-select ps-auditlog-search-input" />
+                  <input type="text" value={qualitySearch} onChange={e => setQualitySearch(e.target.value)} placeholder={t('auditLog.qualityTab.searchPlaceholder')} className="ps-auditlog-select ps-auditlog-search-input" />
                 </div>
-                {/* Export */}
+                {/* Export — Group/Date Range meta values stay in
+                    plain English (GROUP_LABELS, not the translated
+                    GROUP_LABEL_KEY), same "exported data stays
+                    English" convention as every other export here. */}
                 <button onClick={() => exportQualityCSV(
                     filteredQualityLogs,
                     requestedByLabel,
@@ -981,21 +1081,21 @@ const AuditLogPage: React.FC = () => {
                       'Search': qualitySearch,
                     },
                   )} className="ps-auditlog-export-btn">
-                  ↓ Export CSV
+                  {t('auditLog.shared.exportCsv')}
                 </button>
               </div>
 
               {/* Table */}
-              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label="Quality assurance log entries, scrollable table">
+              <div className="ps-table-scroll-wrap" tabIndex={0} role="region" aria-label={t('auditLog.qualityTab.scrollAria')}>
               <div className="ps-auditlog-table ps-auditlog-table--quality">
                 <div className="ps-auditlog-thead ps-auditlog-thead--quality">
-                  <div>Date</div><div>Case</div><div>Specimen</div><div>Detail</div><div>Status</div><div>User</div>
+                  <div>{t('auditLog.qualityTab.colDate')}</div><div>{t('auditLog.qualityTab.colCase')}</div><div>{t('auditLog.qualityTab.colSpecimen')}</div><div>{t('auditLog.qualityTab.colDetail')}</div><div>{t('auditLog.qualityTab.colStatus')}</div><div>{t('auditLog.qualityTab.colUser')}</div>
                 </div>
                 <div className="ps-auditlog-tbody">
                   {filteredQualityLogs.length === 0 ? (
                     <div className="ps-auditlog-empty">
                       <div className="ps-auditlog-empty-icon">✓</div>
-                      <div className="ps-auditlog-empty-text">No {GROUP_LABELS[qualityGroup].toLowerCase()} records match your filters</div>
+                      <div className="ps-auditlog-empty-text">{t('auditLog.qualityTab.emptyText', { group: t(GROUP_LABEL_KEY[qualityGroup]) })}</div>
                     </div>
                   ) : filteredQualityLogs.map((r) => (
                     <div key={r.id} className="ps-auditlog-row ps-auditlog-row--quality">
@@ -1004,11 +1104,8 @@ const AuditLogPage: React.FC = () => {
                       <div>{r.specimen ?? <span className="ps-auditlog-case-dash">—</span>}</div>
                       <div className="ps-auditlog-cell-detail">{r.detail}</div>
                       <div>
-                        <span className={`ps-auditlog-status-badge ${
-                          ['Closed', 'Merged', 'Concordant', 'Countersigned', 'Completed', 'Auto-Corrected'].includes(r.statusLabel) ? 'ps-auditlog-status-badge--resolved'
-                          : ['Open', 'Discordant', 'Failed'].includes(r.statusLabel) ? 'ps-auditlog-status-badge--open'
-                          : 'ps-auditlog-status-badge--pending'}`}>
-                          {r.statusLabel}
+                        <span className={`ps-auditlog-status-badge ps-auditlog-status-badge--${r.statusTone}`}>
+                          {t(r.statusLabelKey)}
                         </span>
                       </div>
                       <div>{r.user ?? <span className="ps-auditlog-case-dash">—</span>}</div>
@@ -1017,24 +1114,24 @@ const AuditLogPage: React.FC = () => {
                 </div>
               </div>
               </div>{/* end ps-table-scroll-wrap */}
-              <div className="ps-auditlog-count-footer">Showing {filteredQualityLogs.length} of {normalizedQualityRecords.length} {GROUP_LABELS[qualityGroup].toLowerCase()} records</div>
+              <div className="ps-auditlog-count-footer">{t('auditLog.qualityTab.footerCount', { shown: filteredQualityLogs.length, total: normalizedQualityRecords.length, group: t(GROUP_LABEL_KEY[qualityGroup]) })}</div>
             </>
           )}
 
           {/* ── FINANCIAL TAB ── */}
           {activeTab === 'financial' && (
             <>
-              <div className="ps-auditlog-tabswitch" style={{ marginBottom: 16 }}>
+              <div className="ps-auditlog-tabswitch ps-auditlog-tabswitch--spaced">
                 {([
-                  { key: 'billing_logs' as const, label: 'Billing Logs' },
-                  { key: 'outbound_dlq' as const, label: 'Outbound DLQ' },
-                ]).map(t => (
+                  { key: 'billing_logs' as const, labelKey: 'auditLog.financialTab.subTabBillingLogs' },
+                  { key: 'outbound_dlq' as const, labelKey: 'auditLog.financialTab.subTabOutboundDlq' },
+                ]).map(sub => (
                   <button
-                    key={t.key}
-                    className={`ps-auditlog-tabswitch-btn${financialSubTab === t.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
-                    onClick={() => setFinancialSubTab(t.key)}
+                    key={sub.key}
+                    className={`ps-auditlog-tabswitch-btn${financialSubTab === sub.key ? ' ps-auditlog-tabswitch-btn--active' : ''}`}
+                    onClick={() => setFinancialSubTab(sub.key)}
                   >
-                    {t.label}
+                    {t(sub.labelKey)}
                   </button>
                 ))}
               </div>
@@ -1046,10 +1143,10 @@ const AuditLogPage: React.FC = () => {
 
         {/* Footer */}
         <footer className="ps-auditlog-footer">
-          <div>© 2026 PathScribe AI Systems • HIPAA Compliant</div>
+          <div>{t('auditLog.page.footer')}</div>
           <div className="ps-auditlog-footer-status">
             <span className="ps-auditlog-status-dot" />
-            SYSTEMS OPERATIONAL
+            {t('auditLog.page.systemsOperational')}
           </div>
         </footer>
       </div>

@@ -20,7 +20,7 @@ import type { DeficiencyType, IDeficiencyTypeService } from './IDeficiencyServic
 // accepted everywhere else this pattern is used in a mock/demo data
 // layer: the alternative (a genuinely missing new type, silently and
 // permanently, for anyone with existing localStorage data) is worse.
-const DEFICIENCY_TYPE_VERSION = '3'; // bumped: added def-stain-batch-failed
+const DEFICIENCY_TYPE_VERSION = '4'; // bumped: added def-peer-review-discordance
 const DEFICIENCY_TYPE_VERSION_KEY = 'pathscribe_deficiency_types_version';
 if (typeof localStorage !== 'undefined') {
   try {
@@ -190,6 +190,21 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   {
     id: 'def-confirmed-high-risk-finding', name: 'Confirmed High-Risk/Critical Finding — Peer Review Required', status: 'Active', level: 'case',
     description: 'A pathologist confirmed a Critical- or Malignant-severity abnormal-detection suggestion at sign-out (PS-129 discrete trigger or PS-131 AI-narrative finding). Real, open CAPA record — routes the case into the same Operations/CAPA queue every other deficiency uses, for a genuine peer/secondary review, not merely a logged history entry.',
+  },
+  // PS-324. Real, per Abnormal/Critical Finding Confirmation's own
+  // header comment (services/quality/mockQaActivityTypeService.ts) —
+  // this closes real CAPA trigger #1 named there ("Peer Review
+  // Discordance — a SECOND pathologist's independent read disagrees
+  // with the first... No real, live second-read/peer-review workflow
+  // exists anywhere in this app yet to produce this signal"). Routed
+  // here via SURGICAL_PEER_REVIEW_ACTIVITY_TYPE_ID's own real
+  // capaTriggerRule — genuinely different real event from
+  // def-confirmed-high-risk-finding above (a PRIMARY pathologist
+  // confirming their own finding is not a nonconformity; a SECOND,
+  // independent pathologist disagreeing with that finding is).
+  {
+    id: 'def-peer-review-discordance', name: 'Post-Sign-Out Peer Review Discordance', status: 'Active', level: 'case',
+    description: 'A second pathologist\'s independent post-sign-out peer review of a surgical case reached a materially different diagnosis than the original sign-out. Real, open CAPA record — not merely a logged review history entry.',
   },
 ];
 

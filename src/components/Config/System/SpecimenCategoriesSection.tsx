@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { specimenCategoryService } from '../../../services';
 import { checkSpecimenCategoryReferences } from '../../../services/referenceCheck/referenceCheckService';
@@ -40,10 +41,18 @@ import { getActivePerformingLabs } from '../../../utils/performingLabs';
 // resolution; revisit if the list ever needs to come from templateService
 // dynamically (e.g. once custom Grossing Templates beyond the three
 // Gold Standard routes are supported).
-const GROSSING_TEMPLATES: { id: string; name: string }[] = [
-  { id: 'grossing_standard_tissue', name: 'Standard Tissue Grossing (Route A)' },
-  { id: 'grossing_fluid_cytology',  name: 'Fluid / Cell Block Grossing (Route B)' },
-  { id: 'grossing_histology_only',  name: 'Histology-Only / Direct Triage (Route C)' },
+// Stores a translation key rather than resolved display text, since this
+// array lives at module scope, outside any component's render, and can't
+// call useTranslation() itself — the same pattern GROSSING_TEMPLATES'
+// own sibling copies (DepartmentsSection.tsx, GrossingRouteOverridesSection.tsx)
+// still use raw `name` text; each is its own separate, unconverted local
+// const (not a shared import), so converting this file's copy doesn't
+// touch those others — same "each own copy, own pass" precedent already
+// applied to the duplicated 5-name-prefix `<option>` list (batch 65 note).
+const GROSSING_TEMPLATES: { id: string; labelKey: string }[] = [
+  { id: 'grossing_standard_tissue', labelKey: 'specimenCategoriesSection.grossingTemplates.standardTissue' },
+  { id: 'grossing_fluid_cytology',  labelKey: 'specimenCategoriesSection.grossingTemplates.fluidCytology' },
+  { id: 'grossing_histology_only',  labelKey: 'specimenCategoriesSection.grossingTemplates.histologyOnly' },
 ];
 
 const ALL_MATERIAL_TYPES: RetainableMaterialType[] = ['block', 'slide', 'wet_tissue'];
@@ -67,9 +76,9 @@ function findBelowFloorFields(
   floor: Record<RetainableMaterialType, number> | undefined,
 ): RetainableMaterialType[] {
   if (!override || !floor) return [];
-  return ALL_MATERIAL_TYPES.filter(t => {
-    const v = override[t];
-    return v != null && v < floor[t];
+  return ALL_MATERIAL_TYPES.filter(mt => {
+    const v = override[mt];
+    return v != null && v < floor[mt];
   });
 }
 
@@ -84,6 +93,7 @@ interface CategoryModalProps {
 }
 
 const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingEntries, labs, floor, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     category
       ? { ...category, active: category.status !== 'Inactive' }
@@ -102,8 +112,8 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
 
   const validate = () => {
     const e: typeof errors = {};
-    if (!draft.name.trim()) e.name = 'Required';
-    if (!draft.defaultGrossingTemplateId) e.defaultGrossingTemplateId = 'Required';
+    if (!draft.name.trim()) e.name = t('common.required');
+    if (!draft.defaultGrossingTemplateId) e.defaultGrossingTemplateId = t('common.required');
     // PS-73: name uniqueness, scoped by performing lab — same
     // compound-key pattern as ContainerTypesSection.tsx. Real
     // justification, not a guess: mockSpecimenCategoryService's own
@@ -114,7 +124,11 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
     const excludeId = mode === 'edit' ? category?.id : undefined;
     if (draft.name.trim()) {
       const nameCollision = findDuplicate(existingEntries, { performingLabFacilityId: draft.performingLabFacilityId, name: draft.name.trim() }, ['performingLabFacilityId', 'name'], excludeId);
-      if (nameCollision) e.name = `A specimen category named "${nameCollision.name}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`;
+      if (nameCollision) {
+        e.name = draft.performingLabFacilityId
+          ? t('specimenCategoriesSection.modal.nameCollisionScoped', { name: nameCollision.name })
+          : t('specimenCategoriesSection.modal.nameCollision', { name: nameCollision.name });
+      }
     }
     return e;
   };
@@ -122,11 +136,11 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
   const buildRetentionOverride = (): RetentionOverrideDays | undefined => {
     const parsed: RetentionOverrideDays = {};
     let any = false;
-    for (const t of ALL_MATERIAL_TYPES) {
-      const raw = retentionDays[t];
+    for (const mt of ALL_MATERIAL_TYPES) {
+      const raw = retentionDays[mt];
       if (raw.trim() === '') continue;
       const n = parseInt(raw, 10);
-      if (Number.isFinite(n) && n > 0) { parsed[t] = n; any = true; }
+      if (Number.isFinite(n) && n > 0) { parsed[mt] = n; any = true; }
     }
     return any ? parsed : undefined;
   };
@@ -153,58 +167,58 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Specimen Category' : `Edit — ${category?.name}`}
+          {mode === 'add' ? t('specimenCategoriesSection.modal.headerAdd') : t('specimenCategoriesSection.modal.headerEdit', { name: category?.name })}
         </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('specimenCategoriesSection.modal.nameLabel')} <span className="ps-conf-required">*</span></label>
             <input className={`ps-conf-input ${errors.name ? 'ps-conf-input--error' : ''}`}
-              value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Surgical Tissue" />
+              value={draft.name} onChange={e => set('name', e.target.value)} placeholder={t('specimenCategoriesSection.modal.namePlaceholder')} />
             {errors.name && <span className="ps-conf-error-text">{errors.name}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
-            <textarea className="ps-conf-input ps-conf-textarea" value={draft.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="What kinds of specimens fall into this category" />
+            <label className="ps-conf-label">{t('specimenCategoriesSection.modal.descriptionLabel')}</label>
+            <textarea className="ps-conf-input ps-conf-textarea" value={draft.description ?? ''} onChange={e => set('description', e.target.value)} placeholder={t('specimenCategoriesSection.modal.descriptionPlaceholder')} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="speccat-template">Default Grossing Template <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="speccat-template">{t('specimenCategoriesSection.modal.templateLabel')} <span className="ps-conf-required">*</span></label>
             <select id="speccat-template" className={`ps-conf-select ${errors.defaultGrossingTemplateId ? 'ps-conf-input--error' : ''}`} value={draft.defaultGrossingTemplateId} onChange={e => set('defaultGrossingTemplateId', e.target.value)}>
-              {GROSSING_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {GROSSING_TEMPLATES.map(gt => <option key={gt.id} value={gt.id}>{t(gt.labelKey)}</option>)}
             </select>
             {errors.defaultGrossingTemplateId && <span className="ps-conf-error-text">{errors.defaultGrossingTemplateId}</span>}
           </div>
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Accession Prefix</label>
-              <input className="ps-conf-input" value={draft.accessionPrefix ?? ''} onChange={e => set('accessionPrefix', e.target.value.toUpperCase())} placeholder="O" maxLength={3} />
+              <label className="ps-conf-label">{t('specimenCategoriesSection.modal.accessionPrefixLabel')}</label>
+              <input className="ps-conf-input" value={draft.accessionPrefix ?? ''} onChange={e => set('accessionPrefix', e.target.value.toUpperCase())} placeholder={t('specimenCategoriesSection.modal.accessionPrefixPlaceholder')} maxLength={3} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Numbering Series (optional)</label>
-              <input className="ps-conf-input" value={draft.numberSeries ?? ''} onChange={e => set('numberSeries', e.target.value)} placeholder="Leave blank to share the institution-wide series" />
+              <label className="ps-conf-label">{t('specimenCategoriesSection.modal.numberingSeriesLabel')}</label>
+              <input className="ps-conf-input" value={draft.numberSeries ?? ''} onChange={e => set('numberSeries', e.target.value)} placeholder={t('specimenCategoriesSection.modal.numberingSeriesPlaceholder')} />
             </div>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="speccat-performing-lab">Performing Lab</label>
+            <label className="ps-conf-label" htmlFor="speccat-performing-lab">{t('specimenCategoriesSection.modal.performingLabLabel')}</label>
             <select id="speccat-performing-lab" className="ps-conf-select"
               value={draft.performingLabFacilityId ?? ''}
               onChange={e => set('performingLabFacilityId', e.target.value || undefined)}>
-              <option value="">— All Labs (available to everyone) —</option>
+              <option value="">{t('specimenCategoriesSection.modal.allLabsOption')}</option>
               {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('specimenCategoriesSection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
 
@@ -214,26 +228,37 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
               step for going below only appears on Save, once we know
               the actual, final values. */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Retention Override (optional — per material type)</label>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
-              Leave a field blank to use the current jurisdiction default. Only set a real exception here.
+            <label className="ps-conf-label">{t('specimenCategoriesSection.modal.retentionOverrideLabel')}</label>
+            <div className="ps-participationtypes__modal-hint">
+              {t('specimenCategoriesSection.modal.retentionOverrideHint')}
             </div>
             <div className="ps-conf-form-row">
-              {ALL_MATERIAL_TYPES.map(t => {
-                const parsed = parseInt(retentionDays[t], 10);
-                const isBelowFloor = floor && Number.isFinite(parsed) && parsed > 0 && parsed < floor[t];
+              {ALL_MATERIAL_TYPES.map(mt => {
+                const parsed = parseInt(retentionDays[mt], 10);
+                const isBelowFloor = floor && Number.isFinite(parsed) && parsed > 0 && parsed < floor[mt];
                 return (
-                  <div className="ps-conf-form-field" key={t}>
-                    <label className="ps-conf-label">{MATERIAL_TYPE_LABEL[t]} (days)</label>
+                  <div className="ps-conf-form-field" key={mt}>
+                    {/* MATERIAL_TYPE_LABEL is a shared display-label constant
+                        (services/retentionPolicy/RetentionPolicy.ts) also consumed
+                        by GoverningBodiesSection.tsx (batch 66) - left untouched
+                        here too, same precedent; only the "(days)" suffix around
+                        it is this component's own text. */}
+                    <label className="ps-conf-label">{MATERIAL_TYPE_LABEL[mt]} {t('specimenCategoriesSection.modal.daysSuffix')}</label>
                     <input
                       className={`ps-conf-input ${isBelowFloor ? 'ps-conf-input--error' : ''}`}
-                      value={retentionDays[t]}
-                      onChange={e => setRetentionDays(prev => ({ ...prev, [t]: e.target.value }))}
-                      placeholder={floor ? String(floor[t]) : 'e.g. 3653'}
+                      value={retentionDays[mt]}
+                      onChange={e => setRetentionDays(prev => ({ ...prev, [mt]: e.target.value }))}
+                      placeholder={floor ? String(floor[mt]) : t('specimenCategoriesSection.modal.daysPlaceholder')}
                     />
-                    <div style={{ fontSize: 11, marginTop: 2, color: isBelowFloor ? '#f87171' : '#64748b' }}>
-                      {Number.isFinite(parsed) && parsed > 0 ? `≈ ${formatRetentionPeriod(parsed)}` : floor ? `Floor: ${formatRetentionPeriod(floor[t])}` : 'No governing-body floor on file'}
-                      {isBelowFloor && ' — below floor'}
+                    {/* formatRetentionPeriod() (same RetentionPolicy.ts module) is a
+                        service-layer function, not a component, and can't call
+                        useTranslation() - its returned "N years"/"N weeks" text stays
+                        English, same as every other consumer of it in this app. */}
+                    <div className={`ps-speccat-days-hint ${isBelowFloor ? 'ps-speccat-days-hint--below' : ''}`}>
+                      {Number.isFinite(parsed) && parsed > 0
+                        ? t('specimenCategoriesSection.modal.approxPeriod', { period: formatRetentionPeriod(parsed) })
+                        : floor ? t('specimenCategoriesSection.modal.floorPeriod', { period: formatRetentionPeriod(floor[mt]) }) : t('specimenCategoriesSection.modal.noFloorOnFile')}
+                      {isBelowFloor && ` ${t('specimenCategoriesSection.modal.belowFloorSuffix')}`}
                     </div>
                   </div>
                 );
@@ -243,9 +268,9 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Category' : 'Save Changes'}
+            {mode === 'add' ? t('specimenCategoriesSection.modal.addButton') : t('specimenCategoriesSection.modal.saveButton')}
           </button>
         </div>
       </div>
@@ -255,31 +280,36 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
           which ConfirmModal (message + confirm/cancel only) has no
           field for. */}
       {belowFloorConfirm && (
-        <div className="ps-ms-overlay" style={{ zIndex: 9500 }}>
-          <div className="ps-ms-modal" style={{ maxWidth: 460 }}>
-            <div className="ps-ms-header" style={{ color: '#f87171' }}>⚠ Below the Current Retention Floor</div>
+        <div className="ps-ms-overlay ps-billing-postsignout-overlay">
+          <div className="ps-ms-modal ps-speccat-belowfloor-modal">
+            <div className="ps-ms-header acd-footer-status--error">⚠ {t('specimenCategoriesSection.modal.belowFloor.header')}</div>
             <div className="ps-ms-body">
-              <p style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 12 }}>
-                This override sets {belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(' and ')} below the
-                current governing-body floor{floor && belowFloorConfirm.fields.length === 1 ? ` (${formatRetentionPeriod(floor[belowFloorConfirm.fields[0]])})` : ''}.
-                This is a real, deliberate exception to a real, published minimum — not something to do casually.
+              <p className="ps-speccat-belowfloor-text">
+                {floor && belowFloorConfirm.fields.length === 1
+                  ? t('specimenCategoriesSection.modal.belowFloor.messageWithFloor', {
+                      fields: belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(` ${t('specimenCategoriesSection.modal.belowFloor.and')} `),
+                      period: formatRetentionPeriod(floor[belowFloorConfirm.fields[0]]),
+                    })
+                  : t('specimenCategoriesSection.modal.belowFloor.message', {
+                      fields: belowFloorConfirm.fields.map(f => MATERIAL_TYPE_LABEL[f]).join(` ${t('specimenCategoriesSection.modal.belowFloor.and')} `),
+                    })}
               </p>
               <label className="ps-conf-label">
-                Justification <span className="ps-conf-required">*</span>
+                {t('specimenCategoriesSection.modal.belowFloor.justificationLabel')} <span className="ps-conf-required">*</span>
               </label>
               <textarea
                 className="ps-conf-input ps-conf-textarea"
                 value={justification}
                 onChange={e => setJustification(e.target.value)}
-                placeholder="Why this category's own retention should be shorter than the published floor..."
+                placeholder={t('specimenCategoriesSection.modal.belowFloor.justificationPlaceholder')}
                 rows={3}
                 autoFocus
               />
             </div>
             <div className="ps-ms-footer">
-              <button className="ps-ms-btn-cancel" onClick={() => setBelowFloorConfirm(null)}>Cancel</button>
-              <button className="ps-ms-btn-apply" style={{ background: '#f87171' }} disabled={!justification.trim()} onClick={confirmBelowFloor}>
-                Confirm Below-Floor Override
+              <button className="ps-ms-btn-cancel" onClick={() => setBelowFloorConfirm(null)}>{t('common.cancel')}</button>
+              <button className="ps-ms-btn-apply ps-speccat-btn-danger" disabled={!justification.trim()} onClick={confirmBelowFloor}>
+                {t('specimenCategoriesSection.modal.belowFloor.confirmButton')}
               </button>
             </div>
           </div>
@@ -291,6 +321,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ mode, category, existingE
 
 // ─── Main SpecimenCategoriesSection ────────────────────────────────────────────
 const SpecimenCategoriesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [categories,   setCategories]   = useState<SpecimenCategory[]>([]);
   const [labs,         setLabs]         = useState<Facility[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -310,8 +341,11 @@ const SpecimenCategoriesSection: React.FC = () => {
     getActivePerformingLabs().then(setLabs);
   }, []);
 
-  const templateName = (id: string) => GROSSING_TEMPLATES.find(t => t.id === id)?.name ?? id;
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'All Labs';
+  const templateName = (id: string) => {
+    const tpl = GROSSING_TEMPLATES.find(gt => gt.id === id);
+    return tpl ? t(tpl.labelKey) : id;
+  };
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('specimenCategoriesSection.filters.labAll');
 
   const filtered = categories.filter(c => {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.description ?? '').toLowerCase().includes(search.toLowerCase());
@@ -346,12 +380,14 @@ const SpecimenCategoriesSection: React.FC = () => {
       const refCheck = await checkSpecimenCategoryReferences(modal.category.id);
       if (refCheck.hasReferences) {
         const detail = refCheck.sources.map(s => `${s.count} ${s.label}`).join(', ');
-        setPendingDeactivation({ draft, message: `This specimen category is still referenced by: ${detail}. Deactivating it now won't remove those references — they'll keep pointing at a category that's no longer active. Deactivate anyway?` });
+        setPendingDeactivation({ draft, message: t('specimenCategoriesSection.deactivation.message', { detail }) });
         return;
       }
     }
     const saved = await persistSave(draft);
     if (saved && belowFloorFields.length > 0) {
+      // Persisted audit-trail entry — stays English, same convention as
+      // every other real audit-log detail string in this app.
       mockAuditService.logEvent({
         type: 'system', event: 'Retention Override Below Floor',
         detail: `Category "${draft.name}" — ${belowFloorFields.join(', ')} set below the current governing-body floor. Justification: ${justification}`,
@@ -372,32 +408,34 @@ const SpecimenCategoriesSection: React.FC = () => {
     setPendingDeactivation(null);
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading specimen categories...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('specimenCategoriesSection.loading')}</div>;
+
+  const tableHeaderKeys = ['category', 'defaultGrossingTemplate', 'accessionPrefix', 'performingLab', 'retentionOverride', 'status', 'actions'] as const;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Specimen Category Dictionary</h3>
+          <h3 className="ps-conf-section-title">{t('specimenCategoriesSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            The coarse-grained classification that controls Grossing Template assignment, accession numbering, and per-category retention exceptions at intake.
+            {t('specimenCategoriesSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Category</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>{t('specimenCategoriesSection.addCategory')}</button>
       </div>
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by name or description..." value={search} onChange={e => setSearch(e.target.value)}
+        <input type="text" placeholder={t('specimenCategoriesSection.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
           className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="Unverified">Unverified</option>
+          <option value="All">{t('specimenCategoriesSection.filters.statusAll')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
+          <option value="Unverified">{t('specimenCategoriesSection.filters.statusUnverified')}</option>
         </select>
         <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
-          <option value="All">All Labs</option>
-          <option value="Global">Global only (no lab set)</option>
+          <option value="All">{t('specimenCategoriesSection.filters.labAll')}</option>
+          <option value="Global">{t('specimenCategoriesSection.filters.labGlobalOnly')}</option>
           {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -407,8 +445,8 @@ const SpecimenCategoriesSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Category', 'Default Grossing Template', 'Accession Prefix', 'Performing Lab', 'Retention Override', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="ps-conf-th">{h}</th>
+                {tableHeaderKeys.map(h => (
+                  <th key={h} className="ps-conf-th">{t(`specimenCategoriesSection.table.headers.${h}`)}</th>
                 ))}
               </tr>
             </thead>
@@ -425,48 +463,50 @@ const SpecimenCategoriesSection: React.FC = () => {
                     <td className="ps-conf-td">
                       {c.accessionPrefix ?? '—'}
                       {c.numberSeries
-                        ? <span className="ps-sub-system-badge" title="Draws from its own independent accession sequence">OWN SEQUENCE · {c.numberSeries}</span>
-                        : c.accessionPrefix && <span className="ps-sub-system-badge">SHARES INSTITUTION SEQUENCE</span>}
+                        ? <span className="ps-sub-system-badge" title={t('specimenCategoriesSection.table.ownSequenceTooltip')}>{t('specimenCategoriesSection.table.ownSequenceBadge', { series: c.numberSeries })}</span>
+                        : c.accessionPrefix && <span className="ps-sub-system-badge">{t('specimenCategoriesSection.table.sharesSequenceBadge')}</span>}
                     </td>
                     <td className="ps-conf-td">{labName(c.performingLabFacilityId)}</td>
                     <td className="ps-conf-td">
                       {c.retentionOverrideDays ? (
-                        <div style={{ fontSize: 11 }}>
-                          {ALL_MATERIAL_TYPES.filter(t => c.retentionOverrideDays![t] != null).map(t => (
-                            <div key={t} style={{ color: belowFloorFields.includes(t) ? '#f87171' : '#94a3b8' }}>
-                              {MATERIAL_TYPE_LABEL[t]}: {formatRetentionPeriod(c.retentionOverrideDays![t]!)}
-                              {belowFloorFields.includes(t) && ' ⚠ below floor'}
+                        <div className="ps-ai-review-hint-label">
+                          {ALL_MATERIAL_TYPES.filter(mt => c.retentionOverrideDays![mt] != null).map(mt => (
+                            <div key={mt} className={belowFloorFields.includes(mt) ? 'ps-speccat-retention-row--below' : 'ps-speccat-retention-row'}>
+                              {MATERIAL_TYPE_LABEL[mt]}: {formatRetentionPeriod(c.retentionOverrideDays![mt]!)}
+                              {belowFloorFields.includes(mt) && ` ⚠ ${t('specimenCategoriesSection.table.belowFloorSuffix')}`}
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <span style={{ fontSize: 11, color: '#64748b' }}>Uses jurisdiction default</span>
+                        <span className="ps-gov-jur-hint">{t('specimenCategoriesSection.table.usesJurisdictionDefault')}</span>
                       )}
                     </td>
                     <td className="ps-conf-td">
                       <div className="ps-conf-status-cell">
                         <span className={`ps-conf-status-dot ${c.status === 'Active' ? 'ps-conf-status-dot--active' : c.status === 'Unverified' ? 'ps-conf-status-dot--pending' : ''}`} />
-                        <span className={`ps-conf-status-text ${c.status === 'Active' ? 'ps-conf-status-text--active' : c.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>{c.status}</span>
+                        <span className={`ps-conf-status-text ${c.status === 'Active' ? 'ps-conf-status-text--active' : c.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>
+                          {c.status === 'Active' ? t('common.active') : c.status === 'Inactive' ? t('common.inactive') : t('specimenCategoriesSection.filters.statusUnverified')}
+                        </span>
                       </div>
                       {c.autoCreated && (
                         <div className="ps-conf-auto-note" title={c.autoCreatedNote}>
-                          Auto-created{c.autoCreatedAt ? ` ${c.autoCreatedAt}` : ''} — from order intake
+                          {c.autoCreatedAt ? t('specimenCategoriesSection.table.autoCreatedWithDate', { date: c.autoCreatedAt }) : t('specimenCategoriesSection.table.autoCreated')}
                         </div>
                       )}
                     </td>
                     <td className="ps-conf-td">
                       <div className="ps-conf-row-actions">
                         {c.status === 'Unverified' && (
-                          <button className="ps-conf-btn-verify" onClick={() => handleVerify(c.id)}>Verify</button>
+                          <button className="ps-conf-btn-verify" onClick={() => handleVerify(c.id)}>{t('specimenCategoriesSection.verify')}</button>
                         )}
-                        <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', category: c })}>Edit</button>
+                        <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', category: c })}>{t('common.edit')}</button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={7}>No specimen categories match the current filter.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={7}>{t('specimenCategoriesSection.noResults')}</td></tr>
               )}
             </tbody>
           </table>
@@ -477,10 +517,10 @@ const SpecimenCategoriesSection: React.FC = () => {
 
       <ConfirmModal
         show={!!pendingDeactivation}
-        title="Specimen category still in use"
+        title={t('specimenCategoriesSection.deactivation.title')}
         message={pendingDeactivation?.message ?? ''}
-        confirmLabel="Deactivate Anyway"
-        cancelLabel="Cancel"
+        confirmLabel={t('specimenCategoriesSection.deactivation.confirmLabel')}
+        cancelLabel={t('common.cancel')}
         onConfirm={confirmDeactivation}
         onCancel={() => setPendingDeactivation(null)}
       />

@@ -23,9 +23,29 @@
 // searchBillingAuditLog.ts (services/billing/) - this component only
 // renders filter inputs and that function's own, already-computed
 // result, same discipline as the code it replaces.
+//
+// File-by-file cleanup sweep: all UI chrome now goes through t() — new
+// `billingLogs` namespace. summarizeFilters() is a plain function (not a
+// component), so it takes `t` as a parameter, the same convention already
+// established for pure resolver functions in this codebase (see e.g.
+// resolveSynopticFieldLabel.ts). The on-screen table header array was
+// restructured from raw English strings into {key, labelKey} pairs so the
+// "Detail" column's own CSS-class special-case no longer keys off
+// translated text. Left deliberately untranslated: the CSV export's own
+// column headers/meta-header field names in handleExportCSV — those are
+// a data-interchange format, not live UI chrome, same policy already
+// applied to other exports/persisted records this sweep. Two real,
+// redundant inline style={{}} blocks removed: the Chip's own
+// `--accent: '#0891B2'` exactly reproduced ps-searchpage-chip's own CSS
+// fallback (a no-op, unlike SearchPage.tsx's own Chip which threads a
+// real per-item accent through), and the outer shell's
+// `height: '100%'` became a real `.ps-search-shell--embedded` modifier
+// class instead (this instance is embedded in AuditLogPage.tsx's tab
+// body, not a full-page flex root like SearchPage.tsx's own usage).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { LookupModal, LookupItem, LookupEmpty } from '../components/Common/LookupModal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,32 +65,32 @@ const lsSave = (s: SavedQuery[]) => { try { localStorage.setItem(LS_KEY, JSON.st
 interface StaffStub { id: string; name: string; roles: string; }
 interface FacilityStub { id: string; name: string; }
 
-const STATUS_OPTIONS: { value: NonNullable<BillingAuditLogFilters['approvalStatus']> | ''; label: string }[] = [
-  { value: '', label: 'All Statuses' },
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'PENDING_APPROVAL', label: 'Pending Approval' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'EXPORTED', label: 'Exported' },
-  { value: 'REJECTED', label: 'Rejected' },
-  { value: 'HOLD', label: 'Hold' },
+const STATUS_OPTIONS: { value: NonNullable<BillingAuditLogFilters['approvalStatus']> | ''; labelKey: string }[] = [
+  { value: '', labelKey: 'billingLogs.statusOptions.allStatuses' },
+  { value: 'DRAFT', labelKey: 'billingLogs.statusOptions.draft' },
+  { value: 'PENDING_APPROVAL', labelKey: 'billingLogs.statusOptions.pendingApproval' },
+  { value: 'APPROVED', labelKey: 'billingLogs.statusOptions.approved' },
+  { value: 'EXPORTED', labelKey: 'billingLogs.statusOptions.exported' },
+  { value: 'REJECTED', labelKey: 'billingLogs.statusOptions.rejected' },
+  { value: 'HOLD', labelKey: 'billingLogs.statusOptions.hold' },
 ];
 
-const BILLING_TYPE_OPTIONS: { value: BillingAuditLogFilters['billingType'] | ''; label: string }[] = [
-  { value: '', label: 'All Billing Types' },
-  { value: 'TC', label: 'TC (Technical Component)' },
-  { value: '26', label: '26 (Professional Component)' },
-  { value: 'Global', label: 'Global (Combined)' },
+const BILLING_TYPE_OPTIONS: { value: BillingAuditLogFilters['billingType'] | ''; labelKey: string }[] = [
+  { value: '', labelKey: 'billingLogs.billingTypeOptions.allBillingTypes' },
+  { value: 'TC', labelKey: 'billingLogs.billingTypeOptions.tc' },
+  { value: '26', labelKey: 'billingLogs.billingTypeOptions.pc26' },
+  { value: 'Global', labelKey: 'billingLogs.billingTypeOptions.global' },
 ];
 
-const TYPE_OPTIONS: { value: BillingAuditLogEventKind | ''; label: string }[] = [
-  { value: '', label: 'All Types' },
-  { value: 'charge', label: 'Charge' },
-  { value: 'credit', label: 'Credit' },
-  { value: 'deficiency', label: 'Deficiency' },
-  { value: 'code_review', label: 'Code Review' },
-  { value: 'dispatch', label: 'Dispatch' },
-  { value: 'amendment', label: 'Amendment' },
-  { value: 'audit', label: 'Audit' },
+const TYPE_OPTIONS: { value: BillingAuditLogEventKind | ''; labelKey: string }[] = [
+  { value: '', labelKey: 'billingLogs.typeOptions.allTypes' },
+  { value: 'charge', labelKey: 'billingLogs.typeOptions.charge' },
+  { value: 'credit', labelKey: 'billingLogs.typeOptions.credit' },
+  { value: 'deficiency', labelKey: 'billingLogs.typeOptions.deficiency' },
+  { value: 'code_review', labelKey: 'billingLogs.typeOptions.codeReview' },
+  { value: 'dispatch', labelKey: 'billingLogs.typeOptions.dispatch' },
+  { value: 'amendment', labelKey: 'billingLogs.typeOptions.amendment' },
+  { value: 'audit', labelKey: 'billingLogs.typeOptions.audit' },
 ];
 
 function formatDateTime(iso: string): string {
@@ -87,23 +107,23 @@ function emptyFilters(): BillingAuditLogFilters {
   };
 }
 
-function summarizeFilters(f: BillingAuditLogFilters): string {
+function summarizeFilters(f: BillingAuditLogFilters, t: (key: string, options?: Record<string, unknown>) => string): string {
   const parts: string[] = [];
-  if (f.caseNumber) parts.push(`Case ${f.caseNumber}`);
-  if (f.patientName) parts.push(`Patient "${f.patientName}"`);
-  if (f.patientId) parts.push(`ID ${f.patientId}`);
-  if (f.patientNameRangeFrom || f.patientNameRangeTo) parts.push(`Name ${f.patientNameRangeFrom || 'A'}\u2013${f.patientNameRangeTo || 'Z'}`);
-  if (f.serviceDateFrom || f.serviceDateTo) parts.push(`Billing Event ${f.serviceDateFrom || '…'} – ${f.serviceDateTo || '…'}`);
-  if (f.dateOfServiceFrom || f.dateOfServiceTo) parts.push(`DOS ${f.dateOfServiceFrom || '…'} – ${f.dateOfServiceTo || '…'}`);
-  if (f.signOutDateFrom || f.signOutDateTo) parts.push(`Sign-out ${f.signOutDateFrom || '…'} – ${f.signOutDateTo || '…'}`);
+  if (f.caseNumber) parts.push(t('billingLogs.summary.case', { caseNumber: f.caseNumber }));
+  if (f.patientName) parts.push(t('billingLogs.summary.patient', { patientName: f.patientName }));
+  if (f.patientId) parts.push(t('billingLogs.summary.patientId', { patientId: f.patientId }));
+  if (f.patientNameRangeFrom || f.patientNameRangeTo) parts.push(t('billingLogs.summary.nameRange', { from: f.patientNameRangeFrom || 'A', to: f.patientNameRangeTo || 'Z' }));
+  if (f.serviceDateFrom || f.serviceDateTo) parts.push(t('billingLogs.summary.billingEventDate', { from: f.serviceDateFrom || '…', to: f.serviceDateTo || '…' }));
+  if (f.dateOfServiceFrom || f.dateOfServiceTo) parts.push(t('billingLogs.summary.dateOfService', { from: f.dateOfServiceFrom || '…', to: f.dateOfServiceTo || '…' }));
+  if (f.signOutDateFrom || f.signOutDateTo) parts.push(t('billingLogs.summary.signOutDate', { from: f.signOutDateFrom || '…', to: f.signOutDateTo || '…' }));
   if (f.type) parts.push(BILLING_AUDIT_LOG_KIND_LABEL[f.type]);
   if (f.billingType) parts.push(f.billingType);
   if (f.approvalStatus) parts.push(f.approvalStatus);
-  if (f.staff && f.staff.length > 0) parts.push(`Staff: ${f.staff.join(', ')}`);
-  if (f.signingPathologist && f.signingPathologist.length > 0) parts.push(`Pathologist: ${f.signingPathologist.join(', ')}`);
-  if (f.clientIds && f.clientIds.length > 0) parts.push(`Facility: ${f.clientIds.length}`);
-  if (f.detail) parts.push(`"${f.detail}"`);
-  return parts.join(', ') || 'All billing events';
+  if (f.staff && f.staff.length > 0) parts.push(t('billingLogs.summary.staff', { list: f.staff.join(', ') }));
+  if (f.signingPathologist && f.signingPathologist.length > 0) parts.push(t('billingLogs.summary.pathologist', { list: f.signingPathologist.join(', ') }));
+  if (f.clientIds && f.clientIds.length > 0) parts.push(t('billingLogs.summary.facility', { count: f.clientIds.length }));
+  if (f.detail) parts.push(t('billingLogs.summary.detailQuoted', { detail: f.detail }));
+  return parts.join(', ') || t('billingLogs.summary.allBillingEvents');
 }
 
 // SectionLabel, Chip, BrowseBtn — same real, small components SearchPage.tsx
@@ -113,18 +133,26 @@ const SectionLabel: React.FC<{ title: string }> = ({ title }) => (
   <div className="ps-searchpage-section-label">{title}</div>
 );
 
+// Real, found during this sweep: '#0891B2' is exactly ps-searchpage-chip's
+// own CSS fallback (var(--accent, #0891B2)) — unlike SearchPage.tsx's own
+// Chip, this one never receives a per-item accent, so setting --accent
+// inline here was a no-op reproducing the class's own default. Removed
+// rather than kept as a redundant, always-identical inline override.
 const Chip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemove }) => (
-  <span className="ps-searchpage-chip" style={{ '--accent': '#0891B2' } as React.CSSProperties}>
+  <span className="ps-searchpage-chip">
     {label}
     <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); onRemove(); }} className="ps-searchpage-chip-remove">×</button>
   </span>
 );
 
-const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick, count }) => (
-  <button type="button" onClick={onClick} className="ps-searchpage-browse-btn">
-    {count ? `Browse (${count})` : 'Browse'}
-  </button>
-);
+const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick, count }) => {
+  const { t } = useTranslation();
+  return (
+    <button type="button" onClick={onClick} className="ps-searchpage-browse-btn">
+      {count ? t('billingLogs.browseWithCount', { count }) : t('billingLogs.browse')}
+    </button>
+  );
+};
 
 const toggle = (val: string, list: string[], setter: (v: string[]) => void) =>
   list.includes(val) ? setter(list.filter(x => x !== val)) : setter([...list, val]);
@@ -140,12 +168,13 @@ const initials = (name: string) => {
  *  not just pathologists tied to a subspecialty or attendings tied to
  *  a client) has no second, meaningful axis to search by. */
 const StaffLookupContent: React.FC<{ staff: StaffStub[]; selected: string[]; onToggle: (name: string) => void }> = ({ staff, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const filtered = staff.filter(s => q.length < 1 || s.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="ps-searchpage-user-search-row">
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name…" className="ps-searchpage-user-search-input" />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('billingLogs.placeholders.staffSearch')} className="ps-searchpage-user-search-input" />
       </div>
       {filtered.length === 0
         ? <LookupEmpty query={q} />
@@ -161,12 +190,13 @@ const StaffLookupContent: React.FC<{ staff: StaffStub[]; selected: string[]; onT
 /** Real, per direct follow-up - the same real Browse-modal content
  *  shape as SearchPage.tsx's own FacilityLookupContent. */
 const FacilityLookupContent: React.FC<{ facilities: FacilityStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ facilities, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const filtered = facilities.filter(c => q.length < 1 || c.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="ps-searchpage-user-search-row">
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by facility name…" className="ps-searchpage-user-search-input" />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('billingLogs.placeholders.facilitySearch')} className="ps-searchpage-user-search-input" />
       </div>
       {filtered.length === 0
         ? <LookupEmpty query={q} />
@@ -180,6 +210,7 @@ const FacilityLookupContent: React.FC<{ facilities: FacilityStub[]; selected: st
 };
 
 const BillingLogsSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user: storedUser } = useAuth();
   const requestedByLabel = storedUser?.name ?? storedUser?.email ?? 'Unknown';
 
@@ -356,19 +387,16 @@ const BillingLogsSection: React.FC = () => {
   };
 
   return (
-    <div className="ps-search-shell" style={{ height: '100%' }}>
+    <div className="ps-search-shell ps-search-shell--embedded">
       <div className="ps-search-header">
         <div className="ps-search-header-row">
           <div>
-            <div className="ps-search-title-block-title">Billing Logs</div>
-            <div className="ps-search-title-block-sub">
-              Search every real billing event — charges, credits, corrections, deficiencies, code review
-              activity, dispatch history, and amendments — across cases.
-            </div>
+            <div className="ps-search-title-block-title">{t('billingLogs.title')}</div>
+            <div className="ps-search-title-block-sub">{t('billingLogs.subtitle')}</div>
           </div>
           <div className="ps-search-saved-chips">
             {savedQueries.map(q => (
-              <button key={q.id} type="button" onClick={() => handleLoadQuery(q.id)} className={`ps-searchpage-saved-chip${activeSavedId === q.id ? ' ps-searchpage-saved-chip--active' : ''}`} title={summarizeFilters(q.filters)}>
+              <button key={q.id} type="button" onClick={() => handleLoadQuery(q.id)} className={`ps-searchpage-saved-chip${activeSavedId === q.id ? ' ps-searchpage-saved-chip--active' : ''}`} title={summarizeFilters(q.filters, t)}>
                 {q.name}
                 <span onClick={e => handleDeleteQuery(q.id, e)} className="ps-searchpage-saved-chip-remove">×</span>
               </button>
@@ -377,14 +405,14 @@ const BillingLogsSection: React.FC = () => {
               <div className="ps-searchpage-save-row">
                 <input ref={saveInputRef} type="text" value={saveNameInput} onChange={e => setSaveNameInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleSaveQuery(); if (e.key === 'Escape') { setShowSaveInput(false); setSaveNameInput(''); } }}
-                  placeholder="Name this query…" className="ps-searchpage-save-input" />
-                <button type="button" onClick={handleSaveQuery} className="ps-searchpage-save-btn">Save</button>
+                  placeholder={t('billingLogs.placeholders.saveQueryName')} className="ps-searchpage-save-input" />
+                <button type="button" onClick={handleSaveQuery} className="ps-searchpage-save-btn">{t('billingLogs.save')}</button>
                 <button type="button" onClick={() => { setShowSaveInput(false); setSaveNameInput(''); }} className="ps-searchpage-save-cancel-btn">✕</button>
               </div>
             ) : (
-              <button type="button" onClick={() => setShowSaveInput(true)} className="ps-searchpage-save-new-btn">+ Save Query</button>
+              <button type="button" onClick={() => setShowSaveInput(true)} className="ps-searchpage-save-new-btn">{t('billingLogs.saveQuery')}</button>
             )}
-            {activeCount > 0 && <span className="ps-searchpage-active-count-badge">{activeCount} filter{activeCount !== 1 ? 's' : ''}</span>}
+            {activeCount > 0 && <span className="ps-searchpage-active-count-badge">{t('billingLogs.filtersCount', { count: activeCount })}</span>}
           </div>
         </div>
       </div>
@@ -394,97 +422,97 @@ const BillingLogsSection: React.FC = () => {
           <aside className={`ps-search-sidebar ${sidebarCollapsed ? 'collapsed' : 'expanded'}`}>
             {sidebarCollapsed ? (
               <div className="ps-search-rail">
-                <button type="button" className="ps-search-rail-toggle" onClick={() => setSidebarCollapsed(false)} title="Expand filters">
+                <button type="button" className="ps-search-rail-toggle" onClick={() => setSidebarCollapsed(false)} title={t('billingLogs.expandFilters')}>
                   &rsaquo;
                 </button>
-                <div className="ps-search-rail-badge">Filters</div>
+                <div className="ps-search-rail-badge">{t('billingLogs.filtersRailBadge')}</div>
               </div>
             ) : (
               <>
-                <button type="button" className="ps-search-sidebar-toggle" onClick={() => setSidebarCollapsed(true)} title="Collapse filters">
+                <button type="button" className="ps-search-sidebar-toggle" onClick={() => setSidebarCollapsed(true)} title={t('billingLogs.collapseFilters')}>
                   &lsaquo;
                 </button>
                 <form onSubmit={e => { e.preventDefault(); void handleSearch(currentFilters()); }} className="ps-search-form">
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Case Number" /></div>
-                  <input className="ps-searchpage-filter-input" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="Accession or case ID" />
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.caseNumber')} /></div>
+                  <input className="ps-searchpage-filter-input" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder={t('billingLogs.placeholders.caseNumber')} />
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient Name" /></div>
-                  <input className="ps-searchpage-filter-input" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Last, First" />
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientName')} /></div>
+                  <input className="ps-searchpage-filter-input" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder={t('billingLogs.placeholders.patientName')} />
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient Name Range (A–Z)" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientNameRange')} /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
-                      <div className="ps-searchpage-date-label">From</div>
-                      <input className="ps-searchpage-filter-input" value={nameRangeFrom} onChange={e => setNameRangeFrom(e.target.value)} placeholder="e.g. Smith" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateFrom')}</div>
+                      <input className="ps-searchpage-filter-input" value={nameRangeFrom} onChange={e => setNameRangeFrom(e.target.value)} placeholder={t('billingLogs.placeholders.nameRangeFrom')} />
                     </div>
                     <div>
-                      <div className="ps-searchpage-date-label">To</div>
-                      <input className="ps-searchpage-filter-input" value={nameRangeTo} onChange={e => setNameRangeTo(e.target.value)} placeholder="e.g. Williams" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateTo')}</div>
+                      <input className="ps-searchpage-filter-input" value={nameRangeTo} onChange={e => setNameRangeTo(e.target.value)} placeholder={t('billingLogs.placeholders.nameRangeTo')} />
                     </div>
                   </div>
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Patient ID (MRN, MPI)" /></div>
-                  <input className="ps-searchpage-filter-input" value={patientId} onChange={e => setPatientId(e.target.value)} placeholder="MRN or MPI" />
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientId')} /></div>
+                  <input className="ps-searchpage-filter-input" value={patientId} onChange={e => setPatientId(e.target.value)} placeholder={t('billingLogs.placeholders.patientId')} />
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Billing Event Date" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.billingEventDate')} /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
-                      <div className="ps-searchpage-date-label">From</div>
-                      <input type="date" value={serviceDateFrom} onChange={e => setServiceDateFrom(e.target.value)} aria-label="Event date from" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateFrom')}</div>
+                      <input type="date" value={serviceDateFrom} onChange={e => setServiceDateFrom(e.target.value)} aria-label={t('billingLogs.ariaLabels.eventDateFrom')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                     <div>
-                      <div className="ps-searchpage-date-label">To</div>
-                      <input type="date" value={serviceDateTo} onChange={e => setServiceDateTo(e.target.value)} aria-label="Event date to" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateTo')}</div>
+                      <input type="date" value={serviceDateTo} onChange={e => setServiceDateTo(e.target.value)} aria-label={t('billingLogs.ariaLabels.eventDateTo')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                   </div>
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Date of Service" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.dateOfService')} /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
-                      <div className="ps-searchpage-date-label">From</div>
-                      <input type="date" value={dateOfServiceFrom} onChange={e => setDateOfServiceFrom(e.target.value)} aria-label="Date of service from" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateFrom')}</div>
+                      <input type="date" value={dateOfServiceFrom} onChange={e => setDateOfServiceFrom(e.target.value)} aria-label={t('billingLogs.ariaLabels.dosFrom')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                     <div>
-                      <div className="ps-searchpage-date-label">To</div>
-                      <input type="date" value={dateOfServiceTo} onChange={e => setDateOfServiceTo(e.target.value)} aria-label="Date of service to" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateTo')}</div>
+                      <input type="date" value={dateOfServiceTo} onChange={e => setDateOfServiceTo(e.target.value)} aria-label={t('billingLogs.ariaLabels.dosTo')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                   </div>
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Report Sign-out Date" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.reportSignOutDate')} /></div>
                   <div className="ps-searchpage-date-grid">
                     <div>
-                      <div className="ps-searchpage-date-label">From</div>
-                      <input type="date" value={signOutDateFrom} onChange={e => setSignOutDateFrom(e.target.value)} aria-label="Sign-out date from" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateFrom')}</div>
+                      <input type="date" value={signOutDateFrom} onChange={e => setSignOutDateFrom(e.target.value)} aria-label={t('billingLogs.ariaLabels.signOutFrom')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                     <div>
-                      <div className="ps-searchpage-date-label">To</div>
-                      <input type="date" value={signOutDateTo} onChange={e => setSignOutDateTo(e.target.value)} aria-label="Sign-out date to" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                      <div className="ps-searchpage-date-label">{t('billingLogs.dateTo')}</div>
+                      <input type="date" value={signOutDateTo} onChange={e => setSignOutDateTo(e.target.value)} aria-label={t('billingLogs.ariaLabels.signOutTo')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                     </div>
                   </div>
 
                   <div className="ps-searchpage-inline-grid">
                     <div>
-                      <div className="ps-searchpage-section-mb4"><SectionLabel title="Type" /></div>
+                      <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.type')} /></div>
                       <select className="ps-searchpage-filter-input" value={type} onChange={e => setType(e.target.value as BillingAuditLogEventKind | '')}>
-                        {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div className="ps-searchpage-section-mb4"><SectionLabel title="Billing Type" /></div>
+                      <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.billingType')} /></div>
                       <select className="ps-searchpage-filter-input" value={billingType} onChange={e => setBillingType(e.target.value as BillingAuditLogFilters['billingType'] | '')}>
-                        {BILLING_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {BILLING_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
                       </select>
                     </div>
                   </div>
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Status" /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.status')} /></div>
                   <select className="ps-searchpage-filter-input" value={approvalStatus} onChange={e => setApprovalStatus(e.target.value as BillingAuditLogFilters['approvalStatus'] | '')}>
-                    {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
                   </select>
 
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Staff" />
+                    <SectionLabel title={t('billingLogs.sectionLabels.staff')} />
                     <BrowseBtn onClick={() => setStaffModal(true)} count={staffOptions.length} />
                   </div>
                   {staffNames.length > 0 && (
@@ -494,7 +522,7 @@ const BillingLogsSection: React.FC = () => {
                   )}
 
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Signing Pathologist" />
+                    <SectionLabel title={t('billingLogs.sectionLabels.signingPathologist')} />
                     <BrowseBtn onClick={() => setPathologistModal(true)} count={pathologistOptions.length} />
                   </div>
                   {pathologistNames.length > 0 && (
@@ -504,7 +532,7 @@ const BillingLogsSection: React.FC = () => {
                   )}
 
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Ordering Facility" />
+                    <SectionLabel title={t('billingLogs.sectionLabels.orderingFacility')} />
                     <BrowseBtn onClick={() => setFacilityModal(true)} count={facilityOptions.length} />
                   </div>
                   {facilityIds.length > 0 && (
@@ -513,13 +541,13 @@ const BillingLogsSection: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Detail" /></div>
-                  <input className="ps-searchpage-filter-input" value={detail} onChange={e => setDetail(e.target.value)} placeholder="Search within event detail" />
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.detail')} /></div>
+                  <input className="ps-searchpage-filter-input" value={detail} onChange={e => setDetail(e.target.value)} placeholder={t('billingLogs.placeholders.detail')} />
 
                   <div className="ps-search-actions">
-                    <button type="button" onClick={handleClear} className="ps-search-btn-clear">Clear</button>
+                    <button type="button" onClick={handleClear} className="ps-search-btn-clear">{t('billingLogs.clear')}</button>
                     <button type="submit" disabled={busy} className="ps-search-btn-submit">
-                      {busy ? 'Searching…' : 'Search'}
+                      {busy ? t('billingLogs.searching') : t('billingLogs.search')}
                     </button>
                   </div>
                 </form>
@@ -530,20 +558,20 @@ const BillingLogsSection: React.FC = () => {
           <div data-capture-hide="true" className="ps-search-results-pane">
             <div className="ps-search-summary-bar">
               {hasSearched ? (
-                <p className="ps-searchpage-summary-text">{summarizeFilters(currentFilters())}</p>
+                <p className="ps-searchpage-summary-text">{summarizeFilters(currentFilters(), t)}</p>
               ) : (
-                <p className="ps-searchpage-summary-empty">Set filters and press <strong className="ps-searchpage-summary-cta">Search</strong> to begin</p>
+                <p className="ps-searchpage-summary-empty">{t('billingLogs.setFiltersPromptPrefix')} <strong className="ps-searchpage-summary-cta">{t('billingLogs.search')}</strong> {t('billingLogs.setFiltersPromptSuffix')}</p>
               )}
               <div className="ps-search-summary-actions">
-                {results !== null && <span className="ps-searchpage-result-count">{results.length} event{results.length !== 1 ? 's' : ''}</span>}
+                {results !== null && <span className="ps-searchpage-result-count">{t('billingLogs.resultCount', { count: results.length })}</span>}
                 {results !== null && results.length > 0 && (
-                  <button type="button" onClick={handleExportCSV} className="ps-searchpage-export-btn">Export CSV</button>
+                  <button type="button" onClick={handleExportCSV} className="ps-searchpage-export-btn">{t('billingLogs.exportCsv')}</button>
                 )}
               </div>
             </div>
 
             {errorMsg && <p className="ps-conf-error-text">{errorMsg}</p>}
-            {casesCapped && <p className="ps-billing-reason-hint">Case limit reached — narrow the search (case number, patient name, or ID) for a complete result.</p>}
+            {casesCapped && <p className="ps-billing-reason-hint">{t('billingLogs.caseLimitReached')}</p>}
 
             <div className="ps-search-table-wrap">
               {hasSearched ? (
@@ -551,7 +579,24 @@ const BillingLogsSection: React.FC = () => {
                   <div className="ps-conf-table-wrap">
                     <div className="ps-conf-table-scroll">
                       <table className="ps-conf-table">
-                        <thead className="ps-conf-thead-sticky"><tr>{['Case', 'Patient', 'Patient ID', 'Timestamp', 'Type', 'Billing Type', 'Status', 'Event', 'Detail', 'Staff', 'Pathologist', 'Facility'].map(h => <th key={h} className={h === 'Detail' ? 'ps-conf-th ps-billinglog-detail-col' : 'ps-conf-th'}>{h}</th>)}</tr></thead>
+                        <thead className="ps-conf-thead-sticky">
+                          <tr>
+                            {([
+                              { key: 'case', labelKey: 'billingLogs.table.caseHeader' },
+                              { key: 'patient', labelKey: 'billingLogs.table.patientHeader' },
+                              { key: 'patientId', labelKey: 'billingLogs.table.patientIdHeader' },
+                              { key: 'timestamp', labelKey: 'billingLogs.table.timestampHeader' },
+                              { key: 'type', labelKey: 'billingLogs.table.typeHeader' },
+                              { key: 'billingType', labelKey: 'billingLogs.table.billingTypeHeader' },
+                              { key: 'status', labelKey: 'billingLogs.table.statusHeader' },
+                              { key: 'event', labelKey: 'billingLogs.table.eventHeader' },
+                              { key: 'detail', labelKey: 'billingLogs.table.detailHeader' },
+                              { key: 'staff', labelKey: 'billingLogs.table.staffHeader' },
+                              { key: 'pathologist', labelKey: 'billingLogs.table.pathologistHeader' },
+                              { key: 'facility', labelKey: 'billingLogs.table.facilityHeader' },
+                            ]).map(h => <th key={h.key} className={h.key === 'detail' ? 'ps-conf-th ps-billinglog-detail-col' : 'ps-conf-th'}>{t(h.labelKey)}</th>)}
+                          </tr>
+                        </thead>
                         <tbody>
                           {results.map(e => (
                             <tr key={e.id} className="ps-conf-tr">
@@ -574,10 +619,10 @@ const BillingLogsSection: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="ps-searchpage-no-search">No real billing events match these filters.</div>
+                  <div className="ps-searchpage-no-search">{t('billingLogs.noResults')}</div>
                 )
               ) : (
-                <div className="ps-searchpage-no-search">No search run yet</div>
+                <div className="ps-searchpage-no-search">{t('billingLogs.noSearchRun')}</div>
               )}
             </div>
           </div>
@@ -585,19 +630,19 @@ const BillingLogsSection: React.FC = () => {
       </main>
 
       {staffModal && (
-        <LookupModal title="Staff" subtitle="Filter by staff member associated with the event" selectedCount={staffNames.length} onClose={() => setStaffModal(false)}>
+        <LookupModal title={t('billingLogs.lookup.staffTitle')} subtitle={t('billingLogs.lookup.staffSubtitle')} selectedCount={staffNames.length} onClose={() => setStaffModal(false)}>
           <StaffLookupContent staff={staffOptions} selected={staffNames} onToggle={name => toggle(name, staffNames, setStaffNames)} />
         </LookupModal>
       )}
 
       {pathologistModal && (
-        <LookupModal title="Signing Pathologist" subtitle="Filter by the case's own real signing pathologist" selectedCount={pathologistNames.length} onClose={() => setPathologistModal(false)}>
+        <LookupModal title={t('billingLogs.lookup.pathologistTitle')} subtitle={t('billingLogs.lookup.pathologistSubtitle')} selectedCount={pathologistNames.length} onClose={() => setPathologistModal(false)}>
           <StaffLookupContent staff={pathologistOptions} selected={pathologistNames} onToggle={name => toggle(name, pathologistNames, setPathologistNames)} />
         </LookupModal>
       )}
 
       {facilityModal && (
-        <LookupModal title="Ordering Facility" subtitle="Filter by the case's own real ordering facility" selectedCount={facilityIds.length} onClose={() => setFacilityModal(false)}>
+        <LookupModal title={t('billingLogs.lookup.facilityTitle')} subtitle={t('billingLogs.lookup.facilitySubtitle')} selectedCount={facilityIds.length} onClose={() => setFacilityModal(false)}>
           <FacilityLookupContent facilities={facilityOptions} selected={facilityIds} onToggle={id => toggle(id, facilityIds, setFacilityIds)} />
         </LookupModal>
       )}

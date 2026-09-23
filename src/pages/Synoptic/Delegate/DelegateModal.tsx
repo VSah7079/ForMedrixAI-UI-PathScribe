@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   DndContext, DragEndEvent, DragStartEvent, DragOverlay,
@@ -54,31 +55,18 @@ const RecipientCard: React.FC<RecipientCardProps> = ({ id, primary, secondary, i
       {...listeners}
       {...attributes}
       onClick={onClick}
-      style={{
-        padding: '9px 12px',
-        background: isDragging ? 'rgba(138,180,248,0.15)' : isSelected ? 'rgba(8,145,178,0.12)' : 'rgba(255,255,255,0.03)',
-        border: `1px solid ${isDragging ? 'rgba(138,180,248,0.4)' : isSelected ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-        borderLeft: isSelected ? '2px solid #0891B2' : '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 8, cursor: 'grab', marginBottom: 4,
-        transform: transform ? CSS.Translate.toString(transform) : undefined,
-        userSelect: 'none', touchAction: 'none',
-        transition: isDragging ? 'none' : 'all 0.12s',
-      }}
+      className={`ps-delegate-recipient-card${isDragging ? ' ps-delegate-recipient-card--dragging' : isSelected ? ' ps-delegate-recipient-card--selected' : ''}`}
+      style={{ transform: transform ? CSS.Translate.toString(transform) : undefined }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-          background: 'rgba(138,180,248,0.15)', border: '1.5px solid rgba(138,180,248,0.3)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 700, color: '#8AB4F8',
-        }}>
+      <div className="ps-delegate-recipient-row">
+        <div className="ps-delegate-recipient-avatar">
           {primary.replace(/^Dr\.\s*/, '').split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{primary}</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{secondary}</div>
+        <div className="ps-delegate-recipient-info">
+          <div className="ps-delegate-recipient-primary">{primary}</div>
+          <div className="ps-delegate-recipient-secondary">{secondary}</div>
         </div>
-        <div style={{ fontSize: 14, color: '#374151', flexShrink: 0 }}>⠿</div>
+        <div className="ps-delegate-recipient-grip">⠿</div>
       </div>
     </div>
   );
@@ -96,42 +84,47 @@ interface TypeZoneProps {
 }
 
 const TypeZone: React.FC<TypeZoneProps> = ({ dt, isSelected, isOver, selectedRecipientLabel, onSelectType, onClearRecipient }) => {
+  const { t } = useTranslation();
   const { setNodeRef } = useDroppable({ id: `type-${dt.id}` });
 
   return (
     <div
       ref={setNodeRef}
       onClick={onSelectType}
+      className="ps-delegate-type-zone"
       style={{
-        padding: '10px 12px', marginBottom: 6, borderRadius: 10, cursor: 'pointer',
         background: isOver ? dt.color + '14' : isSelected ? 'rgba(8,145,178,0.08)' : 'rgba(255,255,255,0.02)',
         border: `1.5px ${isOver ? 'solid' : isSelected ? 'solid' : 'dashed'} ${isOver ? dt.color + '66' : isSelected ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-        transition: 'all 0.15s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: isSelected ? dt.color + '22' : 'rgba(255,255,255,0.06)', color: isSelected ? dt.color : '#94a3b8',
+      <div className="ps-delegate-type-zone-row">
+        {/* dt.id/label/description are real, admin-configurable
+            delegation-type data (mockDelegationTypeService.ts's own
+            create() lets a site define custom types beyond the 7
+            seeded defaults) — same "real, admin-editable dictionary
+            stays untranslated" precedent as colorNames in
+            EngraverMonitorPage.tsx, not static UI copy. */}
+        <span className="ps-delegate-type-zone-id-badge" style={{
+          background: isSelected ? dt.color + '22' : undefined, color: isSelected ? dt.color : undefined,
         }}>
           {dt.id.replace('_', ' ')}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb', flex: 1 }}>{dt.label}</span>
-        {isSelected && <span style={{ color: '#0891B2', fontSize: 13, fontWeight: 700 }}>✓</span>}
+        <span className="ps-delegate-type-zone-label">{dt.label}</span>
+        {isSelected && <span className="ps-delegate-type-zone-check">✓</span>}
       </div>
-      <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>{dt.description}</div>
+      <div className="ps-delegate-type-zone-desc">{dt.description}</div>
       {dt.transfersOwnership && (
-        <span style={{ display: 'inline-block', marginTop: 4, fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>transfers ownership</span>
+        <span className="ps-delegate-type-zone-transfer-note">{t('delegateModal.transfersOwnership')}</span>
       )}
       {isSelected && (
         selectedRecipientLabel ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '6px 10px', background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.25)', borderRadius: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#7dd3fc', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRecipientLabel}</span>
-            <button onClick={e => { e.stopPropagation(); onClearRecipient(); }} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, padding: 0 }}>✕</button>
+          <div className="ps-delegate-type-zone-recipient-chip">
+            <span className="ps-delegate-type-zone-recipient-label">{selectedRecipientLabel}</span>
+            <button onClick={e => { e.stopPropagation(); onClearRecipient(); }} className="ps-delegate-type-zone-recipient-clear">✕</button>
           </div>
         ) : (
-          <div style={{ marginTop: 8, padding: '6px 10px', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 7, fontSize: 11, color: '#475569', textAlign: 'center' }}>
-            {isOver ? 'Drop to assign' : 'Drag a recipient here, or click one on the right'}
+          <div className="ps-delegate-type-zone-drop-hint">
+            {isOver ? t('delegateModal.dropToAssign') : t('delegateModal.dragOrClickHint')}
           </div>
         )
       )}
@@ -142,6 +135,7 @@ const TypeZone: React.FC<TypeZoneProps> = ({ dt, isSelected, isOver, selectedRec
 export const DelegateModal: React.FC<DelegateModalProps> = ({
   isOpen, onClose, registry, caseId, currentUserId = 'PATH-001', onDelegated, synopticInstances = []
 }) => {
+  const { t } = useTranslation();
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const [searchTerm,         setSearchTerm]         = useState('');
   const [selectedId,         setSelectedId]         = useState<string | null>(null);
@@ -331,15 +325,15 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-research-modal fm-modal" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="ps-research-modal fm-modal" onClick={e => e.stopPropagation()}>
 
         {/* ── Header ─────────────────────────────────────────── */}
         <div className="ps-research-header">
           <div>
-            <div className="fm-eyebrow">Case Action · Delegation</div>
+            <div className="fm-eyebrow">{t('delegateModal.eyebrow')}</div>
             <div className="fm-title-row">
               <span className="fm-del-persona-icon">👤</span>
-              <h2 className="fm-title">Delegate Case</h2>
+              <h2 className="fm-title">{t('delegateModal.title')}</h2>
               {selectedDelegType && (
                 <span className="fm-del-mode-badge">
                   {selectedDelegType.label}
@@ -347,7 +341,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
               )}
             </div>
           </div>
-          <button className="ps-close-btn" onClick={onClose} aria-label="Close">
+          <button className="ps-close-btn" onClick={onClose} aria-label={t('delegateModal.close')}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
@@ -356,11 +350,11 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
         {/* ── Two-panel body — matches CaseTeamModal's drop-zone pattern ── */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 340px', minHeight: 0, overflow: 'hidden' }}>
+          <div className="ps-delegate-body">
 
             {/* LEFT — delegation types, each a real drop zone */}
-            <div style={{ borderRight: '1px solid rgba(255,255,255,0.06)', overflowY: 'auto', padding: '16px 20px' }}>
-              <div className="fm-section-label" style={{ marginBottom: 8 }}>Delegation Type</div>
+            <div className="ps-delegate-left-panel">
+              <div className="fm-section-label fm-section-label--mb8">{t('delegateModal.delegationTypeLabel')}</div>
               {delegationTypes.map(dt => (
                 <TypeZone
                   key={dt.id}
@@ -379,22 +373,18 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
               {/* Synoptic picker — unchanged from before */}
               {delegationType === 'SYNOPTIC_ASSIGN' && synopticInstances.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="fm-section-label" style={{ marginBottom: 6 }}>Select Synoptic</div>
+                <div className="ps-delegate-synoptic-section">
+                  <div className="fm-section-label fm-section-label--mb6">{t('delegateModal.selectSynoptic')}</div>
                   {synopticInstances.map(inst => {
                     const isSel = selectedInstanceId === inst.instanceId;
                     return (
                       <div
                         key={inst.instanceId}
                         onClick={() => setSelectedInstanceId(isSel ? null : inst.instanceId)}
-                        style={{
-                          padding: '8px 12px', marginBottom: 4, borderRadius: 8, cursor: 'pointer',
-                          background: isSel ? 'rgba(8,145,178,0.12)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${isSel ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        }}
+                        className={`ps-delegate-synoptic-item${isSel ? ' ps-delegate-synoptic-item--selected' : ''}`}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{inst.specimenDescription}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{inst.templateName}</div>
+                        <div className="ps-delegate-synoptic-item-title">{inst.specimenDescription}</div>
+                        <div className="ps-delegate-synoptic-item-subtitle">{inst.templateName}</div>
                       </div>
                     );
                   })}
@@ -403,75 +393,63 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
               {/* Note field if required — unchanged from before */}
               {selectedDelegType?.requiresNote && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="fm-section-label" style={{ marginBottom: 4 }}>Note (required)</div>
+                <div className="ps-delegate-note-section">
+                  <div className="fm-section-label fm-section-label--sm">{t('delegateModal.noteRequired')}</div>
                   <input
                     type="text"
-                    placeholder="Add a note…"
+                    placeholder={t('delegateModal.notePlaceholder')}
                     value={note}
                     onChange={e => setNote(e.target.value)}
-                    className="fm-del-note-textarea"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    className="fm-del-note-textarea ps-delegate-note-input"
                   />
                 </div>
               )}
             </div>
 
             {/* RIGHT — recipient directory (filter + search + draggable cards) */}
-            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 16px 0', flexShrink: 0 }}>
-                <div className="fm-section-label" style={{ marginBottom: 8 }}>Delegate To</div>
-                <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            <div className="ps-delegate-right-panel">
+              <div className="ps-delegate-right-header">
+                <div className="fm-section-label fm-section-label--mb8">{t('delegateModal.delegateToLabel')}</div>
+                <div className="ps-delegate-filter-row">
                   {delegationType !== 'POOL' && (
                   <button
                     onClick={() => { setFilter('individuals'); }}
-                    style={{
-                      flex: 1, padding: '6px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1px solid ${filter === 'individuals' ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                      background: filter === 'individuals' ? 'rgba(8,145,178,0.12)' : 'transparent',
-                      color: filter === 'individuals' ? '#7dd3fc' : '#94a3b8',
-                    }}
+                    className={`ps-delegate-filter-btn${filter === 'individuals' ? ' ps-delegate-filter-btn--active' : ''}`}
                   >
-                    👤 Individual
+                    👤 {t('delegateModal.individualFilter')}
                   </button>
                   )}
                   {delegationType === 'POOL' && (
                   <button
                     onClick={() => { setFilter('pools'); }}
-                    style={{
-                      flex: 1, padding: '6px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1px solid ${filter === 'pools' ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                      background: filter === 'pools' ? 'rgba(8,145,178,0.12)' : 'transparent',
-                      color: filter === 'pools' ? '#7dd3fc' : '#94a3b8',
-                    }}
+                    className={`ps-delegate-filter-btn${filter === 'pools' ? ' ps-delegate-filter-btn--active' : ''}`}
                   >
-                    👥 Pool / Queue
+                    👥 {t('delegateModal.poolFilter')}
                   </button>
                   )}
                 </div>
                 <input
                   autoFocus
-                  className="fm-search-input"
+                  className="fm-search-input ps-delegate-search-input"
                   type="text"
-                  placeholder={filter === 'individuals' ? 'Search by name or role…' : 'Search pools…'}
+                  placeholder={filter === 'individuals' ? t('delegateModal.searchIndividuals') : t('delegateModal.searchPools')}
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box' }}
                 />
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px 16px' }}>
-                {loading && <div style={{ padding: 24, textAlign: 'center', color: '#475569', fontSize: 12 }}>Loading…</div>}
+              <div className="ps-delegate-list">
+                {loading && <div className="ps-delegate-empty">{t('delegateModal.loading')}</div>}
 
                 {filter === 'individuals' && !loading && (
                   filteredStaff.length === 0
-                    ? <div style={{ padding: 24, textAlign: 'center', color: '#475569', fontSize: 12 }}>No results for "{searchTerm}"</div>
+                    ? <div className="ps-delegate-empty">{t('delegateModal.noResultsFor', { query: searchTerm })}</div>
                     : filteredStaff.map(s => (
                         <RecipientCard
                           key={s.id}
                           id={`staff-${s.id}`}
                           primary={s.name}
-                          secondary={`${s.role} · ${s.subspecialty || '—'}`}
+                          secondary={t('delegateModal.staffSecondary', { role: s.role, subspecialty: s.subspecialty || '—' })}
                           isSelected={selectedId === s.id}
                           onClick={() => setSelectedId(selectedId === s.id ? null : s.id)}
                         />
@@ -480,13 +458,13 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
                 {filter === 'pools' && !loading && (
                   filteredPools.length === 0
-                    ? <div style={{ padding: 24, textAlign: 'center', color: '#475569', fontSize: 12 }}>No pools found</div>
+                    ? <div className="ps-delegate-empty">{t('delegateModal.noPoolsFound')}</div>
                     : filteredPools.map(pool => (
                         <RecipientCard
                           key={pool.id}
                           id={`pool-${pool.id}`}
                           primary={pool.name}
-                          secondary={`POOL · ${pool.memberCount} members available`}
+                          secondary={t('delegateModal.poolSecondary', { count: pool.memberCount })}
                           isSelected={selectedId === pool.id}
                           onClick={() => setSelectedId(selectedId === pool.id ? null : pool.id)}
                         />
@@ -498,12 +476,12 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
           <DragOverlay>
             {(draggingStaff || draggingPool) && (
-              <div style={{ padding: '9px 12px', background: '#1e293b', border: '2px solid #8AB4F8', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', cursor: 'grabbing', opacity: 0.95, width: 300 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(138,180,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#8AB4F8' }}>
+              <div className="ps-delegate-drag-overlay-card">
+                <div className="ps-delegate-drag-overlay-row">
+                  <div className="ps-delegate-drag-overlay-avatar">
                     {(draggingStaff?.name ?? draggingPool?.name ?? '').replace(/^Dr\.\s*/, '').split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{draggingStaff?.name ?? draggingPool?.name}</div>
+                  <div className="ps-delegate-drag-overlay-name">{draggingStaff?.name ?? draggingPool?.name}</div>
                 </div>
               </div>
             )}
@@ -514,20 +492,20 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
         <div className="fm-footer">
           <span className={'fm-footer-status' + (delegationType || selectedLabel ? ' dirty' : '')}>
             {!delegationType
-              ? 'Choose a delegation type'
+              ? t('delegateModal.chooseDelegationType')
               : !selectedId
-                ? `${selectedDelegType?.label} — choose a recipient`
-                : `Delegating to ${selectedLabel} · ${selectedDelegType?.label}`
+                ? t('delegateModal.chooseRecipient', { typeLabel: selectedDelegType?.label })
+                : t('delegateModal.delegatingTo', { recipient: selectedLabel, typeLabel: selectedDelegType?.label })
             }
           </span>
           <div className="fm-del-footer-row">
-            <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
+            <button className="fm-btn-cancel" onClick={onClose}>{t('delegateModal.cancel')}</button>
             <button
               className="fm-btn-save"
               disabled={!canConfirm}
               onClick={handleConfirm}
             >
-              {confirming ? 'Delegating…' : 'Confirm Delegation'}
+              {confirming ? t('delegateModal.delegating') : t('delegateModal.confirmDelegation')}
             </button>
           </div>
         </div>

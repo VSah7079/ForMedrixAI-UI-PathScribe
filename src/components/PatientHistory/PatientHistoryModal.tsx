@@ -1,6 +1,7 @@
 // src/components/PatientHistory/PatientHistoryModal.tsx
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useDirtyState } from '@/contexts/DirtyStateContext';
@@ -50,208 +51,40 @@ function isAiCase(item: ReportItem): item is AiMatchedCase {
   return 'matchPct' in item;
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const dark = '#0b1c2e';
-const border = '0.5px solid rgba(255,255,255,0.1)';
-const muted = 'rgba(255,255,255,0.35)';
-const accent = '#4da6e8';
-
-const S: Record<string, React.CSSProperties> = {
-  shell: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(6px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    zIndex: 9000,
-  },
-  modal: {
-    background: dark,
-    borderRadius: 12,
-    width: '100%',
-    maxWidth: 960,
-    height: '90vh',
-    display: 'flex',
-    flexDirection: 'column',
-    border,
-    overflow: 'hidden',
-    fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
-  },
-  header: {
-    padding: '16px 20px',
-    borderBottom: border,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  metaLabel: {
-    fontSize: 10,
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-    color: muted,
-    marginBottom: 4,
-  },
-  patientName: { fontSize: 20, fontWeight: 600, color: '#fff' },
-  mrn: { fontSize: 13, color: muted, fontWeight: 400, marginLeft: 6 },
-  breadcrumb: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 5,
-    fontSize: 12,
-    marginTop: 6,
-    minHeight: 18,
-  },
-  crumbBtn: {
-    color: accent,
-    cursor: 'pointer',
-    background: 'none',
-    border: 'none',
-    padding: 0,
-    fontSize: 12,
-    fontFamily: 'inherit',
-  },
-  crumbSep: { color: 'rgba(255,255,255,0.2)', fontSize: 11 },
-  crumbCurrent: { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
-  splitBody: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
-  },
-  panel: { overflowY: 'auto', flex: 1, minHeight: 0 },
-  panelTitle: {
-    fontSize: 10,
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-    color: muted,
-    padding: '14px 16px 10px',
-    position: 'sticky',
-    top: 0,
-    background: dark,
-    zIndex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  resultCount: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.3)',
-    fontWeight: 400,
-    letterSpacing: 0,
-    textTransform: 'none',
-  },
-  card: {
-    padding: '11px 16px',
-    borderBottom: '0.5px solid rgba(255,255,255,0.07)',
-    cursor: 'pointer',
-    transition: 'background 0.12s',
-  },
-  cardTop: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  cardDate: { fontSize: 11, color: muted },
-  cardId: { fontSize: 11, color: `${accent}cc` },
-  cardDiagnosis: { fontSize: 13, fontWeight: 500, color: '#fff', marginBottom: 2 },
-  cardMeta: { fontSize: 11, color: 'rgba(255,255,255,0.38)' },
-  matchBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    fontSize: 10,
-    background: 'rgba(77,166,232,0.12)',
-    color: accent,
-    padding: '2px 7px',
-    borderRadius: 20,
-    border: '0.5px solid rgba(77,166,232,0.28)',
-    marginLeft: 6,
-  },
-  emptyState: {
-    padding: '32px 16px',
-    textAlign: 'center',
-    color: muted,
-    fontSize: 13,
-  },
-  spinner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: '32px 16px',
-    color: muted,
-    fontSize: 12,
-  },
-  footer: {
-    padding: '12px 20px',
-    borderTop: border,
-    display: 'flex',
-    justifyContent: 'flex-end',
-  },
-  fullReport: {
-    padding: '24px 32px',
-    overflowY: 'auto',
-    flex: 1,
-    minHeight: 0,
-    color: '#fff',
-  },
-  reportTitle: { fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 16 },
-  reportGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
-    gap: '12px 24px',
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 10,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.3)',
-    marginBottom: 3,
-  },
-  fieldValue: { fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 },
-  divider: { height: 1, background: 'rgba(255,255,255,0.08)', margin: '14px 0' },
-  tag: {
-    display: 'inline-block',
-    fontSize: 11,
-    background: 'rgba(77,166,232,0.12)',
-    color: accent,
-    border: '0.5px solid rgba(77,166,232,0.28)',
-    padding: '3px 9px',
-    borderRadius: 12,
-    margin: '2px 3px 2px 0',
-  },
-};
+// i18n note (batch 119): clinical/report field values (diagnosis,
+// site, procedure, physician, receptors, ki67, margins, nodes, gross/
+// microscopic descriptions, comments, tags, dates, case/accession
+// IDs) are real patient case content — persisted, externally-sourced
+// clinical data, not chrome authored in this file — and stay
+// untranslated throughout, same posture as every other case-content
+// field elsewhere in this codebase. The outbound message `subject`/
+// `body` sent via mockMessageService.send() is a message body to
+// another user and stays English per established convention. Field
+// *labels* ("Case ID", "Site", "Gross Description", etc.) are UI
+// chrome and are translated below.
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CaseCard({ item, onClick }: { item: ReportItem; onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
+  const { t } = useTranslation();
   const ai = isAiCase(item);
 
   return (
     <div
-      style={{ ...S.card, background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent' }}
+      className="ps-ph-card"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
-      <div style={S.cardTop}>
-        <span style={S.cardDate}>{item.date}</span>
-        <span style={S.cardId} data-phi="accession">
+      <div className="ps-ph-card-top">
+        <span className="ps-ph-card-date">{item.date}</span>
+        <span className="ps-ph-card-id" data-phi="accession">
           {ai ? (item as AiMatchedCase).accession : (item as PatientHistoryCase).id}
           {ai && (
-            <span style={S.matchBadge}>{(item as AiMatchedCase).matchPct}% match</span>
+            <span className="ps-ph-match-badge">{t('patientHistoryModal.card.matchPct', { pct: (item as AiMatchedCase).matchPct })}</span>
           )}
         </span>
       </div>
-      <div style={S.cardDiagnosis} data-phi="diagnosis">{item.diagnosis}</div>
-      <div style={S.cardMeta}>
+      <div className="ps-ph-card-diagnosis" data-phi="diagnosis">{item.diagnosis}</div>
+      <div className="ps-ph-card-meta">
         {ai
           ? (item as AiMatchedCase).matchReason
           : `${(item as PatientHistoryCase).site} · ${(item as PatientHistoryCase).procedure}`}
@@ -263,61 +96,62 @@ function CaseCard({ item, onClick }: { item: ReportItem; onClick: () => void }) 
 function ReportField({ label, value, phi }: { label: string; value: string | number; phi?: string }) {
   return (
     <div>
-      <div style={S.fieldLabel}>{label}</div>
-      <div style={S.fieldValue} data-phi={phi}>{value}</div>
+      <div className="ps-ph-field-label">{label}</div>
+      <div className="ps-ph-field-value" data-phi={phi}>{value}</div>
     </div>
   );
 }
 
 function FullReport({ item }: { item: ReportItem }) {
+  const { t } = useTranslation();
   const ai = isAiCase(item);
   const a = item as AiMatchedCase;
   const h = item as PatientHistoryCase;
 
   return (
-    <div style={S.fullReport}>
-      <div style={S.reportTitle} data-phi="diagnosis">{item.diagnosis}</div>
-      <div style={S.reportGrid}>
-        <ReportField label="Case ID"          value={ai ? a.accession : h.id} phi="accession" />
-        <ReportField label="Date"             value={item.date} />
-        <ReportField label="Site"             value={ai ? a.site : h.site} />
-        <ReportField label="Procedure"        value={ai ? a.procedure : h.procedure} />
-        <ReportField label="Pathologist"      value={ai ? a.physician : h.physician} />
-        <ReportField label="Receptor Status"  value={ai ? a.receptors : h.receptors} />
-        <ReportField label="Ki-67"            value={ai ? a.ki67 : h.ki67} />
-        <ReportField label="Margins"          value={ai ? a.margins : h.margins} />
-        <ReportField label="Lymph Nodes"      value={ai ? a.nodes : h.nodes} />
-        {ai && <ReportField label="AI Match Score" value={`${a.matchPct}%`} />}
+    <div className="ps-ph-full-report">
+      <div className="ps-ph-report-title" data-phi="diagnosis">{item.diagnosis}</div>
+      <div className="ps-ph-report-grid">
+        <ReportField label={t('patientHistoryModal.field.caseId')}         value={ai ? a.accession : h.id} phi="accession" />
+        <ReportField label={t('patientHistoryModal.field.date')}           value={item.date} />
+        <ReportField label={t('patientHistoryModal.field.site')}          value={ai ? a.site : h.site} />
+        <ReportField label={t('patientHistoryModal.field.procedure')}     value={ai ? a.procedure : h.procedure} />
+        <ReportField label={t('patientHistoryModal.field.pathologist')}   value={ai ? a.physician : h.physician} />
+        <ReportField label={t('patientHistoryModal.field.receptorStatus')} value={ai ? a.receptors : h.receptors} />
+        <ReportField label={t('patientHistoryModal.field.ki67')}          value={ai ? a.ki67 : h.ki67} />
+        <ReportField label={t('patientHistoryModal.field.margins')}       value={ai ? a.margins : h.margins} />
+        <ReportField label={t('patientHistoryModal.field.lymphNodes')}    value={ai ? a.nodes : h.nodes} />
+        {ai && <ReportField label={t('patientHistoryModal.field.aiMatchScore')} value={`${a.matchPct}%`} />}
       </div>
-      <div style={S.divider} />
+      <div className="ps-ph-divider" />
       <div className="ps-ph-grid-2col">
         <div>
-          <div style={S.fieldLabel}>Gross Description</div>
-          <div style={{ ...S.fieldValue, lineHeight: 1.7 }}>{ai ? a.gross : h.gross}</div>
+          <div className="ps-ph-field-label">{t('patientHistoryModal.field.grossDescription')}</div>
+          <div className="ps-ph-field-value ps-ph-field-value--loose">{ai ? a.gross : h.gross}</div>
         </div>
         <div>
-          <div style={S.fieldLabel}>Microscopic Description</div>
-          <div style={{ ...S.fieldValue, lineHeight: 1.7 }}>{ai ? a.microscopic : h.microscopic}</div>
+          <div className="ps-ph-field-label">{t('patientHistoryModal.field.microscopicDescription')}</div>
+          <div className="ps-ph-field-value ps-ph-field-value--loose">{ai ? a.microscopic : h.microscopic}</div>
         </div>
       </div>
       {ai && a.ancillaryStudies && (
         <div className="ps-ph-field-mb">
-          <div style={S.fieldLabel}>Ancillary Studies</div>
-          <div style={{ ...S.fieldValue, lineHeight: 1.7 }}>{a.ancillaryStudies}</div>
+          <div className="ps-ph-field-label">{t('patientHistoryModal.field.ancillaryStudies')}</div>
+          <div className="ps-ph-field-value ps-ph-field-value--loose">{a.ancillaryStudies}</div>
         </div>
       )}
       {!ai && (
         <div className="ps-ph-field-mb">
-          <div style={S.fieldLabel}>Pathologist Comment</div>
-          <div style={{ ...S.fieldValue, lineHeight: 1.7 }}>{h.comment}</div>
+          <div className="ps-ph-field-label">{t('patientHistoryModal.field.pathologistComment')}</div>
+          <div className="ps-ph-field-value ps-ph-field-value--loose">{h.comment}</div>
         </div>
       )}
-      <div style={S.divider} />
+      <div className="ps-ph-divider" />
       <div>
-        <div style={S.fieldLabel}>Tags</div>
+        <div className="ps-ph-field-label">{t('patientHistoryModal.field.tags')}</div>
         <div className="ps-ph-field-mt">
-          {(ai ? a.tags : h.tags).map(t => (
-            <span key={t} style={S.tag}>{t}</span>
+          {(ai ? a.tags : h.tags).map(tag => (
+            <span key={tag} className="ps-ph-tag">{tag}</span>
           ))}
         </div>
       </div>
@@ -328,6 +162,7 @@ function FullReport({ item }: { item: ReportItem }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PatientHistoryModal({ patientName: initialPatientName, mrn: initialMrn, dateOfBirth: initialDateOfBirth, patientId: initialPatientId, currentCaseId, onClose }: PatientHistoryModalProps) {
+  const { t } = useTranslation();
   // Real, per direct guidance ("Molecular testing across siblings"):
   // a real, distinct person shown under "Related Patients" below is
   // exactly who a reviewer would want to actually navigate to — e.g.
@@ -507,62 +342,71 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
     setComposeNote('');
   }
 
-  const sourceLabel = selectedSource === 'ai' ? 'AI Matched Cases' : 'Prior Pathology';
+  const sourceLabel = selectedSource === 'ai' ? t('patientHistoryModal.panel.aiMatchedCases') : t('patientHistoryModal.panel.priorPathology');
   const selectedId  = selectedItem
     ? isAiCase(selectedItem) ? selectedItem.accession : selectedItem.id
     : '';
 
+  // i18n note: which identifier(s) are missing is itself chrome text
+  // (not data), resolved to a translated fragment and interpolated
+  // into the parent sentence below.
+  const missingIdentifierKey = !patientId
+    ? 'patientHistoryModal.missingIdentifiers.noPatientIdentity'
+    : (!mrn && !dateOfBirth)
+    ? 'patientHistoryModal.missingIdentifiers.mrnAndDob'
+    : !mrn
+    ? 'patientHistoryModal.missingIdentifiers.mrn'
+    : 'patientHistoryModal.missingIdentifiers.dob';
+
   return (
-    <div style={S.shell}>
-      <div style={S.modal}>
+    <div className="ps-ph-shell">
+      <div className="ps-ph-modal">
 
         {/* Header */}
-        <div style={S.header}>
+        <div className="ps-ph-header">
           <div>
-            <div style={S.metaLabel}>Patient History</div>
+            <div className="ps-ph-meta-label">{t('patientHistoryModal.header.metaLabel')}</div>
             <div>
-              <span style={S.patientName} data-phi="name">{patientName}</span>
-              <span style={S.mrn} data-phi="mrn">· MRN {mrn}</span>
+              <span className="ps-ph-patient-name" data-phi="name">{patientName}</span>
+              <span className="ps-ph-mrn" data-phi="mrn">· {t('patientHistoryModal.header.mrnPrefix', { mrn })}</span>
             </div>
             {viewingRelatedPatient && (
-              <div style={S.breadcrumb}>
-                <button type="button" style={S.crumbBtn} onClick={() => { setViewingRelatedPatient(null); setView('list'); }}>← Back to <span data-phi="name">{initialPatientName}</span></button>
+              <div className="ps-ph-breadcrumb">
+                <button type="button" className="ps-ph-crumb-btn" onClick={() => { setViewingRelatedPatient(null); setView('list'); }}>← {t('patientHistoryModal.breadcrumb.backTo')} <span data-phi="name">{initialPatientName}</span></button>
               </div>
             )}
-            <div style={S.breadcrumb}>
+            <div className="ps-ph-breadcrumb">
               {view === 'report' && (
                 <>
-                  <button type="button" style={S.crumbBtn} onClick={goBack}>← Patient History</button>
-                  <span style={S.crumbSep}>›</span>
-                  <button type="button" style={S.crumbBtn} onClick={goBack}>{sourceLabel}</button>
-                  <span style={S.crumbSep}>›</span>
-                  <span style={S.crumbCurrent}>{selectedId}</span>
+                  <button type="button" className="ps-ph-crumb-btn" onClick={goBack}>← {t('patientHistoryModal.header.metaLabel')}</button>
+                  <span className="ps-ph-crumb-sep">›</span>
+                  <button type="button" className="ps-ph-crumb-btn" onClick={goBack}>{sourceLabel}</button>
+                  <span className="ps-ph-crumb-sep">›</span>
+                  <span className="ps-ph-crumb-current">{selectedId}</span>
                 </>
               )}
             </div>
           </div>
-          <button className="ps-close-btn" onClick={view === 'report' ? goBack : onClose} aria-label="Close">
-            {view === 'report' ? '← Back' : '✕'}
+          <button className="ps-close-btn" onClick={view === 'report' ? goBack : onClose} aria-label={t('common.close')}>
+            {view === 'report' ? `← ${t('common.back')}` : '✕'}
           </button>
         </div>
 
         {/* Body */}
         {view === 'list' ? (
-          <div style={S.splitBody}>
+          <div className="ps-ph-split-body">
 
             {/* Left: Prior Pathology */}
-            <div style={{ ...S.panel, borderRight: border }}>
-              <div style={S.panelTitle}>Prior Pathology</div>
+            <div className="ps-ph-panel ps-ph-panel--bordered">
+              <div className="ps-ph-panel-title">{t('patientHistoryModal.panel.priorPathology')}</div>
               {!hasSufficientIdentifiers ? (
-                <div style={S.emptyState}>
-                  Cannot safely retrieve patient history — this patient record is missing{' '}
-                  {!patientId ? 'a real patient identity (predates the patient index)' : !mrn && !dateOfBirth ? 'an MRN and date of birth' : !mrn ? 'an MRN' : 'a date of birth'}.
-                  A minimum of two patient identifiers is required before surfacing prior case history.
+                <div className="ps-ph-empty-state">
+                  {t('patientHistoryModal.insufficientId.body', { missing: t(missingIdentifierKey) })}
                 </div>
               ) : historyLoading ? (
-                <div style={S.emptyState}>Loading prior pathology…</div>
+                <div className="ps-ph-empty-state">{t('patientHistoryModal.panel.loadingHistory')}</div>
               ) : history.length === 0 ? (
-                <div style={S.emptyState}>No prior pathology cases on record.</div>
+                <div className="ps-ph-empty-state">{t('patientHistoryModal.panel.noHistory')}</div>
               ) : (
                 history.map(item => (
                   <CaseCard key={item.id} item={item} onClick={() => openReport(item, 'history')} />
@@ -577,16 +421,16 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
                   rendered when at least one real family_relation link
                   actually exists. */}
               {familyRelatedPatients.length > 0 && (
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${border}` }}>
-                  <div style={S.panelTitle}>Related Patients</div>
+                <div className="ps-ph-related-section">
+                  <div className="ps-ph-panel-title">{t('patientHistoryModal.panel.relatedPatients')}</div>
                   {familyRelatedPatients.map(r => (
                     <div
                       key={r.id}
-                      style={{ ...S.emptyState, cursor: 'pointer', textDecoration: 'underline' }}
+                      className="ps-ph-empty-state ps-ph-related-patient-row"
                       onClick={() => { setViewingRelatedPatient({ id: r.id, name: `${r.lastName}, ${r.firstName}`, mrn: r.mrn, dateOfBirth: r.dateOfBirth }); setView('list'); }}
                       data-phi="true"
                     >
-                      {r.firstName} {r.lastName} — MRN {r.mrn} — DOB {new Date(r.dateOfBirth).toLocaleDateString()} →
+                      {t('patientHistoryModal.relatedPatient.row', { firstName: r.firstName, lastName: r.lastName, mrn: r.mrn, dob: new Date(r.dateOfBirth).toLocaleDateString() })} →
                     </div>
                   ))}
                 </div>
@@ -594,28 +438,21 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
             </div>
 
             {/* Right: AI Matched Cases — populated by findSimilarCases() */}
-            <div style={S.panel}>
-              <div style={S.panelTitle}>
-                <span style={{ color: accent }}>★</span>
-                AI Matched Cases
+            <div className="ps-ph-panel">
+              <div className="ps-ph-panel-title">
+                <span className="ps-ph-accent-text">★</span>
+                {t('patientHistoryModal.panel.aiMatchedCases')}
                 {!aiLoading && (
-                  <span style={S.resultCount}>{aiMatches.length} results</span>
+                  <span className="ps-ph-result-count">{t('patientHistoryModal.panel.resultCount', { count: aiMatches.length })}</span>
                 )}
               </div>
               {aiLoading ? (
-                <div style={S.spinner}>
-                  <span style={{
-                    width: 14, height: 14, borderRadius: '50%',
-                    border: '2px solid rgba(77,166,232,0.2)',
-                    borderTopColor: accent,
-                    display: 'inline-block',
-                    animation: 'spin 0.8s linear infinite',
-                  }} />
-                  Searching case corpus…
-                  <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                <div className="ps-ph-spinner">
+                  <span className="ps-ph-spinner-circle" />
+                  {t('patientHistoryModal.panel.searchingCorpus')}
                 </div>
               ) : aiMatches.length === 0 ? (
-                <div style={S.emptyState}>No matched cases found for the current context.</div>
+                <div className="ps-ph-empty-state">{t('patientHistoryModal.panel.noAiMatches')}</div>
               ) : (
                 aiMatches.map(item => (
                   <CaseCard key={item.caseId} item={item} onClick={() => openReport(item, 'ai')} />
@@ -631,13 +468,13 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
         )}
 
         {/* Footer */}
-        <div style={{ ...S.footer, flexDirection: 'column', gap: 0, padding: 0 }}>
+        <div className="ps-ph-footer-outer">
           {/* Compose panel — slides in when showCompose is true */}
           {showCompose && view === 'report' && (
-            <div style={{ padding: '12px 20px', borderBottom: border, background: 'rgba(255,255,255,0.03)' }}>
-              <div style={{ fontSize: 11, color: muted, marginBottom: 6 }}>
-                Message to pathologist <span style={{ color: accent }}>{physicianName}</span> · Case <span style={{ color: '#fff' }}>{caseId}</span>
-                <span style={{ marginLeft: 8, fontSize: 10, color: '#f87171' }}>Do not include patient identifiers</span>
+            <div className="ps-ph-compose-header">
+              <div className="ps-ph-compose-meta">
+                {t('patientHistoryModal.compose.messageTo')} <span className="ps-ph-accent-text">{physicianName}</span> · {t('patientHistoryModal.compose.caseLabel')} <span className="ps-ph-bright-text">{caseId}</span>
+                <span className="ps-ph-compose-warn">{t('patientHistoryModal.compose.noIdentifiersWarning')}</span>
               </div>
               <div className="ps-ph-compose-btn-row">
                 <input
@@ -645,27 +482,23 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
                   value={composeNote}
                   onChange={e => setComposeNote(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Type your message — do not include patient name, MRN, or diagnosis…"
-                  style={{
-                    flex: 1, padding: '7px 12px', borderRadius: 8, fontSize: 13,
-                    background: 'rgba(255,255,255,0.06)', border, color: '#fff', outline: 'none',
-                  }}
+                  placeholder={t('patientHistoryModal.compose.placeholder')}
+                  className="ps-ph-compose-input"
                 />
                 <button
                   type="button"
                   onClick={handleSendMessage}
                   disabled={sending || !composeNote.trim()}
-                  className="ps-btn-primary"
-                  style={{ background: sent ? '#10b981' : undefined }}
+                  className={`ps-btn-primary ${sent ? 'ps-ph-send-btn--sent' : ''}`}
                 >
-                  {sent ? '✓ Sent' : sending ? 'Sending…' : 'Send ↑'}
+                  {sent ? `✓ ${t('patientHistoryModal.compose.sent')}` : sending ? t('patientHistoryModal.compose.sending') : `${t('patientHistoryModal.compose.send')} ↑`}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setShowCompose(false); setComposeNote(''); }}
                   className="fm-btn-cancel"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
             </div>
@@ -676,28 +509,27 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
                 <button
                   type="button"
                   onClick={() => view === 'report' && setShowCompose(true)}
-                  className="fm-btn-cancel"
+                  className="fm-btn-cancel ps-ph-message-btn"
                   disabled={view !== 'report'}
-                  title={view !== 'report' ? 'Select a prior case or AI match to enable messaging' : `Message ${physicianName ?? 'Pathologist'}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: view === 'report' ? 1 : 0.35, cursor: view === 'report' ? 'pointer' : 'not-allowed' }}
+                  title={view !== 'report' ? t('patientHistoryModal.compose.disabledTooltip') : t('patientHistoryModal.compose.messageButtonWithName', { name: physicianName || t('patientHistoryModal.compose.pathologistFallback') })}
                 >
-                  ✉ {view === 'report' && physicianName ? `Message ${physicianName}` : 'Message Pathologist'}
+                  ✉ {view === 'report' && physicianName ? t('patientHistoryModal.compose.messageButtonWithName', { name: physicianName }) : t('patientHistoryModal.compose.messageButtonGeneric')}
                 </button>
               )}
             </div>
             <button type="button" className="ps-btn-ghost-teal" onClick={() => {
               setCrumbs([
-                { label: 'Home', path: '/' },
-                { label: 'Case Report', path: window.location.pathname },
-                { label: 'Patient History', path: window.location.pathname + '?history=1' },
-                { label: 'Case Search', path: '/search' },
+                { label: t('patientHistoryModal.breadcrumbNav.home'), path: '/' },
+                { label: t('patientHistoryModal.breadcrumbNav.caseReport'), path: window.location.pathname },
+                { label: t('patientHistoryModal.header.metaLabel'), path: window.location.pathname + '?history=1' },
+                { label: t('patientHistoryModal.breadcrumbNav.caseSearch'), path: '/search' },
               ]);
               // requestNavigate first — if dirty, shows warning before closing modal
               requestNavigate('/search', (path) => {
                 onClose();
                 setTimeout(() => navigate(path), 50);
               });
-            }}>Refine search ✦</button>
+            }}>{t('patientHistoryModal.footer.refineSearch')} ✦</button>
           </div>
         </div>
 

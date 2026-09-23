@@ -1,4 +1,13 @@
 // src/pages/Home.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// File-by-file cleanup sweep: this page's own i18n conversion had been
+// deliberately partial up to now — each new tile converted its own two
+// strings on arrival (per the standing "convert only what you touch" rule;
+// see src/i18n/README.md's own running log), leaving the pre-existing tiles'
+// titles/descriptions, and the header/footer chrome, hardcoded English. This
+// pass closes that out: every tile, plus the "Welcome back"/footer copy,
+// now goes through useTranslation()/t() (home.* in all five locale files).
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
@@ -54,51 +63,64 @@ export default function Home() {
   // remaining blue/violet/magenta slots were verified individually
   // since Wong's own set doesn't have enough distinct entries for all
   // 9 tiles this app needs.
+  // Real, per direct request (Sep 2026): reordered from the prior
+  // pure-frequency layout to alphabetical-by-title, with one deliberate
+  // exception — Accession and Worklist (the two tools this codebase's
+  // own comments confirm are opened constantly, every case starting
+  // with the one and living in the other day-to-day) stay pinned first
+  // regardless of where the alphabet would put them, since burying
+  // Worklist at the very end (it sorts last of all 11 titles) would
+  // cost every daily user real clicks for no real benefit. Every tile
+  // from "Add-On Orders" on is in strict A–Z order by its displayed
+  // title. Colors are unaffected — each is defined on its own object
+  // and travels with its tile, so this reorder doesn't touch the
+  // colorblind-safe separation already verified above.
   const cards: Card[] = [
-    // ⭐ New tile
+    // ⭐ New tile — pinned first (see reorder note above): the entry
+    // point for logging a new case.
     {
-      title: 'Accession',
-      description: 'Log new specimens and assign Grossing Templates',
+      title: t('home.accessionTile.title'),
+      description: t('home.accessionTile.description'),
       route: '/accession',
       color: '#16A34A',
       image: '/accession.webp'
     },
 
-    { title: 'Worklist', description: 'View and manage pending pathology cases', route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
-    { title: 'Configuration', description: 'System settings and AI preferences', route: '/configuration', color: '#F0E442', image: '/config.webp' },
-    { title: 'Search', description: 'Search completed and in-progress cases', route: '/search', color: '#CC79A7', image: '/search.webp' },
-    // Real, direct follow-up (Sep 2026): "Audit" and "Quality Assurance"
-    // used to be two flat top-level tiles here — folded into one
-    // "Quality & Compliance" hub (QualityComplianceHubPage.tsx), per
-    // direct request to reduce cognitive load. Real, considered
-    // reasoning, not just tidiness: both are genuinely the same
-    // domain/audience (a quality manager or compliance officer, not a
-    // pathologist's or tech's daily-frequency tool) — Audit is System
-    // Logs (incl. its own real, permanent QA historical-archive tab,
-    // per AuditLogPage.tsx's own header) and Quality Assurance is the
-    // active CAPA working queue for that same record — complementary
-    // halves of one compliance domain, exactly the kind of grouping
-    // already used for Pathology Workspace above. Two other candidates
-    // were considered and deliberately NOT grouped here: Cytology QC
-    // Peer Review Queue (its own header comment: a real, near-daily
-    // pathologist queue explicitly meant to eventually live inside the
-    // main Worklist itself — burying it under a Compliance hub would
-    // slow down its real, frequent users) and Batch Management (its
-    // own processing-node scope is genuinely broader than the five
-    // pathology-bench domains already grouped in Pathology Workspace —
-    // folding it in would blur what that hub means). #D55E00 is the
-    // real color the removed Audit tile used to carry — reused here
-    // rather than left orphaned, same real precedent as Pathology
-    // Workspace reusing Cytology's old color.
+    // Pinned second (see reorder note above): where every case lives
+    // day-to-day once accessioned.
+    { title: t('home.worklistTile.title'), description: t('home.worklistTile.description'), route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
+
+    // — Alphabetical from here down —
+
+    // ⭐ New tile — real, per PS-287 (Pathologist-Initiated Add-On
+    // Orders), fourth sibling workstation in the series. Genuinely
+    // case-scoped (search/open an accession), not scan-to-open like its
+    // three siblings — see AddOnOrderPage.tsx's own header. Color
+    // checked against every other tile's own color above — a genuinely
+    // new rose/red, distinct from both D55E00 (burnt orange) and
+    // CC79A7/B24592 (mauve/pink), same distinct-color discipline the
+    // real regression test (below) checks for.
     {
-      title: t('home.qualityComplianceTile.title'),
-      description: t('home.qualityComplianceTile.description'),
-      route: '/quality-compliance',
-      color: '#D55E00',
-      image: '/logs.webp'
+      title: t('home.addOnOrderTile.title'),
+      description: t('home.addOnOrderTile.description'),
+      route: '/add-on-orders',
+      color: '#F43F5E',
+      image: '/add_on_orders.webp'
     },
-    { title: 'Intraop Queue', description: 'Unlinked intraoperative entries awaiting a formal LIS accession to merge into', route: '/intraop-queue', color: '#38BDF8', image: '/worklist.webp' },
-    { title: 'Cytology QC Peer Review Queue', description: 'Unified QC assignment queue for pathologist peer review — escalations, discrepancies, and routine random sampling', route: '/cytology-qc-queue', color: '#5B8DEF', image: '/worklist.webp' },
+    // ⭐ New tile
+    {
+      title: t('home.batchManagementTile.title'),
+      description: t('home.batchManagementTile.description'),
+      route: '/batch-management',
+      color: '#8B3FD9',
+      image: '/batch_management.webp'
+    },
+    { title: t('home.configurationTile.title'), description: t('home.configurationTile.description'), route: '/configuration', color: '#F0E442', image: '/config.webp' },
+    { title: t('home.cytologyQcQueueTile.title'), description: t('home.cytologyQcQueueTile.description'), route: '/cytology-qc-queue', color: '#5B8DEF', image: '/cytology_qc.webp' },
+    // ⭐ New tile (PS-324): same real, standalone-page-for-now placement
+    // already established for the Cytology QC queue tile immediately
+    // above — not yet folded into the main Worklist's own tiles.
+    { title: t('home.surgicalQaWorklistTile.title'), description: t('home.surgicalQaWorklistTile.description'), route: '/surgical-qa-worklist', color: '#14B8A6', image: '/cytology_qc.webp' },
     // Real, direct follow-up (Sep 2026): "Molecular Order Queue" removed
     // from here — per direct guidance ("seems like a Testing tool"),
     // it's explicitly a demo/simulation tool (see its own page header
@@ -108,25 +130,15 @@ export default function Home() {
     // real, testing-only utilities — same real /molecular-order-queue
     // route, just a real, discoverable Configuration entry point
     // instead of a flat top-level Home tile aimed at every user.
-
+    { title: t('home.intraopQueueTile.title'), description: t('home.intraopQueueTile.description'), route: '/intraop-queue', color: '#38BDF8', image: '/intraop.webp' },
     // ⭐ New tile
     {
-      title: 'My Contribution',
-      description: 'Workload • Quality • TAT • Trends',
+      title: t('home.myContributionTile.title'),
+      description: t('home.myContributionTile.description'),
       route: '/contribution',
       color: '#B24592',
       image: '/my_contributions.webp'
     },
-
-    // ⭐ New tile
-    {
-      title: 'Batch Management',
-      description: 'Track cassettes and slides through processing nodes via container barcodes',
-      route: '/batch-management',
-      color: '#8B3FD9',
-      image: '/batch_management.webp'
-    },
-
     // ⭐ New tile — real, per "Homepage Changes part 1" (direct
     // request): Cytology Workspace, Microtomy Workstation (renamed
     // "Microtomy Workspace"), Embedding Station (renamed "Embedding
@@ -162,21 +174,37 @@ export default function Home() {
       color: '#009E73',
       image: '/cytology.webp'
     },
-    // ⭐ New tile — real, per PS-287 (Pathologist-Initiated Add-On
-    // Orders), fourth sibling workstation in the series. Genuinely
-    // case-scoped (search/open an accession), not scan-to-open like its
-    // three siblings — see AddOnOrderPage.tsx's own header. Color
-    // checked against every other tile's own color above — a genuinely
-    // new rose/red, distinct from both D55E00 (burnt orange) and
-    // CC79A7/B24592 (mauve/pink), same distinct-color discipline the
-    // real regression test (below) checks for.
+    // Real, direct follow-up (Sep 2026): "Audit" and "Quality Assurance"
+    // used to be two flat top-level tiles here — folded into one
+    // "Quality & Compliance" hub (QualityComplianceHubPage.tsx), per
+    // direct request to reduce cognitive load. Real, considered
+    // reasoning, not just tidiness: both are genuinely the same
+    // domain/audience (a quality manager or compliance officer, not a
+    // pathologist's or tech's daily-frequency tool) — Audit is System
+    // Logs (incl. its own real, permanent QA historical-archive tab,
+    // per AuditLogPage.tsx's own header) and Quality Assurance is the
+    // active CAPA working queue for that same record — complementary
+    // halves of one compliance domain, exactly the kind of grouping
+    // already used for Pathology Workspace above. Two other candidates
+    // were considered and deliberately NOT grouped here: Cytology QC
+    // Peer Review Queue (its own header comment: a real, near-daily
+    // pathologist queue explicitly meant to eventually live inside the
+    // main Worklist itself — burying it under a Compliance hub would
+    // slow down its real, frequent users) and Batch Management (its
+    // own processing-node scope is genuinely broader than the five
+    // pathology-bench domains already grouped in Pathology Workspace —
+    // folding it in would blur what that hub means). #D55E00 is the
+    // real color the removed Audit tile used to carry — reused here
+    // rather than left orphaned, same real precedent as Pathology
+    // Workspace reusing Cytology's old color.
     {
-      title: t('home.addOnOrderTile.title'),
-      description: t('home.addOnOrderTile.description'),
-      route: '/add-on-orders',
-      color: '#F43F5E',
-      image: '/worklist.webp'
-    }
+      title: t('home.qualityComplianceTile.title'),
+      description: t('home.qualityComplianceTile.description'),
+      route: '/quality-compliance',
+      color: '#D55E00',
+      image: '/logs.webp'
+    },
+    { title: t('home.searchTile.title'), description: t('home.searchTile.description'), route: '/search', color: '#CC79A7', image: '/search.webp' }
     // Real, per "Homepage Changes part 1" (direct request): "Move
     // Facilities Ops Dashboards under Configuration." The former
     // Facility Ops Dashboards tile (PS-288, #84CC16 lime) that used to
@@ -200,7 +228,7 @@ export default function Home() {
         <main className="ps-home-main">
           <header className="ps-home-header">
             <h1 className="ps-home-title">
-              Welcome back,&nbsp;<span className="ps-home-title-name">{user?.name ? user.name.split(',')[0] : 'Doctor'}</span>
+              {t('home.welcomeBack')}&nbsp;<span className="ps-home-title-name">{user?.name ? user.name.split(',')[0] : t('home.doctorFallback')}</span>
             </h1>
             <PubMedTicker />
           </header>
@@ -258,10 +286,10 @@ export default function Home() {
 
         {/* Footer Status */}
         <footer className="ps-home-footer">
-          <div>© 2026 PathScribe AI Systems • HIPAA Compliant</div>
+          <div>{t('home.footerCopyright')}</div>
           <div className="ps-home-footer-status">
             <span className="ps-home-status-dot" />
-            SYSTEMS OPERATIONAL
+            {t('home.systemsOperational')}
           </div>
         </footer>
       </div>

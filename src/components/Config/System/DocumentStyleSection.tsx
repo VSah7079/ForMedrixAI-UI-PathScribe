@@ -27,10 +27,25 @@
  *   pages/ReportPreview/ReportPreviewRenderer.tsx ← applies at the root
  *   components/TemplateBuilder/TemplateAssemblyPage.tsx ← the per-template
  *                                            override layer, same shape
+ *
+ * i18n sweep (batch 46): FONT_FAMILY_OPTIONS values are real font-family
+ * names — proper nouns, stay untranslated, same convention as
+ * FontsSection.tsx (batch 37). The header/subtitle/saved-badge markup
+ * here turned out to be EXACT style matches for FontsSection.tsx's own
+ * `.config-fonts-title`/`.config-fonts-description`/
+ * `.config-fonts-count-badge` classes — reused directly rather than
+ * duplicated. The style-preview box keeps its dynamic
+ * fontFamily/fontSize/fontWeight/textDecoration/textTransform inline
+ * (it renders the admin's live style selection — the whole point of
+ * this page, same "genuine per-render dynamic value" exception used
+ * for FontsSection.tsx's per-font `style={{fontFamily}}`), with its
+ * static box styling (margin/padding/border/background/color) moved
+ * to a new `.ps-docstyle__preview` class.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   getOrgDocumentStyleDefault, setOrgDocumentStyleDefault,
@@ -53,7 +68,14 @@ const FONT_FAMILY_OPTIONS = [
 const GETTERS = { header: getOrgHeaderStyleDefault, body: getOrgDocumentStyleDefault, footer: getOrgFooterStyleDefault };
 const SETTERS = { header: setOrgHeaderStyleDefault, body: setOrgDocumentStyleDefault, footer: setOrgFooterStyleDefault };
 
+const CATEGORY_LABEL_KEY = {
+  header: 'documentStyleSection.categories.header',
+  body:   'documentStyleSection.categories.body',
+  footer: 'documentStyleSection.categories.footer',
+} as const;
+
 const DocumentStyleSection: React.FC = () => {
+  const { t } = useTranslation();
   const [category, setCategory] = useState<'header' | 'body' | 'footer'>('body');
   const [style, setStyle] = useState<LabelConfig>(() => GETTERS[category]());
   const [saved, setSaved] = useState(true);
@@ -70,96 +92,77 @@ const DocumentStyleSection: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '4px 0', maxWidth: '640px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
-          🖋 Document Style
+    <div className="ps-docstyle-page">
+      <div className="ps-docstyle__header">
+        <h2 className="config-fonts-title">
+          🖋 {t('documentStyleSection.title')}
         </h2>
-        <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 8px', lineHeight: '1.5' }}>
-          The default text style applied to every report across the org
-          for each of these three areas, unless a specific Report
-          Template sets its own style (Template Assembly editor's own
-          Style panel). Individual components within a template can
-          still override this for specific fields — for example, making
-          Final Diagnosis bold and capitalized while everything else
-          stays at the body default.
+        <p className="config-fonts-description">
+          {t('documentStyleSection.subtitle')}
         </p>
         {saved && (
-          <span style={{
-            fontSize: '12px', fontWeight: 600, color: '#10B981',
-            background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)',
-            padding: '2px 10px', borderRadius: '99px',
-          }}>
-            ✓ Saved
+          <span className="config-fonts-count-badge">
+            ✓ {t('documentStyleSection.saved')}
           </span>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      <div className="ps-docstyle__tabs">
         {(['header', 'body', 'footer'] as const).map(cat => (
           <button
             key={cat}
             onClick={() => switchCategory(cat)}
-            style={{
-              padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              textTransform: 'capitalize', cursor: 'pointer',
-              border: `1px solid ${category === cat ? 'rgba(8,145,178,0.5)' : 'rgba(255,255,255,0.1)'}`,
-              background: category === cat ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.03)',
-              color: category === cat ? '#7dd3fc' : '#94a3b8',
-            }}
+            className={`ps-docstyle__tab ps-docstyle__tab--${category === cat ? 'active' : 'inactive'}`}
           >
-            {cat}
+            {t(CATEGORY_LABEL_KEY[cat])}
           </button>
         ))}
       </div>
 
-      <div className="ps-tinsp-stack" style={{ maxWidth: 340 }}>
-        <Label>Font family</Label>
+      <div className="ps-tinsp-stack ps-docstyle__stack">
+        <Label>{t('documentStyleSection.fontFamilyLabel')}</Label>
         <Sel value={style.fontFamily ?? 'Arial'} onChange={v => update({ ...style, fontFamily: v })}
           options={FONT_FAMILY_OPTIONS} fullWidth />
 
-        <Label>Font size (px)</Label>
+        <Label>{t('documentStyleSection.fontSizeLabel')}</Label>
         <TextInput
           value={String(style.fontSize ?? 10)}
           onChange={v => update({ ...style, fontSize: parseInt(v) || 10 })}
           placeholder="10"
         />
 
-        <div className="ps-tinsp-row" style={{ marginTop: 4 }}>
+        <div className="ps-tinsp-row ps-docstyle__toggle-row">
           <Toggle
             checked={style.weight === 'bold'}
             onChange={v => update({ ...style, weight: v ? 'bold' : 'normal' })}
-            label="Bold"
+            label={t('documentStyleSection.bold')}
           />
           <Toggle
             checked={style.decoration === 'underline'}
             onChange={v => update({ ...style, decoration: v ? 'underline' : 'none' })}
-            label="Underline"
+            label={t('documentStyleSection.underline')}
           />
         </div>
 
-        <Label>Text transform</Label>
+        <Label>{t('documentStyleSection.textTransformLabel')}</Label>
         <Sel value={style.transform ?? 'none'} onChange={v => update({ ...style, transform: v as LabelConfig['transform'] })}
           options={[
-            { value: 'none',       label: 'As typed' },
-            { value: 'uppercase',  label: 'UPPERCASE' },
-            { value: 'capitalize', label: 'Capitalize' },
+            { value: 'none',       label: t('documentStyleSection.transforms.none') },
+            { value: 'uppercase',  label: t('documentStyleSection.transforms.uppercase') },
+            { value: 'capitalize', label: t('documentStyleSection.transforms.capitalize') },
           ]} fullWidth />
 
         <div
+          className="ps-docstyle__preview"
           style={{
-            marginTop: 8, padding: '10px 12px', borderRadius: 6,
-            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)',
             fontFamily: style.fontFamily || 'Arial',
             fontSize: `${style.fontSize ?? 10}px`,
             fontWeight: style.weight === 'bold' ? 700 : 400,
             textDecoration: style.decoration === 'underline' ? 'underline' : 'none',
             textTransform: style.transform === 'uppercase' ? 'uppercase' : style.transform === 'capitalize' ? 'capitalize' : 'none',
-            color: '#f1f5f9',
           }}
         >
-          Preview — {category} text renders this way, org-wide, unless a
-          template or component overrides it.
+          {t('documentStyleSection.previewText', { category: t(CATEGORY_LABEL_KEY[category]) })}
         </div>
       </div>
     </div>

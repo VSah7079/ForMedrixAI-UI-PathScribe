@@ -177,7 +177,11 @@ const SUBSPECIALTY_QUERY_TERMS: Record<string, string> = {
   'Dermatopathology': 'dermatopathology',
   'Neuropathology': 'neuropathology',
   'Hematopathology': 'hematopathology',
-  'Gynecological': 'gynecologic pathology',
+  // Renamed from 'Gynecological' alongside the real Subspecialty
+  // record's own name (mockSubspecialtyService.ts, id 'gyn') — see
+  // that file's comment. Kept in sync here too, or a GYN-subspecialty
+  // user would silently lose their personalized PubMed feed term.
+  'Surgical GYN': 'gynecologic pathology',
   'Urological': 'genitourinary pathology',
   'Thoracic': 'thoracic pathology',
   'General Pathology': 'surgical pathology',

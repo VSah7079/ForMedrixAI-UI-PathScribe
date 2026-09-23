@@ -8,7 +8,21 @@
  * silently — the pathologist reviews (and can freely edit) it here
  * first, every time.
  */
+
+// i18n note: the eyebrow star (\u2726) and close-button (\u00d7) symbols were
+// literal, broken `\u2726`/`\u00d7` escape-sequence TEXT in JSX
+// children (JSX text isn't a JS string literal, so those six
+// characters rendered on screen as-is rather than as the intended
+// symbols) \u2014 fixed to the actual characters as part of this
+// conversion, matching the sibling AiReviewModal.tsx's own \u2726/\u00d7 usage.
+// The three target-field labels reuse existing exact-text keys
+// (`leftReportPanel.sections.grossDescription`/`.ancillaryStudies`,
+// `patientHistoryModal.field.microscopicDescription`) rather than
+// duplicating strings that already name the same real report fields
+// elsewhere.
+
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 export type NarrativeTargetField = 'gross' | 'microscopic' | 'ancillary';
@@ -20,64 +34,63 @@ interface AiNarrativeReviewModalProps {
   onCancel: () => void;
 }
 
-const TARGET_FIELD_OPTIONS: { value: NarrativeTargetField; label: string }[] = [
-  { value: 'gross', label: 'Gross Description' },
-  { value: 'microscopic', label: 'Microscopic Description' },
-  { value: 'ancillary', label: 'Ancillary Studies' },
+const TARGET_FIELD_OPTIONS: { value: NarrativeTargetField; labelKey: string }[] = [
+  { value: 'gross', labelKey: 'leftReportPanel.sections.grossDescription' },
+  { value: 'microscopic', labelKey: 'patientHistoryModal.field.microscopicDescription' },
+  { value: 'ancillary', labelKey: 'leftReportPanel.sections.ancillaryStudies' },
 ];
 
 export const AiNarrativeReviewModal: React.FC<AiNarrativeReviewModalProps> = ({
   narrativeText, defaultTargetField, onAccept, onCancel,
 }) => {
+  const { t } = useTranslation();
   const [text, setText] = useState(narrativeText);
   const [targetField, setTargetField] = useState<NarrativeTargetField>(defaultTargetField);
 
   return (
-    <div className="ps-overlay" style={{ zIndex: 9500 }}>
+    <div className="ps-overlay ps-overlay--ai-review">
       <div className="ps-modal-dark ps-ai-review-modal">
 
         <div className="ps-ai-review-header">
           <div>
-            <div className="ps-ai-review-eyebrow">\u2726 AI-Generated Narrative</div>
-            <div className="ps-ai-review-title">Review and edit before inserting into the report</div>
+            <div className="ps-ai-review-eyebrow">\u2726 {t('aiNarrativeReviewModal.eyebrow')}</div>
+            <div className="ps-ai-review-title">{t('aiNarrativeReviewModal.title')}</div>
           </div>
           <button onClick={onCancel} className="ps-modal-close">\u00d7</button>
         </div>
 
         <div className="ps-ai-review-body">
-          <span className="fm-eyebrow">Insert into</span>
-          <div style={{ display: 'flex', gap: 8, marginTop: 6, marginBottom: 14 }}>
+          <span className="fm-eyebrow">{t('aiNarrativeReviewModal.insertIntoLabel')}</span>
+          <div className="ps-flex-row-gap-8 ps-mt-6 ps-mb-14">
             {TARGET_FIELD_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => setTargetField(opt.value)}
-                className={targetField === opt.value ? 'ps-btn-primary' : 'ps-btn-ghost-dark'}
-                style={{ fontSize: 12, padding: '6px 12px' }}
+                className={`ps-ai-narrative-target-btn ${targetField === opt.value ? 'ps-btn-primary' : 'ps-btn-ghost-dark'}`}
               >
-                {opt.label}
+                {t(opt.labelKey)}
               </button>
             ))}
           </div>
 
-          <span className="fm-eyebrow">Generated Text \u2014 edit freely before accepting</span>
+          <span className="fm-eyebrow">{t('aiNarrativeReviewModal.generatedTextLabel')}</span>
           <textarea
             autoFocus
             value={text}
             onChange={e => setText(e.target.value)}
             rows={12}
-            className="ps-amendment-textarea"
-            style={{ marginTop: 6 }}
+            className="ps-amendment-textarea ps-mt-6"
           />
         </div>
 
         <div className="ps-modal-dark-footer ps-ai-review-footer">
-          <button onClick={onCancel} className="ps-btn-ghost-dark">Discard</button>
+          <button onClick={onCancel} className="ps-btn-ghost-dark">{t('aiNarrativeReviewModal.discardButton')}</button>
           <button
             onClick={() => onAccept(text, targetField)}
             className="ps-btn-primary"
             disabled={text.trim().length === 0}
           >
-            Insert into {TARGET_FIELD_OPTIONS.find(o => o.value === targetField)?.label}
+            {t('aiNarrativeReviewModal.insertIntoButton', { field: t(TARGET_FIELD_OPTIONS.find(o => o.value === targetField)!.labelKey) })}
           </button>
         </div>
 

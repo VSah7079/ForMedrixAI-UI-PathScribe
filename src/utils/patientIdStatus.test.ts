@@ -6,32 +6,36 @@ describe('computePatientIdStatus — GB_EW (NHS Number): real HL7 status code dr
   it('is gray/Missing for an empty value', () => {
     expect(computePatientIdStatus('GB_EW', '').color).toBe('gray');
     expect(computePatientIdStatus('GB_EW', undefined).color).toBe('gray');
+    expect(computePatientIdStatus('GB_EW', '').labelKey).toBe('patientIdStatus.label.missing');
   });
 
   it('is red/Invalid for a checksum failure, even if a real status code was somehow supplied', () => {
     const result = computePatientIdStatus('GB_EW', '9434765910', '01');
     expect(result.color).toBe('red');
+    expect(result.labelKey).toBe('patientIdStatus.label.invalid');
   });
 
   it('is green only for real status code 01', () => {
     const result = computePatientIdStatus('GB_EW', '9434765919', '01');
     expect(result.color).toBe('green');
-    expect(result.tooltip).toContain('Code 01');
-    expect(result.tooltip).toContain('PDS');
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.statusCode');
+    expect(result.tooltipParams).toEqual({ code: '01' });
+    expect(result.innerKeys).toEqual({ description: 'patientIdStatus.nhsStatusCode.01' });
   });
 
   it('is amber for every other real status code (02–08)', () => {
     for (const code of ['02', '03', '04', '05', '06', '07', '08']) {
       const result = computePatientIdStatus('GB_EW', '9434765919', code);
       expect(result.color).toBe('amber');
-      expect(result.tooltip).toContain(`Code ${code}`);
+      expect(result.tooltipParams).toEqual({ code });
+      expect(result.innerKeys).toEqual({ description: `patientIdStatus.nhsStatusCode.${code}` });
     }
   });
 
   it('is amber — not green — when the number is valid but no status code is known at all (e.g. typed directly, never resolved through an ADT feed)', () => {
     const result = computePatientIdStatus('GB_EW', '9434765919');
     expect(result.color).toBe('amber');
-    expect(result.tooltip).toMatch(/no verification status/i);
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.nhsNoStatusYet');
   });
 });
 
@@ -43,7 +47,7 @@ describe('computePatientIdStatus — GB_SCT (CHI Number): no status code exists,
   it('is green for a real, valid CHI Number — with no status code involved at all', () => {
     const result = computePatientIdStatus('GB_SCT', '1401740014');
     expect(result.color).toBe('green');
-    expect(result.tooltip).toMatch(/no separate PDS-style verification/i);
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.chiValid');
   });
 
   it('ignores any hl7StatusCode passed for GB_SCT — it has no real meaning here', () => {
@@ -55,6 +59,8 @@ describe('computePatientIdStatus — GB_SCT (CHI Number): no status code exists,
   it('is red for an invalid CHI Number (bad date)', () => {
     const result = computePatientIdStatus('GB_SCT', '1513740014');
     expect(result.color).toBe('red');
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.invalidChi');
+    expect(result.innerKeys).toEqual({ reason: 'ukPatientIdValidation.chiInvalidDobMonth' });
   });
 });
 
@@ -62,11 +68,13 @@ describe('computePatientIdStatus — GB_NIR (H&C Number): no status code exists'
   it('is green for a real, valid H&C Number', () => {
     const result = computePatientIdStatus('GB_NIR', '3201234567');
     expect(result.color).toBe('green');
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.hcValid');
   });
 
   it('is red for an out-of-range H&C Number', () => {
     const result = computePatientIdStatus('GB_NIR', '3100000005');
     expect(result.color).toBe('red');
+    expect(result.innerKeys).toEqual({ reason: 'ukPatientIdValidation.hcOutOfRange' });
   });
 });
 
@@ -74,11 +82,14 @@ describe('computePatientIdStatus — every other jurisdiction: format-only, no r
   it('is green for a US MRN matching the expected format', () => {
     const result = computePatientIdStatus('US', '1234567');
     expect(result.color).toBe('green');
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.genericValidFormat');
+    expect(result.innerKeys).toEqual({ idType: 'headerBar.field.mrn' });
   });
 
   it('is red for a US MRN that fails the expected format', () => {
     const result = computePatientIdStatus('US', 'not-numeric');
     expect(result.color).toBe('red');
+    expect(result.tooltipKey).toBe('patientIdStatus.tooltip.genericInvalidFormat');
   });
 
   it('is gray/Missing for an empty value, same as every jurisdiction', () => {

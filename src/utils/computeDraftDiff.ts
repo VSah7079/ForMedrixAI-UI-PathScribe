@@ -18,6 +18,17 @@
 // fields (specimens, synoptic answers, comments) a real, specific
 // summary rather than a generic "changed."
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// i18n note: this is a plain utility file, not a component, so it has
+// no `useTranslation()` of its own — it returns translation KEYS (and,
+// for summaries, interpolation params) rather than pre-rendered
+// English text, and DraftRecoveryModal.tsx (the actual consumer) does
+// the `t()` resolution at render time. `labelFallback` (a title-cased
+// version of a field name PathScribe doesn't have a known label for
+// yet) is a derived-from-a-schema-identifier fallback, not authored
+// UI copy, so it stays untranslated; `priority`/`status`'s
+// interpolated `value` is the real, persisted enum value itself, also
+// left untranslated as data.
 
 // Fields that legitimately, always differ between the cached draft and
 // the current case regardless of any real, human edit — comparing
@@ -35,49 +46,67 @@ const NOISE_FIELDS = new Set([
   'lastAccessedAt', 'lastAccessedBy', 'firstOpenedAt', 'grossCompletedAt',
 ]);
 
-// Real, human-readable labels for fields a pathologist would
+// Real, human-readable label KEYS for fields a pathologist would
 // recognize — anything not listed here falls back to a
-// title-cased version of its own field name.
-const FIELD_LABELS: Record<string, string> = {
-  specimens: 'Specimen data',
-  synopticReports: 'Synoptic report answers',
-  grossingReports: 'Grossing report answers',
-  __orchSectionsDraft: 'Report narrative sections',
-  order: 'Case comments/order info',
-  priority: 'Priority',
-  status: 'Case status',
-  flags: 'Flags',
-  participants: 'Care team',
+// title-cased version of its own field name (see `labelFallback`).
+const FIELD_LABEL_KEY: Record<string, string> = {
+  specimens: 'computeDraftDiff.fieldLabels.specimens',
+  synopticReports: 'computeDraftDiff.fieldLabels.synopticReports',
+  grossingReports: 'computeDraftDiff.fieldLabels.grossingReports',
+  __orchSectionsDraft: 'computeDraftDiff.fieldLabels.orchSectionsDraft',
+  order: 'computeDraftDiff.fieldLabels.order',
+  // "Priority"/"Flags" reuse existing exact-text keys already shared
+  // across many other screens rather than duplicating such common,
+  // generic words under this file's own namespace.
+  priority: 'accessionPage.priority.label',
+  status: 'computeDraftDiff.fieldLabels.caseStatus',
+  flags: 'searchPage.sections.flags',
+  participants: 'computeDraftDiff.fieldLabels.careTeam',
 };
 
 export interface DraftDiffEntry {
   field: string;
-  label: string;
-  summary: string;
+  /** i18n key for the field's label, or null when no known label
+   *  exists yet (use `labelFallback` instead). */
+  labelKey: string | null;
+  /** Derived, title-cased fallback text for a field with no known
+   *  label — not translated, since it's derived from the field's own
+   *  internal identifier rather than authored UI copy. */
+  labelFallback: string;
+  /** i18n key for the summary sentence, resolved with `summaryParams`
+   *  via `t(summaryKey, summaryParams)` — pluralized keys use the
+   *  `count` param the standard react-i18next way. */
+  summaryKey: string;
+  summaryParams?: Record<string, unknown>;
 }
 
 /** Real, specific summaries for a few fields worth being precise
- *  about, rather than a generic "N items differ" for everything. */
-function summarizeField(field: string, oldVal: unknown, newVal: unknown): string {
+ *  about, rather than a generic "N items differ" for everything.
+ *  Returns a translation key + params rather than a rendered string —
+ *  see this file's own i18n note. */
+function summarizeField(field: string, oldVal: unknown, newVal: unknown): { key: string; params?: Record<string, unknown> } {
   if (field === 'specimens' && Array.isArray(oldVal) && Array.isArray(newVal)) {
     const oldLabels = new Set((oldVal as any[]).map(s => s?.label));
     const newLabels = new Set((newVal as any[]).map(s => s?.label));
     const changedCount = (newVal as any[]).filter(s => JSON.stringify(s) !== JSON.stringify((oldVal as any[]).find(o => o?.label === s?.label))).length;
-    if (newLabels.size !== oldLabels.size) return `${newVal.length} specimen(s) in the draft (was ${oldVal.length})`;
-    return `${changedCount} specimen${changedCount === 1 ? '' : 's'} with edited content`;
+    if (newLabels.size !== oldLabels.size) {
+      return { key: 'computeDraftDiff.summary.specimenCountChanged', params: { count: newVal.length, oldCount: oldVal.length } };
+    }
+    return { key: 'computeDraftDiff.summary.specimensEdited', params: { count: changedCount } };
   }
   if (field === 'order' && oldVal && newVal && typeof oldVal === 'object' && typeof newVal === 'object') {
     const oldComments = (oldVal as any).caseComments?.length ?? 0;
     const newComments = (newVal as any).caseComments?.length ?? 0;
-    if (newComments !== oldComments) return `${newComments} case comment(s) in the draft (was ${oldComments})`;
-    return 'Case-level order info edited';
+    if (newComments !== oldComments) {
+      return { key: 'computeDraftDiff.summary.commentCountChanged', params: { count: newComments, oldCount: oldComments } };
+    }
+    return { key: 'computeDraftDiff.summary.orderInfoEdited' };
   }
   if (field === '__orchSectionsDraft' && Array.isArray(newVal)) {
-    return `${newVal.length} section(s) in the draft`;
+    return { key: 'computeDraftDiff.summary.sectionsInDraft', params: { count: newVal.length } };
   }
-  if (field === 'priority') return `Changed to "${newVal}"`;
-  if (field === 'status') return `Changed to "${newVal}"`;
-  return 'Edited in the draft';
+  if (field === 'priority' || field === 'status') return { key: 'computeDraftDiff.summary.changedTo', params: { value: newVal } };
+  return { key: 'computeDraftDiff.summary.editedInDraft' };
 }
 
 /** Real, top-level, shallow diff between the currently-loaded case
@@ -97,10 +126,13 @@ export function computeDraftDiff(current: Record<string, unknown> | null, draft:
     // what useDraftCache itself just serialized to persist it).
     if (JSON.stringify(oldVal) === JSON.stringify(newVal)) continue;
 
+    const summary = summarizeField(key, oldVal, newVal);
     entries.push({
       field: key,
-      label: FIELD_LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()),
-      summary: summarizeField(key, oldVal, newVal),
+      labelKey: FIELD_LABEL_KEY[key] ?? null,
+      labelFallback: key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()),
+      summaryKey: summary.key,
+      summaryParams: summary.params,
     });
   }
   return entries;

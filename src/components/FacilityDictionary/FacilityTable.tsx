@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { Facility, FacilityRole } from "../../services/facilities/IFacilityService";
 import { FACILITY_ROLE_LABELS } from "../../services/facilities/IFacilityService";
@@ -34,16 +35,24 @@ type StatusFilter = "all" | "active" | "inactive" | "unverified";
 // external filter served.
 type RoleFilter = "all" | "performing_lab" | "ordering_client";
 
+const STATUS_FILTER_LABEL_KEY: Record<StatusFilter, string> = {
+  all: 'facilityTable.filters.all',
+  active: 'facilityTable.filters.active',
+  inactive: 'facilityTable.filters.inactive',
+  unverified: 'facilityTable.filters.unverified',
+};
+
 export const FacilityTable: React.FC<FacilityTableProps> = ({
   facilities,
   onEdit,
   onToggleActive,
   onVerify,
 }) => {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-  
+
   // ── Filtering ──────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -63,40 +72,19 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
     });
   }, [facilities, search, statusFilter, roleFilter]);
 
-  // ── Delete confirmation ────────────────────────────────────────────────────
-
-  // ── Styles ─────────────────────────────────────────────────────────────────
-  const filterTabBase: React.CSSProperties = {
-    padding: "5px 14px",
-    fontSize: "12px",
-    fontWeight: 600,
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "6px",
-    cursor: "pointer",
-    transition: "all 0.15s",
-  };
-
-  const filterTab = (active: boolean): React.CSSProperties => ({
-    ...filterTabBase,
-    background: active ? "#0891b2" : "transparent",
-    color: active ? "#0f172a" : "#64748b",
-    borderColor: active ? "#0891b2" : "rgba(255,255,255,0.1)",
-  });
+  const roleFilterOptions: [RoleFilter, string][] = [
+    ["all", t('facilityTable.filters.allTypes')],
+    ["performing_lab", t('facilityTable.filters.performingLab')],
+    ["ordering_client", t('facilityTable.filters.orderingFacility')],
+  ];
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (facilities.length === 0) {
     return (
-      <div style={{
-        padding: "48px 24px",
-        textAlign: "center",
-        color: "#64748b",
-        border: "1px dashed rgba(255,255,255,0.15)",
-        borderRadius: "12px",
-        fontSize: "14px",
-      }}>
-        <div style={{ fontSize: "32px", marginBottom: "12px" }}>🏥</div>
-        <div style={{ fontWeight: 600, marginBottom: "6px", color: "#64748b" }}>No facilities yet</div>
-        <div>Click <strong>+ Add Facility</strong> to define your first facility.</div>
+      <div className="fct-empty-state">
+        <div className="fct-empty-icon">🏥</div>
+        <div className="fct-empty-title">{t('facilityTable.noFacilitiesYet')}</div>
+        <div>{t('facilityTable.addFirstFacilityPrefix')} <strong>{t('facilityTable.addFacilityButton')}</strong> {t('facilityTable.addFirstFacilitySuffix')}</div>
       </div>
     );
   }
@@ -104,74 +92,43 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
   return (
     <>
       {/* ── Toolbar ── */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-        marginBottom: "14px",
-        flexWrap: "wrap",
-      }}>
+      <div className="fct-toolbar">
         {/* Search */}
-        <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
-          <span style={{
-            position: "absolute", left: "10px", top: "50%",
-            transform: "translateY(-50%)", color: "#64748b", fontSize: "14px",
-            pointerEvents: "none",
-          }}>🔍</span>
+        <div className="fct-search-wrap">
+          <span className="fct-search-icon">🔍</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, code, contact, facility…"
-            style={{
-              width: "100%",
-              padding: "7px 10px 7px 32px",
-              fontSize: "13px",
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "8px",
-              outline: "none",
-              color: "#e2e8f0",
-              boxSizing: "border-box",
-            }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "#0891b2")}
-            onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
+            placeholder={t('facilityTable.searchPlaceholder')}
+            className="fct-search-input"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              style={{
-                position: "absolute", right: "8px", top: "50%",
-                transform: "translateY(-50%)", background: "none",
-                border: "none", cursor: "pointer", color: "#64748b",
-                fontSize: "14px", lineHeight: 1, padding: "2px",
-              }}
+              className="fct-search-clear"
             >✕</button>
           )}
         </div>
 
         {/* Status filter tabs */}
-        <div style={{ display: "flex", gap: "6px" }}>
+        <div className="fct-filter-group">
           {(["all", "active", "inactive", "unverified"] as StatusFilter[]).map((f) => (
             <button
               key={f}
-              style={filterTab(statusFilter === f)}
+              className={`fct-filter-tab ${statusFilter === f ? 'fct-filter-tab--active' : ''}`}
               onClick={() => setStatusFilter(f)}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {t(STATUS_FILTER_LABEL_KEY[f])}
             </button>
           ))}
         </div>
 
         {/* Role filter tabs */}
-        <div style={{ display: "flex", gap: "6px" }}>
-          {([
-            ["all", "All Types"],
-            ["performing_lab", "Performing Lab"],
-            ["ordering_client", "Ordering Facility"],
-          ] as [RoleFilter, string][]).map(([f, label]) => (
+        <div className="fct-filter-group">
+          {roleFilterOptions.map(([f, label]) => (
             <button
               key={f}
-              style={filterTab(roleFilter === f)}
+              className={`fct-filter-tab ${roleFilter === f ? 'fct-filter-tab--active' : ''}`}
               onClick={() => setRoleFilter(f)}
             >
               {label}
@@ -180,26 +137,19 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
         </div>
 
         {/* Result count */}
-        <span style={{ fontSize: "12px", color: "#64748b", whiteSpace: "nowrap" }}>
-          {filtered.length} of {facilities.length}
+        <span className="fct-result-count">
+          {t('facilityTable.resultCount', { filtered: filtered.length, total: facilities.length })}
         </span>
       </div>
 
       {/* ── Table ── */}
-      <div style={{ overflowX: "auto", width: "100%", maxWidth: "100%", paddingRight: "2px" }}>
+      <div className="fct-table-wrap">
         {filtered.length === 0 ? (
-          <div style={{
-            padding: "32px",
-            textAlign: "center",
-            color: "#64748b",
-            fontSize: "13px",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: "8px",
-          }}>
-            No facilities match your search.
+          <div className="fct-no-match">
+            {t('facilityTable.noMatch')}
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed" }}>
+          <table className="fct-table">
             <colgroup>
               <col style={{ width: "24%" }} />
               <col style={{ width: "18%" }} />
@@ -209,18 +159,9 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
               <col style={{ width: "14%" }} />
             </colgroup>
             <thead>
-              <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                {["Facility", "Roles", "Contact", "TAT", "Status", ""].map((h) => (
-                  <th key={h} style={{
-                    padding: "10px 14px",
-                    textAlign: "left",
-                    fontWeight: 700,
-                    color: "#475569",
-                    fontSize: "11px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    whiteSpace: "nowrap",
-                  }}>{h}</th>
+              <tr className="fct-thead-row">
+                {[t('facilityTable.col.facility'), t('facilityTable.col.roles'), t('facilityTable.col.contact'), t('facilityTable.col.tat'), t('facilityTable.col.status'), ''].map((h, i) => (
+                  <th key={i} className="fct-th">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -228,123 +169,100 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
               {filtered.map((facility, i) => (
                 <tr
                   key={facility.id}
-                  style={{
-                    borderBottom: "1px solid rgba(255,255,255,0.08)",
-                    background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.025)",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(8,145,178,0.06)")}
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.025)")
-                  }
+                  className={`fct-row ${i % 2 === 0 ? '' : 'fct-row--alt'}`}
                 >
                   {/* CLIENT — name + code + address */}
-                  <td style={{ padding: "10px 14px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
-                      <span style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{facility.name}</span>
-                      <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700,
-                        background: "rgba(255,255,255,0.06)", color: "#0891b2",
-                        padding: "1px 6px", borderRadius: 4, flexShrink: 0 }}>{facility.assigningAuthority}</span>
+                  <td className="fct-td">
+                    <div className="fct-name-row">
+                      <span className="fct-name">{facility.name}</span>
+                      <span className="fct-code">{facility.assigningAuthority}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0, minWidth: "100%" }}>
+                    <div className="fct-address">
                       {facility.address}
                     </div>
-                    {facility.parentId && <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>↳ affiliate</div>}
+                    {facility.parentId && <div className="fct-affiliate">↳ {t('facilityTable.affiliate')}</div>}
                   </td>
 
                   {/* ROLES */}
-                  <td style={{ padding: "10px 14px" }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  <td className="fct-td">
+                    <div className="fct-role-badges">
                       {facility.roles.map((role: FacilityRole) => (
                         <span
                           key={role}
-                          style={{
-                            fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10, whiteSpace: 'nowrap',
-                            ...(role === 'performing_lab'
-                              ? { background: "rgba(139,92,246,0.15)", color: "#c084fc" }
-                              : { background: "rgba(8,145,178,0.15)", color: "#38bdf8" }),
-                          }}
+                          className={`fct-role-badge ${role === 'performing_lab' ? 'fct-role-badge--lab' : 'fct-role-badge--client'}`}
                         >
                           {FACILITY_ROLE_LABELS[role]}
                         </span>
                       ))}
                     </div>
-                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
+                    <div className="fct-jurisdiction">
                       {JURISDICTION_LABELS[facility.jurisdiction] ?? facility.jurisdiction}
                     </div>
                   </td>
 
                   {/* CONTACT */}
-                  <td style={{ padding: "10px 14px" }}>
-                    <div style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 500 }}>{facility.contactName || '—'}</div>
-                    <div style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0, minWidth: "100%" }}>{facility.email}</div>
+                  <td className="fct-td">
+                    <div className="fct-contact-name">{facility.contactName || '—'}</div>
+                    <div className="fct-contact-email">{facility.email}</div>
                   </td>
 
                   {/* TAT */}
-                  <td style={{ padding: "10px 14px" }}>
+                  <td className="fct-td">
                     {facility.tatFirstTouchHours != null || facility.tatTotalHours != null ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <div className="fct-tat-col">
                         {facility.tatFirstTouchHours != null && (
-                          <span style={{ fontSize: 11, color: "#38bdf8" }}>
-                            {facility.tatFirstTouchHours}h 1st touch
+                          <span className="fct-tat-first">
+                            {t('facilityTable.tatFirstTouch', { hours: facility.tatFirstTouchHours })}
                           </span>
                         )}
                         {facility.tatTotalHours != null && (
-                          <span style={{ fontSize: 11, color: "#34d399" }}>
-                            {facility.tatTotalHours}h total
+                          <span className="fct-tat-total">
+                            {t('facilityTable.tatTotal', { hours: facility.tatTotalHours })}
                           </span>
                         )}
                       </div>
                     ) : (
-                      <span style={{ fontSize: 11, color: "#475569", fontStyle: "italic" }}>Default</span>
+                      <span className="fct-tat-default">{t('facilityTable.tatDefault')}</span>
                     )}
                   </td>
 
                   {/* STATUS */}
-                  <td style={{ padding: "10px 14px" }}>
+                  <td className="fct-td">
                     {facility.status === 'Active' && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 10,
-                        background: "rgba(16,185,129,0.15)", color: "#34d399" }}>Active</span>
+                      <span className="fct-status-badge fct-status-badge--active">{t('facilityTable.status.active')}</span>
                     )}
                     {facility.status === 'Inactive' && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 10,
-                        background: "rgba(239,68,68,0.15)", color: "#f87171" }}>Inactive</span>
+                      <span className="fct-status-badge fct-status-badge--inactive">{t('facilityTable.status.inactive')}</span>
                     )}
                     {facility.status === 'Unverified' && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 10,
-                        background: "rgba(245,158,11,0.15)", color: "#fbbf24" }}>Unverified</span>
+                      <span className="fct-status-badge fct-status-badge--unverified">{t('facilityTable.status.unverified')}</span>
                     )}
                     {facility.autoCreated && (
-                      <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }} title={facility.autoCreatedNote}>
-                        Auto-created{facility.autoCreatedAt ? ` ${facility.autoCreatedAt}` : ''}
+                      <div className="fct-auto-created" title={facility.autoCreatedNote}>
+                        {t('facilityTable.autoCreated')}{facility.autoCreatedAt ? ` ${facility.autoCreatedAt}` : ''}
                       </div>
                     )}
                   </td>
 
                   {/* Actions */}
-                  <td style={{ padding: "10px 16px 10px 8px" }}>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <td className="fct-td fct-td--actions">
+                    <div className="fct-actions">
                       {facility.status === 'Unverified' && (
                         <button
-                          className="ps-conf-btn-secondary"
+                          className="ps-conf-btn-secondary fct-action-btn fct-action-btn--verify"
                           onClick={() => onVerify(facility.id)}
-                          style={{ padding: "4px 10px", fontSize: 11, color: "#34d399", borderColor: "rgba(34,197,94,0.35)" }}
-                        >Verify</button>
+                        >{t('facilityTable.verify')}</button>
                       )}
                       <button
-                        className="ps-conf-btn-secondary"
+                        className="ps-conf-btn-secondary fct-action-btn fct-action-btn--edit"
                         onClick={() => onEdit(facility.id)}
-                        style={{ padding: "5px 12px", fontSize: 12 }}
-                      >Edit</button>
+                      >{t('facilityTable.edit')}</button>
                       {facility.status !== 'Unverified' && (
                         <button
-                          className="ps-conf-btn-secondary"
+                          className={`ps-conf-btn-secondary fct-action-btn ${facility.status === 'Active' ? 'fct-action-btn--deactivate' : 'fct-action-btn--activate'}`}
                           onClick={() => onToggleActive(facility.id, facility.status !== 'Active')}
-                          title={facility.status === 'Active' ? "Deactivate facility" : "Reactivate facility"}
-                          style={{ padding: "4px 10px", fontSize: 11,
-                            color: facility.status === 'Active' ? "#f87171" : "#34d399",
-                            borderColor: facility.status === 'Active' ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.35)",
-                          }}
-                        >{facility.status === 'Active' ? "Deactivate" : "Activate"}</button>
+                          title={facility.status === 'Active' ? t('facilityTable.deactivateTitle') : t('facilityTable.reactivateTitle')}
+                        >{facility.status === 'Active' ? t('facilityTable.deactivate') : t('facilityTable.activate')}</button>
                       )}
                     </div>
                   </td>

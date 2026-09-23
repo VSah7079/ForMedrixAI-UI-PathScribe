@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mockQaSupervisionAssignmentTypeService } from './mockQaSupervisionAssignmentTypeService';
-import { FPPE_ACTIVITY_TYPE_ID } from './mockQaSupervisionAssignmentService';
+import { FPPE_ACTIVITY_TYPE_ID, CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID } from './mockQaSupervisionAssignmentService';
 
 // Real, minimal localStorage mock - same established pattern
 // mockQaActivityTypeService.test.ts already uses.
@@ -18,9 +18,19 @@ describe('mockQaSupervisionAssignmentTypeService', () => {
     const res = await mockQaSupervisionAssignmentTypeService.getAll();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.data.length).toBe(1);
+    expect(res.data.length).toBe(2);
     expect(res.data[0].id).toBe(FPPE_ACTIVITY_TYPE_ID);
     expect(res.data[0].tabScope).toBe('standard');
+  });
+
+  it('seeds the real New Cytotechnologist Competency Assessment type by default (CLIA ’88 Subpart M)', async () => {
+    const res = await mockQaSupervisionAssignmentTypeService.getAll();
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const cytotechType = res.data.find(t => t.id === CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID);
+    expect(cytotechType).toBeDefined();
+    expect(cytotechType?.tabScope).toBe('standard');
+    expect(cytotechType?.jurisdictions).toEqual(['US']);
   });
 
   it('the seeded type shares its real id with mockQaSupervisionAssignmentService\'s own FPPE_ACTIVITY_TYPE_ID — the real FK relationship every real assignment instance depends on', async () => {
@@ -43,7 +53,7 @@ describe('mockQaSupervisionAssignmentTypeService', () => {
     expect(res.ok).toBe(true);
     const all = await mockQaSupervisionAssignmentTypeService.getAll();
     if (!all.ok) return;
-    expect(all.data.length).toBe(2);
+    expect(all.data.length).toBe(3);
   });
 
   it('deactivate/reactivate toggle the real active flag', async () => {

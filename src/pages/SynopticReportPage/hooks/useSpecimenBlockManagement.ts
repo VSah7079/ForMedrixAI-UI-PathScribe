@@ -28,6 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useMemo, useCallback, useRef, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';
@@ -115,6 +116,7 @@ export function useSpecimenBlockManagement({
   // only ever builds its write from what's genuinely current.
   const caseDataRef = useRef(caseData);
   caseDataRef.current = caseData;
+  const { t } = useTranslation();
 
   // Real feature, per direct follow-up: Step 4 of the label-printing
   // build plan — on-demand trigger wiring + scan verification. Real,
@@ -215,7 +217,9 @@ export function useSpecimenBlockManagement({
     if (!stationRes.ok || !stationRes.data.supportsPrinting || !stationRes.data.cassetteSlidePrinterProfileId) return;
     const printerRes = await printerProfileService.getById(stationRes.data.cassetteSlidePrinterProfileId);
     if (!printerRes.ok || !printerRes.data) {
-      showToast(`Station is configured to print ${kind} labels, but its own printer profile no longer exists — check Scan Stations config.`);
+      showToast(t('useSpecimenBlockManagement.toast.printerProfileMissing', {
+        kind: t(kind === 'cassette' ? 'useSpecimenBlockManagement.labels.kindCassette' : 'useSpecimenBlockManagement.labels.kindSlide'),
+      }));
       return;
     }
     const settingsRes = await printSettingsService.get();
@@ -226,8 +230,11 @@ export function useSpecimenBlockManagement({
     // printCassetteLabel reaching for its own config independently.
     const cassetteLabelLayout = settingsRes.ok ? settingsRes.data.cassetteLabelLayout : DEFAULT_CASSETTE_LABEL_LAYOUT;
     const result = await build(printerRes.data, gtin, cassetteLabelLayout);
-    if (!result.ok) showToast(`Printed ${kind} label failed: ${result.message ?? 'unknown error'}`);
-  }, [effectiveStationId, showToast]);
+    if (!result.ok) showToast(t('useSpecimenBlockManagement.toast.printedLabelFailed', {
+      kind: t(kind === 'cassette' ? 'useSpecimenBlockManagement.labels.kindCassette' : 'useSpecimenBlockManagement.labels.kindSlide'),
+      message: result.message ?? t('useSpecimenBlockManagement.labels.unknownError'),
+    }));
+  }, [effectiveStationId, showToast, t]);
 
   const printCassetteForBlock = useCallback((specimenLabel: string, blockLabel: string) => {
     if (!caseData) return;
@@ -261,8 +268,8 @@ export function useSpecimenBlockManagement({
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }).catch(console.error);
     registerPendingVerification({ cassetteId, blockLabel, specimenLabel });
-    showToast(`Printing cassette ${cassetteId}…`);
-  }, [caseData, registerPendingVerification, showToast, attemptPrintedLabel]);
+    showToast(t('useSpecimenBlockManagement.toast.printingCassette', { cassetteId }));
+  }, [caseData, registerPendingVerification, showToast, attemptPrintedLabel, t]);
 
   // Real, dedicated sibling to printCassetteForBlock above, for a real
   // matrix block — added per direct follow-up: "primary label
@@ -296,8 +303,8 @@ export function useSpecimenBlockManagement({
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }).catch(console.error);
     registerPendingVerification({ cassetteId, blockLabel: matrixBlock.label, specimenLabel: '' });
-    showToast(`Printing cassette ${cassetteId}…`);
-  }, [caseData, registerPendingVerification, showToast, attemptPrintedLabel]);
+    showToast(t('useSpecimenBlockManagement.toast.printingCassette', { cassetteId }));
+  }, [caseData, registerPendingVerification, showToast, attemptPrintedLabel, t]);
 
   // Voice/hotkey entry point — "print current cassette" genuinely means
   // whatever's focused right now, so this stays a thin wrapper around
@@ -323,13 +330,13 @@ export function useSpecimenBlockManagement({
   const handleBatchPrintCassettes = useCallback(() => {
     if (!caseData) return;
     if (batchPrintBlocked) {
-      showToast('Batch printing is disabled — this lab enforces on-demand cassette printing. Ask an admin to change this in Print Settings if needed.');
+      showToast(t('useSpecimenBlockManagement.toast.batchPrintCassetteDisabled'));
       return;
     }
     const { ordinary, matrix } = getAllCassetteLabelRequests(caseData);
     const total = ordinary.length + matrix.length;
     if (total === 0) {
-      showToast('No cassettes on this case yet — nothing to print.');
+      showToast(t('useSpecimenBlockManagement.toast.noCassettesToPrint'));
       return;
     }
     Promise.all([
@@ -356,8 +363,8 @@ export function useSpecimenBlockManagement({
         return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
       })),
     ]).catch(console.error);
-    showToast(`Printing ${total} cassette label${total === 1 ? '' : 's'} for ${caseData.accession.fullAccession}…`);
-  }, [caseData, batchPrintBlocked, showToast, attemptPrintedLabel]);
+    showToast(t('useSpecimenBlockManagement.toast.printingCassetteLabelsForAccession', { count: total, accession: caseData.accession.fullAccession }));
+  }, [caseData, batchPrintBlocked, showToast, attemptPrintedLabel, t]);
 
   // Real feature, per direct follow-up: "I think I would expect to
   // reprint a slide label but that print icon is for the cassette...
@@ -384,18 +391,18 @@ export function useSpecimenBlockManagement({
       }, printer, gtin);
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }).catch(console.error);
-    showToast(`Printing slide ${slideId}…`);
-  }, [caseData, showToast, attemptPrintedLabel]);
+    showToast(t('useSpecimenBlockManagement.toast.printingSlide', { slideId }));
+  }, [caseData, showToast, attemptPrintedLabel, t]);
 
   const handleBatchPrintSlides = useCallback(() => {
     if (!caseData) return;
     if (batchPrintBlocked) {
-      showToast('Batch printing is disabled — this lab enforces on-demand slide printing. Ask an admin to change this in Print Settings if needed.');
+      showToast(t('useSpecimenBlockManagement.toast.batchPrintSlideDisabled'));
       return;
     }
     const requests = getAllSlideLabelRequests(caseData);
     if (requests.length === 0) {
-      showToast('No slides on this case yet — nothing to print.');
+      showToast(t('useSpecimenBlockManagement.toast.noSlidesToPrint'));
       return;
     }
     Promise.all(requests.map(r => dispatchSlideLabel(r))).catch(console.error);
@@ -406,8 +413,8 @@ export function useSpecimenBlockManagement({
       const result = await printSlideLabel(r, printer, gtin);
       return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
     }))).catch(console.error);
-    showToast(`Printing ${requests.length} slide label${requests.length === 1 ? '' : 's'} for ${caseData.accession.fullAccession}…`);
-  }, [caseData, batchPrintBlocked, showToast, attemptPrintedLabel]);
+    showToast(t('useSpecimenBlockManagement.toast.printingSlideLabelsForAccession', { count: requests.length, accession: caseData.accession.fullAccession }));
+  }, [caseData, batchPrintBlocked, showToast, attemptPrintedLabel, t]);
 
   useEffect(() => {
     const onPrintCurrent = () => handlePrintCurrentCassette();
@@ -683,10 +690,10 @@ export function useSpecimenBlockManagement({
     const block = sp?.blocks?.find(b => b.id === blockId);
     if (!sp || !block) return;
 
-    showToast('Sending block cancellation to LIS…');
+    showToast(t('useSpecimenBlockManagement.toast.sendingCancellationToLis'));
     const result = await sendMaterialOrderToLis({ kind: 'cancel', specimenId, label: block.label });
     if (!result.ok) {
-      showToast('LIS did not acknowledge the cancellation — nothing was recorded. Try again.');
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckCancellation'));
       return;
     }
 
@@ -722,7 +729,7 @@ export function useSpecimenBlockManagement({
         try {
           await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens });
           knownVersionRef.current = e.actualVersion + 1;
-          showToast('Note: this case had unsaved changes elsewhere — the cancellation was saved, but double-check the rest of the case reflects what you expect.');
+          showToast(t('useSpecimenBlockManagement.toast.unsavedChangesCancellation'));
         } catch (retryErr) {
           console.error('[Grossing] Failed to save block cancellation after conflict retry:', retryErr);
         }
@@ -731,8 +738,8 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Block ${sp.label}${block.label} cancelled`);
-  }, [caseData, signingUser, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData]);
+    showToast(t('useSpecimenBlockManagement.toast.blockCancelled', { label: `${sp.label}${block.label}` }));
+  }, [caseData, signingUser, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, t]);
 
   // Real feature, per direct confirmation: "Create Spare Slide —
   // Generates a new slide ID, links to block, no stain assigned
@@ -781,8 +788,8 @@ export function useSpecimenBlockManagement({
       return;
     }
     markDirty('Blocks');
-    showToast(`Spare slide added to block ${sp.label}${block.label} — unstained, ready if needed`);
-  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, setConcurrencyConflict]);
+    showToast(t('useSpecimenBlockManagement.toast.spareSlideAdded', { label: `${sp.label}${block.label}` }));
+  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, setConcurrencyConflict, t]);
 
   // Real feature, per direct confirmation: "Order Restain — Converts
   // spare → staining workflow. Captures reason... Logs who ordered
@@ -819,10 +826,10 @@ export function useSpecimenBlockManagement({
     if (!sp || !block || !targetSlide) return;
     const isConvertingSpare = targetSlide.stainName === UNSTAINED_LABEL;
 
-    showToast('Sending restain order to LIS…');
+    showToast(t('useSpecimenBlockManagement.toast.sendingRestainToLis'));
     const result = await sendMaterialOrderToLis({ kind: 'restain', specimenId, label: `${block.label}: ${params.stainName}` });
     if (!result.ok) {
-      showToast('LIS did not acknowledge the restain order — nothing was recorded. Try again.');
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckRestain'));
       return;
     }
 
@@ -882,7 +889,7 @@ export function useSpecimenBlockManagement({
         try {
           await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens });
           knownVersionRef.current = e.actualVersion + 1;
-          showToast('Note: this case had unsaved changes elsewhere — the restain order was saved, but double-check the rest of the case reflects what you expect.');
+          showToast(t('useSpecimenBlockManagement.toast.unsavedChangesRestain'));
         } catch (retryErr) {
           console.error('[Grossing] Failed to save restain order after conflict retry:', retryErr);
         }
@@ -893,10 +900,10 @@ export function useSpecimenBlockManagement({
     markDirty('Blocks');
     showToast(
       isConvertingSpare
-        ? `Restain ordered — reusing the spare, no recut needed`
-        : `Restain ordered — new slide cut for ${params.stainName.trim()}`
+        ? t('useSpecimenBlockManagement.toast.restainOrderedSpare')
+        : t('useSpecimenBlockManagement.toast.restainOrderedNewSlide', { stainName: params.stainName.trim() })
     );
-  }, [caseData, signingUser, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData]);
+  }, [caseData, signingUser, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, t]);
 
   // Real replacement for Add Orders' old "Blocks/Recut" tab — appends
   // an actual HistologyBlock to specimen.blocks (what the Material tree
@@ -917,7 +924,7 @@ export function useSpecimenBlockManagement({
     // added; it's flagged so the accessioner knows to go back and
     // scan it.
     if (hasUnverifiedPendingCassette(printSettings?.requireScanVerificationBeforeNextBlock ?? false) && pendingVerification) {
-      showToast(`Reminder: Block ${pendingVerification.specimenLabel}${pendingVerification.blockLabel}'s cassette label hasn't been scanned yet.`);
+      showToast(t('useSpecimenBlockManagement.toast.cassetteReminderUnscanned', { label: `${pendingVerification.specimenLabel}${pendingVerification.blockLabel}` }));
     }
 
     const existingBlocks = sp.blocks ?? [];
@@ -993,9 +1000,9 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Block ${sp.label}${nextNumber} requested — awaiting LIS confirmation`);
+    showToast(t('useSpecimenBlockManagement.toast.blockRequestedAwaitingLis', { label: `${sp.label}${nextNumber}` }));
     if (phase1HadConflict) {
-      showToast('Note: this case had unsaved changes elsewhere — your new block request was saved, but double-check the rest of the case reflects what you expect.');
+      showToast(t('useSpecimenBlockManagement.toast.unsavedChangesNewBlock'));
     }
 
     // ── Phase 2: real request, confirm or flag the SAME block in place ──
@@ -1045,10 +1052,10 @@ export function useSpecimenBlockManagement({
     }
 
     if (!result.ok) {
-      showToast(`LIS rejected the block/recut request for ${sp.label}${nextNumber} — flagged, follow up with histology.`);
+      showToast(t('useSpecimenBlockManagement.toast.lisRejectedBlockRecut', { label: `${sp.label}${nextNumber}` }));
       return;
     }
-    showToast(`Block ${sp.label}${nextNumber} confirmed by LIS`);
+    showToast(t('useSpecimenBlockManagement.toast.blockConfirmedByLis', { label: `${sp.label}${nextNumber}` }));
 
     // Real feature, per direct research: "Single-Click / Triggered
     // Printing: When a Pathologist Assistant grosses Specimen A and
@@ -1084,7 +1091,7 @@ export function useSpecimenBlockManagement({
       flatIndex += (s.blocks ?? []).length;
     }
     setFocusedBlockIndex(flatIndex);
-  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, printSettings, hasUnverifiedPendingCassette, pendingVerification, registerPendingVerification]);
+  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, printSettings, hasUnverifiedPendingCassette, pendingVerification, registerPendingVerification, t]);
 
   // Real feature, per direct follow-up describing the real grossing-
   // station workflow: "Execution Release... Upon confirmation... PA
@@ -1116,7 +1123,7 @@ export function useSpecimenBlockManagement({
     // is the primary UX; this is the real, enforced backstop that
     // can't be bypassed by calling this function directly).
     if (sp.triage && !sp.triage.overrideReason && !sp.triage.checklistItems.every(ci => ci.confirmed)) {
-      showToast('Cannot release blocks: Specimen triage is incomplete.');
+      showToast(t('useSpecimenBlockManagement.toast.cannotReleaseTriageIncomplete'));
       return;
     }
     const blockIdSet = new Set(blockIds);
@@ -1146,12 +1153,12 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Releasing ${blocksToRelease.length} cassette${blocksToRelease.length === 1 ? '' : 's'} for printing…`);
+    showToast(t('useSpecimenBlockManagement.toast.releasingCassettesForPrinting', { count: blocksToRelease.length }));
 
     for (const b of blocksToRelease) {
       printCassetteForBlock(sp.label, b.label);
     }
-  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, printCassetteForBlock]);
+  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, printCassetteForBlock, t]);
 
   // Real, deliberate sibling to handleReleaseGrossingBlocks — a real
   // 'Pending' placeholder the PA decides isn't actually needed (the
@@ -1187,8 +1194,8 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Removed unreleased block ${sp.label}${block.label}.`);
-  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData]);
+    showToast(t('useSpecimenBlockManagement.toast.removedUnreleasedBlock', { label: `${sp.label}${block.label}` }));
+  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, t]);
 
   // Real feature, per direct follow-up: "Decant has no creation flow
   // at all — the ID scheme is ready for something that doesn't exist
@@ -1258,8 +1265,8 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Decants');
-    showToast(`Decant ${sp.label}${decantLabel} added.`);
-  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, signingUser]);
+    showToast(t('useSpecimenBlockManagement.toast.decantAdded', { label: `${sp.label}${decantLabel}` }));
+  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, signingUser, t]);
 
   // Real feature, per direct follow-up: "decant-level linking UI. In
   // the same UI we add specimens, blocks stains, protocols?" Real,
@@ -1369,7 +1376,7 @@ export function useSpecimenBlockManagement({
       createdBy: signingUser?.id ?? 'unknown',
     };
 
-    showToast('Sending Biopsy Array request to LIS…');
+    showToast(t('useSpecimenBlockManagement.toast.sendingBiopsyArrayRequestToLis'));
     // Same real-LIS-order posture as handleAddBlock — one order per
     // specimen, all referencing the same cassetteLabel so the LIS
     // side can see they're physically the same block.
@@ -1377,7 +1384,7 @@ export function useSpecimenBlockManagement({
       sendMaterialOrderToLis({ kind: 'block_recut', specimenId: sp.id, label: cassetteLabel })
     ));
     if (results.some(r => !r.ok)) {
-      showToast('LIS did not acknowledge the Biopsy Array request — nothing was recorded. Try again.');
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckBiopsyArrayRequest'));
       return;
     }
 
@@ -1398,7 +1405,7 @@ export function useSpecimenBlockManagement({
         try {
           await caseRouter.updateCase(caseData.id, { specimens: updatedSpecimens, matrixBlocks: updatedMatrixBlocks });
           knownVersionRef.current = e.actualVersion + 1;
-          showToast('Note: this case had unsaved changes elsewhere — your Biopsy Array was saved, but double-check the rest of the case reflects what you expect.');
+          showToast(t('useSpecimenBlockManagement.toast.unsavedChangesBiopsyArray'));
         } catch (retryErr) {
           console.error('[Grossing] Failed to save Biopsy Array after conflict retry:', retryErr);
         }
@@ -1407,7 +1414,7 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Biopsy Array ${cassetteLabel} created — ${targetSpecimens.length} specimens linked, sent to LIS`);
+    showToast(t('useSpecimenBlockManagement.toast.biopsyArrayCreated', { label: cassetteLabel, count: targetSpecimens.length }));
 
     // Real feature, per direct follow-up: "primary label printing for
     // matrix blocks." Same real, on-demand-only gating as
@@ -1434,7 +1441,7 @@ export function useSpecimenBlockManagement({
       // a confusing concatenation of every participant's own label.
       registerPendingVerification({ cassetteId: matrixCassetteId, blockLabel: label, specimenLabel: '' });
     }
-  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, signingUser, printSettings, registerPendingVerification]);
+  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, signingUser, printSettings, registerPendingVerification, t]);
 
   // Real feature, per direct confirmation: completes the Biopsy Array
   // feature with the edit capability flagged as the one real gap
@@ -1495,13 +1502,13 @@ export function useSpecimenBlockManagement({
     const toRemove = currentlyLinkedIds.filter(id => !specimenIds.includes(id));
 
     if (toAdd.length > 0) {
-      showToast('Sending Biopsy Array update to LIS…');
+      showToast(t('useSpecimenBlockManagement.toast.sendingBiopsyArrayUpdateToLis'));
       const targetSpecimens = toAdd.map(id => specimens.find(s => s.id === id)).filter((s): s is Specimen => !!s);
       const results = await Promise.all(targetSpecimens.map(sp =>
         sendMaterialOrderToLis({ kind: 'block_recut', specimenId: sp.id, label: matrixBlock.label })
       ));
       if (results.some(r => !r.ok)) {
-        showToast('LIS did not acknowledge the added specimens — nothing was recorded. Try again.');
+        showToast(t('useSpecimenBlockManagement.toast.lisNoAckAddedSpecimens'));
         return;
       }
     }
@@ -1567,7 +1574,7 @@ export function useSpecimenBlockManagement({
         try {
           await caseRouter.updateCase(caseData.id, { specimens: updatedSpecimens, matrixBlocks: updatedMatrixBlocks });
           knownVersionRef.current = e.actualVersion + 1;
-          showToast('Note: this case had unsaved changes elsewhere — your Biopsy Array update was saved, but double-check the rest of the case reflects what you expect.');
+          showToast(t('useSpecimenBlockManagement.toast.unsavedChangesBiopsyArrayUpdate'));
         } catch (retryErr) {
           console.error('[Grossing] Failed to save Biopsy Array update after conflict retry:', retryErr);
         }
@@ -1576,8 +1583,8 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Biopsy Array ${matrixBlock.label} updated — ${specimenIds.length} specimens linked`);
-  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData]);
+    showToast(t('useSpecimenBlockManagement.toast.biopsyArrayUpdated', { label: matrixBlock.label, count: specimenIds.length }));
+  }, [caseData, sendMaterialOrderToLis, markDirty, showToast, knownVersionRef, setCaseData, t]);
 
   // Real feature: a direct, explicit "undo the whole array" action —
   // clearer than editing a selection down to zero. Every specimen
@@ -1641,7 +1648,7 @@ export function useSpecimenBlockManagement({
         try {
           await caseRouter.updateCase(caseData.id, { specimens: updatedSpecimens, matrixBlocks: updatedMatrixBlocks });
           knownVersionRef.current = e.actualVersion + 1;
-          showToast('Note: this case had unsaved changes elsewhere — the Biopsy Array was dissolved, but double-check the rest of the case reflects what you expect.');
+          showToast(t('useSpecimenBlockManagement.toast.unsavedChangesBiopsyArrayDissolve'));
         } catch (retryErr) {
           console.error('[Grossing] Failed to save Biopsy Array dissolve after conflict retry:', retryErr);
         }
@@ -1650,8 +1657,8 @@ export function useSpecimenBlockManagement({
       }
     }
     markDirty('Blocks');
-    showToast(`Biopsy Array ${matrixBlock.label} dissolved — specimens are now separate blocks again`);
-  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData]);
+    showToast(t('useSpecimenBlockManagement.toast.biopsyArrayDissolved', { label: matrixBlock.label }));
+  }, [caseData, markDirty, showToast, knownVersionRef, setCaseData, t]);
 
   // Real, architectural fix, per direct follow-up: "the matrix block
   // itself is the tracked asset." The direct write-path for a real
@@ -1727,7 +1734,7 @@ export function useSpecimenBlockManagement({
     const matrixBlock = currentMatrixBlocks.find(m => m.id === matrixBlockId);
     if (!matrixBlock) return { ok: false };
 
-    showToast(`Sending ${stainName} order to LIS…`);
+    showToast(t('useSpecimenBlockManagement.toast.sendingStainOrderToLis', { stainName }));
     const result = await sendMaterialOrderToLis({
       kind: 'stain',
       specimenId: targetSpecimenIds[0],
@@ -1736,7 +1743,7 @@ export function useSpecimenBlockManagement({
       targetSpecimenIds,
     });
     if (!result.ok) {
-      showToast(`LIS did not acknowledge the ${stainName} order — nothing was recorded. Try again.`);
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckStainOrder', { stainName }));
       return result;
     }
 
@@ -1747,9 +1754,9 @@ export function useSpecimenBlockManagement({
       targetSpecimenIds,
     };
     await handleUpdateMatrixBlock(matrixBlockId, { slides: [...matrixBlock.slides, newStain] });
-    showToast(`${stainName} ordered on ${matrixBlock.label} — targeting ${targetSpecimenIds.length} specimen${targetSpecimenIds.length !== 1 ? 's' : ''}, sent to LIS`);
+    showToast(t('useSpecimenBlockManagement.toast.stainOrderedOnBlock', { stainName, label: matrixBlock.label, count: targetSpecimenIds.length }));
     return result;
-  }, [caseData, sendMaterialOrderToLis, showToast, handleUpdateMatrixBlock]);
+  }, [caseData, sendMaterialOrderToLis, showToast, handleUpdateMatrixBlock, t]);
 
   // Real fix: handleUpdateBiopsyArray needs to call
   // handleDissolveBiopsyArray when the edited selection drops below 2

@@ -36,6 +36,7 @@ import {
 import type { ICaseMaskService } from './ICaseMaskService';
 import type { CaseMaskScopeCandidate } from './resolveCaseMaskScopeCandidates';
 import { getFacilityDateParts } from '@/utils/facilityTime';
+import { renderCaseMask as renderMask } from './renderCaseMask';
 
 const COLLECTION_NAME = 'caseMasks';
 
@@ -44,18 +45,6 @@ const err = <T>(msg: string): ServiceResult<T> => ({ ok: false, error: msg });
 
 function keyFor(scopeType: CaseMaskScopeType, scopeId: string): string {
   return `${scopeType}::${scopeId}`;
-}
-
-function renderMask(pattern: string, prefix: string, seq: number, sequenceDigits: number, timezone: string): string {
-  const { year: year4num } = getFacilityDateParts(new Date(), timezone);
-  const year4 = String(year4num);
-  const year2 = year4.slice(-2);
-
-  return pattern
-    .split('{PREFIX}').join(prefix)
-    .split('{YEAR:4}').join(year4)
-    .split('{YEAR:2}').join(year2)
-    .replace(/\{SEQ:(\d+)\}/, (_m, digits) => String(seq).padStart(Number(digits) || sequenceDigits, '0'));
 }
 
 function needsAnnualReset(mask: Pick<CaseMask, 'resetSequenceAnnually' | 'lastResetYear'>, timezone: string): boolean {

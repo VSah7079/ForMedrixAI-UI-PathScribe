@@ -5,6 +5,7 @@
 // Right panel: system tabs + hierarchy filters + live search.
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { callAi } from '@/services/aiIntegration/aiProviderService';
 import { resolveAiConfigOverrideForClient } from '@/components/Config/AI/resolveClientAiModel';
 import '../../../pathscribe.css';
@@ -123,6 +124,26 @@ const ALL_SYSTEMS: { id: CodeSystem; label: string; accent: string }[] = [
   { id: 'OPCS4',  label: 'OPCS-4',   accent: '#0891B2' },
 ];
 
+// Real, label-key-maps — SYSTEM_LABEL_KEY covers the official coding-
+// standard names (SNOMED CT, ICD-10, etc.), which stay identical across
+// every locale as proper nouns (same established precedent as the
+// existing synopticReportPage.snomedCt/snomedTitle keys elsewhere in
+// this app) but are still wrapped in a translation key for structural
+// consistency. SNOMED_FILTER_LABEL_KEY/HINT_KEY cover the plain-English
+// hierarchy-filter names, which DO vary per locale.
+const SYSTEM_LABEL_KEY: Record<CodeSystem, string> = {
+  SNOMED: 'addCodeModal.systemLabel.SNOMED', ICD10: 'addCodeModal.systemLabel.ICD10', ICD11: 'addCodeModal.systemLabel.ICD11',
+  LOINC: 'addCodeModal.systemLabel.LOINC', ICDO: 'addCodeModal.systemLabel.ICDO', CPT: 'addCodeModal.systemLabel.CPT', OPCS4: 'addCodeModal.systemLabel.OPCS4',
+};
+const SNOMED_FILTER_LABEL_KEY: Record<SnomedFilter, string> = {
+  all: 'addCodeModal.snomedFilter.all.label', morphology: 'addCodeModal.snomedFilter.morphology.label',
+  anatomy: 'addCodeModal.snomedFilter.anatomy.label', specimen: 'addCodeModal.snomedFilter.specimen.label', organism: 'addCodeModal.snomedFilter.organism.label',
+};
+const SNOMED_FILTER_HINT_KEY: Record<SnomedFilter, string> = {
+  all: 'addCodeModal.snomedFilter.all.hint', morphology: 'addCodeModal.snomedFilter.morphology.hint',
+  anatomy: 'addCodeModal.snomedFilter.anatomy.hint', specimen: 'addCodeModal.snomedFilter.specimen.hint', organism: 'addCodeModal.snomedFilter.organism.hint',
+};
+
 const SNOMED_FILTERS: { id: SnomedFilter; label: string; hint: string }[] = [
   { id: 'all',       label: 'All',        hint: 'All SNOMED concepts' },
   { id: 'morphology',label: 'Morphology', hint: 'Diagnoses & structural changes' },
@@ -181,6 +202,7 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   caseText, synopticAnswers, templateName, synopticDerivedCodes, narrativeText,
   originHospitalId, activeSpecimenIndex, initialSystem, facilityId, isOrchestrationMode = false,
 }) => {
+  const { t } = useTranslation();
   // ── Site coding config ────────────────────────────────────────────────────
   // Coding systems shown are driven by site config from organisationService.
   // This replaces any hardcoded locale/country checks.
@@ -335,14 +357,14 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
         // can tell the person their search backend is unavailable,
         // not that the term itself has no matches.
         setResults([]);
-        setSearchError(err?.message ?? 'Search failed — please try again.');
+        setSearchError(err?.message ?? t('addCodeModal.searchFailedDefault'));
       }
       setLoading(false);
       setFocused(-1);
     }, 300);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, system, snomedFilter]);
+  }, [query, system, snomedFilter, t]);
 
   // ── Applied code helpers ──────────────────────────────────────────────────
 
@@ -594,11 +616,11 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
       setAiSuggestions(verified);
       setAiRan(true);
     } catch (e: any) {
-      setAiError(e?.message ?? 'AI suggestion failed');
+      setAiError(e?.message ?? t('addCodeModal.aiSuggestionFailedDefault'));
     } finally {
       setAiLoading(false);
     }
-  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems, isOrchestrationMode]);
+  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems, isOrchestrationMode, t]);
 
   // Auto-run on open — after generateAiCodes is defined
   // Tier 1: use pre-derived synoptic codes immediately
@@ -660,7 +682,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
         await onAddToSpecimens(allActiveCodes, specimenIndices);
         onClose();
       } catch (err: any) {
-        setSaveError(err?.message ?? 'Failed to save — please try again.');
+        setSaveError(err?.message ?? t('addCodeModal.saveFailedDefault'));
       } finally {
         setSaving(false);
       }
@@ -668,7 +690,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
       setSaving(false);
       onClose();
     }
-  }, [applied, existingCodes, allSpecimens, onAddToSpecimens, onClose]);
+  }, [applied, existingCodes, allSpecimens, onAddToSpecimens, onClose, t]);
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
 
@@ -683,7 +705,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
   // base code was picked here but never showed up as applied anywhere
   // else in the app.
   const handleCloseAttempt = () => {
-    if (isDirty && !window.confirm('You have unsaved code changes. Discard them and close without saving?')) {
+    if (isDirty && !window.confirm(t('addCodeModal.unsavedChangesConfirm'))) {
       return;
     }
     onClose();
@@ -716,10 +738,9 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
   );
 
   const CodeChip: React.FC<{ entry: PendingCode }> = ({ entry }) => {
-    const [hovered, setHovered] = React.useState(false);
     return (
       <div
-        className={`fm-flag-chip${entry.pendingDelete ? ' deleted' : ''}`}
+        className={`fm-flag-chip acd-code-chip${entry.pendingDelete ? ' deleted' : ''}`}
         draggable={!entry.pendingDelete}
         onDragStart={e => {
           setDragCode(entry);
@@ -729,14 +750,6 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
         onContextMenu={e => {
           e.preventDefault();
           if (!entry.pendingDelete) setContextMenu({ entry, x: e.clientX, y: e.clientY });
-        }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          cursor:     entry.pendingDelete ? 'default' : 'grab',
-          background: hovered && !entry.pendingDelete ? 'rgba(56,189,248,0.08)' : undefined,
-          borderColor: hovered && !entry.pendingDelete ? 'rgba(56,189,248,0.3)' : undefined,
-          transition: 'background 0.12s, border-color 0.12s',
         }}
       >
         {/* Grabber — only shown when not deleted */}
@@ -750,11 +763,11 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
           {entry.display}
         </span>
         {entry.pendingDelete ? (
-          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title="Undo removal">
+          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title={t('addCodeModal.undoRemoval')}>
             <IcoUndo />
           </button>
         ) : (
-          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title="Remove code">
+          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title={t('addCodeModal.removeCode')}>
             <IcoTrash />
           </button>
         )}
@@ -777,12 +790,12 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
   const GroupedCodeRow: React.FC<{ entries: PendingCode[] }> = ({ entries }) => {
     const first = entries[0];
     return (
-      <div className="fm-flag-chip" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>{first.display}</span>
-        <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+      <div className="fm-flag-chip acd-grouped-chip">
+        <span className="acd-grouped-display">{first.display}</span>
+        <span className="acd-grouped-codes">
           {entries.map((entry, i) => (
-            <span key={entry.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-              {i > 0 && <span style={{ color: '#64748b' }}>,</span>}
+            <span key={entry.id} className="acd-grouped-code-item">
+              {i > 0 && <span className="acd-grouped-comma">,</span>}
               <span
                 className={`acd-code-mono${entry.pendingDelete ? ' strikethrough' : ''}`}
                 title={`${entry.code} — ${entry.display}`}
@@ -790,11 +803,11 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 {entry.code}
               </span>
               {entry.pendingDelete ? (
-                <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title="Undo removal">
+                <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title={t('addCodeModal.undoRemoval')}>
                   <IcoUndo />
                 </button>
               ) : (
-                <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title="Remove this instance">
+                <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title={t('addCodeModal.removeThisInstance')}>
                   <IcoTrash />
                 </button>
               )}
@@ -838,14 +851,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
           if (dragCode && !isSame) moveCode(dragCode, specimenIndex);
           setDragOverTarget('none');
         }}
-        style={{
-          borderRadius: 8,
-          border: isOver && !isSame ? '1.5px dashed #38bdf8' : '1.5px solid transparent',
-          background: isOver && !isSame ? 'rgba(8,145,178,0.08)' : 'transparent',
-          transition: 'all 0.12s',
-          padding: '2px 0',
-          marginBottom: 4,
-        }}
+        className={`acd-drop-zone${isOver && !isSame ? ' acd-drop-zone--over' : ''}`}
       >
         {children}
       </div>
@@ -857,25 +863,18 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
   const ContextMenu = contextMenu ? (
     <div
       onClick={() => setContextMenu(null)}
-      style={{ position: 'fixed', inset: 0, zIndex: 9000 }}
+      className="acd-ctx-backdrop"
     >
       <div
         onClick={e => e.stopPropagation()}
+        className="acd-ctx-menu"
         style={{
-          position: 'fixed',
           left: Math.min(contextMenu.x, window.innerWidth - 220),
           top:  Math.min(contextMenu.y, window.innerHeight - 200),
-          width: 210,
-          background: '#1e293b',
-          border: '1px solid #334155',
-          borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-          overflow: 'hidden',
-          zIndex: 9001,
         }}
       >
         <div className="acd-ctx-menu-label">
-          Move to
+          {t('addCodeModal.moveTo')}
         </div>
 
         {/* Case Level */}
@@ -883,11 +882,9 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
           <button
             onClick={() => moveCode(contextMenu.entry, null)}
             className="acd-ctx-menu-btn"
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.15)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             <IcoCase />
-            Case Level
+            {t('addCodeModal.caseLevel')}
           </button>
         )}
 
@@ -899,12 +896,10 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
               key={sp.index}
               onClick={() => moveCode(contextMenu.entry, sp.index)}
               className="acd-ctx-menu-btn"
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.15)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
             >
               <IcoSpec />
               <span className="acd-sp-label">
-                <span className="acd-sp-label-prefix">Sp {sp.id}:</span> {sp.name}
+                <span className="acd-sp-label-prefix">{t('addCodeModal.specimenPrefix', { id: sp.id })}</span> {sp.name}
               </span>
             </button>
           ))
@@ -924,29 +919,26 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
         {/* ── HEADER ── */}
         <div className="ps-research-header">
           <div>
-            <div className="fm-eyebrow">Code Manager</div>
+            <div className="fm-eyebrow">{t('addCodeModal.eyebrow')}</div>
             <div className="fm-title-row">
               <IcoCode />
-              <h2 className="fm-title">Codes</h2>
+              <h2 className="fm-title">{t('addCodeModal.title')}</h2>
               {totalActive > 0 && (
-                <span className="fm-active-badge">{totalActive} active</span>
+                <span className="fm-active-badge">{t('addCodeModal.activeCount', { count: totalActive })}</span>
               )}
             </div>
           </div>
-          <button className="acd-close-btn" aria-label="Close" onClick={handleCloseAttempt}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-          >✕</button>
+          <button className="acd-close-btn" aria-label={t('addCodeModal.close')} onClick={handleCloseAttempt}>✕</button>
         </div>
 
         <div className="acd-body">
 
           {/* ── LEFT PANEL ── */}
           <div className="fm-left-panel acd-left">
-            <div className="acd-left-title">Applied Codes</div>
+            <div className="acd-left-title">{t('addCodeModal.appliedCodes')}</div>
             {dragCode && (
               <div className="acd-left-hint">
-                Drop on a target to move · Right-click for menu
+                {t('addCodeModal.dragHint')}
               </div>
             )}
 
@@ -957,14 +949,14 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 onClick={() => setTarget(null)}
               >
                 <IcoCase />
-                <span className="acd-case-label-flex">Case Level</span>
+                <span className="acd-case-label-flex">{t('addCodeModal.caseLevel')}</span>
                 {activeCaseApplied.length > 0 && (
                   <span className="fm-count-badge">{activeCaseApplied.length}</span>
                 )}
               </button>
               {renderAppliedGroups(caseApplied)}
               {caseApplied.length === 0 && (
-                <div className="fm-no-flags-note">No case-level codes</div>
+                <div className="fm-no-flags-note">{t('addCodeModal.noCaseLevelCodes')}</div>
               )}
             </DropZone>
 
@@ -982,7 +974,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                   >
                     <IcoSpec />
                     <span className="acd-sp-row-label">
-                      <span className="acd-sp-label-prefix">Sp {sp.id}:</span>{'  '}{sp.name}
+                      <span className="acd-sp-label-prefix">{t('addCodeModal.specimenPrefix', { id: sp.id })}</span>{'  '}{sp.name}
                     </span>
                     {activeCount > 0 && (
                       <span className="fm-count-badge">{activeCount}</span>
@@ -990,7 +982,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                   </button>
                   {renderAppliedGroups(spApplied)}
                   {spApplied.length === 0 && (
-                    <div className="fm-no-flags-note">No codes applied — drag here or click row to add</div>
+                    <div className="fm-no-flags-note">{t('addCodeModal.noCodesAppliedDragHint')}</div>
                   )}
                 </DropZone>
               );
@@ -1006,22 +998,15 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 <button
                   onClick={generateAiCodes}
                   disabled={aiLoading}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                    border: '1.5px solid rgba(8,145,178,0.5)',
-                    background: aiLoading ? 'rgba(8,145,178,0.08)' : 'rgba(8,145,178,0.15)',
-                    color: aiLoading ? '#64748b' : '#38bdf8',
-                    cursor: aiLoading ? 'wait' : 'pointer', transition: 'all 0.15s',
-                  }}
+                  className={`acd-ai-suggest-btn${aiLoading ? ' acd-ai-suggest-btn--loading' : ''}`}
                 >
                   <span className="acd-ai-sparkle">✦</span>
-                  {aiLoading ? 'AI thinking…'
-                    : aiRan && synopticDerivedCodes?.length ? '↻ Re-run (Synoptic)'
-                    : aiRan && narrativeText ? '↻ Re-run (Narrative)'
-                    : aiRan ? '↻ Re-run AI Suggestions'
-                    : narrativeText ? '✦ AI Suggest (Narrative)'
-                    : '✦ AI Suggest Codes'}
+                  {aiLoading ? t('addCodeModal.aiThinking')
+                    : aiRan && synopticDerivedCodes?.length ? `↻ ${t('addCodeModal.rerunSynoptic')}`
+                    : aiRan && narrativeText ? `↻ ${t('addCodeModal.rerunNarrative')}`
+                    : aiRan ? `↻ ${t('addCodeModal.rerunAiSuggestions')}`
+                    : narrativeText ? `✦ ${t('addCodeModal.aiSuggestNarrative')}`
+                    : `✦ ${t('addCodeModal.aiSuggestCodes')}`}
                 </button>
                 {aiError && <span className="acd-ai-error">⚠ {aiError}</span>}
               </div>
@@ -1035,11 +1020,11 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                   className="acd-ai-panel-header"
                 >
                   <span>✦</span>
-                  <span className="acd-ai-panel-label">AI Suggested Codes — review and apply</span>
+                  <span className="acd-ai-panel-label">{t('addCodeModal.aiSuggestedCodesHeader')}</span>
                   <span className="acd-ai-panel-count">
-                    {visibleSuggestions.length} suggestions
+                    {t('addCodeModal.suggestionsCount', { count: visibleSuggestions.length })}
                   </span>
-                  <span style={{ fontSize: 14, transition: 'transform 0.2s', transform: aiPanelCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                  <span className="acd-ai-panel-chevron" style={{ transform: aiPanelCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 </div>
                 {!aiPanelCollapsed && visibleSuggestions
                   .map((sug) => {
@@ -1055,15 +1040,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                     <div
                       key={sug.code}
                       onClick={() => elsewhere.length === 0 && addCode({ code: sug.code, display: sug.display, system: sug.system })}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', cursor: 'pointer',
-                        background: activeCount > 0 ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)',
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.08)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = activeCount > 0 ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)')}
+                      className={`acd-ai-suggestion-row${activeCount > 0 ? ' acd-ai-suggestion-row--active' : ''}`}
                     >
                       <span className="acd-code-badge">
                         {sug.code}
@@ -1073,40 +1050,40 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                       </span>
                       {sug.system === 'CPT' && (
                         <span
-                          style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: 'rgba(251,191,36,0.12)', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }}
-                          title="Rough RVU estimate only, not a precision billing determination — your LIS owns real billing for this case"
+                          className="acd-estimate-badge"
+                          title={t('addCodeModal.estimateTooltip')}
                         >
-                          Estimate
+                          {t('addCodeModal.estimate')}
                         </span>
                       )}
-                      <span style={{ flex: 1, fontSize: 13, color: activeCount > 0 ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className={`acd-sug-desc ${activeCount > 0 ? 'acd-sug-desc--active' : 'acd-sug-desc--default'}`}>
                         {sug.display}
                       </span>
-                      <span style={{ fontSize: 12, color: sug.confidence >= 85 ? '#34d399' : '#fbbf24', fontWeight: 700, flexShrink: 0 }}>
+                      <span className={sug.confidence >= 85 ? 'acd-confidence-hi' : 'acd-confidence-lo'}>
                         {sug.confidence}%
                       </span>
                       {sug.rvu != null && (
                         <span className="acd-already-added">
-                          {sug.rvu} RVU
+                          {t('addCodeModal.rvuValue', { rvu: sug.rvu })}
                         </span>
                       )}
                       {activeCount > 0 ? (
-                        <span className="acd-added-check" title={`Applied ${activeCount}× — click to add another instance`}>✓ ×{activeCount}</span>
+                        <span className="acd-added-check" title={t('addCodeModal.appliedNTimes', { count: activeCount })}>✓ ×{activeCount}</span>
                       ) : elsewhere.length > 0 ? (
                         <span
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#fbbf24' }}
-                          title={`Already applied to: ${elsewhere.map(e => e.specimenIndex === null ? 'Case' : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? 'another specimen')).join(', ')}`}
+                          className="acd-elsewhere-hint"
+                          title={t('addCodeModal.alreadyAppliedTo', { targets: elsewhere.map(e => e.specimenIndex === null ? t('addCodeModal.caseLevel') : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? t('addCodeModal.anotherSpecimen'))).join(', ') })}
                         >
-                          Elsewhere
+                          {t('addCodeModal.elsewhere')}
                           <button
                             className="ps-conf-btn-row"
                             onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
                           >
-                            Move here
+                            {t('addCodeModal.moveHere')}
                           </button>
                         </span>
                       ) : (
-                        <span className="acd-add-btn" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
+                        <span className="acd-add-btn" title={t('addCodeModal.applyCode')}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                       )}
                     </div>
                   );
@@ -1118,13 +1095,12 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
             <div className="acd-filter-row">
               {SYSTEMS.map(s => (
                 <button key={s.id} onClick={() => { setSystem(s.id); setQuery(''); setFocused(-1); inputRef.current?.focus(); }}
+                  className="acd-system-tab-btn"
                   style={{
-                    padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
-                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
                     background: system === s.id ? s.accent : 'rgba(255,255,255,0.06)',
                     color: system === s.id ? 'white' : '#94a3b8',
                   }}
-                >{s.id === 'CPT' ? (isOrchestrationMode ? 'Billing Code' : 'CPT (RVU)') : s.label}</button>
+                >{s.id === 'CPT' ? (isOrchestrationMode ? t('addCodeModal.billingCode') : t('addCodeModal.cptRvu')) : t(SYSTEM_LABEL_KEY[s.id])}</button>
               ))}
             </div>
 
@@ -1132,26 +1108,25 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
             {system === 'SNOMED' && (
               <div className="acd-filter-row">
                 {SNOMED_FILTERS.map(f => (
-                  <button key={f.id} onClick={() => setSnomedFilter(f.id)} title={f.hint}
+                  <button key={f.id} onClick={() => setSnomedFilter(f.id)} title={t(SNOMED_FILTER_HINT_KEY[f.id])}
+                    className="acd-snomed-filter-btn"
                     style={{
-                      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
                       border: `1px solid ${snomedFilter === f.id ? '#0891B2' : 'rgba(100,116,139,0.4)'}`,
                       background: snomedFilter === f.id ? 'rgba(8,145,178,0.15)' : 'transparent',
                       color: snomedFilter === f.id ? '#38bdf8' : '#64748b',
-                      cursor: 'pointer', transition: 'all 0.12s',
                     }}
-                  >{f.label}</button>
+                  >{t(SNOMED_FILTER_LABEL_KEY[f.id])}</button>
                 ))}
               </div>
             )}
 
             {/* Target indicator */}
             <div className="acd-hint-text">
-              Applying to:{' '}
+              {t('addCodeModal.applyingTo')}{' '}
               <strong className="acd-hint-strong">
-                {target === null ? 'Case Level' : `Specimen ${allSpecimens.find(s => s.index === target)?.id ?? target + 1}`}
+                {target === null ? t('addCodeModal.caseLevel') : t('addCodeModal.specimenTarget', { id: allSpecimens.find(s => s.index === target)?.id ?? target + 1 })}
               </strong>
-              <span className="acd-hint-muted">— click a row on the left to change</span>
+              <span className="acd-hint-muted">{t('addCodeModal.clickToChange')}</span>
             </div>
 
             {/* Real, honest note, per direct requirement: "the
@@ -1164,8 +1139,8 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 tracking to work, just honestly labeled as not a real
                 charge here. */}
             {system === 'CPT' && !isOrchestrationMode && (
-              <div className="acd-hint-text" style={{ color: '#fbbf24', marginTop: -4, marginBottom: 8 }}>
-                ⓘ Assist mode: this records a CPT code for RVU/productivity tracking only — your LIS owns real billing for this case.
+              <div className="acd-hint-text acd-assist-mode-note">
+                ⓘ {t('addCodeModal.assistModeNote')}
               </div>
             )}
 
@@ -1179,7 +1154,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 value={query}
                 onChange={e => { setQuery(e.target.value); setFocused(-1); }}
                 onKeyDown={handleKeyDown}
-                placeholder={`Search ${sysInfo.label} — code or term…`}
+                placeholder={t('addCodeModal.searchPlaceholder', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}
               />
               {query && (
                 <button className="fm-search-clear" onClick={() => { setQuery(''); setResults([]); inputRef.current?.focus(); }}>✕</button>
@@ -1190,31 +1165,31 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
             <div className="acd-list-scroll">
               {loading ? (
                 <div className="fm-empty">
-                  <div className="fm-empty-hint">Searching {sysInfo.label}…</div>
+                  <div className="fm-empty-hint">{t('addCodeModal.searchingSystem', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}</div>
                 </div>
               ) : !query.trim() ? (
                 <div className="fm-empty">
                   <IcoSearch />
-                  <div className="fm-empty-heading">Search {sysInfo.label}</div>
+                  <div className="fm-empty-heading">{t('addCodeModal.searchSystemHeading', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}</div>
                   <div className="fm-empty-hint">
-                    {system === 'SNOMED' ? 'Type a diagnosis, site, specimen type, or organism' :
-                     system === 'ICD10'  ? 'Type a code (e.g. C50) or description' :
-                     system === 'LOINC'  ? 'Type a test name or LOINC number' :
-                     system === 'ICD11'  ? 'ICD-11 requires backend proxy — coming soon' :
-                     'ICD-O search requires backend proxy — coming soon'}
+                    {system === 'SNOMED' ? t('addCodeModal.searchHint.snomed') :
+                     system === 'ICD10'  ? t('addCodeModal.searchHint.icd10') :
+                     system === 'LOINC'  ? t('addCodeModal.searchHint.loinc') :
+                     system === 'ICD11'  ? t('addCodeModal.searchHint.icd11') :
+                     t('addCodeModal.searchHint.icdo')}
                   </div>
                 </div>
               ) : searchError ? (
                 <div className="fm-empty">
                   <IcoSearch />
-                  <div className="fm-empty-heading" style={{ color: '#f59e0b' }}>Search unavailable</div>
+                  <div className="fm-empty-heading acd-empty-heading--warning">{t('addCodeModal.searchUnavailable')}</div>
                   <div className="fm-empty-hint">{searchError}</div>
                 </div>
               ) : results.length === 0 ? (
                 <div className="fm-empty">
                   <IcoSearch />
-                  <div className="fm-empty-heading">No results for "{query}"</div>
-                  <div className="fm-empty-hint">Try a different term or switch filters</div>
+                  <div className="fm-empty-heading">{t('addCodeModal.noResultsFor', { query })}</div>
+                  <div className="fm-empty-hint">{t('addCodeModal.tryDifferentTerm')}</div>
                 </div>
               ) : results.map((r, i) => {
                 const activeCount = applied.filter(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete).length;
@@ -1239,34 +1214,33 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                 return (
                   <div
                     key={r.code}
-                    className={`fm-flag-card${activeCount > 0 ? ' applied' : ''}`}
-                    style={{ background: isFocus && activeCount === 0 ? 'rgba(255,255,255,0.05)' : undefined }}
+                    className={`fm-flag-card acd-result-card${activeCount > 0 ? ' applied' : ''}${isFocus && activeCount === 0 ? ' acd-result-card--focused' : ''}`}
                     onMouseEnter={() => setFocused(i)}
                     onClick={() => elsewhere.length === 0 && addCode(r)}
                   >
-                    <span className={`fm-code-chip${activeCount > 0 ? ' applied' : ''}`} style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                    <span className={`fm-code-chip${activeCount > 0 ? ' applied' : ''}`}>
                       {r.code}
                     </span>
-                    <span style={{ fontSize: 13, color: activeCount > 0 ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span className={`acd-sug-desc ${activeCount > 0 ? 'acd-sug-desc--active' : 'acd-sug-desc--default'}`}>
                       {r.display}
                     </span>
                     {activeCount > 0 ? (
-                      <span className="acd-added-text" title={`Applied ${activeCount}× — click to add another instance`}>✓ Applied ×{activeCount}</span>
+                      <span className="acd-added-text" title={t('addCodeModal.appliedNTimes', { count: activeCount })}>✓ {t('addCodeModal.appliedTimesLabel', { count: activeCount })}</span>
                     ) : elsewhere.length > 0 ? (
                       <span
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#fbbf24' }}
-                        title={`Already applied to: ${elsewhere.map(e => e.specimenIndex === null ? 'Case' : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? 'another specimen')).join(', ')}`}
+                        className="acd-elsewhere-hint"
+                        title={t('addCodeModal.alreadyAppliedTo', { targets: elsewhere.map(e => e.specimenIndex === null ? t('addCodeModal.caseLevel') : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? t('addCodeModal.anotherSpecimen'))).join(', ') })}
                       >
-                        Applied elsewhere
+                        {t('addCodeModal.appliedElsewhere')}
                         <button
                           className="ps-conf-btn-row"
                           onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
                         >
-                          Move here
+                          {t('addCodeModal.moveHere')}
                         </button>
                       </span>
                     ) : (
-                      <span className="fm-apply-btn acd-apply-btn-right" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
+                      <span className="fm-apply-btn acd-apply-btn-right" title={t('addCodeModal.applyCode')}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                     )}
                   </div>
                 );
@@ -1280,23 +1254,25 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
 
         {/* ── FOOTER ── */}
         <div className="fm-footer">
-          <span className={`fm-footer-status${isDirty ? ' dirty' : ''}`} style={saveError ? { color: '#f87171' } : undefined}>
+          <span className={`fm-footer-status${isDirty ? ' dirty' : ''}${saveError ? ' acd-footer-status--error' : ''}`}>
             {saveError
               ? saveError
               : isDirty
-              ? `${toAddCount > 0 ? `${toAddCount} to add` : ''}${toAddCount > 0 && toRemoveCount > 0 ? ' · ' : ''}${toRemoveCount > 0 ? `${toRemoveCount} to remove` : ''}`
-              : 'No changes'
+              ? [
+                  toAddCount > 0 ? t('addCodeModal.toAddCount', { count: toAddCount }) : null,
+                  toRemoveCount > 0 ? t('addCodeModal.toRemoveCount', { count: toRemoveCount }) : null,
+                ].filter(Boolean).join(' · ')
+              : t('addCodeModal.noChanges')
             }
           </span>
           <div className="acd-footer-row">
-            <button className="fm-btn-cancel" onClick={handleCloseAttempt}>Cancel</button>
+            <button className="fm-btn-cancel" onClick={handleCloseAttempt}>{t('addCodeModal.cancel')}</button>
             <button
               className="fm-btn-save"
               disabled={saving || !isDirty}
               onClick={handleSave}
-              style={{ opacity: saving || !isDirty ? 0.5 : 1 }}
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('addCodeModal.saving') : t('addCodeModal.save')}
             </button>
           </div>
         </div>

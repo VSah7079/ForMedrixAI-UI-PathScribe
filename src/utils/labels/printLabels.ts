@@ -18,6 +18,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LabelSizePreset } from '@/types/labels/LabelSizePreset';
+// Plain utility function, not a hook/component — can't call useTranslation().
+// Imports the already-initialized i18next instance directly and calls its
+// t() method, same resources/language as everywhere else in the app.
+import i18n from '@/i18n/config';
 
 const LABEL_STYLES = `
   * { box-sizing: border-box; }
@@ -130,7 +134,7 @@ export function printLabels(labelHtmlFragments: string[], preset: LabelSizePrese
 
   const printWindow = window.open('', '_blank', 'width=900,height=1000');
   if (!printWindow) {
-    alert('Please allow pop-ups for this site to print labels.');
+    alert(i18n.t('printLabels.popupBlockedAlert'));
     return false;
   }
 

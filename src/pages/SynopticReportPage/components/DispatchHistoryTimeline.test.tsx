@@ -1,7 +1,15 @@
 // @vitest-environment happy-dom
 //
 // src/pages/SynopticReportPage/components/DispatchHistoryTimeline.test.tsx
+//
+// Real update alongside the component's i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and every assertion below would see the raw
+// key string instead of its English text.
 
+import '@/i18n/config';
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import DispatchHistoryTimeline from './DispatchHistoryTimeline';

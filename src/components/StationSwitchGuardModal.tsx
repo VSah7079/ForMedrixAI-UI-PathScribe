@@ -9,11 +9,16 @@
 // save/discard wiring (the exact same saveDraftInternal()/
 // discardDraft() every other real save/discard trigger already
 // uses, not a second, invented path).
+//
+// i18n note: `pending.station.name` is a real station name, passed
+// through as interpolation data, not translated.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useTranslation } from 'react-i18next';
 import { useGlobalStationSwitch } from '@/hooks/useGlobalStationSwitch';
 
 export function StationSwitchGuardModal() {
+  const { t } = useTranslation();
   const { pending, saveAndSwitch, discardAndSwitch, cancelSwitch } = useGlobalStationSwitch();
   if (!pending) return null;
 
@@ -21,20 +26,20 @@ export function StationSwitchGuardModal() {
     <div className="ps-overlay ps-station-guard-overlay">
       <div className="ps-modal-dark ps-station-guard-modal">
         <div>
-          <div className="ps-station-guard-title">⚠️ Unsaved changes</div>
+          <div className="ps-station-guard-title">⚠️ {t('stationSwitchGuardModal.title')}</div>
           <div className="ps-station-guard-subtitle">
-            You have unsaved changes. Scanning "{pending.station.name}" will switch your active station — decide what happens to your current work first.
+            {t('stationSwitchGuardModal.subtitle', { stationName: pending.station.name })}
           </div>
         </div>
         <div className="ps-station-guard-actions">
           <button className="ps-station-guard-save" onClick={saveAndSwitch}>
-            💾 Save &amp; Switch to {pending.station.name}
+            💾 {t('stationSwitchGuardModal.saveAndSwitchButton', { stationName: pending.station.name })}
           </button>
           <button className="ps-station-guard-discard" onClick={discardAndSwitch}>
-            🗑️ Discard &amp; Switch
+            🗑️ {t('stationSwitchGuardModal.discardAndSwitchButton')}
           </button>
           <button className="ps-station-guard-cancel" onClick={cancelSwitch}>
-            Cancel — stay here
+            {t('stationSwitchGuardModal.cancelButton')}
           </button>
         </div>
       </div>

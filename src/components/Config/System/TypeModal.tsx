@@ -2,8 +2,16 @@
 // Rewritten from scratch to avoid OXC/rolldown parse issues.
 // Zero template literals in style props. Zero inline hex-alpha strings.
 // All styling via CSS classes from pathscribe.css.
+//
+// i18n sweep (batch 57, swept together with its parent
+// ParticipationTypesSection.tsx): every on-screen label, placeholder, and
+// validation message now goes through the participationTypesSection.modal.*
+// namespace. Real data (draft.label, draft.abbreviation, draft.description,
+// draft.color, lab.name) stays exactly as entered/stored - only chrome and
+// static hint text are translated.
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { ParticipationTypeRecord as ParticipationType, NewParticipationType } from '../../../services/participationTypes/IParticipationTypeService';
 import { findDuplicate } from '../../../utils/validateUnique';
@@ -59,6 +67,7 @@ const PRESET_COLORS = [
 // ── Main component ────────────────────────────────────────────────────────────
 
 const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs, isBuiltIn, onSave, onClose }) => {
+  const { t } = useTranslation();
 
   const [draft, setDraft] = useState<Draft>({
     label:                 type?.label                 ?? '',
@@ -115,8 +124,8 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
   };
 
   const handleSave = () => {
-    if (!draft.label.trim())        { setError('Label is required');        return; }
-    if (!draft.abbreviation.trim()) { setError('Abbreviation is required'); return; }
+    if (!draft.label.trim())        { setError(t('participationTypesSection.modal.errorLabelRequired'));        return; }
+    if (!draft.abbreviation.trim()) { setError(t('participationTypesSection.modal.errorAbbrRequired')); return; }
     // PS-73: label AND abbreviation uniqueness — real gap, since
     // abbreviation is displayed as a compact chip in CaseTeamModal.tsx
     // (two types sharing "PRIM" would be genuinely ambiguous there),
@@ -131,9 +140,9 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
     // ever adding that axis here.
     const excludeId = mode === 'edit' ? type?.id : undefined;
     const labelCollision = findDuplicate(existingEntries, { label: draft.label.trim() }, ['label'], excludeId);
-    if (labelCollision) { setError(`A participation type named "${labelCollision.label}" already exists.`); return; }
+    if (labelCollision) { setError(t('participationTypesSection.modal.errorLabelDuplicate', { label: labelCollision.label })); return; }
     const abbrCollision = findDuplicate(existingEntries, { abbreviation: draft.abbreviation.trim() }, ['abbreviation'], excludeId);
-    if (abbrCollision) { setError(`Abbreviation "${abbrCollision.abbreviation}" is already used by "${abbrCollision.label}".`); return; }
+    if (abbrCollision) { setError(t('participationTypesSection.modal.errorAbbrDuplicate', { abbr: abbrCollision.abbreviation, label: abbrCollision.label })); return; }
     setError('');
     onSave(draft);
   };
@@ -152,19 +161,18 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
   return (
     <div className="ps-conf-backdrop">
       <div
-        className="fm-modal fm-modal--config"
-        style={{ width: 'min(600px, 96vw)' }}
+        className="fm-modal fm-modal--config ps-rulemodal__modal"
         onClick={e => e.stopPropagation()}
       >
 
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · Participation Types</div>
-            <h2 className="fm-title" style={{ fontSize: 16 }}>
-              {mode === 'add' ? 'Add Participation Type' : 'Edit — ' + (type?.label ?? '')}
+            <div className="fm-eyebrow">{t('participationTypesSection.modal.eyebrow')}</div>
+            <h2 className="fm-title ps-participationtypes__modal-title">
+              {mode === 'add' ? t('participationTypesSection.modal.titleAdd') : t('participationTypesSection.modal.titleEdit', { label: type?.label ?? '' })}
               {isBuiltIn && (
-                <span className="ps-idf-tier-badge ps-idf-tier-badge--2" style={{ marginLeft: 8 }}>
-                  built-in
+                <span className="ps-idf-tier-badge ps-idf-tier-badge--2 ps-participationtypes__builtin-badge">
+                  {t('participationTypesSection.builtInBadge')}
                 </span>
               )}
             </h2>
@@ -175,51 +183,51 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
 
           {isBuiltIn && (
             <div className="ps-sub-info-box">
-              Built-in types cannot be deleted. You can edit the label, description, and colour.
+              {t('participationTypesSection.modal.builtInInfo')}
             </div>
           )}
 
           {/* Label */}
           <div className="ps-sub-field">
             <label className="ps-sub-label">
-              Label <span className="ps-sub-label-req">*</span>
+              {t('participationTypesSection.modal.labelLabel')} <span className="ps-sub-label-req">*</span>
             </label>
             <input
               className="ps-sub-input"
               value={draft.label}
               onChange={e => setDraft(d => ({ ...d, label: e.target.value }))}
-              placeholder="e.g. Primary Pathologist"
+              placeholder={t('participationTypesSection.modal.labelPlaceholder')}
             />
           </div>
 
           {/* Abbreviation */}
           <div className="ps-sub-field">
             <label className="ps-sub-label">
-              Abbreviation <span className="ps-sub-label-req">*</span>
+              {t('participationTypesSection.modal.abbreviationLabel')} <span className="ps-sub-label-req">*</span>
             </label>
             <input
               className="ps-sub-input"
               value={draft.abbreviation}
               onChange={e => setDraft(d => ({ ...d, abbreviation: e.target.value }))}
-              placeholder="e.g. Primary"
+              placeholder={t('participationTypesSection.modal.abbreviationPlaceholder')}
               maxLength={12}
             />
           </div>
 
           {/* Description */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Description</label>
+            <label className="ps-sub-label">{t('participationTypesSection.modal.descriptionLabel')}</label>
             <input
               className="ps-sub-input"
               value={draft.description}
               onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-              placeholder="Brief description of this participation role"
+              placeholder={t('participationTypesSection.modal.descriptionPlaceholder')}
             />
           </div>
 
           {/* Colour */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Colour</label>
+            <label className="ps-sub-label">{t('participationTypesSection.modal.colourLabel')}</label>
             <div className="ps-type-color-row">
               {PRESET_COLORS.map(c => (
                 <button
@@ -235,44 +243,42 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
                 value={draft.color}
                 onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
                 className="ps-type-color-input"
-                title="Custom colour"
+                title={t('participationTypesSection.modal.customColourTitle')}
               />
             </div>
             <div className="ps-type-preview-row">
               <span className="ps-type-preview-chip" style={{ background: draft.color, color: '#0f172a', opacity: 0.85 }}>
-                {draft.abbreviation || 'Preview'}
+                {draft.abbreviation || t('participationTypesSection.modal.previewFallback')}
               </span>
             </div>
           </div>
 
           {/* Capabilities */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Capabilities</label>
+            <label className="ps-sub-label">{t('participationTypesSection.modal.capabilitiesLabel')}</label>
             <div className="ps-type-cap-list">
-              {cap('canFinalize',           'Can Finalise / Sign Out',   'This role can issue the final signed report.', isBuiltIn && type?.id === 'primary')}
-              {cap('requiresCountersign',   'Requires Countersign',      'Reports from this role must be countersigned by an attending.')}
-              {cap('canBeAssignedTemplate', 'Can Use Report Template',   'This role can be assigned a report template for structured reporting.')}
-              {cap('canViewWholeCase',      'Can View Whole Case',       'Full case access including all specimens and prior reports.')}
-              {cap('allowsMultiple',        'Allows Multiple Per Case',  'More than one person can hold this role on the same case simultaneously.')}
+              {cap('canFinalize',           t('participationTypesSection.modal.capFinalizeLabel'),   t('participationTypesSection.modal.capFinalizeDesc'), isBuiltIn && type?.id === 'primary')}
+              {cap('requiresCountersign',   t('participationTypesSection.modal.capCountersignLabel'), t('participationTypesSection.modal.capCountersignDesc'))}
+              {cap('canBeAssignedTemplate', t('participationTypesSection.modal.capTemplateLabel'),    t('participationTypesSection.modal.capTemplateDesc'))}
+              {cap('canViewWholeCase',      t('participationTypesSection.modal.capFullViewLabel'),    t('participationTypesSection.modal.capFullViewDesc'))}
+              {cap('allowsMultiple',        t('participationTypesSection.modal.capMultiLabel'),       t('participationTypesSection.modal.capMultiDesc'))}
             </div>
           </div>
 
           {/* Per-performing-lab sign-out authority overrides */}
           {labs.length > 0 && (
             <div className="ps-sub-field">
-              <label className="ps-sub-label">Per-Performing-Lab Sign-Out Authority (optional)</label>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
-                Signing authority genuinely varies by jurisdiction (US CLIA/CAP vs. UK RCPath
-                delegation vs. other national liability rules). Leave a lab unlisted to use the
-                platform defaults above; override only where the local rule actually differs.
+              <label className="ps-sub-label">{t('participationTypesSection.modal.perLabLabel')}</label>
+              <div className="ps-participationtypes__modal-hint">
+                {t('participationTypesSection.modal.perLabHint')}
               </div>
               <div className="ps-type-cap-list">
                 {labs.map(lab => {
                   const enabled = overrideLabIds.includes(lab.id);
                   const ov = draft.authorityOverrides?.[lab.id];
                   return (
-                    <div key={lab.id} className="ps-sub-check-row ps-sub-check-row--unchecked" style={{ display: 'block' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <div key={lab.id} className="ps-sub-check-row ps-sub-check-row--unchecked ps-participationtypes__lab-row">
+                      <label className="ps-participationtypes__lab-row-label">
                         <input
                           type="checkbox"
                           checked={enabled}
@@ -282,21 +288,21 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
                         <span className="ps-sub-check-label">{lab.name}</span>
                       </label>
                       {enabled && (
-                        <div style={{ marginTop: 8, marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cbd5e1' }}>
+                        <div className="ps-participationtypes__lab-overrides">
+                          <label className="ps-participationtypes__lab-override-checkbox">
                             <input type="checkbox" checked={!!ov?.canFinalize}
                               onChange={e => setLabOverrideFlag(lab.id, 'canFinalize', e.target.checked)} />
-                            Can Finalise / Sign Out at this lab
+                            {t('participationTypesSection.modal.overrideFinalize')}
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cbd5e1' }}>
+                          <label className="ps-participationtypes__lab-override-checkbox">
                             <input type="checkbox" checked={!!ov?.requiresCountersign}
                               onChange={e => setLabOverrideFlag(lab.id, 'requiresCountersign', e.target.checked)} />
-                            Requires Countersign at this lab
+                            {t('participationTypesSection.modal.overrideCountersign')}
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cbd5e1' }}>
+                          <label className="ps-participationtypes__lab-override-checkbox">
                             <input type="checkbox" checked={!!ov?.canViewWholeCase}
                               onChange={e => setLabOverrideFlag(lab.id, 'canViewWholeCase', e.target.checked)} />
-                            Can View Whole Case at this lab
+                            {t('participationTypesSection.modal.overrideFullView')}
                           </label>
                         </div>
                       )}
@@ -309,7 +315,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
 
           {/* Active toggle */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Status</label>
+            <label className="ps-sub-label">{t('participationTypesSection.modal.statusLabel')}</label>
             <div className="ps-sub-toggle-wrap">
               <div
                 onClick={() => setDraft(d => ({ ...d, active: !d.active }))}
@@ -318,7 +324,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
                 <div className={draft.active ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
               </div>
               <span className={draft.active ? 'ps-sub-toggle-label--on' : 'ps-sub-toggle-label--off'}>
-                {draft.active ? 'Active' : 'Inactive'}
+                {draft.active ? t('common.active') : t('common.inactive')}
               </span>
             </div>
           </div>
@@ -329,10 +335,10 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
 
         <div className="fm-footer">
           <span className="fm-footer-status" />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onClose} className="fm-btn-cancel">Cancel</button>
+          <div className="ps-rulemodal__footer-actions">
+            <button onClick={onClose} className="fm-btn-cancel">{t('common.cancel')}</button>
             <button onClick={handleSave} className="fm-btn-apply">
-              {mode === 'add' ? 'Add Type' : 'Save Changes'}
+              {mode === 'add' ? t('participationTypesSection.modal.addTypeBtn') : t('participationTypesSection.modal.saveChangesBtn')}
             </button>
           </div>
         </div>
@@ -343,4 +349,3 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
 };
 
 export default TypeModal;
-

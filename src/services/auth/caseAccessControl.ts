@@ -72,6 +72,13 @@ import { resolveTenantFacility } from './resolveTenantFacility';
 import type { Facility } from '../facilities/IFacilityService';
 import type { ParticipationTypeRecord } from '../participationTypes/IParticipationTypeService';
 import { resolveParticipationTypeAuthority } from '../participationTypes/IParticipationTypeService';
+// Plain service module, not a hook/component — can't call useTranslation().
+// Imports the already-initialized i18next instance directly and calls its
+// t() method, same pattern as utils/labels/printLabels.ts. Used ONLY for
+// canFinalizeCase()'s own .reason strings below (see that function's own
+// i18n note) — every other .reason in this file stays literal English by
+// design; see the note above resolveCaseAccess() for why.
+import i18n from '@/i18n/config';
 
 const SESSION_STORAGE_KEY = 'pathscribe-user';
 
@@ -192,6 +199,14 @@ export type CaseAccessDecision =
  * string's equality directly or resolving through
  * organisationService.ts's own hardcoded, incomplete legacyMap.
  */
+// i18n note (direct investigation across all real consumers of this
+// function, canAccessCaseWithPools(), and filterAccessibleCasesWithPools()):
+// nothing in the live app ever reads or displays this function's own
+// .reason text — CaseRouter.ts (the only real caller chain) only ever
+// consults .granted, and caseAccessControl.test.ts only asserts .granted/
+// .dimension too. These reason strings stay literal English: genuinely
+// internal/diagnostic (the kind of text this app's convention already
+// treats like persisted audit-trail text), not on-screen UI copy.
 export function resolveCaseAccess(
   session: SessionUser | null,
   caseRecord: { originHospitalId?: string | null; subspecialtyId?: string | null; status?: string } | null | undefined,
@@ -302,15 +317,22 @@ export function resolveFinalizeEligibleTypeIds(
     .map(t => t.id);
 }
 
+// i18n note: unlike resolveCaseAccess() above, this function's own .reason
+// IS genuinely shown to the pathologist on screen — useSignOutWorkflow.ts's
+// two call sites (handleSignOutConfirm/finalizeCase) pass it straight into
+// showToast() with no further wrapping. Converted here at the source via
+// i18n.t() (this is a plain service module, not a hook — see the top-of-file
+// import note) rather than at either call site, so both stay correct simply
+// by displaying whatever this function returns, in any language.
 export function canFinalizeCase(
   session: SessionUser | null,
   participants: CaseFinalizeParticipant[] | null | undefined,
   participationTypes?: ParticipationTypeRecord[] | null,
   performingLabFacilityId?: string | null,
 ): CaseAccessDecision {
-  if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
+  if (!session) return { granted: false, dimension: 'no-session', reason: i18n.t('caseAccessControl.finalize.noActiveSession') };
   if (session.role === 'superadmin' || session.role === 'admin' || session.role === 'pathologist-admin') {
-    return { granted: true, dimension: 'admin-override', reason: 'Administrative role — supervisor override.' };
+    return { granted: true, dimension: 'admin-override', reason: i18n.t('caseAccessControl.finalize.adminOverride') };
   }
 
   const eligibleTypeIds = resolveFinalizeEligibleTypeIds(participationTypes, performingLabFacilityId);
@@ -325,10 +347,10 @@ export function canFinalizeCase(
     return {
       granted: false,
       dimension: 'not-a-participant',
-      reason: 'Only the assigned Primary/Attending, or an administrative supervisor, may finalize this case.',
+      reason: i18n.t('caseAccessControl.finalize.notAParticipant'),
     };
   }
-  return { granted: true, dimension: 'assigned-participant', reason: 'Assigned Primary/Attending on this case.' };
+  return { granted: true, dimension: 'assigned-participant', reason: i18n.t('caseAccessControl.finalize.assignedParticipant') };
 }
 
 /**

@@ -12,9 +12,17 @@
 // SNOMED CT terminology access (Case.ts's own syntheticAbnormalCoding
 // doc comment; resolveEmbeddedCoding.ts's own "empty until a
 // confirmed license" default).
+//
+// i18n sweep (batch 47): real dictionary content admins enter
+// (snomedCode, description, createdBy.userName — a real SNOMED CT
+// code/term and a real person's name) stays as typed/stored. Only the
+// surrounding page chrome (headers, labels, buttons, messages) goes
+// through the new `snomedCervicalHistologySeverityMappingSection`
+// namespace.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockSnomedCervicalHistologySeverityMappingService } from '../../../services/cytology/mockSnomedCervicalHistologySeverityMappingService';
 import type { SnomedCervicalHistologySeverityMappingEntry } from '../../../services/cytology/ISnomedCervicalHistologySeverityMappingService';
@@ -25,6 +33,7 @@ interface Draft { snomedCode: string; description: string; severityRank: string 
 const emptyDraft: Draft = { snomedCode: '', description: '', severityRank: '' };
 
 const SnomedCervicalHistologySeverityMappingSection: React.FC = () => {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<SnomedCervicalHistologySeverityMappingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -46,7 +55,7 @@ const SnomedCervicalHistologySeverityMappingSection: React.FC = () => {
     setError(null);
     const rank = Number(draft.severityRank);
     if (!draft.snomedCode.trim() || !draft.description.trim() || Number.isNaN(rank)) {
-      setError('SNOMED code, description, and a numeric severity rank are all required.');
+      setError(t('snomedCervicalHistologySeverityMappingSection.requiredFieldsError'));
       return;
     }
     const session = getSessionUser();
@@ -76,37 +85,34 @@ const SnomedCervicalHistologySeverityMappingSection: React.FC = () => {
   };
 
   const handleRemove = async (id: string) => {
-    if (!window.confirm('Remove this SNOMED severity mapping? This cannot be undone.')) return;
+    if (!window.confirm(t('snomedCervicalHistologySeverityMappingSection.removeConfirm'))) return;
     await mockSnomedCervicalHistologySeverityMappingService.remove(id);
     refresh();
   };
 
   return (
     <div>
-      <h3 style={{ marginTop: 0 }}>Cyto-Histologic Correlation — SNOMED Severity Mapping</h3>
-      <p style={{ fontSize: 13, color: '#9ca3af', maxWidth: 720 }}>
-        Maps a SNOMED CT code found on a surgical pathology specimen's own coding to a severity rank on the same 0–5 scale
-        cytology's own Bethesda categories already use, so CYT-QA-04's real cyto-histologic correlation can compare the two
-        directly. This list is intentionally empty until your organization's own licensed SNOMED CT terminology is available —
-        PathScribe never ships a real code value here.
+      <h3 className="ps-snomed-severity__title">{t('snomedCervicalHistologySeverityMappingSection.title')}</h3>
+      <p className="ps-snomed-severity__subtitle">
+        {t('snomedCervicalHistologySeverityMappingSection.subtitle')}
       </p>
 
-      <div className="ps-conf-table-wrap" style={{ marginBottom: 20 }}>
+      <div className="ps-conf-table-wrap ps-snomed-severity__table-wrap">
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">SNOMED Code</th>
-                <th className="ps-conf-th">Description</th>
-                <th className="ps-conf-th">Severity Rank (0–5)</th>
-                <th className="ps-conf-th">Added</th>
+                <th className="ps-conf-th">{t('snomedCervicalHistologySeverityMappingSection.columns.snomedCode')}</th>
+                <th className="ps-conf-th">{t('snomedCervicalHistologySeverityMappingSection.columns.description')}</th>
+                <th className="ps-conf-th">{t('snomedCervicalHistologySeverityMappingSection.columns.severityRank')}</th>
+                <th className="ps-conf-th">{t('snomedCervicalHistologySeverityMappingSection.columns.added')}</th>
                 <th className="ps-conf-th"></th>
               </tr>
             </thead>
             <tbody>
-              {loading && (<tr><td className="ps-conf-empty-row" colSpan={5}>Loading…</td></tr>)}
+              {loading && (<tr><td className="ps-conf-empty-row" colSpan={5}>{t('snomedCervicalHistologySeverityMappingSection.loading')}</td></tr>)}
               {!loading && entries.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={5}>No mappings configured yet.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={5}>{t('snomedCervicalHistologySeverityMappingSection.emptyRow')}</td></tr>
               )}
               {!loading && entries.map(entry => (
                 <tr key={entry.id} className="ps-conf-tr">
@@ -118,22 +124,22 @@ const SnomedCervicalHistologySeverityMappingSection: React.FC = () => {
                   </td>
                   <td className="ps-conf-td">
                     {editingId === entry.id
-                      ? <input className="ps-input-dark" style={{ width: 60 }} type="number" min={0} max={5} value={editDraft.severityRank} onChange={e => setEditDraft(d => ({ ...d, severityRank: e.target.value }))} />
+                      ? <input className="ps-input-dark ps-snomed-severity__rank-input" type="number" min={0} max={5} value={editDraft.severityRank} onChange={e => setEditDraft(d => ({ ...d, severityRank: e.target.value }))} />
                       : entry.severityRank}
                   </td>
-                  <td className="ps-conf-td" style={{ fontSize: 11, color: '#6b7280' }}>
+                  <td className="ps-conf-td ps-snomed-severity__added-cell">
                     {new Date(entry.createdAt).toLocaleDateString()}{entry.createdBy ? ` — ${entry.createdBy.userName}` : ''}
                   </td>
                   <td className="ps-conf-td">
                     {editingId === entry.id ? (
                       <>
-                        <button className="ps-btn-small" onClick={() => handleSaveEdit(entry.id)}>Save</button>
-                        <button className="ps-btn-small" onClick={() => setEditingId(null)}>Cancel</button>
+                        <button className="ps-btn-small" onClick={() => handleSaveEdit(entry.id)}>{t('snomedCervicalHistologySeverityMappingSection.save')}</button>
+                        <button className="ps-btn-small" onClick={() => setEditingId(null)}>{t('snomedCervicalHistologySeverityMappingSection.cancel')}</button>
                       </>
                     ) : (
                       <>
-                        <button className="ps-btn-small" onClick={() => startEdit(entry)}>Edit</button>
-                        <button className="ps-btn-small" onClick={() => handleRemove(entry.id)}>Remove</button>
+                        <button className="ps-btn-small" onClick={() => startEdit(entry)}>{t('snomedCervicalHistologySeverityMappingSection.edit')}</button>
+                        <button className="ps-btn-small" onClick={() => handleRemove(entry.id)}>{t('snomedCervicalHistologySeverityMappingSection.remove')}</button>
                       </>
                     )}
                   </td>
@@ -144,24 +150,24 @@ const SnomedCervicalHistologySeverityMappingSection: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 20 }}>
-        <h4 style={{ marginTop: 0 }}>Add Mapping</h4>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div className="ps-snomed-severity__add-card">
+        <h4 className="ps-snomed-severity__add-title">{t('snomedCervicalHistologySeverityMappingSection.addMapping')}</h4>
+        <div className="ps-snomed-severity__add-row">
           <div>
-            <label className="ps-label" htmlFor="snomed-map-code">SNOMED Code</label>
-            <input id="snomed-map-code" className="ps-input-dark" value={draft.snomedCode} onChange={e => setDraft(d => ({ ...d, snomedCode: e.target.value }))} placeholder="e.g. your licensed code for CIN III" />
+            <label className="ps-label" htmlFor="snomed-map-code">{t('snomedCervicalHistologySeverityMappingSection.columns.snomedCode')}</label>
+            <input id="snomed-map-code" className="ps-input-dark" value={draft.snomedCode} onChange={e => setDraft(d => ({ ...d, snomedCode: e.target.value }))} placeholder={t('snomedCervicalHistologySeverityMappingSection.codePlaceholder')} />
           </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <label className="ps-label" htmlFor="snomed-map-desc">Description</label>
-            <input id="snomed-map-desc" className="ps-input-dark" style={{ width: '100%' }} value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder="e.g. CIN III / High-grade squamous intraepithelial lesion" />
+          <div className="ps-snomed-severity__desc-field">
+            <label className="ps-label" htmlFor="snomed-map-desc">{t('snomedCervicalHistologySeverityMappingSection.columns.description')}</label>
+            <input id="snomed-map-desc" className="ps-input-dark ps-snomed-severity__desc-input" value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder={t('snomedCervicalHistologySeverityMappingSection.descPlaceholder')} />
           </div>
           <div>
-            <label className="ps-label" htmlFor="snomed-map-rank">Severity Rank (0–5)</label>
-            <input id="snomed-map-rank" className="ps-input-dark" style={{ width: 80 }} type="number" min={0} max={5} value={draft.severityRank} onChange={e => setDraft(d => ({ ...d, severityRank: e.target.value }))} />
+            <label className="ps-label" htmlFor="snomed-map-rank">{t('snomedCervicalHistologySeverityMappingSection.columns.severityRank')}</label>
+            <input id="snomed-map-rank" className="ps-input-dark ps-snomed-severity__rank-input-wide" type="number" min={0} max={5} value={draft.severityRank} onChange={e => setDraft(d => ({ ...d, severityRank: e.target.value }))} />
           </div>
-          <button className="ps-btn-small" onClick={handleAdd}>Add</button>
+          <button className="ps-btn-small" onClick={handleAdd}>{t('snomedCervicalHistologySeverityMappingSection.add')}</button>
         </div>
-        {error && <div style={{ marginTop: 10, fontSize: 12, color: '#ef4444' }}>{error}</div>}
+        {error && <div className="ps-snomed-severity__error">{error}</div>}
       </div>
     </div>
   );

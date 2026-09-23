@@ -35,7 +35,18 @@
 //    matter how complex the real embedded content becomes later.
 // ─────────────────────────────────────────────────────────────────────────────
 
+//
+// i18n note: the drawer chrome (title, close button) is translated;
+// the embedded MockEMRPage content is out of scope for this file.
+// Inline styles replaced with the new .ps-emr-sidecar-* classes in
+// pathscribe.css (following the existing .ps-drawer/.ps-drawer-backdrop
+// convention) -- the always-mounted open/close toggle that used to be
+// three separate inline style props (transform/pointerEvents/boxShadow)
+// is now a single `--open` modifier class, and the close button's
+// inline hover handlers are now a plain CSS :hover rule.
+
 import React, { useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import MockEMRPage from '@/pages/MockEMRPage';
 
 interface EMRSidecarDrawerProps {
@@ -45,6 +56,7 @@ interface EMRSidecarDrawerProps {
 }
 
 const EMRSidecarDrawer: React.FC<EMRSidecarDrawerProps> = ({ isOpen, patientId, onClose }) => {
+  const { t } = useTranslation();
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // React's JSX prop reconciliation doesn't yet recognize `inert` as a
@@ -62,51 +74,27 @@ const EMRSidecarDrawer: React.FC<EMRSidecarDrawerProps> = ({ isOpen, patientId, 
       {/* Backdrop -- unlike the drawer itself, safe to conditionally
           render, since it has no state worth preserving while closed. */}
       {isOpen && (
-        <div
-          onClick={onClose}
-          style={{
-            position: 'fixed', top: 70, right: 0, bottom: 0, left: 0,
-            background: 'rgba(0,0,0,0.5)', zIndex: 1199,
-          }}
-        />
+        <div className="ps-drawer-backdrop" onClick={onClose} />
       )}
 
       {/* Drawer shell -- ALWAYS rendered. Visibility is purely CSS. */}
       <div
-        style={{
-          position: 'fixed', top: 70, right: 0, bottom: 0,
-          width: 'min(70vw, 1400px)',
-          background: '#0b1120',
-          borderLeft: '1px solid rgba(148,163,184,0.4)',
-          zIndex: 1200,
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-          pointerEvents: isOpen ? 'auto' : 'none',
-          boxShadow: isOpen ? '-8px 0 32px rgba(0,0,0,0.4)' : 'none',
-        }}
+        className={`ps-emr-sidecar-drawer${isOpen ? ' ps-emr-sidecar-drawer--open' : ''}`}
         aria-hidden={!isOpen}
         ref={drawerRef}
       >
-        <div style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid rgba(51,65,85,0.9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            🌐 EMR Sidecar
+        <div className="ps-emr-sidecar-header">
+          <span className="ps-emr-sidecar-title">
+            🌐 {t('emrSidecarDrawer.title')}
           </span>
           <button
             onClick={onClose}
-            aria-label="Close"
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 20, cursor: 'pointer', padding: '2px 8px', lineHeight: 1 }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+            aria-label={t('common.close')}
+            className="ps-emr-sidecar-close"
           >✕</button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <div className="ps-emr-sidecar-body">
           {/* key={patientId} -- see file header. This is what makes it
               safe for the drawer shell above to stay mounted forever. */}
           <MockEMRPage key={patientId} patientId={patientId} />

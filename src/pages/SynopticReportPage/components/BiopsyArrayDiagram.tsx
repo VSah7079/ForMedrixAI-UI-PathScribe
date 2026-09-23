@@ -13,8 +13,13 @@
 // upper end of what any real lab does) this is trivially cheap; the same
 // order of cost as the existing BlockIcon/SlideChip components already
 // rendered throughout MaterialTreePanel.tsx.
+//
+// i18n note: `cassetteLabel`/`p.specimenLabel`/`p.specimenDescription`/
+// `p.position` are real block/specimen data, interpolated into
+// translated sentences, never translated themselves.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 export interface BiopsyArrayPosition {
   position: number;
@@ -68,6 +73,7 @@ const GAP = 4;
 const PAD = 10;
 
 const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, positions, onOpenBlockEditor }) => {
+  const { t } = useTranslation();
   const sorted = useMemo(
     () => [...positions].sort((a, b) => a.position - b.position),
     [positions]
@@ -100,7 +106,10 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
               onClick={() => onOpenBlockEditor(p.blockId)}
               style={{ cursor: 'pointer' }}
             >
-              <title>{`Position ${p.position}: Specimen ${p.specimenLabel}${p.specimenDescription ? ` — ${p.specimenDescription}` : ''}`}</title>
+              <title>
+                {t('biopsyArrayDiagram.positionTooltip', { position: p.position, label: p.specimenLabel })}
+                {p.specimenDescription ? t('biopsyArrayDiagram.tooltipDescriptionSuffix', { description: p.specimenDescription }) : ''}
+              </title>
               <rect
                 x={x} y={y} width={CELL} height={CELL} rx={3}
                 fill="rgba(8,145,178,0.12)" stroke="rgba(148,163,184,0.35)" strokeWidth={0.5}
@@ -109,7 +118,7 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
                 {p.specimenLabel}
               </text>
               <text x={x + CELL / 2} y={y + CELL / 2 + 11} textAnchor="middle" fontSize={8} fill="#94a3b8">
-                pos {p.position}
+                {t('biopsyArrayDiagram.positionShort', { position: p.position })}
               </text>
             </g>
           );
@@ -118,9 +127,12 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
       <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
         {sorted.map(p => (
           <div key={p.blockId}>
-            <span style={{ fontWeight: 700, color: '#cbd5e1' }}>Position {p.position}</span>
-            {' — Specimen '}{p.specimenLabel}
-            {p.specimenDescription ? `: ${p.specimenDescription}` : ''}
+            <Trans
+              i18nKey="biopsyArrayDiagram.legendRow"
+              values={{ position: p.position, label: p.specimenLabel }}
+              components={{ bold: <span style={{ fontWeight: 700, color: '#cbd5e1' }} /> }}
+            />
+            {p.specimenDescription ? t('biopsyArrayDiagram.legendDescriptionSuffix', { description: p.specimenDescription }) : ''}
           </div>
         ))}
       </div>

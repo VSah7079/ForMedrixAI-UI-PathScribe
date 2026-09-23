@@ -169,11 +169,20 @@ export interface SpecimenDeficiency {
    *  Analysis (RCA)") and per direct guidance: why this actually
    *  happened - distinct from correctiveAction (what was done about
    *  this one occurrence) and preventiveAction (what stops it
-   *  recurring). Only meaningful for the escalation path (resolve()
-   *  below) - an immediately-contained item (containImmediately())
+   *  recurring). An immediately-contained item (containImmediately())
    *  never gets this deep, by design: it's the quick, no-further-
    *  follow-up path specifically for issues that don't warrant a
-   *  formal root-cause analysis at all. */
+   *  formal root-cause analysis at all.
+   *  Two real, distinct populating paths as of PS-119: the original,
+   *  manual escalation path (resolve() below, a human's own RCA
+   *  writeup), and — new — the generic QA Activity Engine's automated
+   *  trigger path (mockQaActivityRecordService.ts's create()), which
+   *  now wires a discordant review's own already-captured rootCause/
+   *  rootCauseNote through at raise() time, rather than leaving that
+   *  real diagnostic detail stranded on the review record alone. A
+   *  later resolve() call still overwrites this with the resolver's
+   *  own, potentially more thorough RCA - the raise-time value is a
+   *  real, honest starting point, not a substitute for that process. */
   rootCause?: string;
   /** What prevents this from recurring — distinct from correctiveAction,
    *  which only fixes the one instance in front of you. Optional: not

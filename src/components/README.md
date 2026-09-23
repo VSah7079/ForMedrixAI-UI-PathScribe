@@ -15,7 +15,7 @@ changes, or a folder is added/removed/split/merged.
 | [TemplateBuilder/](./TemplateBuilder/README.md) | Report *layout/assembly* builder β€” distinct from Config/Protocols/'s synoptic *data-capture* templates |
 | [Editor/](./Editor/README.md) | Tiptap rich text editor + `tiptapBridge/` (AI-integration bridge) |
 | [Voice/](./Voice/README.md) | Voice dictation settings/controls |
-| [ClientDictionary/](./ClientDictionary/README.md) | Facility Configuration table + editor modal (folder/file names kept as `Client*` — see that folder's own README) |
+| [FacilityDictionary/](./FacilityDictionary/README.md) | Facility Configuration table + editor modal (superseded an orphaned `ClientDictionary/` fork, deleted in the i18n sweep's batch 178 — see that folder's own README) |
 | [Contribution/](./Contribution/README.md) | My Contribution dashboard β€” 5 tabs/tiles, all serving `ContributionDashboardPage.tsx` |
 | [Common/](./Common/README.md) + Button/ | Shared UI primitives: `ConfirmModal`, `LookupModal`, `InlineCommentThread`, `SuffixSelect`, `Dropdown`, `SearchableCombobox`, `PatientIdStatusDot`, `LogoutWarningModal`, `SessionExpiryWarningModal`, `DraftRecoveryModal`, `SessionSupersededNotice` |
 | [QualityAssurance/](./QualityAssurance/README.md) | 8 QA/compliance reporting tabs (Countersign Turnaround, Intraop Linkage, Reconciliation, FPPE/Credentialing, Post-Finalization Drift, Patient Match Review, Retention Holds Management Review, Access Request Response) |

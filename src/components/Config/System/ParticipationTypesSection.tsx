@@ -11,9 +11,19 @@
 // footer label used to be actively misleading (nothing was actually
 // synced with the real feature); it's genuinely true now that this reads
 // and writes through the real service directly.
+//
+// i18n sweep (batch 57): converted alongside its own child modal
+// (TypeModal.tsx) - same coupled-sweep treatment as RuleModal.tsx/
+// RoutingRulesSection.tsx in batches 48-49. Real data (t.label,
+// t.abbreviation, t.description, t.color) stays exactly as entered/stored;
+// only page chrome, capability labels, and status text are translated.
+// The row/Edit-button onMouseEnter/onMouseLeave imperative style handlers
+// are gone - replaced with the same .ps-routingrules__tr:hover CSS rule
+// already used by the structurally identical RoutingRulesSection.tsx.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import TypeModal from './TypeModal';
 import { mockParticipationTypeService } from '../../../services/participationTypes/mockParticipationTypeService';
@@ -26,12 +36,14 @@ export type { ParticipationType };
 // ─── Attribute chip ───────────────────────────────────────────────────────────
 
 const AttrChip: React.FC<{ label: string; value?: boolean; onColor?: string }> = ({ label, value, onColor = '#22c55e' }) => (
-  <span style={{
-    fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
-    background: value ? onColor + '18' : 'rgba(255,255,255,0.04)',
-    color: value ? onColor : '#4b5563',
-    border: `1px solid ${value ? onColor + '33' : 'rgba(255,255,255,0.06)'}`,
-  }}>
+  <span
+    className="ps-participationtypes__attr-chip"
+    style={{
+      background: value ? onColor + '18' : 'rgba(255,255,255,0.04)',
+      color: value ? onColor : '#4b5563',
+      border: `1px solid ${value ? onColor + '33' : 'rgba(255,255,255,0.06)'}`,
+    }}
+  >
     {value ? '✓' : '—'} {label}
   </span>
 );
@@ -41,6 +53,7 @@ const AttrChip: React.FC<{ label: string; value?: boolean; onColor?: string }> =
 type Draft = Omit<ParticipationType, 'id' | 'isSystem'>;
 
 const ParticipationTypesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [types,   setTypes]   = useState<ParticipationType[]>([]);
   const [labs,    setLabs]    = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,110 +87,122 @@ const ParticipationTypesSection: React.FC = () => {
     }
   };
 
-  const filtered = types.filter(t => {
-    const matchSearch = !search || t.label.toLowerCase().includes(search.toLowerCase()) || (t.abbreviation ?? '').toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === 'all' || (filter === 'active' ? t.active : !t.active);
+  const filtered = types.filter(pt => {
+    const matchSearch = !search || pt.label.toLowerCase().includes(search.toLowerCase()) || (pt.abbreviation ?? '').toLowerCase().includes(search.toLowerCase());
+    const matchFilter = filter === 'all' || (filter === 'active' ? pt.active : !pt.active);
     return matchSearch && matchFilter;
   });
 
+  const tableHeaders = [
+    t('participationTypesSection.table.type'),
+    t('participationTypesSection.table.description'),
+    t('participationTypesSection.table.capabilities'),
+    t('participationTypesSection.table.status'),
+    '',
+  ];
+
   return (
-    <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto' }}>
+    <div className="ps-participationtypes__page">
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div className="ps-participationtypes__header">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Participation Types</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-            Define the types of participation a staff member can have on a case.
-            Roles are then assigned which types they can serve as.
+          <h1 className="ps-routingrules__title">{t('participationTypesSection.title')}</h1>
+          <p className="ps-routingrules__subtitle">
+            {t('participationTypesSection.subtitle')}
           </p>
         </div>
         <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>
-          + Add Type
+          {t('participationTypesSection.addTypeBtn')}
         </button>
       </div>
 
       {/* Search + filter */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-        <input type="text" placeholder="Search participation types…" value={search} onChange={e => setSearch(e.target.value)}
-          style={{ flex: 1, padding: '9px 16px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, outline: 'none' }} />
+      <div className="ps-participationtypes__filters">
+        <input
+          type="text"
+          placeholder={t('participationTypesSection.searchPlaceholder')}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="ps-routingrules__search-input"
+        />
         <select value={filter} onChange={e => setFilter(e.target.value as any)}
           className="ps-conf-select">
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{t('participationTypesSection.filterAll')}</option>
+          <option value="active">{t('common.active')}</option>
+          <option value="inactive">{t('common.inactive')}</option>
         </select>
       </div>
 
       {/* Table */}
-      <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="ps-routingrules__table-wrap">
+        <div className="ps-participationtypes__scroll">
+          <table className="ps-routingrules__table">
             <thead>
-              <tr style={{ background: '#0a0a0a', borderBottom: '1px solid #1f2937', position: 'sticky', top: 0, zIndex: 1 }}>
-                {['Type', 'Description', 'Capabilities', 'Status', ''].map(h => (
-                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+              <tr className="ps-routingrules__thead-row">
+                {tableHeaders.map((h, i) => (
+                  <th key={i} className="ps-participationtypes__th">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#4b5563', fontSize: 13 }}>Loading…</td></tr>
+                <tr><td colSpan={5} className="ps-routingrules__empty-row">{t('common.loading')}</td></tr>
               )}
-              {!loading && filtered.map((t, i) => (
-                <tr key={t.id}
-                  style={{ borderBottom: i < filtered.length - 1 ? '1px solid #111827' : 'none' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#0d0d0d'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              {!loading && filtered.map((pt, i) => (
+                <tr key={pt.id}
+                  className={i < filtered.length - 1 ? 'ps-routingrules__tr ps-routingrules__tr--divider' : 'ps-routingrules__tr'}
                 >
                   {/* Type chip */}
-                  <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: t.color + '22', color: t.color, border: `1px solid ${t.color}44` }}>
-                        {t.abbreviation}
+                  <td className="ps-participationtypes__td">
+                    <div className="ps-participationtypes__type-cell">
+                      <span
+                        className="ps-participationtypes__abbr-chip"
+                        style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}
+                      >
+                        {pt.abbreviation}
                       </span>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{t.label}</div>
-                        {t.isSystem && <div style={{ fontSize: 10, color: '#4b5563' }}>built-in</div>}
+                        <div className="ps-participationtypes__type-label">{pt.label}</div>
+                        {pt.isSystem && <div className="ps-participationtypes__type-builtin">{t('participationTypesSection.builtInBadge')}</div>}
                       </div>
                     </div>
                   </td>
                   {/* Description */}
-                  <td style={{ padding: '14px 16px', fontSize: 12, color: '#6b7280', maxWidth: 220 }}>
-                    <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {t.description || '—'}
+                  <td className="ps-participationtypes__td-desc">
+                    <span className="ps-routingrules__note-clamp">
+                      {pt.description || '—'}
                     </span>
                   </td>
                   {/* Capabilities */}
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      <AttrChip label="Finalise"    value={t.canFinalize}           onColor="#22c55e" />
-                      <AttrChip label="Countersign"  value={t.requiresCountersign}   onColor="#f59e0b" />
-                      <AttrChip label="Template"     value={t.canBeAssignedTemplate} onColor="#8AB4F8" />
-                      <AttrChip label="Full View"    value={t.canViewWholeCase}      onColor="#8AB4F8" />
-                      <AttrChip label="Multi"        value={t.allowsMultiple}        onColor="#a78bfa" />
+                  <td className="ps-participationtypes__td">
+                    <div className="ps-routingrules__keyword-chips">
+                      <AttrChip label={t('participationTypesSection.capFinalize')}   value={pt.canFinalize}           onColor="#22c55e" />
+                      <AttrChip label={t('participationTypesSection.capCountersign')} value={pt.requiresCountersign}   onColor="#f59e0b" />
+                      <AttrChip label={t('participationTypesSection.capTemplate')}    value={pt.canBeAssignedTemplate} onColor="#8AB4F8" />
+                      <AttrChip label={t('participationTypesSection.capFullView')}    value={pt.canViewWholeCase}      onColor="#8AB4F8" />
+                      <AttrChip label={t('participationTypesSection.capMulti')}       value={pt.allowsMultiple}        onColor="#a78bfa" />
                     </div>
                   </td>
                   {/* Status */}
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', display: 'inline-block', background: t.active ? '#22c55e' : '#4b5563', boxShadow: t.active ? '0 0 6px #22c55e99' : 'none' }} />
-                      <span style={{ fontSize: 13, color: t.active ? '#d1d5db' : '#6b7280' }}>{t.active ? 'Active' : 'Inactive'}</span>
+                  <td className="ps-participationtypes__td">
+                    <div className="ps-participationtypes__status-cell">
+                      <span className={pt.active ? 'ps-participationtypes__status-dot ps-participationtypes__status-dot--active' : 'ps-participationtypes__status-dot ps-participationtypes__status-dot--inactive'} />
+                      <span className={pt.active ? 'ps-participationtypes__status-text--active' : 'ps-participationtypes__status-text--inactive'}>
+                        {pt.active ? t('common.active') : t('common.inactive')}
+                      </span>
                     </div>
                   </td>
                   {/* Edit */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    <button onClick={() => setModal({ mode: 'edit', type: t })}
-                      style={{ padding: '5px 16px', fontSize: 12, fontWeight: 600, color: '#e5e7eb', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#252525'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#1c1c1c'; }}>
-                      Edit
+                  <td className="ps-participationtypes__td ps-participationtypes__td--right">
+                    <button onClick={() => setModal({ mode: 'edit', type: pt })} className="ps-participationtypes__edit-btn">
+                      {t('common.edit')}
                     </button>
                   </td>
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#4b5563', fontSize: 13 }}>No participation types match the current filter.</td></tr>
+                <tr><td colSpan={5} className="ps-routingrules__empty-row">{t('participationTypesSection.emptyFilter')}</td></tr>
               )}
             </tbody>
           </table>
@@ -185,11 +210,11 @@ const ParticipationTypesSection: React.FC = () => {
       </div>
 
       {/* Footer count */}
-      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#374151' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: '#22c55e' }}>●</span> System Live Sync
+      <div className="ps-participationtypes__footer">
+        <div className="ps-routingrules__footer-autosave">
+          <span className="ps-routingrules__footer-dot">●</span> {t('participationTypesSection.liveSync')}
         </div>
-        <div>{types.filter(t => t.active).length} active · {types.length} total</div>
+        <div>{t('participationTypesSection.footerCount', { active: types.filter(pt => pt.active).length, total: types.length })}</div>
       </div>
 
       {modal && (

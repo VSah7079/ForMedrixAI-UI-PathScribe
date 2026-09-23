@@ -49,6 +49,53 @@ const SEED_WSI_BATCHES: WsiScanBatch[] = [
       { slidePosition: '1', caseId: 'S26-5002-CYT-001', specimenId: 'S26-5002-SP-1', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-13T07:12:00.000Z', acquisitionMode: 'z_stack', focalPlaneCount: 9 },
     ],
   },
+  // Real fix (PS-319 — "Outreach worklist has no seeded WSI/AI data
+  // at all, so the Digital Readiness/AI Triage columns are blank for
+  // every Outreach (orchestrator-mode) case"): the batches above only
+  // ever covered mockCaseService.ts's own S26-* surgical-pathology
+  // cases — mockOrchestratorCaseService.ts's own real O26-* Outreach
+  // cases had no matching WSI batch anywhere, so those columns had
+  // nothing to render. These three batches are real, plausible scans
+  // against O26-0001/0002/0003's own already-seeded specimens, none
+  // contradicting what those cases' own real gross descriptions say.
+  // O26-0001 (colon resection, 3 specimens A/B/C) — a clean, fully
+  // "ready" batch: every specimen scanned, passed QC.
+  {
+    id: 'wsi-batch-seed-o26-0001', batchBarcode: 'WSI-20260918-0004', scannerInstrumentId: 'Leica Aperio GT450 #2',
+    status: 'unloaded', loadedAt: '2026-09-18T08:00:00.000Z', dispatchedAt: '2026-09-18T08:05:00.000Z', unloadedAt: '2026-09-18T09:00:00.000Z',
+    slides: [
+      { slidePosition: '1', caseId: 'O26-0001', specimenId: 'O26-0001-SP-A', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T08:20:00.000Z', acquisitionMode: 'single_plane' },
+      { slidePosition: '2', caseId: 'O26-0001', specimenId: 'O26-0001-SP-B', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T08:30:00.000Z', acquisitionMode: 'single_plane' },
+      { slidePosition: '3', caseId: 'O26-0001', specimenId: 'O26-0001-SP-C', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T08:40:00.000Z', acquisitionMode: 'single_plane' },
+    ],
+  },
+  // O26-0002 (lung lobectomy, STAT priority, molecular workup still
+  // pending per that case's own real clinical indication) — a
+  // deliberate partial/in-progress batch: SP-A done, SP-B still
+  // scanning, so the Digital Readiness badge has a real "Partial"
+  // state to show for an Outreach case too, not just S26-4408.
+  {
+    id: 'wsi-batch-seed-o26-0002', batchBarcode: 'WSI-20260918-0005', scannerInstrumentId: 'Leica Aperio GT450 #1',
+    status: 'scanning', loadedAt: '2026-09-18T09:00:00.000Z', dispatchedAt: '2026-09-18T09:05:00.000Z',
+    slides: [
+      { slidePosition: '1', caseId: 'O26-0002', specimenId: 'O26-0002-SP-A', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T09:15:00.000Z', acquisitionMode: 'single_plane' },
+      { slidePosition: '2', caseId: 'O26-0002', specimenId: 'O26-0002-SP-B', scanStatus: 'scanning', acquisitionMode: 'single_plane' },
+    ],
+  },
+  // O26-0003 (radical prostatectomy, close posterolateral margin per
+  // that case's own real gross description) — SP-A/B scan and pass
+  // QC cleanly; SP-C (left pelvic nodes) mechanically completes but
+  // fails automated QC, giving the Outreach worklist a real "Error"
+  // state example as well.
+  {
+    id: 'wsi-batch-seed-o26-0003', batchBarcode: 'WSI-20260918-0006', scannerInstrumentId: 'Leica Aperio GT450 #2',
+    status: 'unloaded', loadedAt: '2026-09-18T10:00:00.000Z', dispatchedAt: '2026-09-18T10:05:00.000Z', unloadedAt: '2026-09-18T11:00:00.000Z',
+    slides: [
+      { slidePosition: '1', caseId: 'O26-0003', specimenId: 'O26-0003-SP-A', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T10:20:00.000Z', acquisitionMode: 'single_plane' },
+      { slidePosition: '2', caseId: 'O26-0003', specimenId: 'O26-0003-SP-B', scanStatus: 'completed', qcPassed: true, scanCompletedAt: '2026-09-18T10:30:00.000Z', acquisitionMode: 'single_plane' },
+      { slidePosition: '3', caseId: 'O26-0003', specimenId: 'O26-0003-SP-C', scanStatus: 'completed', qcPassed: false, scanCompletedAt: '2026-09-18T10:40:00.000Z', failureReason: 'Tissue-clipping detected', acquisitionMode: 'single_plane' },
+    ],
+  },
 ];
 
 const STORE_KEY = 'wsi_scan_batches';

@@ -18,10 +18,14 @@ import type { GrossingEvaluationInput, GrossingEvaluationResult, GrossingTemplat
 import { applyCaseFilters, applyCasePagination } from './caseFilterUtils';
 import { mockOrchestratorCaseService } from './mockOrchestratorCaseService';
 import { mockDelegationTypeService } from '../delegationTypes/mockDelegationTypeService';
-import { syncPrimaryAssignee } from './caseAssignmentSync';
+import { syncPrimaryAssignee, syncClaimAssignee } from './caseAssignmentSync';
+import { resolveClaimParticipationType } from './resolveClaimParticipationType';
 import { mockSubspecialtyService } from '../subspecialties/mockSubspecialtyService';
 import { mapDelegationTypeToParticipationRole } from '../delegationTypeMapper';
 import { isOrchCaseId } from './reportingModeRouting';
+import { mockUserService } from '../users/mockUserService';
+import { mockRoleService } from '../roles/mockRoleService';
+import { mockParticipationTypeService } from '../participationTypes/mockParticipationTypeService';
 
 const STORAGE_KEY = 'cases';
 
@@ -1967,9 +1971,25 @@ const MOCK_CASES: Case[] = [
     status: 'pool' as CaseStatus,
     // Real fix, per direct report: poolName was 'Gynaecologic
     // Pathology', which never matched the real Subspecialty record's
-    // own name ('Gynecological') — same silent enforcement gap as the
-    // 'Urological' fix above.
-    poolId: 'GYN-MPA', poolName: 'Gynecological',
+    // own name ('Gynecological' at the time) — same silent enforcement
+    // gap as the 'Urological' fix above.
+    //
+    // Real, direct follow-up (Sep 2026): renamed again, this time from
+    // 'Gynecological' to 'Surgical GYN' — per direct request, after
+    // this exact pool label read as confusing during PS-306 (a
+    // genuinely surgical LEEP excision, sitting in a pool named
+    // "Gynecological," showing under the Surg Path tab looked wrong at
+    // a glance, even though it's correct — the pool is the GYN
+    // *surgical* triage queue, not the Cytology one). Must stay in
+    // sync with the real Subspecialty record's own name
+    // (mockSubspecialtyService.ts, id 'gyn') — canUserClaimPoolCase
+    // matches this poolName against that record by exact string
+    // equality (poolId 'GYN-MPA' doesn't match subspecialty id 'gyn',
+    // so the name match is the ONLY path that resolves membership for
+    // this pool); renaming just one side would silently make this pool
+    // unrestricted again, the same real bug class the original fix
+    // above closed.
+    poolId: 'GYN-MPA', poolName: 'Surgical GYN',
     createdAt: isoDaysAgo(0), updatedAt: isoDaysAgo(0),
     caseFlags: [], specimenFlags: [], reportingMode: 'assist', coding: {},
   } as any,
@@ -4750,7 +4770,34 @@ export async function acceptPoolCase(caseId: string, userId: string, userName?: 
   saveClaims(claims);
 
   if (caseData) {
-    const syncUpdates = syncPrimaryAssignee(caseData, userId, userId, userName);
+    // Real, per direct follow-up on the Cytology review-role/sign-out
+    // review — resolves the claimer's REAL, role-derived participation
+    // type (resolveClaimParticipationType.ts) instead of always calling
+    // syncPrimaryAssignee(), which unconditionally tagged every pool
+    // claimer 'primary'/Attending regardless of who they actually are.
+    // Falls back to the prior, unchanged 'primary' behavior on any
+    // lookup failure — never silently blocks a real claim over a
+    // service error.
+    const [staffRes, rolesRes, participationTypesRes] = await Promise.all([
+      mockUserService.getById(userId),
+      mockRoleService.getAll(),
+      mockParticipationTypeService.getActive(),
+    ]);
+    // Real, honest scoping: resolving the case's own PERFORMING lab id
+    // (distinct from its ordering facility) requires the same
+    // multi-step facility lookup useSignOutWorkflow.ts's own
+    // resolveFinalizeAuthorityContext() does — real, separate work not
+    // proportionate to duplicate here. Omitting it resolves every
+    // type's platform-default canFinalize flag (this function's own
+    // documented behavior with no lab id supplied) — correct, just not
+    // lab-override-aware yet; a real, later follow-up if that matters
+    // for pool-claim specifically.
+    const participationTypeId = staffRes.ok && rolesRes.ok && participationTypesRes.ok
+      ? resolveClaimParticipationType(staffRes.data.roles, rolesRes.data, participationTypesRes.data)
+      : 'primary';
+    const syncUpdates = participationTypeId === 'primary'
+      ? syncPrimaryAssignee(caseData, userId, userId, userName)
+      : syncClaimAssignee(caseData, userId, userName, participationTypeId);
     // Real, critical fix, per direct report: this status transition was
     // previously gated on `reportingMode === 'orchestrator'` only,
     // leaving every Assist/CoPilot-mode pool case's status genuinely

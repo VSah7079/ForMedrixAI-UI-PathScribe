@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { usePreviewReceiver } from '@/hooks/usePreviewChannel';
 import ReportPreviewRenderer from './ReportPreviewRenderer';
@@ -23,6 +24,7 @@ import type { OrchestratorSection } from '@/pages/SynopticReportPage/components/
 import type { Case } from '@/types/case/Case';
 
 const ReportPreviewPage: React.FC = () => {
+  const { t } = useTranslation();
   const { caseId } = useParams<{ caseId: string }>();
   const { sections: liveSections, caseData: liveCaseData, lastUpdated, isConnected }
     = usePreviewReceiver(caseId ?? null);
@@ -132,7 +134,13 @@ const ReportPreviewPage: React.FC = () => {
           {caseData?.patient && (
             <>
               <span className="rp-topbar-sep">·</span>
-              <span className="rp-topbar-patient">
+              {/* Real gap found while converting: this patient name
+                  wasn't wrapped in a `data-phi` attribute the way the
+                  accession right above it already is — every other
+                  patient-name display in this app marks itself
+                  `data-phi="name"` for the same real capture/redaction
+                  tooling to find; this one was silently missed. */}
+              <span className="rp-topbar-patient" data-phi="name">
                 {caseData.patient.lastName}, {caseData.patient.firstName}
               </span>
             </>
@@ -144,22 +152,22 @@ const ReportPreviewPage: React.FC = () => {
           <div className={`rp-live-indicator${isConnected ? ' rp-live-indicator--connected' : ''}`}>
             <span className="rp-live-dot" />
             <span className="rp-live-label">
-              {isConnected ? 'Live' : 'Standalone'}
+              {isConnected ? t('reportPreviewPage.live') : t('reportPreviewPage.standalone')}
             </span>
           </div>
           {lastUpdated && (
             <span className="rp-last-updated">
-              Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {t('reportPreviewPage.updatedAt', { time: lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) })}
             </span>
           )}
         </div>
 
         <div className="rp-topbar-right">
-          <button className="rp-topbar-btn" onClick={handlePrint} title="Print / Save as PDF">
-            🖨 Print
+          <button className="rp-topbar-btn" onClick={handlePrint} title={t('reportPreviewPage.printTitle')}>
+            {t('reportPreviewPage.print')}
           </button>
-          <button className="rp-topbar-btn rp-topbar-btn--close" onClick={() => window.close()} title="Close preview">
-            ✕ Close
+          <button className="rp-topbar-btn rp-topbar-btn--close" onClick={() => window.close()} title={t('reportPreviewPage.closeTitle')}>
+            {t('reportPreviewPage.close')}
           </button>
         </div>
       </div>
@@ -169,7 +177,7 @@ const ReportPreviewPage: React.FC = () => {
         {isLoading ? (
           <div className="rp-loading">
             <div className="rp-loading-spinner" />
-            <span>Loading report…</span>
+            <span>{t('reportPreviewPage.loadingReport')}</span>
           </div>
         ) : (
           <ReportPreviewRenderer

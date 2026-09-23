@@ -25,6 +25,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockGoverningBodyService } from '@/services/governingBodies/mockGoverningBodyService';
 import type { GoverningBody, RetentionPolicyVersion } from '@/services/governingBodies/IGoverningBodyService';
@@ -32,6 +33,17 @@ import type { RetainableMaterialType } from '@/services/retentionPolicy/Retentio
 import { MATERIAL_TYPE_LABEL, formatRetentionPeriod } from '@/services/retentionPolicy/RetentionPolicy';
 import type { Jurisdiction } from '@/types/systemConfig';
 import { JURISDICTION_LABELS } from '@/types/systemConfig';
+
+// MATERIAL_TYPE_LABEL (RetentionPolicy.ts) and JURISDICTION_LABELS
+// (types/systemConfig.ts) are both shared constants also consumed by
+// several other, not-yet-converted files (SpecimenCategoriesSection,
+// DepartmentsSection, DisposalQueuePage, PendingBatchQueuePage for the
+// former; CytologyQcRulesSection, EnterpriseRollupTab,
+// InspectionModeTab, FacilityTable/FacilityEditorModal, AccessionPage
+// for the latter) —
+// left untouched here, same as BILLING_TYPE_LABEL was left untouched
+// in batch 62's BillingDictionarySection pass. Converting either is a
+// separate, cross-cutting future initiative, not this file's own scope.
 
 const ALL_JURISDICTIONS = Object.keys(JURISDICTION_LABELS) as Jurisdiction[];
 const ALL_MATERIAL_TYPES: RetainableMaterialType[] = ['block', 'slide', 'wet_tissue'];
@@ -43,15 +55,21 @@ const Toggle: React.FC<{
   onChange:  (v: boolean) => void;
   disabled?: boolean;
   color?:    string;
-}> = ({ checked, onChange, disabled = false, color = '#0891B2' }) => (
-  <div
-    onClick={() => !disabled && onChange(!checked)}
-    className={`ps-toggle-track${checked ? ' on' : ' off'}${disabled ? ' disabled' : ''}`}
-    style={{ background: checked ? color : undefined }}
-  >
-    <div className="ps-toggle-thumb" />
-  </div>
-);
+}> = ({ checked, onChange, disabled = false, color = '#0891B2' }) => {
+  // Only two colors are ever actually passed in this file (the
+  // default cyan and BodyRow's sync-toggle purple), so these map to
+  // two small, scoped modifier classes rather than a genuinely
+  // arbitrary inline color.
+  const colorClass = color === '#a78bfa' ? 'ps-gov-toggle--purple' : 'ps-gov-toggle--cyan';
+  return (
+    <div
+      onClick={() => !disabled && onChange(!checked)}
+      className={`ps-toggle-track ${colorClass}${checked ? ' on' : ' off'}${disabled ? ' disabled' : ''}`}
+    >
+      <div className="ps-toggle-thumb" />
+    </div>
+  );
+};
 
 // ── Body Modal (label/fullName/region/website — custom bodies only) ───────────
 
@@ -61,6 +79,7 @@ const BodyModal: React.FC<{
   onClose:     () => void;
   onSave:      (body: GoverningBody) => void;
 }> = ({ initial, existingIds, onClose, onSave }) => {
+  const { t } = useTranslation();
   const isEdit = !!initial;
 
   const [label,    setLabel]    = useState(initial?.label    ?? '');
@@ -102,29 +121,29 @@ const BodyModal: React.FC<{
 
   return (
     <div className="ps-conf-backdrop">
-      <div className="fm-modal fm-modal--config" style={{ width: 'min(480px, 96vw)' }} onClick={e => e.stopPropagation()}>
+      <div className="fm-modal fm-modal--config ps-govmodal--add" onClick={e => e.stopPropagation()}>
 
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · Governing Bodies</div>
-            <h2 className="fm-title" style={{ fontSize: 16 }}>
-              {isEdit ? `Edit — ${initial!.label}` : 'Add Governing Body'}
+            <div className="fm-eyebrow">{t('governingBodiesSection.bodyModal.eyebrow')}</div>
+            <h2 className="fm-title ps-govmodal-title--sm">
+              {isEdit ? t('governingBodiesSection.bodyModal.editHeader', { label: initial!.label }) : t('governingBodiesSection.bodyModal.addHeader')}
             </h2>
           </div>
-          <button onClick={onClose} className="fm-btn-cancel" style={{ padding: '4px 10px' }}>✕</button>
+          <button onClick={onClose} className="fm-btn-cancel ps-govmodal-btn-close">✕</button>
         </div>
         <div className="ps-client-editor-body">
 
           <div className="ps-body-modal-field">
             <label className="ps-body-modal-label">
-              Abbreviation <span className="ps-body-modal-label-req">*</span>
-              {isEdit && <span className="ps-body-modal-label-note">(cannot be changed)</span>}
+              {t('governingBodiesSection.bodyModal.abbreviationLabel')} <span className="ps-body-modal-label-req">*</span>
+              {isEdit && <span className="ps-body-modal-label-note">{t('governingBodiesSection.bodyModal.cannotBeChangedNote')}</span>}
             </label>
             <input
               value={label}
               onChange={e => !isEdit && setLabel(e.target.value)}
               disabled={isEdit}
-              placeholder="e.g. RCPA"
+              placeholder={t('governingBodiesSection.bodyModal.abbreviationPlaceholder')}
               className={[
                 'ps-body-modal-input',
                 'ps-body-modal-input--mono',
@@ -134,40 +153,39 @@ const BodyModal: React.FC<{
             />
             {idConflict && (
               <div className="ps-body-modal-error">
-                ID <strong>{derivedId}</strong> already exists. Custom bodies must have a unique
-                abbreviation that does not duplicate a standard body or another custom body.
+                <Trans i18nKey="governingBodiesSection.bodyModal.idConflictError" values={{ id: derivedId }} components={{ strong: <strong /> }} />
               </div>
             )}
           </div>
 
           <div className="ps-body-modal-field">
             <label className="ps-body-modal-label">
-              Full Name <span className="ps-body-modal-label-req">*</span>
+              {t('governingBodiesSection.bodyModal.fullNameLabel')} <span className="ps-body-modal-label-req">*</span>
             </label>
             <input
               value={fullName}
               onChange={e => setFullName(e.target.value)}
-              placeholder="e.g. Royal College of Pathologists of Australasia"
+              placeholder={t('governingBodiesSection.bodyModal.fullNamePlaceholder')}
               className="ps-body-modal-input"
             />
           </div>
 
           <div className="ps-body-modal-field-row">
             <div className="ps-body-modal-field">
-              <label className="ps-body-modal-label">Region</label>
+              <label className="ps-body-modal-label">{t('governingBodiesSection.bodyModal.regionLabel')}</label>
               <input
                 value={region}
                 onChange={e => setRegion(e.target.value)}
-                placeholder="e.g. Australia / NZ"
+                placeholder={t('governingBodiesSection.bodyModal.regionPlaceholder')}
                 className="ps-body-modal-input"
               />
             </div>
             <div className="ps-body-modal-field">
-              <label className="ps-body-modal-label">Website</label>
+              <label className="ps-body-modal-label">{t('governingBodiesSection.bodyModal.websiteLabel')}</label>
               <input
                 value={website}
                 onChange={e => setWebsite(e.target.value)}
-                placeholder="https://..."
+                placeholder={t('governingBodiesSection.bodyModal.websitePlaceholder')}
                 className="ps-body-modal-input"
               />
             </div>
@@ -175,18 +193,17 @@ const BodyModal: React.FC<{
 
           {!isEdit && (
             <div className="ps-body-modal-note">
-              <span className="ps-body-modal-note-label">ℹ️ Note — </span>
-              auto-sync is disabled for custom bodies by default. Enable it manually once
-              the sync feed is configured.
+              <span className="ps-body-modal-note-label">ℹ️ {t('governingBodiesSection.bodyModal.noteLabel')}</span>
+              {t('governingBodiesSection.bodyModal.noteBody')}
             </div>
           )}
 
           <div className="fm-footer">
             <span className="fm-footer-status" />
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={onClose} className="fm-btn-cancel">Cancel</button>
+            <div className="ps-sub-footer-actions">
+              <button onClick={onClose} className="fm-btn-cancel">{t('common.cancel')}</button>
               <button onClick={handleSave} disabled={!canSubmit} className="fm-btn-apply">
-                {isEdit ? 'Save Changes' : 'Add Governing Body'}
+                {isEdit ? t('governingBodiesSection.saveChangesBtn') : t('governingBodiesSection.bodyModal.addHeader')}
               </button>
             </div>
           </div>
@@ -209,30 +226,30 @@ const BodyModal: React.FC<{
 // explicitly opt into retroactive application, never get it from an
 // unchecked default.
 
-const VersionRow: React.FC<{ v: RetentionPolicyVersion }> = ({ v }) => (
-  <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', marginBottom: 8 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{v.version} — effective {v.effectiveDate}</span>
-      <span style={{
-        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-        background: v.applyToExistingInventory ? 'rgba(248,113,113,0.15)' : 'rgba(148,163,184,0.15)',
-        color: v.applyToExistingInventory ? '#f87171' : '#94a3b8',
-      }}>
-        {v.applyToExistingInventory ? 'RETROACTIVE — applies to all stored material' : 'PROSPECTIVE — grandfathers earlier cases'}
-      </span>
+const VersionRow: React.FC<{ v: RetentionPolicyVersion }> = ({ v }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-gov-version-row">
+      <div className="ps-gov-version-row-head">
+        <span className="ps-gov-version-label">{t('governingBodiesSection.versionRow.header', { version: v.version, date: v.effectiveDate })}</span>
+        <span className={`ps-gov-version-badge ${v.applyToExistingInventory ? 'ps-gov-version-badge--retroactive' : 'ps-gov-version-badge--prospective'}`}>
+          {v.applyToExistingInventory ? t('governingBodiesSection.versionRow.retroactiveBadge') : t('governingBodiesSection.versionRow.prospectiveBadge')}
+        </span>
+      </div>
+      <div className="ps-gov-version-figures">
+        {t('governingBodiesSection.figuresLine', { block: formatRetentionPeriod(v.block), slide: formatRetentionPeriod(v.slide), wet: formatRetentionPeriod(v.wet_tissue) })}
+      </div>
+      <div className="ps-gov-version-source">{v.sourceNote}</div>
     </div>
-    <div style={{ fontSize: 11, color: '#94a3b8' }}>
-      Block {formatRetentionPeriod(v.block)} · Slide {formatRetentionPeriod(v.slide)} · Wet {formatRetentionPeriod(v.wet_tissue)}
-    </div>
-    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{v.sourceNote}</div>
-  </div>
-);
+  );
+};
 
 const RetentionModal: React.FC<{
   body:    GoverningBody;
   onClose: () => void;
   onSave:  (patch: Partial<GoverningBody>) => void;
 }> = ({ body, onClose, onSave }) => {
+  const { t } = useTranslation();
   const existingVersions = (body.retentionPolicyVersions ?? []).slice().sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
 
   const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>(body.jurisdictions ?? []);
@@ -253,8 +270,14 @@ const RetentionModal: React.FC<{
   // required too — a partial version silently falling through to
   // "undefined" for one material type is a real, easy-to-miss mistake
   // for a super-admin to make under time pressure.
-  const parsedDays = Object.fromEntries(ALL_MATERIAL_TYPES.map(t => [t, parseInt(days[t], 10)])) as Record<RetainableMaterialType, number>;
-  const allDaysValid = ALL_MATERIAL_TYPES.every(t => Number.isFinite(parsedDays[t]) && parsedDays[t] > 0);
+  // Renamed callback params from the original `t` to `mt` (material
+  // type) — this component also has a real useTranslation() `t` in
+  // scope, and the original `t => [t, ...]` shadowed it within these
+  // two callbacks (harmless today since neither callback body called
+  // the real `t()`, but the same shadowing pattern flagged and fixed
+  // in DemoResetTab.tsx's own i18n pass — same fix here, pre-emptively).
+  const parsedDays = Object.fromEntries(ALL_MATERIAL_TYPES.map(mt => [mt, parseInt(days[mt], 10)])) as Record<RetainableMaterialType, number>;
+  const allDaysValid = ALL_MATERIAL_TYPES.every(mt => Number.isFinite(parsedDays[mt]) && parsedDays[mt] > 0);
   const canSubmit = allDaysValid && sourceNote.trim().length > 0 && !!effectiveDate;
 
   const handleSaveJurisdictions = () => {
@@ -287,77 +310,72 @@ const RetentionModal: React.FC<{
 
   return (
     <div className="ps-conf-backdrop">
-      <div className="fm-modal fm-modal--config" style={{ width: 'min(600px, 96vw)', maxHeight: '86vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="fm-modal fm-modal--config ps-govmodal--retention" onClick={e => e.stopPropagation()}>
 
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · Governing Bodies · Retention</div>
-            <h2 className="fm-title" style={{ fontSize: 16 }}>{body.label} — Retention Figures</h2>
+            <div className="fm-eyebrow">{t('governingBodiesSection.retentionModal.eyebrow')}</div>
+            <h2 className="fm-title ps-govmodal-title--sm">{t('governingBodiesSection.retentionModal.title', { label: body.label })}</h2>
           </div>
-          <button onClick={onClose} className="fm-btn-cancel" style={{ padding: '4px 10px' }}>✕</button>
+          <button onClick={onClose} className="fm-btn-cancel ps-govmodal-btn-close">✕</button>
         </div>
         <div className="ps-client-editor-body">
 
           <div className="ps-body-modal-field">
-            <label className="ps-body-modal-label">Applies to Jurisdiction(s)</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            <label className="ps-body-modal-label">{t('governingBodiesSection.retentionModal.jurisdictionsLabel')}</label>
+            <div className="ps-gov-jur-row">
               {ALL_JURISDICTIONS.map(j => (
                 <button
                   key={j} type="button" onClick={() => { toggleJurisdiction(j); }}
-                  style={{
-                    fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 20, cursor: 'pointer',
-                    background: jurisdictions.includes(j) ? 'rgba(8,145,178,0.2)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${jurisdictions.includes(j) ? '#0891B2' : 'rgba(255,255,255,0.12)'}`,
-                    color: jurisdictions.includes(j) ? '#0891B2' : '#94a3b8',
-                  }}
+                  className={`ps-gov-jur-chip${jurisdictions.includes(j) ? ' ps-gov-jur-chip--active' : ''}`}
                 >
                   {JURISDICTION_LABELS[j]}
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <div style={{ fontSize: 11, color: '#64748b' }}>
-                Leave none selected if this body isn't yet the live retention source for any real jurisdiction (e.g. EU/Korea today).
+            <div className="ps-gov-jur-footer">
+              <div className="ps-gov-jur-hint">
+                {t('governingBodiesSection.retentionModal.jurisdictionsHint')}
               </div>
-              <button onClick={handleSaveJurisdictions} className="ps-btn-ghost-dark" style={{ fontSize: 11, padding: '4px 10px', flexShrink: 0, marginLeft: 8 }}>Save jurisdictions</button>
+              <button onClick={handleSaveJurisdictions} className="ps-btn-ghost-dark ps-gov-jur-save-btn">{t('governingBodiesSection.retentionModal.saveJurisdictionsBtn')}</button>
             </div>
           </div>
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', margin: '16px 0 8px' }}>
-            Version History ({existingVersions.length})
+          <div className="ps-gov-version-heading">
+            {t('governingBodiesSection.retentionModal.versionHistoryHeading', { count: existingVersions.length })}
           </div>
           {existingVersions.length === 0 && (
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>No retention figures on file yet.</div>
+            <div className="ps-gov-version-empty">{t('governingBodiesSection.retentionModal.noVersionsYet')}</div>
           )}
           {existingVersions.map(v => <VersionRow key={v.version} v={v} />)}
 
           {!showAddVersion ? (
-            <button onClick={() => setShowAddVersion(true)} className="ps-section-add-btn" style={{ marginTop: 4 }}>+ Add New Version</button>
+            <button onClick={() => setShowAddVersion(true)} className="ps-section-add-btn ps-gov-add-version-btn">+ {t('governingBodiesSection.retentionModal.addVersionBtn')}</button>
           ) : (
-            <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: '1px solid rgba(8,145,178,0.3)', background: 'rgba(8,145,178,0.04)' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0891B2', marginBottom: 10 }}>
-                New Version — {body.retentionPolicyVersions?.length ? `v${body.retentionPolicyVersions.length + 1}` : 'v1'}
+            <div className="ps-gov-newversion-box">
+              <div className="ps-gov-newversion-heading">
+                {t('governingBodiesSection.retentionModal.newVersionHeading', { version: body.retentionPolicyVersions?.length ? `v${body.retentionPolicyVersions.length + 1}` : 'v1' })}
               </div>
 
               <div className="ps-body-modal-field-row">
                 <div className="ps-body-modal-field">
-                  <label className="ps-body-modal-label">Effective Date</label>
+                  <label className="ps-body-modal-label">{t('governingBodiesSection.retentionModal.effectiveDateLabel')}</label>
                   <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="ps-body-modal-input ps-body-modal-input--mono" />
                 </div>
               </div>
 
               <div className="ps-body-modal-field-row">
-                {ALL_MATERIAL_TYPES.map(t => (
-                  <div className="ps-body-modal-field" key={t}>
-                    <label className="ps-body-modal-label">{MATERIAL_TYPE_LABEL[t]} (days)</label>
+                {ALL_MATERIAL_TYPES.map(mt => (
+                  <div className="ps-body-modal-field" key={mt}>
+                    <label className="ps-body-modal-label">{MATERIAL_TYPE_LABEL[mt]} {t('governingBodiesSection.retentionModal.daysUnit')}</label>
                     <input
-                      value={days[t]}
-                      onChange={e => setDays(prev => ({ ...prev, [t]: e.target.value }))}
-                      placeholder="e.g. 3653"
+                      value={days[mt]}
+                      onChange={e => setDays(prev => ({ ...prev, [mt]: e.target.value }))}
+                      placeholder={t('governingBodiesSection.retentionModal.daysPlaceholder')}
                       className="ps-body-modal-input ps-body-modal-input--mono"
                     />
-                    {days[t] && Number.isFinite(parseInt(days[t], 10)) && parseInt(days[t], 10) > 0 && (
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>≈ {formatRetentionPeriod(parseInt(days[t], 10))}</div>
+                    {days[mt] && Number.isFinite(parseInt(days[mt], 10)) && parseInt(days[mt], 10) > 0 && (
+                      <div className="ps-gov-hint-sm">{t('governingBodiesSection.retentionModal.approxHint', { period: formatRetentionPeriod(parseInt(days[mt], 10)) })}</div>
                     )}
                   </div>
                 ))}
@@ -365,40 +383,40 @@ const RetentionModal: React.FC<{
 
               <div className="ps-body-modal-field">
                 <label className="ps-body-modal-label">
-                  Source / Citation <span className="ps-body-modal-label-req">*</span>
+                  {t('governingBodiesSection.retentionModal.sourceLabel')} <span className="ps-body-modal-label-req">*</span>
                 </label>
                 <textarea
                   value={sourceNote}
                   onChange={e => setSourceNote(e.target.value)}
-                  placeholder="e.g. RCPath/IBMS Best Practice Recommendations G031, 6th ed. (active Oct 2025)..."
+                  placeholder={t('governingBodiesSection.retentionModal.sourcePlaceholder')}
                   className="ps-body-modal-input"
                   rows={3}
                 />
               </div>
 
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 10 }}>
-                <input type="checkbox" checked={applyToExisting} onChange={e => setApplyToExisting(e.target.checked)} style={{ width: 16, height: 16, marginTop: 2 }} />
-                <span style={{ fontSize: 12, color: '#e2e8f0' }}>
-                  Apply retroactively to all currently-stored, non-disposed material
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    Check this ONLY for a real, lengthening change ("you cannot dispose of a 12-year-old block today simply because it met the old 10-year rule"). Leave unchecked for a shortening change — earlier cases stay grandfathered under whichever version was active at their own sign-out.
+              <label className="ps-gov-checkbox-row">
+                <input type="checkbox" checked={applyToExisting} onChange={e => setApplyToExisting(e.target.checked)} className="ps-gov-checkbox-input" />
+                <span className="ps-gov-checkbox-label">
+                  {t('governingBodiesSection.retentionModal.retroactiveLabel')}
+                  <div className="ps-gov-hint-sm">
+                    {t('governingBodiesSection.retentionModal.retroactiveHint')}
                   </div>
                 </span>
               </label>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                <button onClick={() => setShowAddVersion(false)} className="fm-btn-cancel">Cancel</button>
-                <button onClick={handleAddVersion} disabled={!canSubmit} className="fm-btn-apply">Publish New Version</button>
+              <div className="ps-gov-newversion-actions">
+                <button onClick={() => setShowAddVersion(false)} className="fm-btn-cancel">{t('common.cancel')}</button>
+                <button onClick={handleAddVersion} disabled={!canSubmit} className="fm-btn-apply">{t('governingBodiesSection.retentionModal.publishBtn')}</button>
               </div>
             </div>
           )}
 
-          <div className="fm-footer" style={{ marginTop: 16 }}>
+          <div className="fm-footer ps-gov-fm-footer--mt">
             {existingVersions.length > 0 && (
-              <button onClick={handleClearAll} className="fm-btn-cancel" style={{ color: '#f87171' }}>Clear entire version history</button>
+              <button onClick={handleClearAll} className="fm-btn-cancel ps-gov-danger-text">{t('governingBodiesSection.retentionModal.clearHistoryBtn')}</button>
             )}
             {existingVersions.length === 0 && <span className="fm-footer-status" />}
-            <button onClick={onClose} className="fm-btn-cancel">Close</button>
+            <button onClick={onClose} className="fm-btn-cancel">{t('common.close')}</button>
           </div>
 
         </div>
@@ -417,75 +435,79 @@ const BodyRow: React.FC<{
   onEdit?:      () => void;
   onRemove?:    () => void;
   onEditRetention: () => void;
-}> = ({ body, isSuperAdmin, onUpdate, canRemove, onEdit, onRemove, onEditRetention }) => (
-  <div className={`ps-gov-row${body.enabled ? '' : ' ps-gov-row--disabled'}`}>
+}> = ({ body, isSuperAdmin, onUpdate, canRemove, onEdit, onRemove, onEditRetention }) => {
+  const { t } = useTranslation();
+  return (
+    <div className={`ps-gov-row${body.enabled ? '' : ' ps-gov-row--disabled'}`}>
 
-    <div>
-      <div className="ps-gov-row-name">
-        {body.label}
-        {body.isCustom && <span className="ps-gov-custom-badge" style={{ marginLeft: 8 }}>CUSTOM</span>}
+      <div>
+        <div className="ps-gov-row-name">
+          {body.label}
+          {body.isCustom && <span className="ps-gov-custom-badge ps-gov-custom-badge--ml">{t('governingBodiesSection.bodyRow.customBadge')}</span>}
+        </div>
+        <div className="ps-gov-row-fullname">
+          {body.fullName}
+          {body.website && (
+            <a href={body.website} target="_blank" rel="noreferrer" className="ps-gov-row-link">↗</a>
+          )}
+        </div>
+        {(() => {
+          const versions = body.retentionPolicyVersions ?? [];
+          const current = versions
+            .filter(v => new Date(v.effectiveDate) <= new Date())
+            .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
+          if (!current) {
+            return <div className="ps-gov-hint-xs">{t('governingBodiesSection.noRetentionFigures')}</div>;
+          }
+          return (
+            <div className="ps-gov-hint-xs">
+              {t('governingBodiesSection.figuresLine', { block: formatRetentionPeriod(current.block), slide: formatRetentionPeriod(current.slide), wet: formatRetentionPeriod(current.wet_tissue) })}
+              {versions.length > 1 ? ` · ${t('governingBodiesSection.versionsOnFile', { count: versions.length })}` : ''}
+              {body.jurisdictions?.length ? ` · ${body.jurisdictions.join(', ')}` : ` · ${t('governingBodiesSection.notLinkedToJurisdiction')}`}
+            </div>
+          );
+        })()}
       </div>
-      <div className="ps-gov-row-fullname">
-        {body.fullName}
-        {body.website && (
-          <a href={body.website} target="_blank" rel="noreferrer" className="ps-gov-row-link">↗</a>
+
+      <div className="ps-gov-row-region">{body.region}</div>
+
+      <Toggle
+        checked={body.enabled}
+        onChange={v => onUpdate({ enabled: v, syncEnabled: v ? body.syncEnabled : false })}
+        disabled={!isSuperAdmin}
+      />
+
+      <Toggle
+        checked={body.syncEnabled}
+        onChange={v => onUpdate({ syncEnabled: v })}
+        disabled={!isSuperAdmin || !body.enabled}
+        color="#a78bfa"
+      />
+
+      <div className="ps-gov-row-actions">
+        {isSuperAdmin && (
+          <button className="ps-btn-ghost-dark ps-gov-row-action-btn" onClick={onEditRetention}>
+            🕐 {t('governingBodiesSection.bodyRow.retentionBtn')}
+          </button>
+        )}
+        {canRemove && onEdit && (
+          <button className="ps-btn-ghost-dark ps-gov-row-action-btn" onClick={onEdit}>
+            {t('common.edit')}
+          </button>
+        )}
+        {canRemove && onRemove && (
+          <button className="ps-gov-remove-btn" onClick={onRemove} title={t('governingBodiesSection.bodyRow.removeTitle')}>✕</button>
         )}
       </div>
-      {(() => {
-        const versions = body.retentionPolicyVersions ?? [];
-        const current = versions
-          .filter(v => new Date(v.effectiveDate) <= new Date())
-          .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
-        if (!current) {
-          return <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>No retention figures on file</div>;
-        }
-        return (
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-            Block {formatRetentionPeriod(current.block)} · Slide {formatRetentionPeriod(current.slide)} · Wet {formatRetentionPeriod(current.wet_tissue)}
-            {versions.length > 1 ? ` · ${versions.length} versions on file` : ''}
-            {body.jurisdictions?.length ? ` · ${body.jurisdictions.join(', ')}` : ' · not yet linked to a jurisdiction'}
-          </div>
-        );
-      })()}
+
     </div>
-
-    <div className="ps-gov-row-region">{body.region}</div>
-
-    <Toggle
-      checked={body.enabled}
-      onChange={v => onUpdate({ enabled: v, syncEnabled: v ? body.syncEnabled : false })}
-      disabled={!isSuperAdmin}
-    />
-
-    <Toggle
-      checked={body.syncEnabled}
-      onChange={v => onUpdate({ syncEnabled: v })}
-      disabled={!isSuperAdmin || !body.enabled}
-      color="#a78bfa"
-    />
-
-    <div className="ps-gov-row-actions">
-      {isSuperAdmin && (
-        <button className="ps-btn-ghost-dark" onClick={onEditRetention} style={{ fontSize: 11, padding: '4px 8px' }}>
-          🕐 Retention
-        </button>
-      )}
-      {canRemove && onEdit && (
-        <button className="ps-btn-ghost-dark" onClick={onEdit} style={{ fontSize: 11, padding: '4px 8px' }}>
-          Edit
-        </button>
-      )}
-      {canRemove && onRemove && (
-        <button className="ps-gov-remove-btn" onClick={onRemove} title="Remove">✕</button>
-      )}
-    </div>
-
-  </div>
-);
+  );
+};
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperAdmin = false }) => {
+  const { t } = useTranslation();
   const [bodies,     setBodies]     = useState<GoverningBody[]>([]);
   const [showAdd,    setShowAdd]    = useState(false);
   const [editTarget, setEditTarget] = useState<GoverningBody | null>(null);
@@ -520,7 +542,7 @@ const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperA
       await mockGoverningBodyService.saveAll(bodies);
       setHasChanges(false);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Save failed.');
+      setSaveError(e instanceof Error ? e.message : t('governingBodiesSection.saveFailedDefault'));
     }
   };
 
@@ -533,34 +555,39 @@ const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperA
 
       <div className="ps-gov-header">
         <div className="ps-gov-header-text">
-          <h3 className="ps-gov-title">Governing Bodies</h3>
+          <h3 className="ps-gov-title">{t('governingBodiesSection.title')}</h3>
           <p className="ps-gov-subtitle">
-            Controls which governing bodies appear in the Synoptic Library and nightly protocol sync, and the real, live specimen-retention figures each one publishes.
-            {!isSuperAdmin && <span className="ps-gov-subtitle-warn"> · Super admin access required.</span>}
+            {t('governingBodiesSection.subtitle')}
+            {!isSuperAdmin && <span className="ps-gov-subtitle-warn"> · {t('governingBodiesSection.superAdminRequired')}</span>}
           </p>
         </div>
         <div className="ps-gov-header-actions">
-          {hasChanges && <span className="ps-gov-unsaved">● Unsaved changes</span>}
-          {saveError && <span style={{ color: '#f87171', fontSize: 12 }}>{saveError}</span>}
-          {isSuperAdmin && hasChanges && <button className="ps-conf-btn-primary" onClick={handleSave}>Save Changes</button>}
-          {isSuperAdmin && <button className="ps-section-add-btn" onClick={() => setShowAdd(true)}>+ Add Custom Body</button>}
+          {hasChanges && <span className="ps-gov-unsaved">● {t('governingBodiesSection.unsavedChanges')}</span>}
+          {saveError && <span className="ps-gov-save-error">{saveError}</span>}
+          {isSuperAdmin && hasChanges && <button className="ps-conf-btn-primary" onClick={handleSave}>{t('governingBodiesSection.saveChangesBtn')}</button>}
+          {isSuperAdmin && <button className="ps-section-add-btn" onClick={() => setShowAdd(true)}>+ {t('governingBodiesSection.addCustomBodyBtn')}</button>}
         </div>
       </div>
 
       <div className="ps-gov-callout">
         <span className="ps-gov-callout-icon">🔬</span>
         <div>
-          <div className="ps-gov-callout-title">Terminology Monitoring — Coming Soon</div>
+          <div className="ps-gov-callout-title">{t('governingBodiesSection.callout.title')}</div>
           <div className="ps-gov-callout-body">
-            The nightly sync will monitor SNOMED CT and ICD-10/11 for deprecated or updated codes
-            in your published templates, surfacing alerts in the Synoptic Library.
+            {t('governingBodiesSection.callout.body')}
           </div>
         </div>
       </div>
 
       <div className="ps-gov-col-headers">
-        {['Governing Body', 'Region', 'Active', 'Auto-sync', ''].map(h => (
-          <div key={h} className="ps-gov-col-header">{h}</div>
+        {[
+          t('governingBodiesSection.columnHeaders.governingBody'),
+          t('governingBodiesSection.columnHeaders.region'),
+          t('common.active'),
+          t('governingBodiesSection.columnHeaders.autoSync'),
+          '',
+        ].map((h, i) => (
+          <div key={i} className="ps-gov-col-header">{h}</div>
         ))}
       </div>
 
@@ -573,13 +600,11 @@ const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperA
       {customBodies.length > 0 && (
         <>
           <div className="ps-gov-divider-row">
-            <span className="ps-gov-divider-label">Custom</span>
+            <span className="ps-gov-divider-label">{t('governingBodiesSection.customLabel')}</span>
             <div className="ps-gov-divider-line" />
           </div>
           <p className="ps-gov-custom-note">
-            Custom bodies supplement standard ones — use them for institutional overlays or bodies
-            not in the standard list. Enable alongside standard bodies only if they cover distinct
-            protocol sets.
+            {t('governingBodiesSection.customNote')}
           </p>
           {customBodies.map(body => (
             <BodyRow key={body.id} body={body} isSuperAdmin={isSuperAdmin}

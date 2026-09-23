@@ -29,6 +29,16 @@ export interface ResidentCountersignCheckInput {
    *  (this function stays synchronous and pure; it never makes that
    *  real, async lookup itself). */
   hasActiveFppeAssignment: boolean;
+  /** Real, per direct follow-up ("We also should account for Cytotecs
+   *  trained and new staff while we are here") — the real sibling to
+   *  hasActiveFppeAssignment above, for a Cytotechnologist participant
+   *  under an active New Cytotechnologist Competency Assessment
+   *  supervision assignment (CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID).
+   *  Optional, defaulting to false: this only ever applies to a
+   *  cytotechnologist participation type, which Surg Path/Autopsy
+   *  cases never carry, so those existing callers (useSignOutWorkflow.ts,
+   *  signAutopsyReport.ts) are unaffected and never need to pass it. */
+  hasActiveCytotechCompetencyAssignment?: boolean;
 }
 
 export interface ResidentCountersignCheckResult {
@@ -39,11 +49,11 @@ export interface ResidentCountersignCheckResult {
    *  false. A caller resolving who the reviewer is (attending
    *  participant vs. FPPE proctor) branches on this same distinction,
    *  so it's returned rather than re-derived. */
-  reason?: 'resident' | 'fppe';
+  reason?: 'resident' | 'fppe' | 'cytotech_competency';
 }
 
 export function resolveResidentCountersignRequired(input: ResidentCountersignCheckInput): ResidentCountersignCheckResult {
-  const { participants, signingUserId, hasActiveFppeAssignment } = input;
+  const { participants, signingUserId, hasActiveFppeAssignment, hasActiveCytotechCompetencyAssignment } = input;
 
   const isAttendingToo = participants?.some(
     p => p.status === 'active' && p.staffId === signingUserId && p.participationTypeIds?.includes('attending')
@@ -52,8 +62,8 @@ export function resolveResidentCountersignRequired(input: ResidentCountersignChe
   if (isAttendingToo) {
     // Real, deliberate: a dual-role signer (also an active attending
     // participant on this same case) is never intercepted, regardless
-    // of any resident participation type or FPPE assignment they might
-    // also carry — they ARE the attending here.
+    // of any resident participation type or FPPE/competency assignment
+    // they might also carry — they ARE the attending here.
     return { required: false };
   }
 
@@ -63,5 +73,23 @@ export function resolveResidentCountersignRequired(input: ResidentCountersignChe
 
   if (isResidentParticipant) return { required: true, reason: 'resident' };
   if (hasActiveFppeAssignment) return { required: true, reason: 'fppe' };
+
+  // Real, per direct follow-up: the same real gap this whole fix
+  // closes for cytology's isPathologist signal also applies here — a
+  // Cytotechnologist who independently qualifies to sign a NILM GYN
+  // case under resolveCytologySignOutGate's own real CLIA exception
+  // still shouldn't be signing UNSUPERVISED during their real,
+  // CLIA-mandated first-year competency window. Scoped to the
+  // cytotechnologist participation type specifically — this never
+  // fires for a resident or attending, who are handled by the checks
+  // above.
+  const isCytotechParticipant = participants?.some(
+    p => p.status === 'active' && p.staffId === signingUserId && p.participationTypeIds?.includes('cytotechnologist')
+  ) ?? false;
+
+  if (isCytotechParticipant && hasActiveCytotechCompetencyAssignment) {
+    return { required: true, reason: 'cytotech_competency' };
+  }
+
   return { required: false };
 }

@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import '../../../pathscribe.css';
 import { orderIntakeService, facilityService, specimenDictionaryService, interfaceExceptionService } from '@/services';
@@ -26,6 +27,7 @@ import { findDuplicate } from '@/utils/validateUnique';
 
 const CrosswalkSection: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<SpecimenCodeCrosswalkEntry[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [dictionary, setDictionary] = useState<SpecimenEntry[]>([]);
@@ -76,7 +78,7 @@ const CrosswalkSection: React.FC = () => {
   const handleAdd = async () => {
     setError(null);
     if (!newFacilityId || !newExternalCode.trim() || !newDictionaryEntryId) {
-      setError('Facility, external code, and specimen type are all required.');
+      setError(t('crosswalkSection.addPanel.requiredError'));
       return;
     }
     // Real, confirmed risk this closes: mockOrderIntakeService.ts's own
@@ -90,7 +92,7 @@ const CrosswalkSection: React.FC = () => {
     // combination needs to be unique.
     const collision = findDuplicate(entries, { clientId: newFacilityId, externalCode: newExternalCode.trim() }, ['clientId', 'externalCode']);
     if (collision) {
-      setError(`${resolveFacilityName(newFacilityId)} already maps external code "${newExternalCode.trim()}" to ${entryName(collision.dictionaryEntryId)}.`);
+      setError(t('crosswalkSection.addPanel.collisionError', { facility: resolveFacilityName(newFacilityId), code: newExternalCode.trim(), entry: entryName(collision.dictionaryEntryId) }));
       return;
     }
     setSaving(true);
@@ -120,7 +122,7 @@ const CrosswalkSection: React.FC = () => {
 
   const handleXwalkFileUpload = async (file: File) => {
     if (!isCsvFile(file)) {
-      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      alert(t('crosswalkSection.upload.invalidFileType', { fileName: file.name }));
       return;
     }
     const text = await readFileAsText(file);
@@ -139,9 +141,9 @@ const CrosswalkSection: React.FC = () => {
           : undefined;
 
         let rowError: string | undefined;
-        if (!facilityName || !matchedFacility) rowError = `Facility "${facilityName}" doesn't match any real facility.`;
-        else if (!externalCode) rowError = 'External code is required.';
-        else if (!specimenName || !matchedEntry) rowError = `Specimen type "${specimenName}" doesn't match any real Specimen Dictionary entry.`;
+        if (!facilityName || !matchedFacility) rowError = t('crosswalkSection.preview.errors.facilityNotFound', { facilityName });
+        else if (!externalCode) rowError = t('crosswalkSection.preview.errors.externalCodeRequired');
+        else if (!specimenName || !matchedEntry) rowError = t('crosswalkSection.preview.errors.specimenTypeNotFound', { specimenName });
 
         return {
           clientId: matchedFacility?.id ?? '', clientName: facilityName,
@@ -165,7 +167,7 @@ const CrosswalkSection: React.FC = () => {
     refresh();
   };
 
-  if (loading) return <div className="ps-conf-section-subtitle">Loading…</div>;
+  if (loading) return <div className="ps-conf-section-subtitle">{t('crosswalkSection.loading')}</div>;
 
   const pendingCount = entries.filter(e => e.createdBy === 'system').length;
 
@@ -179,34 +181,35 @@ const CrosswalkSection: React.FC = () => {
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Specimen Code Map</h3>
+          <h3 className="ps-conf-section-title">{t('crosswalkSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Maps each facility's own local specimen codes (from inbound HL7/API orders) to a real Specimen
-            Dictionary entry — the same code string means different things at different sending systems, so
-            entries are scoped per facility. Every incoming order already consults this table automatically;
-            an unrecognized code self-learns a real, pending entry here rather than blocking the order —
-            review those below, or add a known mapping ahead of time so it never has to self-learn at all.
+            {t('crosswalkSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-secondary" onClick={handleDownloadCrosswalk}>Export</button>
-        <button className="ps-conf-btn-secondary" onClick={() => xwalkImportFileInputRef.current?.click()}>Import Spreadsheet</button>
+        <button className="ps-conf-btn-secondary" onClick={handleDownloadCrosswalk}>{t('crosswalkSection.exportButton')}</button>
+        <button className="ps-conf-btn-secondary" onClick={() => xwalkImportFileInputRef.current?.click()}>{t('crosswalkSection.importSpreadsheetButton')}</button>
         <input ref={xwalkImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handleXwalkFileUpload(e.target.files[0]); e.target.value = ''; }} />
-        <button className="ps-conf-btn-primary" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
+        <button className="ps-conf-btn-primary" onClick={() => setShowAdd(true)}>{t('crosswalkSection.addMappingButton')}</button>
       </div>
 
       {xwalkImportPreview && (
         <div className="ps-conf-import-preview">
           <p>
-            {xwalkImportPreview.filter(r => !r.error).length} row{xwalkImportPreview.filter(r => !r.error).length === 1 ? '' : 's'} ready
-            ({xwalkImportPreview.filter(r => !r.error && r.existingId).length} to update,
-            {' '}{xwalkImportPreview.filter(r => !r.error && !r.existingId).length} new)
-            {xwalkImportPreview.some(r => r.error) && `, ${xwalkImportPreview.filter(r => r.error).length} skipped with errors below.`}
+            {(() => {
+              const readyCount = xwalkImportPreview.filter(r => !r.error).length;
+              const updateCount = xwalkImportPreview.filter(r => !r.error && r.existingId).length;
+              const newCount = xwalkImportPreview.filter(r => !r.error && !r.existingId).length;
+              const skippedCount = xwalkImportPreview.filter(r => r.error).length;
+              return skippedCount > 0
+                ? t('crosswalkSection.preview.summaryWithErrors', { count: readyCount, updateCount, newCount, skippedCount })
+                : t('crosswalkSection.preview.summaryNoErrors', { count: readyCount, updateCount, newCount });
+            })()}
           </p>
           {xwalkImportPreview.filter(r => r.error).map((r, i) => (
-            <div key={i} className="ps-conf-error-text">{r.clientName || '(blank)'} / {r.externalCode || '(blank)'}: {r.error}</div>
+            <div key={i} className="ps-conf-error-text">{r.clientName || t('crosswalkSection.preview.blankPlaceholder')} / {r.externalCode || t('crosswalkSection.preview.blankPlaceholder')}: {r.error}</div>
           ))}
-          <button className="ps-conf-btn-primary" onClick={handleApplyXwalkImport} disabled={xwalkImportPreview.every(r => r.error)}>Apply Import</button>
-          <button className="ps-conf-btn-row" onClick={() => setXwalkImportPreview(null)}>Cancel</button>
+          <button className="ps-conf-btn-primary" onClick={handleApplyXwalkImport} disabled={xwalkImportPreview.every(r => r.error)}>{t('crosswalkSection.preview.applyButton')}</button>
+          <button className="ps-conf-btn-row" onClick={() => setXwalkImportPreview(null)}>{t('common.cancel')}</button>
         </div>
       )}
 
@@ -228,20 +231,20 @@ const CrosswalkSection: React.FC = () => {
       {pendingUnmappedStubCount > 0 && (
         <div className="ps-conf-callout-banner">
           <span className="ps-conf-callout-banner-text">
-            ⚠ <strong>Pending Review:</strong> {pendingUnmappedStubCount} inbound order code{pendingUnmappedStubCount === 1 ? '' : 's'} received without a real dictionary match.
+            ⚠ <strong>{t('crosswalkSection.unmappedBanner.pendingReviewLabel')}</strong> {t('crosswalkSection.unmappedBanner.message', { count: pendingUnmappedStubCount })}
           </span>
           <button
             className="ps-conf-callout-banner-link"
             onClick={() => navigate('/audit?tab=interfaces&search=unmapped_order_code')}
           >
-            View Unmapped Stubs in Audit Queue →
+            {t('crosswalkSection.unmappedBanner.viewLink')}
           </button>
         </div>
       )}
 
       {pendingCount > 0 && (
         <div className="ps-conf-section-subtitle ps-xwalk-pending-banner">
-          ⚠ {pendingCount} entr{pendingCount === 1 ? 'y was' : 'ies were'} auto-learned from an unrecognized order code — review for accuracy below.
+          {t('crosswalkSection.pendingBanner', { count: pendingCount })}
         </div>
       )}
 
@@ -249,15 +252,15 @@ const CrosswalkSection: React.FC = () => {
         <table className="ps-conf-table">
           <thead>
             <tr>
-              <th className="ps-conf-th">Facility</th>
-              <th className="ps-conf-th">External Code</th>
-              <th className="ps-conf-th">Resolves To</th>
-              <th className="ps-conf-th">Source</th>
+              <th className="ps-conf-th">{t('crosswalkSection.headers.facility')}</th>
+              <th className="ps-conf-th">{t('crosswalkSection.headers.externalCode')}</th>
+              <th className="ps-conf-th">{t('crosswalkSection.headers.resolvesTo')}</th>
+              <th className="ps-conf-th">{t('crosswalkSection.headers.source')}</th>
             </tr>
           </thead>
           <tbody>
             {entries.length === 0 && (
-              <tr><td className="ps-conf-td" colSpan={4}>No crosswalk entries yet.</td></tr>
+              <tr><td className="ps-conf-td" colSpan={4}>{t('crosswalkSection.emptyState')}</td></tr>
             )}
             {entries.map(e => (
               <tr key={e.id}>
@@ -266,8 +269,8 @@ const CrosswalkSection: React.FC = () => {
                 <td className="ps-conf-td">{entryName(e.dictionaryEntryId)}</td>
                 <td className="ps-conf-td">
                   {e.createdBy === 'system'
-                    ? <span className="ps-xwalk-source-pending">Auto-learned — pending review</span>
-                    : <span className="ps-xwalk-source-confirmed">Admin-confirmed</span>}
+                    ? <span className="ps-xwalk-source-pending">{t('crosswalkSection.sourcePending')}</span>
+                    : <span className="ps-xwalk-source-confirmed">{t('crosswalkSection.sourceConfirmed')}</span>}
                 </td>
               </tr>
             ))}
@@ -277,27 +280,27 @@ const CrosswalkSection: React.FC = () => {
 
       {showAdd && (
         <div className="ps-xwalk-add-panel">
-          <div className="ps-xwalk-add-panel-title">Add a mapping</div>
+          <div className="ps-xwalk-add-panel-title">{t('crosswalkSection.addPanel.title')}</div>
           {error && <div className="ps-conf-form-error">{error}</div>}
           <div className="ps-xwalk-form-row">
             <label className="ps-xwalk-form-field">
-              Facility
+              {t('crosswalkSection.addPanel.facilityLabel')}
               <select className="ps-conf-select" value={newFacilityId} onChange={e => setNewFacilityId(e.target.value)}>
-                <option value="">Select a facility…</option>
+                <option value="">{t('crosswalkSection.addPanel.facilityPlaceholder')}</option>
                 {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
             <label className="ps-xwalk-form-field">
-              External code
-              <input className="ps-conf-input" value={newExternalCode} onChange={e => setNewExternalCode(e.target.value)} placeholder="e.g. TISSUE-01" />
+              {t('crosswalkSection.addPanel.externalCodeLabel')}
+              <input className="ps-conf-input" value={newExternalCode} onChange={e => setNewExternalCode(e.target.value)} placeholder={t('crosswalkSection.addPanel.externalCodePlaceholder')} />
             </label>
             <label className="ps-xwalk-form-field ps-xwalk-form-field--wide">
-              Resolves to specimen type
+              {t('crosswalkSection.addPanel.resolvesToLabel')}
               <SearchableCombobox
                 value={newDictionaryEntryId}
                 onChange={setNewDictionaryEntryId}
-                placeholder="Select a specimen type…"
-                noMatchText="No specimen types match"
+                placeholder={t('crosswalkSection.addPanel.specimenComboboxPlaceholder')}
+                noMatchText={t('crosswalkSection.addPanel.specimenComboboxNoMatch')}
                 options={dictionary.map(d => ({
                   id: d.id,
                   label: d.name,
@@ -308,8 +311,8 @@ const CrosswalkSection: React.FC = () => {
             </label>
           </div>
           <div className="ps-xwalk-form-actions">
-            <button className="ps-conf-btn-primary" disabled={saving} onClick={handleAdd}>{saving ? 'Saving…' : 'Save Mapping'}</button>
-            <button className="ps-conf-btn-row" onClick={() => { setShowAdd(false); setError(null); }}>Cancel</button>
+            <button className="ps-conf-btn-primary" disabled={saving} onClick={handleAdd}>{saving ? t('crosswalkSection.addPanel.saving') : t('crosswalkSection.addPanel.saveButton')}</button>
+            <button className="ps-conf-btn-row" onClick={() => { setShowAdd(false); setError(null); }}>{t('common.cancel')}</button>
           </div>
         </div>
       )}

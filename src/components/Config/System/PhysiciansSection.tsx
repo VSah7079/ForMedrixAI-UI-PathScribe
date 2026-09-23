@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { physicianService, facilityService } from '../../../services';
@@ -37,15 +38,34 @@ const PHYSICIAN_PERSON_FIELDS: (keyof Physician)[] = [
   'firstName', 'lastName', 'npi', 'physicianCode', 'phone', 'fax', 'email',
 ];
 
+// Data key ('Email' | 'Fax' | 'Phone', stored on Physician.preferredContact)
+// stays English; only the displayed label is translated.
+const PREFERRED_CONTACT_LABEL_KEY: Record<'Email' | 'Fax' | 'Phone', string> = {
+  Email: 'physiciansSection.modal.contactEmail',
+  Fax: 'physiciansSection.modal.contactFax',
+  Phone: 'physiciansSection.modal.contactPhone',
+};
+
+// Data key (stored on Physician.status) stays English; only the
+// displayed label is translated. 'Active'/'Inactive' reuse common.*.
+const STATUS_LABEL_KEY: Record<'Active' | 'Inactive' | 'Unverified', string> = {
+  Active: 'common.active',
+  Inactive: 'common.inactive',
+  Unverified: 'physiciansSection.status.unverified',
+};
+
 // ─── Toggle ───────────────────────────────────────────────────────────────────
-const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
-  <div className="ps-conf-toggle-row">
-    <div onClick={() => onChange(!value)} className={`ps-conf-toggle-track ${value ? 'ps-conf-toggle-track--active' : ''}`}>
-      <div className="ps-conf-toggle-thumb" />
+const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-conf-toggle-row">
+      <div onClick={() => onChange(!value)} className={`ps-conf-toggle-track ${value ? 'ps-conf-toggle-track--active' : ''}`}>
+        <div className="ps-conf-toggle-thumb" />
+      </div>
+      <span className={`ps-conf-toggle-label ${value ? 'ps-conf-toggle-label--active' : ''}`}>{value ? t('common.active') : t('common.inactive')}</span>
     </div>
-    <span className={`ps-conf-toggle-label ${value ? 'ps-conf-toggle-label--active' : ''}`}>{value ? 'Active' : 'Inactive'}</span>
-  </div>
-);
+  );
+};
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 type Draft = Omit<Physician, 'id'> & { active: boolean };
@@ -53,7 +73,7 @@ type Draft = Omit<Physician, 'id'> & { active: boolean };
 const emptyDraft: Draft = {
   namePrefix: 'Dr.', givenNames: '', familyNames: '', preferredName: '', nameSuffix: '',
   firstName: '', lastName: '', // stale by design — mockPhysicianService always recomputes these from givenNames/familyNames on save
-  physicianCode: '', npi: '', specialty: '', phone: '', fax: '',
+  physicianCode: '', npi: '', specialty: '', phone: '', fax: '', smsCapablePhone: '',
   email: '', preferredContact: 'Email', clientIds: [], status: 'Active', active: true,
 };
 
@@ -74,6 +94,7 @@ interface PhysicianModalProps {
 }
 
 const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneSourceName, facilities, existingEntries, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     physician
       ? { ...physician, active: physician.status === 'Active' }
@@ -100,17 +121,17 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
 
   const validate = () => {
     const e: typeof errors = {};
-    if (!draft.givenNames.trim()) e.givenNames = 'Required';
-    if (!draft.familyNames.trim())  e.familyNames  = 'Required';
+    if (!draft.givenNames.trim()) e.givenNames = t('common.required');
+    if (!draft.familyNames.trim())  e.familyNames  = t('common.required');
 
     // Physician Code: required, unique across the whole directory
     // (PS-73) — independent of NPI, so checked as its own single-key
     // collision, not compounded with anything else.
     if (!draft.physicianCode.trim()) {
-      e.physicianCode = 'Required';
+      e.physicianCode = t('common.required');
     } else {
       const codeCollision = findDuplicate(existingEntries, { physicianCode: draft.physicianCode.trim() }, ['physicianCode'], excludeId);
-      if (codeCollision) e.physicianCode = `Physician code "${codeCollision.physicianCode}" is already assigned to ${fullName(codeCollision)}.`;
+      if (codeCollision) e.physicianCode = t('physiciansSection.modal.physicianCodeCollision', { code: codeCollision.physicianCode, name: fullName(codeCollision) });
     }
 
     // NPI: optional (confirmed — not every physician has one, e.g. UK
@@ -118,7 +139,7 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
     // present, never against another blank.
     if (draft.npi.trim()) {
       const npiCollision = findDuplicate(existingEntries, { npi: draft.npi.trim() }, ['npi'], excludeId);
-      if (npiCollision) e.npi = `NPI ${npiCollision.npi} is already assigned to ${fullName(npiCollision)}.`;
+      if (npiCollision) e.npi = t('physiciansSection.modal.npiCollision', { npi: npiCollision.npi, name: fullName(npiCollision) });
     }
 
     return e;
@@ -139,10 +160,10 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
       <div className="ps-ms-modal ps-ms-modal--wide">
         <div className="ps-ms-header">
           {mode === 'edit'
-            ? `Edit — ${formatFullDisplayName(physician!)}`
+            ? t('physiciansSection.modal.editHeader', { name: formatFullDisplayName(physician!) })
             : cloneSourceName
-              ? `New Physician — from ${cloneSourceName} template`
-              : 'Add Physician'}
+              ? t('physiciansSection.modal.addFromTemplateHeader', { name: cloneSourceName })
+              : t('physiciansSection.modal.addHeader')}
         </div>
 
         <div className="ps-ms-body">
@@ -150,93 +171,101 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
           {/* Name */}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="physician-prefix">Prefix</label>
+              <label className="ps-conf-label" htmlFor="physician-prefix">{t('physiciansSection.modal.prefixLabel')}</label>
               <select id="physician-prefix" className="ps-conf-select" value={draft.namePrefix ?? ''} onChange={e => set('namePrefix', e.target.value)}>
-                <option value="">None</option>
-                <option value="Mr.">Mr.</option>
-                <option value="Mrs.">Mrs.</option>
-                <option value="Ms.">Ms.</option>
-                <option value="Mx.">Mx.</option>
-                <option value="Dr.">Dr.</option>
+                <option value="">{t('physiciansSection.modal.prefixNone')}</option>
+                <option value="Mr.">{t('physiciansSection.modal.prefixMr')}</option>
+                <option value="Mrs.">{t('physiciansSection.modal.prefixMrs')}</option>
+                <option value="Ms.">{t('physiciansSection.modal.prefixMs')}</option>
+                <option value="Mx.">{t('physiciansSection.modal.prefixMx')}</option>
+                <option value="Dr.">{t('physiciansSection.modal.prefixDr')}</option>
               </select>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Suffix</label>
+              <label className="ps-conf-label">{t('physiciansSection.modal.suffixLabel')}</label>
               <SuffixSelect value={draft.nameSuffix ?? ''} onChange={v => set('nameSuffix', v)} selectClassName="ps-conf-select" inputClassName="ps-conf-input" />
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Given Name(s) <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t('physiciansSection.modal.givenNamesLabel')} <span className="ps-conf-required">*</span></label>
               <input data-phi="name" className={`ps-conf-input ${errors.givenNames ? 'ps-conf-input--error' : ''}`}
-                value={draft.givenNames} onChange={e => set('givenNames', e.target.value)} placeholder="All first/middle names" />
+                value={draft.givenNames} onChange={e => set('givenNames', e.target.value)} placeholder={t('physiciansSection.modal.givenNamesPlaceholder')} />
               {errors.givenNames && <span className="ps-conf-error-text" data-phi="name">{errors.givenNames}</span>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Family Name(s) <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t('physiciansSection.modal.familyNamesLabel')} <span className="ps-conf-required">*</span></label>
               <input data-phi="name" className={`ps-conf-input ${errors.familyNames ? 'ps-conf-input--error' : ''}`}
-                value={draft.familyNames} onChange={e => set('familyNames', e.target.value)} placeholder="Surname(s)" />
+                value={draft.familyNames} onChange={e => set('familyNames', e.target.value)} placeholder={t('physiciansSection.modal.familyNamesPlaceholder')} />
               {errors.familyNames && <span className="ps-conf-error-text" data-phi="name">{errors.familyNames}</span>}
             </div>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Preferred Name (optional)</label>
-            <input data-phi="name" className="ps-conf-input" value={draft.preferredName ?? ''} onChange={e => set('preferredName', e.target.value)} placeholder="What staff should call them, if different" />
+            <label className="ps-conf-label">{t('physiciansSection.modal.preferredNameLabel')}</label>
+            <input data-phi="name" className="ps-conf-input" value={draft.preferredName ?? ''} onChange={e => set('preferredName', e.target.value)} placeholder={t('physiciansSection.modal.preferredNamePlaceholder')} />
           </div>
 
           {/* Physician Code + NPI */}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Physician Code <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label">{t('physiciansSection.modal.physicianCodeLabel')} <span className="ps-conf-required">*</span></label>
               <input className={`ps-conf-input ${errors.physicianCode ? 'ps-conf-input--error' : ''}`}
-                value={draft.physicianCode} onChange={e => set('physicianCode', e.target.value)} placeholder="Internal identifier, e.g. PHY-0231" />
+                value={draft.physicianCode} onChange={e => set('physicianCode', e.target.value)} placeholder={t('physiciansSection.modal.physicianCodePlaceholder')} />
               {errors.physicianCode && <span className="ps-conf-error-text">{errors.physicianCode}</span>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">NPI Number</label>
+              <label className="ps-conf-label">{t('physiciansSection.modal.npiLabel')}</label>
               <input className={`ps-conf-input ${errors.npi ? 'ps-conf-input--error' : ''}`}
-                value={draft.npi} onChange={e => set('npi', e.target.value)} placeholder="10-digit NPI — optional, not every physician has one" />
+                value={draft.npi} onChange={e => set('npi', e.target.value)} placeholder={t('physiciansSection.modal.npiPlaceholder')} />
               {errors.npi && <span className="ps-conf-error-text">{errors.npi}</span>}
             </div>
           </div>
 
           {/* Specialty */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Specialty</label>
-            <input className="ps-conf-input" value={draft.specialty} onChange={e => set('specialty', e.target.value)} placeholder="e.g. Gastroenterology" />
+            <label className="ps-conf-label">{t('physiciansSection.modal.specialtyLabel')}</label>
+            <input className="ps-conf-input" value={draft.specialty} onChange={e => set('specialty', e.target.value)} placeholder={t('physiciansSection.modal.specialtyPlaceholder')} />
           </div>
 
           {/* Phone + Fax */}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Phone</label>
-              <input className="ps-conf-input" value={draft.phone} onChange={e => set('phone', e.target.value)} placeholder="555-0100" />
+              <label className="ps-conf-label">{t('physiciansSection.modal.phoneLabel')}</label>
+              <input className="ps-conf-input" value={draft.phone} onChange={e => set('phone', e.target.value)} placeholder={t('physiciansSection.modal.phonePlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Fax</label>
-              <input className="ps-conf-input" value={draft.fax} onChange={e => set('fax', e.target.value)} placeholder="555-0101" />
+              <label className="ps-conf-label">{t('physiciansSection.modal.faxLabel')}</label>
+              <input className="ps-conf-input" value={draft.fax} onChange={e => set('fax', e.target.value)} placeholder={t('physiciansSection.modal.faxPlaceholder')} />
             </div>
+          </div>
+
+          {/* SMS-capable mobile — deliberately separate from Phone above (PS-136
+              automated critical-alert dispatch): Phone is often a front-desk/
+              landline line, never assumed text-capable. Leave blank if unknown. */}
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">{t('physiciansSection.modal.smsLabel')}</label>
+            <input className="ps-conf-input" value={draft.smsCapablePhone ?? ''} onChange={e => set('smsCapablePhone', e.target.value)} placeholder={t('physiciansSection.modal.smsPlaceholder')} />
           </div>
 
           {/* Email + Preferred Contact */}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Email</label>
-              <input className="ps-conf-input" value={draft.email} onChange={e => set('email', e.target.value)} placeholder="dr@clinic.org" />
+              <label className="ps-conf-label">{t('physiciansSection.modal.emailLabel')}</label>
+              <input className="ps-conf-input" value={draft.email} onChange={e => set('email', e.target.value)} placeholder={t('physiciansSection.modal.emailPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="physician-preferred-contact">Preferred Contact</label>
+              <label className="ps-conf-label" htmlFor="physician-preferred-contact">{t('physiciansSection.modal.preferredContactLabel')}</label>
               <select id="physician-preferred-contact" className="ps-conf-select" value={draft.preferredContact} onChange={e => set('preferredContact', e.target.value)}>
-                <option value="Email">Email</option>
-                <option value="Fax">Fax</option>
-                <option value="Phone">Phone</option>
+                <option value="Email">{t(PREFERRED_CONTACT_LABEL_KEY.Email)}</option>
+                <option value="Fax">{t(PREFERRED_CONTACT_LABEL_KEY.Fax)}</option>
+                <option value="Phone">{t(PREFERRED_CONTACT_LABEL_KEY.Phone)}</option>
               </select>
             </div>
           </div>
 
           {/* Status */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('physiciansSection.modal.statusLabel')}</label>
             <Toggle value={draft.active} onChange={v => set('active', v)} />
           </div>
 
@@ -255,15 +284,15 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
               would be modeling the wrong cardinality for what a
               physician's real-world facility relationship is. */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Facility Affiliations</label>
+            <label className="ps-conf-label">{t('physiciansSection.modal.facilityAffiliationsLabel')}</label>
             <div className="ps-conf-picker">
               <div className="ps-conf-picker-search-wrap">
-                <input type="text" placeholder="Search facilities..." value={facilitySearch}
+                <input type="text" placeholder={t('physiciansSection.modal.facilitySearchPlaceholder')} value={facilitySearch}
                   onChange={e => setFacilitySearch(e.target.value)} className="ps-conf-picker-search" />
               </div>
               <div className="ps-conf-picker-list">
                 {filteredFacilities.length === 0
-                  ? <div className="ps-conf-picker-empty">No facilities match.</div>
+                  ? <div className="ps-conf-picker-empty">{t('physiciansSection.modal.facilitiesEmpty')}</div>
                   : filteredFacilities.map(c => {
                       const checked = draft.clientIds.includes(c.id);
                       return (
@@ -292,9 +321,9 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Physician' : 'Save Changes'}
+            {mode === 'add' ? t('physiciansSection.modal.addHeader') : t('physiciansSection.modal.saveChangesBtn')}
           </button>
         </div>
       </div>
@@ -304,6 +333,7 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
 
 // ─── Main PhysiciansSection ───────────────────────────────────────────────────
 const PhysiciansSection: React.FC = () => {
+  const { t } = useTranslation();
   const [physicians,   setPhysicians]   = useState<Physician[]>([]);
   const [facilities,   setFacilities]   = useState<{ id: string; name: string }[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -413,7 +443,7 @@ const PhysiciansSection: React.FC = () => {
 
   const handlePhysicianFileUpload = async (file: File) => {
     if (!isCsvFile(file)) {
-      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      alert(t('physiciansSection.import.invalidFileType', { fileName: file.name }));
       return;
     }
     const text = await readFileAsText(file);
@@ -478,43 +508,47 @@ const PhysiciansSection: React.FC = () => {
     physicianService.getAll().then(res => { if (res.ok) setPhysicians(res.data); });
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading physicians...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('physiciansSection.loading')}</div>;
+
+  const updateCount = physImportPreview?.filter(r => r.existingId).length ?? 0;
+  const newCount = physImportPreview?.filter(r => !r.existingId).length ?? 0;
+  const generatedCount = physImportPreview?.filter(r => r.codeWasGenerated).length ?? 0;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Physicians</h3>
-          <p className="ps-conf-section-subtitle">Manage ordering and submitting physicians and their facility affiliations.</p>
+          <h3 className="ps-conf-section-title">{t('physiciansSection.title')}</h3>
+          <p className="ps-conf-section-subtitle">{t('physiciansSection.subtitle')}</p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Physician</button>
+        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ {t('physiciansSection.modal.addHeader')}</button>
       </div>
 
       <div className="ps-conf-form-row">
-        <button className="ps-conf-btn-secondary" onClick={handleDownloadPhysicians}>Export</button>
-        <button className="ps-conf-btn-secondary" onClick={() => physImportFileInputRef.current?.click()}>Import Spreadsheet</button>
+        <button className="ps-conf-btn-secondary" onClick={handleDownloadPhysicians}>{t('common.export')}</button>
+        <button className="ps-conf-btn-secondary" onClick={() => physImportFileInputRef.current?.click()}>{t('physiciansSection.importBtn')}</button>
         <input ref={physImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handlePhysicianFileUpload(e.target.files[0]); e.target.value = ''; }} />
       </div>
 
       {physImportPreview && (
         <div className="ps-conf-import-preview">
           <p>
-            {physImportPreview.filter(r => r.existingId).length} to update, {physImportPreview.filter(r => !r.existingId).length} new
-            {physImportPreview.some(r => r.codeWasGenerated) && ` (${physImportPreview.filter(r => r.codeWasGenerated).length} assigned a new Physician Code — none was given in the sheet)`}.
+            {t('physiciansSection.import.summary', { updateCount, newCount })}
+            {generatedCount > 0 && ` ${t('physiciansSection.import.autoGeneratedNote', { count: generatedCount })}`}
           </p>
-          <button className="ps-conf-btn-primary" onClick={handleApplyPhysicianImport}>Apply Import</button>
-          <button className="ps-conf-btn-row" onClick={() => setPhysImportPreview(null)}>Cancel</button>
+          <button className="ps-conf-btn-primary" onClick={handleApplyPhysicianImport}>{t('physiciansSection.import.applyBtn')}</button>
+          <button className="ps-conf-btn-row" onClick={() => setPhysImportPreview(null)}>{t('common.cancel')}</button>
         </div>
       )}
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by name, code, NPI, or specialty..." value={search} onChange={e => setSearch(e.target.value)}
+        <input type="text" placeholder={t('physiciansSection.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
           className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="Unverified">Unverified</option>
+          <option value="All">{t('physiciansSection.statusAll')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
+          <option value="Unverified">{t(STATUS_LABEL_KEY.Unverified)}</option>
         </select>
       </div>
 
@@ -523,7 +557,14 @@ const PhysiciansSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Physician', 'Specialty', 'Contact', 'Facilities', 'Status', 'Actions'].map(h => (
+                {[
+                  t('physiciansSection.table.physician'),
+                  t('physiciansSection.table.specialty'),
+                  t('physiciansSection.table.contact'),
+                  t('physiciansSection.table.facilities'),
+                  t('physiciansSection.table.status'),
+                  t('physiciansSection.table.actions'),
+                ].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}
               </tr>
@@ -536,7 +577,7 @@ const PhysiciansSection: React.FC = () => {
                       <div className="ps-conf-avatar">{initials(p)}</div>
                       <div>
                         <div className="ps-conf-identity-name" data-phi="name">{fullName(p)}</div>
-                        <div className="ps-conf-identity-sub">Code: {p.physicianCode}{p.npi ? ` · NPI: ${p.npi}` : ''}</div>
+                        <div className="ps-conf-identity-sub">{t('physiciansSection.table.codeSub', { code: p.physicianCode })}{p.npi ? t('physiciansSection.table.npiSub', { npi: p.npi }) : ''}</div>
                       </div>
                     </div>
                   </td>
@@ -546,12 +587,12 @@ const PhysiciansSection: React.FC = () => {
                       {p.preferredContact === 'Email' && <div>✉ {p.email || '—'}</div>}
                       {p.preferredContact === 'Fax'   && <div>📠 {p.fax || '—'}</div>}
                       {p.preferredContact === 'Phone' && <div data-phi="phone">📞 {p.phone || '—'}</div>}
-                      <div className="ps-conf-contact-via">via {p.preferredContact}</div>
+                      <div className="ps-conf-contact-via">{t('physiciansSection.table.via', { contact: t(PREFERRED_CONTACT_LABEL_KEY[p.preferredContact]) })}</div>
                     </div>
                   </td>
                   <td className="ps-conf-td">
                     {p.clientIds.length === 0
-                      ? <span className="ps-conf-badge-none">None</span>
+                      ? <span className="ps-conf-badge-none">{t('physiciansSection.table.none')}</span>
                       : <div className="ps-conf-badge-list">
                           {p.clientIds.map(id => {
                             const c = facilities.find(x => x.id === id);
@@ -563,27 +604,27 @@ const PhysiciansSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${p.status === 'Active' ? 'ps-conf-status-dot--active' : p.status === 'Unverified' ? 'ps-conf-status-dot--pending' : ''}`} />
-                      <span className={`ps-conf-status-text ${p.status === 'Active' ? 'ps-conf-status-text--active' : p.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>{p.status}</span>
+                      <span className={`ps-conf-status-text ${p.status === 'Active' ? 'ps-conf-status-text--active' : p.status === 'Unverified' ? 'ps-conf-status-text--pending' : ''}`}>{t(STATUS_LABEL_KEY[p.status])}</span>
                     </div>
                     {p.autoCreated && (
                       <div className="ps-conf-auto-note">
-                        Auto-created{p.autoCreatedAt ? ` ${p.autoCreatedAt}` : ''} — from order intake
+                        {p.autoCreatedAt ? t('physiciansSection.table.autoCreatedNoteWithDate', { date: p.autoCreatedAt }) : t('physiciansSection.table.autoCreatedNote')}
                       </div>
                     )}
                   </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       {p.status === 'Unverified' && (
-                        <button className="ps-conf-btn-verify" onClick={() => handleVerify(p.id)}>Verify</button>
+                        <button className="ps-conf-btn-verify" onClick={() => handleVerify(p.id)}>{t('physiciansSection.table.verifyBtn')}</button>
                       )}
-                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', physician: p })}>Edit</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleClonePhysician(p)}>Duplicate</button>
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', physician: p })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleClonePhysician(p)}>{t('common.duplicate')}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={6}>No physicians match the current filter.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={6}>{t('physiciansSection.table.emptyRow')}</td></tr>
               )}
             </tbody>
           </table>

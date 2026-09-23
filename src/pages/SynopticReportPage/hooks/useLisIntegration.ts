@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CopilotReportInstance } from '../modals/CopilotReportViewModal';
 import { amendmentService, reportVersionService } from '@/services';
 import { lisAmendmentNoticeService, messageService } from '@/services';
@@ -51,6 +52,8 @@ interface UseLisIntegrationParams {
 }
 
 export function useLisIntegration({ caseData, setCaseData, signingUser, showToast }: UseLisIntegrationParams) {
+  const { t } = useTranslation();
+
   // ── LIS order requests — Blocks/Recuts and Stains ───────────────────────
   // Real, well-defined HL7 entities (ORM^O01-style order messages) — this
   // is the one seam both should go through, so the real formatter/receiver
@@ -212,8 +215,8 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     if (!pendingLisNotice) return;
     await lisAmendmentNoticeService.updateStatus(pendingLisNotice.id, 'acknowledged');
     setPendingLisNotice(null);
-    showToast('Marked reviewed — confirmed no PathScribe synoptic changes necessary.');
-  }, [pendingLisNotice, showToast]);
+    showToast(t('useLisIntegration.toast.markedReviewedNoChanges'));
+  }, [pendingLisNotice, showToast, t]);
 
   const [copilotReportInstances, setCopilotReportInstances] = useState<CopilotReportInstance[]>([]);
 
@@ -254,8 +257,8 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
       isUrgent: true,
     });
 
-    showToast('Simulated LIS amendment notice sent — check Messages for the urgent notification.');
-  }, [caseData, signingUser, showToast]);
+    showToast(t('useLisIntegration.toast.simulatedAmendmentNoticeSent'));
+  }, [caseData, signingUser, showToast, t]);
 
   // Real feature, per direct follow-up: "can we just ingest our own
   // specification (best practice) then let the engine handle the
@@ -282,7 +285,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
     const targetBlock = targetSpecimen?.blocks?.[0];
     if (!targetSpecimen || !targetBlock) {
-      showToast('No block on this case to simulate an exception for.');
+      showToast(t('useLisIntegration.toast.noBlockForExceptionSim'));
       return;
     }
 
@@ -303,11 +306,11 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     if (result.outcome === 'applied') {
       const refreshed = await caseRouter.getCase(caseData.id);
       if (refreshed) setCaseData(refreshed);
-      showToast(`Simulated LIS middleware event applied — block ${targetSpecimen.label}${targetBlock.label} marked Damaged.`);
+      showToast(t('useLisIntegration.toast.middlewareEventApplied', { label: `${targetSpecimen.label}${targetBlock.label}` }));
     } else {
-      showToast(`Simulated LIS middleware event NOT applied (${result.outcome}): ${result.reason ?? ''}`);
+      showToast(t('useLisIntegration.toast.middlewareEventNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
     }
-  }, [caseData, setCaseData, showToast]);
+  }, [caseData, setCaseData, showToast, t]);
 
   // Real feature, per direct follow-up: "Is there any reason to block
   // Material location and tracking on PS-49? I thought we would just
@@ -322,7 +325,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
     const targetBlock = targetSpecimen?.blocks?.[0];
     if (!targetSpecimen || !targetBlock) {
-      showToast('No block on this case to simulate a location update for.');
+      showToast(t('useLisIntegration.toast.noBlockForLocationSim'));
       return;
     }
 
@@ -343,11 +346,11 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     if (result.outcome === 'applied') {
       const refreshed = await caseRouter.getCase(caseData.id);
       if (refreshed) setCaseData(refreshed);
-      showToast(`Simulated LIS middleware location update applied — ${result.targetDescription} now at "Histology — Embedding Station 3".`);
+      showToast(t('useLisIntegration.toast.middlewareLocationApplied', { targetDescription: result.targetDescription, location: 'Histology — Embedding Station 3' }));
     } else {
-      showToast(`Simulated LIS middleware location update NOT applied (${result.outcome}): ${result.reason ?? ''}`);
+      showToast(t('useLisIntegration.toast.middlewareLocationNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
     }
-  }, [caseData, setCaseData, showToast]);
+  }, [caseData, setCaseData, showToast, t]);
 
   // Real feature, per direct follow-up: "Dev Tools → 'Sim Cassette
   // Dispatch Outcome' isn't wired... this was flagged as a gap a
@@ -379,7 +382,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
     const targetBlock = targetSpecimen?.blocks?.[0];
     if (!targetSpecimen || !targetBlock) {
-      showToast('No block on this case to simulate a cassette dispatch outcome for.');
+      showToast(t('useLisIntegration.toast.noBlockForDispatchSim'));
       return;
     }
 
@@ -396,9 +399,9 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     });
 
     if (result.outcome !== 'notified') {
-      showToast(`Simulated cassette dispatch outcome NOT applied (${result.outcome}): ${result.reason ?? ''}`);
+      showToast(t('useLisIntegration.toast.dispatchOutcomeNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
     }
-  }, [caseData, showToast]);
+  }, [caseData, showToast, t]);
 
   // Real feature, per direct follow-up: "is there a case where all the
   // assets will have a tracking event so I can test?" Confirmed
@@ -423,7 +426,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     if (!caseData?.id) return;
     const specimens = caseData.specimens ?? [];
     if (specimens.length === 0) {
-      showToast('No specimens on this case to simulate location updates for.');
+      showToast(t('useLisIntegration.toast.noSpecimensForLocationSim'));
       return;
     }
 
@@ -564,8 +567,10 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
 
     const refreshed = await caseRouter.getCase(caseData.id);
     if (refreshed) setCaseData(refreshed);
-    showToast(`Simulated full material-tree scan history: ${applied} event(s) recorded${failed > 0 ? `, ${failed} failed` : ''}.`);
-  }, [caseData, setCaseData, showToast]);
+    showToast(failed > 0
+      ? t('useLisIntegration.toast.materialTreeScanAppliedWithFailures', { count: applied, failed })
+      : t('useLisIntegration.toast.materialTreeScanApplied', { count: applied }));
+  }, [caseData, setCaseData, showToast, t]);
 
   const openCopilotReportView = useCallback(async () => {
     if (!caseData) return;
@@ -606,9 +611,23 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
           : undefined;
         return {
           versionNumber: v.versionNumber,
-          label: i === 0 ? 'Original' : i === total - 1 ? `${i === 1 ? '1st' : `${i}th`} Amended (Most Recent)` : `${i === 1 ? '1st' : `${i}th`} Amended`,
+          // i18n note: rewritten from an English-only ordinal-suffix
+          // scheme ("1st Amended", "2th Amended" — only 1st was ever
+          // actually special-cased, so 2/3/4... always read as a plain
+          // literal "th" regardless of real English ordinal rules) to
+          // a plain numbered label, matching this app's own established
+          // precedent for numbering a version list elsewhere
+          // (versionHistoryModal.versionLabel: "Version {{number}}") —
+          // avoids reproducing per-language ordinal-suffix rules
+          // (1st/2nd/3rd in English, 1er/2e in French, 1./2. in German,
+          // ...) for a label that doesn't need them.
+          label: i === 0
+            ? t('useLisIntegration.copilotVersion.original')
+            : i === total - 1
+              ? t('useLisIntegration.copilotVersion.amendmentMostRecent', { number: i })
+              : t('useLisIntegration.copilotVersion.amendment', { number: i }),
           releasedAt: v.createdAt,
-          createdByName: v.createdBy?.userName ?? 'Unknown',
+          createdByName: v.createdBy?.userName ?? t('useLisIntegration.copilotVersion.unknownCreator'),
           answers: detail ? resolveAnswers((v.synopticAnswersSnapshot ?? {}) as Record<string, string | string[]>, detail.template) : [],
           explanationOfChange: record?.explanationOfChange,
           notification: record?.notification,
@@ -631,7 +650,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     }));
     setCopilotReportInstances(resolved);
     setShowCopilotReportView(true);
-  }, [caseData]);
+  }, [caseData, t]);
 
   // StainMultiSelect (inside BlockStainEditorModal) was committing new
   // stain orders straight to local state, bypassing this seam entirely —
@@ -647,10 +666,10 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     // stops being simulated.
     const result = await sendMaterialOrderToLis({ kind: 'stain', specimenId, label: stainName });
     if (!result.ok) {
-      showToast(`LIS did not acknowledge the ${stainName} order — nothing was recorded. Try again.`);
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckStainOrder', { stainName }));
     }
     return result;
-  }, [sendMaterialOrderToLis, showToast]);
+  }, [sendMaterialOrderToLis, showToast, t]);
 
   return {
     sendMaterialOrderToLis,

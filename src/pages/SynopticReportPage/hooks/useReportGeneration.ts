@@ -48,6 +48,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { textToHtml } from '../components/OrchestratorSectionEditor';
 import type { OrchestratorSection } from '../components/OrchestratorSectionEditor';
 import { OrchestratorEngine } from '@/orchestrator/orchestratorEngine';
@@ -87,6 +88,43 @@ export function useReportGeneration({
   const abortRef  = useRef<AbortController | null>(null);
   const engineRef = useRef<OrchestratorEngine | null>(null);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
+  const { t } = useTranslation();
+
+  // Real fix (PS-318 — "the Preliminary Diagnosis was expected to be
+  // present but isn't showing"): buildContext() (contextBuilder.ts)
+  // has always computed a real warnings[] array — ambiguous template
+  // matches, a routing failure degraded to gold-standard, and now a
+  // real, specific one for exactly this ticket's own case (an override
+  // silently dropping the Preliminary Diagnosis section — see that
+  // warning's own doc comment in contextBuilder.ts). None of it was
+  // ever actually shown anywhere — every call site here set
+  // resolvedContext and moved on, discarding ctx.warnings entirely.
+  // That's the real, broader gap PS-318 sits inside: not that routing
+  // is wrong (it's deliberately strict, per PS-292), but that when it
+  // has something real to say about why a section won't appear, the
+  // pathologist was never told. Small, shared surface point, used by
+  // the two real "start a fresh report" callers (manual entry,
+  // generate) right after buildContext resolves — deliberately NOT
+  // wired into handleRegenerateSection below: Regen All (PS-317's own
+  // fix) now calls that once per section in sequence, and the same
+  // case/template-level warning would be identical on every single
+  // one of those calls, so surfacing it there would mean the same
+  // toast firing repeatedly instead of once.
+  const surfaceContextWarnings = useCallback((ctx: StructuredContext) => {
+    // Defensive optional-chain: StructuredContext.warnings is a real,
+    // always-populated string[] from the actual buildContext()
+    // implementation, but existing tests in this file mock buildContext
+    // with a partial context object that doesn't include it — this
+    // keeps a mock missing the field from throwing here instead of
+    // reaching the real generation/regeneration logic those tests
+    // exist to verify.
+    // i18n note: these warning strings are now translated at their own
+    // source (@/orchestrator/contextBuilder.ts resolves each one via a
+    // direct i18next instance call — it's a plain service, not a hook),
+    // so this hook stays correct simply by joining and displaying
+    // whatever buildContext() returns, in any language.
+    if (ctx.warnings?.length > 0) showToast(ctx.warnings.join(' • '));
+  }, [showToast]);
 
   // ── Orchestrator callbacks ─────────────────────────────────────────────────
   const buildOrchCallbacks = useCallback((): OrchestratorCallbacks => ({
@@ -157,9 +195,9 @@ export function useReportGeneration({
       setIsOrchestrating(false);
       engineRef.current = null;
       abortRef.current  = null;
-      showToast(`Generation error: ${error}`);
+      showToast(t('useReportGeneration.toast.generationError', { error }));
     },
-  }), [showToast, setOrchSections, setLastGeneratedAt]);
+  }), [showToast, setOrchSections, setLastGeneratedAt, t]);
 
   // Real fix, per direct workflow description: "the PA prefers to
   // dictate the Gross and then AI would update the attached
@@ -183,6 +221,7 @@ export function useReportGeneration({
       setResolvedTemplateId(ctx.narrativeTemplate.templateId);
       setResolvedTemplateName(ctx.narrativeTemplate.templateName);
       setResolvedBy(overrideTemplateId ? 'pathologist-override' : (ctx.routingResolvedBy ?? 'gold-standard'));
+      surfaceContextWarnings(ctx);
 
       const enabledSections = (ctx.narrativeTemplate?.sections ?? [])
         .filter((s: any) => s.enabled)
@@ -196,12 +235,23 @@ export function useReportGeneration({
       // other narrative part (Microscopic/Ancillary/Diagnosis) stays
       // a single, case-wide section, matching the request precisely
       // and matching how those sections have always worked.
+      //
+      // Real fix (PS-317 — "it isn't clear at all what the field
+      // represents (should explicitly say 'Gross Description' if
+      // that's what it is)"): the original request asked for the
+      // specimen name to display "at the beginning" — a prefix — but
+      // this built the label as ONLY the specimen name/description,
+      // dropping s.title ("Gross Description") entirely. That's the
+      // real cause of the ambiguity: nothing in the label said what
+      // kind of section this was, on any of these per-specimen rows.
+      // Restored s.title as a real prefix, specimen name/description
+      // after it, matching what was actually asked for.
       const specimens = caseData.specimens ?? [];
       const blankSections: OrchestratorSection[] = enabledSections.flatMap((s: any) => {
         if (s.sourcePartId === 'std_body_gross' && specimens.length > 0) {
           return specimens.map(sp => ({
             id: `${s.id}_${sp.id}`,
-            label: sp.description ? `Specimen ${sp.label}: ${sp.description}` : `Specimen ${sp.label}`,
+            label: sp.description ? `${s.title} — Specimen ${sp.label}: ${sp.description}` : `${s.title} — Specimen ${sp.label}`,
             type: 'narrative' as const,
             text: '', aiGenerated: '', userEdited: false, isStreaming: false,
             sourcePartId: s.sourcePartId,
@@ -218,9 +268,11 @@ export function useReportGeneration({
       safeSetLeftTab('draft');
     } catch (e: unknown) {
       const err = e instanceof Error ? e : undefined;
-      showToast(`Could not open sections for manual entry: ${err?.message ?? 'Unknown error'}`);
+      showToast(t('useReportGeneration.toast.couldNotOpenManualEntry', {
+        message: err?.message ?? t('useReportGeneration.labels.unknownError'),
+      }));
     }
-  }, [caseData, signingUser, overrideTemplateId, setResolvedContext, setResolvedTemplateId, setResolvedTemplateName, setResolvedBy, setOrchSections, safeSetLeftTab, showToast]);
+  }, [caseData, signingUser, overrideTemplateId, setResolvedContext, setResolvedTemplateId, setResolvedTemplateName, setResolvedBy, setOrchSections, safeSetLeftTab, showToast, surfaceContextWarnings, t]);
 
   const handleGenerateReport = useCallback(async () => {
     if (!caseData) return;
@@ -242,25 +294,30 @@ export function useReportGeneration({
       setResolvedTemplateId(ctx.narrativeTemplate.templateId);
       setResolvedTemplateName(ctx.narrativeTemplate.templateName);
       setResolvedBy(overrideTemplateId ? 'pathologist-override' : (ctx.routingResolvedBy ?? 'gold-standard'));
+      surfaceContextWarnings(ctx);
       const engine = new OrchestratorEngine(undefined, ctx, buildOrchCallbacks());
       engineRef.current = engine;
       await engine.run();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : undefined;
-      if (err?.name !== 'AbortError') showToast(`Generation failed: ${err?.message ?? 'Unknown'}`);
+      if (err?.name !== 'AbortError') {
+        showToast(t('useReportGeneration.toast.generationFailed', {
+          message: err?.message ?? t('useReportGeneration.labels.unknown'),
+        }));
+      }
       setIsOrchestrating(false);
       engineRef.current = null;
       abortRef.current  = null;
     }
-  }, [caseData, buildOrchCallbacks, showToast, overrideTemplateId, safeSetLeftTab, signingUser, setResolvedContext, setResolvedTemplateId, setResolvedTemplateName, setResolvedBy]);
+  }, [caseData, buildOrchCallbacks, showToast, overrideTemplateId, safeSetLeftTab, signingUser, setResolvedContext, setResolvedTemplateId, setResolvedTemplateName, setResolvedBy, surfaceContextWarnings, t]);
 
   const handleAbortGenerate = useCallback(() => {
     engineRef.current?.cancel();
     setIsOrchestrating(false);
     engineRef.current = null;
     abortRef.current  = null;
-    showToast('Generation cancelled');
-  }, [showToast]);
+    showToast(t('useReportGeneration.toast.generationCancelled'));
+  }, [showToast, t]);
 
   const handleRegenerateSection = useCallback(async (sectionId: string) => {
     if (!caseData || isOrchestrating) return;
@@ -277,13 +334,17 @@ export function useReportGeneration({
       await engine.regenerateSection(sectionId);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : undefined;
-      if (err?.name !== 'AbortError') showToast(`Regeneration failed: ${err?.message ?? 'Unknown'}`);
+      if (err?.name !== 'AbortError') {
+        showToast(t('useReportGeneration.toast.regenerationFailed', {
+          message: err?.message ?? t('useReportGeneration.labels.unknown'),
+        }));
+      }
     } finally {
       setIsOrchestrating(false);
       engineRef.current = null;
       abortRef.current  = null;
     }
-  }, [caseData, isOrchestrating, buildOrchCallbacks, showToast, overrideTemplateId, signingUser, setResolvedContext]);
+  }, [caseData, isOrchestrating, buildOrchCallbacks, showToast, overrideTemplateId, signingUser, setResolvedContext, t]);
 
   // ── Auto-generate-once — Draft tab, data-state-driven ────────────────────
   // Per design discussion: NOT triggered by tab navigation alone (clicking

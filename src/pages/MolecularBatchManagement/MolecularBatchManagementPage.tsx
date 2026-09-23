@@ -31,9 +31,15 @@
 // (MolecularQcRunRecord, not MolecularBatch), reporting a genuinely
 // different real event type from the same real molecular-run
 // lifecycle.
+//
+// i18n note: `sp.accessionNumber`/`.specimenLabel`/`.patientMrn`,
+// `batch.instrumentId`/`.assayName`/`.reagentLotNumber`/
+// `.totalSamplesRun` are all real, interface-engine-sourced data —
+// never translated.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { mockMolecularQcRunRecordService } from '@/services/cytology/mockMolecularQcRunRecordService';
@@ -43,8 +49,9 @@ import { caseRouter } from '@/services/cases/CaseRouter';
 interface BatchSpecimenLink { caseId: string; accessionNumber?: string; specimenId: string; specimenLabel: string; patientMrn?: string }
 
 const MolecularBatchManagementPage: React.FC = () => {
+  const { t } = useTranslation();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Molecular Batch Management', '/molecular?tab=qc'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('molecularBatchManagementPage.title'), '/molecular?tab=qc'); }, [pushCrumb, t]);
 
   const [batches, setBatches] = useState<MolecularQcRunRecord[]>([]);
   const [specimensByRunId, setSpecimensByRunId] = useState<Record<string, BatchSpecimenLink[]>>({});
@@ -84,18 +91,16 @@ const MolecularBatchManagementPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="ps-conf-loading">Loading molecular batches…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('molecularBatchManagementPage.loading')}</div>;
 
   return (
     <div className="ps-batch-page">
       <div className="ps-batch-scroll">
         <div className="ps-batch-inner">
           <div className="ps-batch-page-header">
-            <h1 className="ps-batch-page-title">Molecular Batch Management</h1>
+            <h1 className="ps-batch-page-title">{t('molecularBatchManagementPage.title')}</h1>
             <p className="ps-batch-page-subtitle">
-              Every real molecular instrument run (batch), and every real specimen associated with it, arrives through the
-              real interface engine translating each molecular platform's own raw result message — nothing here is entered
-              manually.
+              {t('molecularBatchManagementPage.subtitle')}
             </p>
           </div>
 
@@ -105,12 +110,12 @@ const MolecularBatchManagementPage: React.FC = () => {
                 <thead className="ps-conf-thead-sticky">
                   <tr>
                     <th className="ps-conf-th"></th>
-                    <th className="ps-conf-th">Run Date</th>
-                    <th className="ps-conf-th">Instrument</th>
-                    <th className="ps-conf-th">Assay</th>
-                    <th className="ps-conf-th">Reagent Lot</th>
-                    <th className="ps-conf-th">Samples Run</th>
-                    <th className="ps-conf-th">Specimens Linked</th>
+                    <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.runDate')}</th>
+                    <th className="ps-conf-th">{t('molecularOrderQueue.typeInstrument')}</th>
+                    <th className="ps-conf-th">{t('molecularOrderQueue.col.assay')}</th>
+                    <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.reagentLot')}</th>
+                    <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.samplesRun')}</th>
+                    <th className="ps-conf-th">{t('molecularBatchManagementPage.specimensLinkedHeader')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -119,7 +124,7 @@ const MolecularBatchManagementPage: React.FC = () => {
                     const isExpanded = expandedRunId === batch.id;
                     return (
                       <React.Fragment key={batch.id}>
-                        <tr className="ps-conf-tr" style={{ cursor: 'pointer' }} onClick={() => setExpandedRunId(isExpanded ? null : batch.id)}>
+                        <tr className="ps-conf-tr ps-conf-tr--clickable" onClick={() => setExpandedRunId(isExpanded ? null : batch.id)}>
                           <td className="ps-conf-td">{isExpanded ? '▾' : '▸'}</td>
                           <td className="ps-conf-td">{new Date(batch.runDate).toLocaleDateString()}</td>
                           <td className="ps-conf-td">{batch.instrumentId}</td>
@@ -130,20 +135,20 @@ const MolecularBatchManagementPage: React.FC = () => {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={7} style={{ padding: 0 }}>
-                              <div style={{ padding: '10px 16px 16px 40px', background: '#111' }}>
+                            <td colSpan={7} className="ps-molbatch-expand-cell">
+                              <div className="ps-molbatch-expand-panel">
                                 {linked.length === 0 && (
-                                  <div style={{ fontSize: 12, color: '#6b7280' }}>
-                                    No specimens are yet linked to this batch via an inbound event.
+                                  <div className="ps-molbatch-empty-text">
+                                    {t('molecularBatchManagementPage.noLinkedSpecimens')}
                                   </div>
                                 )}
                                 {linked.length > 0 && (
                                   <table className="ps-conf-table">
                                     <thead>
                                       <tr>
-                                        <th className="ps-conf-th">Accession</th>
-                                        <th className="ps-conf-th">Specimen</th>
-                                        <th className="ps-conf-th">Patient MRN</th>
+                                        <th className="ps-conf-th">{t('cytologyQaTab.headers.accession')}</th>
+                                        <th className="ps-conf-th">{t('qualityAssurance.common.specimen')}</th>
+                                        <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.patientMrn')}</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -164,7 +169,7 @@ const MolecularBatchManagementPage: React.FC = () => {
                       </React.Fragment>
                     );
                   })}
-                  {batches.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>No molecular batches on file yet.</td></tr>)}
+                  {batches.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>{t('molecularBatchManagementPage.noBatches')}</td></tr>)}
                 </tbody>
               </table>
             </div>

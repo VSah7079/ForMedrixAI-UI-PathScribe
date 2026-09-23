@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
 import type { ReasonDictionaryEntry } from '@/types/reasons/ReasonDictionaryEntry';
 
@@ -31,6 +32,7 @@ export interface PostSignoutBillingChangeModalProps {
 }
 
 export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeModalProps> = ({ summary, onConfirm, onCancel }) => {
+  const { t } = useTranslation();
   const [reasonOptions, setReasonOptions] = useState<ReasonDictionaryEntry[]>([]);
   const [reasonId, setReasonId] = useState('');
   const [comment, setComment] = useState('');
@@ -49,15 +51,14 @@ export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeMod
   return (
     <div className="ps-ms-overlay ps-billing-postsignout-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Post-Sign-Out Billing Change</div>
+        <div className="ps-ms-header">{t('postSignoutBillingChangeModal.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            This case has already signed out. Billing is one of the few things that can still change
-            afterward, but it needs a real, documented reason. {summary}
+            {t('postSignoutBillingChangeModal.intro', { summary })}
           </p>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="postsignout-billing-reason">
-              Reason <span className="ps-conf-required">*</span>
+              {t('postSignoutBillingChangeModal.reasonLabel')} <span className="ps-conf-required">*</span>
             </label>
             <select
               id="postsignout-billing-reason"
@@ -65,29 +66,29 @@ export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeMod
               value={reasonId}
               onChange={e => setReasonId(e.target.value)}
             >
-              <option value="">— Select —</option>
+              <option value="">{t('postSignoutBillingChangeModal.selectOption')}</option>
               {reasonOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="postsignout-billing-comment">Comment <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="postsignout-billing-comment">{t('postSignoutBillingChangeModal.commentLabel')} <span className="ps-conf-required">*</span></label>
             <textarea
               id="postsignout-billing-comment"
               className="ps-conf-textarea"
               value={comment}
               onChange={e => setComment(e.target.value)}
-              placeholder="What changed and why — permanently attached to the credit and/or new charge."
+              placeholder={t('postSignoutBillingChangeModal.commentPlaceholder')}
             />
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('postSignoutBillingChangeModal.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canConfirm}
             onClick={() => onConfirm({ reasonId, comment: comment.trim() })}
           >
-            Confirm
+            {t('postSignoutBillingChangeModal.confirm')}
           </button>
         </div>
       </div>

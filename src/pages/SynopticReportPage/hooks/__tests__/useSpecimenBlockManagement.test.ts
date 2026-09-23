@@ -14,8 +14,16 @@
 // acknowledged the physical order by that point. That intentional
 // difference is exactly the kind of thing worth a dedicated test, not an
 // assumption.
+//
+// Real update alongside this hook's own i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and every showToast(...) assertion below would
+// see the raw key string instead of its English text.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { renderHook as rtlRenderHook, act } from '@testing-library/react';

@@ -10,19 +10,31 @@
 // Real, per direct reminder ("reusing PathScribe CSS objects... no
 // inline CSS") — real, named CSS classes throughout, no style={{...}}
 // anywhere in this file.
+//
+// i18n note: `CytologyInstrumentationModality` is a real, persisted
+// enum ('wsi' | 'traditional_guided') — only its displayed label is
+// translated, via `MODALITY_LABEL_KEY`. The page title reuses
+// `configSearchIndex.entries.cyt-instrumentation.label` (exact-text
+// match). "Save" reuses `common.save`; "Unsaved change" reuses
+// `cytologyQcSettingsSection.enterprise.unsavedChange` (same Cytology
+// config family, exact-text match).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCytologyInstrumentationService } from '../../../services/cytology/mockCytologyInstrumentationService';
 import type { CytologyInstrumentationModality } from '../../../services/cytology/ICytologyInstrumentationService';
 
-const MODALITIES: { id: CytologyInstrumentationModality; label: string }[] = [
-  { id: 'wsi', label: 'Whole Slide Imaging (WSI)' },
-  { id: 'traditional_guided', label: 'Traditional Guided (physical-guided scope)' },
-];
+const MODALITY_LABEL_KEY: Record<CytologyInstrumentationModality, string> = {
+  wsi: 'cytologyInstrumentationSection.modality.wsi',
+  traditional_guided: 'cytologyInstrumentationSection.modality.traditionalGuided',
+};
+
+const MODALITIES: CytologyInstrumentationModality[] = ['wsi', 'traditional_guided'];
 
 const CytologyInstrumentationSection: React.FC = () => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<CytologyInstrumentationModality>('wsi');
   const [saved, setSaved] = useState<CytologyInstrumentationModality>('wsi');
   const [saving, setSaving] = useState(false);
@@ -42,24 +54,20 @@ const CytologyInstrumentationSection: React.FC = () => {
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Cytology Assisted Instrumentation</h2>
+      <h2 className="ps-conf-section-title">{t('configSearchIndex.entries.cyt-instrumentation.label')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        Whether this lab digitizes cervical cytology slides (WSI) or relies on a traditional, physical-guided
-        scope. Real, current scope: a single, global setting, not a per-facility cascade — a lab that mixes
-        both across facilities isn't covered by this setting yet. WSI-based labs get the "View WSI Slide"
-        action and the Scans Completed worklist tile; Traditional Guided labs never see any image-rendering
-        UI at all, only real case/order/sign-out tracking.
+        {t('cytologyInstrumentationSection.subtitle')}
       </p>
 
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Instrumentation Modality</div>
+        <div className="ps-conf-card-title">{t('cytologyInstrumentationSection.modalityCardTitle')}</div>
         <div className="ps-conf-row-actions">
           <select className="ps-conf-select" value={draft} onChange={e => setDraft(e.target.value as CytologyInstrumentationModality)}>
-            {MODALITIES.map(m => (<option key={m.id} value={m.id}>{m.label}</option>))}
+            {MODALITIES.map(id => (<option key={id} value={id}>{t(MODALITY_LABEL_KEY[id])}</option>))}
           </select>
-          <button className="ps-conf-btn-primary" onClick={save} disabled={saving}>Save</button>
+          <button className="ps-conf-btn-primary" onClick={save} disabled={saving}>{t('common.save')}</button>
         </div>
-        {draft !== saved && <div className="ps-conf-saving-indicator">Unsaved change</div>}
+        {draft !== saved && <div className="ps-conf-saving-indicator">{t('cytologyQcSettingsSection.enterprise.unsavedChange')}</div>}
       </div>
     </div>
   );

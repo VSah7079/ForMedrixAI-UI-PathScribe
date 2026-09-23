@@ -12,8 +12,22 @@
 // adds beyond "read the audit log" is surfacing UNRESOLVED entries
 // (Deferred/Failed with no later Auto-Corrected for the same case)
 // prominently — that's the actionable list, not just a history.
+//
+// i18n note: `l.detail` stays in English everywhere below — it's the
+// audit log's own persisted diagnostic text, not on-screen UI, per this
+// sweep's standing rule. The "Event" column display now goes through
+// EVENT_LABEL_KEY (reusing AuditLogPage.tsx's own
+// `auditLog.statusLabels.driftDetected/driftAutoCorrected/driftDeferred/
+// driftFailed` keys verbatim) instead of the previous ad-hoc
+// `.replace('Post-Finalization Drift ', '')`, which — real, found during
+// this conversion — displayed "Correction Deferred"/"Correction Failed"
+// here while AuditLogPage.tsx's own filter dropdown for the exact same
+// four event constants already showed the shorter "Deferred"/"Failed"
+// for those two. Reusing the same label keys fixes that inconsistency
+// rather than just translating the old mismatched text.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { auditService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -29,7 +43,15 @@ const DRIFT_EVENTS = [
   'Post-Finalization Drift Correction Failed',
 ] as const;
 
+const EVENT_LABEL_KEY: Record<typeof DRIFT_EVENTS[number], string> = {
+  'Post-Finalization Drift Detected':            'auditLog.statusLabels.driftDetected',
+  'Post-Finalization Drift Auto-Corrected':      'auditLog.statusLabels.driftAutoCorrected',
+  'Post-Finalization Drift Correction Deferred': 'auditLog.statusLabels.driftDeferred',
+  'Post-Finalization Drift Correction Failed':   'auditLog.statusLabels.driftFailed',
+};
+
 export const DriftCorrectionTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [scope, setScope] = useState<QaScope>({ level: 'enterprise' });
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -120,42 +142,42 @@ export const DriftCorrectionTab: React.FC = () => {
     exportQaReportRows(rows, `drift-correction-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading drift correction data…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('driftCorrectionTab.loading')}</div>;
 
   return (
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>Export</button>
+        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
       </div>
 
       <div className="ps-qa-summary-tiles">
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{detected.length}</div>
-          <div className="ps-qa-tile-label">Drift Events Detected</div>
+          <div className="ps-qa-tile-label">{t('driftCorrectionTab.tile.driftEventsDetected')}</div>
         </div>
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{corrected.length}</div>
-          <div className="ps-qa-tile-label">Auto-Corrected</div>
+          <div className="ps-qa-tile-label">{t('auditLog.statusLabels.driftAutoCorrected')}</div>
         </div>
-        <div className="ps-qa-tile" style={unresolved.length > 0 ? { borderColor: '#f59e0b' } : undefined}>
-          <div className="ps-qa-tile-value" style={unresolved.length > 0 ? { color: '#f59e0b' } : undefined}>{unresolved.length}</div>
-          <div className="ps-qa-tile-label">Unresolved — Needs Review</div>
+        <div className={`ps-qa-tile${unresolved.length > 0 ? ' ps-qa-tile--warning' : ''}`}>
+          <div className={`ps-qa-tile-value${unresolved.length > 0 ? ' ps-qa-tile-value--warning' : ''}`}>{unresolved.length}</div>
+          <div className="ps-qa-tile-label">{t('driftCorrectionTab.tile.unresolvedNeedsReview')}</div>
         </div>
       </div>
 
       {unresolved.length > 0 && (
-        <div className="ps-defic-trend-card" style={{ marginTop: 16 }}>
-          <div className="ps-conf-section-title" style={{ marginBottom: 8 }}>
-            Cases with unresolved drift correction
+        <div className="ps-defic-trend-card ps-mt-16">
+          <div className="ps-conf-section-title ps-mb-8">
+            {t('driftCorrectionTab.unresolvedSectionTitle')}
           </div>
           <table className="ps-conf-table">
             <thead>
               <tr>
-                <th>Case</th>
-                <th>Status</th>
-                <th>Detail</th>
-                <th>Detected</th>
+                <th>{t('qualityAssurance.common.case')}</th>
+                <th>{t('qualityAssurance.common.status')}</th>
+                <th>{t('qualityAssurance.common.detail')}</th>
+                <th>{t('driftCorrectionTab.headers.detectedAt')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -167,7 +189,7 @@ export const DriftCorrectionTab: React.FC = () => {
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${l.event.includes('Deferred') ? 'ps-conf-status-dot--pending' : 'ps-conf-status-dot--open'}`} />
                       <span className={`ps-conf-status-text ${l.event.includes('Deferred') ? 'ps-conf-status-text--pending' : 'ps-conf-status-text--open'}`}>
-                        {l.event.includes('Deferred') ? 'Deferred (conflict)' : 'Failed'}
+                        {l.event.includes('Deferred') ? t('driftCorrectionTab.status.deferredConflict') : t('auditLog.statusLabels.driftFailed')}
                       </span>
                     </div>
                   </td>
@@ -178,7 +200,7 @@ export const DriftCorrectionTab: React.FC = () => {
                       className="ps-conf-btn-secondary"
                       onClick={() => l.caseId && navigate(`/case/${l.caseId}`)}
                     >
-                      Open Case
+                      {t('addOnOrder.search.open')}
                     </button>
                   </td>
                 </tr>
@@ -188,27 +210,27 @@ export const DriftCorrectionTab: React.FC = () => {
         </div>
       )}
 
-      <div className="ps-defic-trend-card" style={{ marginTop: 16 }}>
-        <div className="ps-conf-section-title" style={{ marginBottom: 8 }}>
-          All drift events
+      <div className="ps-defic-trend-card ps-mt-16">
+        <div className="ps-conf-section-title ps-mb-8">
+          {t('driftCorrectionTab.allEventsSectionTitle')}
         </div>
         {scoped.length === 0 ? (
-          <div style={{ color: '#64748b', padding: '12px 0' }}>No drift events recorded in this scope.</div>
+          <div className="ps-driftcorr-empty-message">{t('driftCorrectionTab.emptyMessage')}</div>
         ) : (
           <table className="ps-conf-table">
             <thead>
               <tr>
-                <th>Case</th>
-                <th>Event</th>
-                <th>Detail</th>
-                <th>Timestamp</th>
+                <th>{t('qualityAssurance.common.case')}</th>
+                <th>{t('driftCorrectionTab.headers.event')}</th>
+                <th>{t('qualityAssurance.common.detail')}</th>
+                <th>{t('auditLog.auditTab.colTimestamp')}</th>
               </tr>
             </thead>
             <tbody>
               {[...scoped].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).map(l => (
                 <tr key={l.id}>
                   <td>{l.caseId}</td>
-                  <td>{l.event.replace('Post-Finalization Drift ', '')}</td>
+                  <td>{EVENT_LABEL_KEY[l.event as typeof DRIFT_EVENTS[number]] ? t(EVENT_LABEL_KEY[l.event as typeof DRIFT_EVENTS[number]]) : l.event.replace('Post-Finalization Drift ', '')}</td>
                   <td>{l.detail}</td>
                   <td>{new Date(l.timestamp).toLocaleString()}</td>
                 </tr>

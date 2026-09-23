@@ -12,13 +12,31 @@
 // with a required note either way, full history of past holds — the
 // two modals read almost identically on purpose: a pathologist who's
 // learned one already knows the other.
+//
+// i18n note: `REASON_LABEL_KEY` below is this file's own on-screen-
+// only translation-key map for `CaseHoldReason`; the imported
+// `CASE_HOLD_REASON_LABEL` (types/case/CaseHold.ts) stays the literal-
+// English source of truth for the type itself and isn't modified —
+// same precedent as RetentionHoldModal.tsx's own `REASON_LABEL_KEY`
+// (batch 175). Several keys/classes are reused outright from
+// `retentionHoldModal.*`/`.ps-intraop-note*`/`.ps-retentionhold-meta`,
+// since these two modals were deliberately built to read (and look)
+// almost identically.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { CaseHold, CaseHoldReason } from '@/types/case/CaseHold';
-import { CASE_HOLD_REASON_LABEL } from '@/types/case/CaseHold';
+
+const REASON_LABEL_KEY: Record<CaseHoldReason, string> = {
+  quality_issue:              'caseHoldModal.reason.qualityIssue',
+  awaiting_outside_materials: 'caseHoldModal.reason.awaitingOutsideMaterials',
+  clinical_discrepancy:       'caseHoldModal.reason.clinicalDiscrepancy',
+  pending_consultation:       'caseHoldModal.reason.pendingConsultation',
+  other:                      'intraopQueue.skipReasons.other',
+};
 
 interface CaseHoldModalProps {
   caseId: string;
@@ -38,6 +56,7 @@ function formatTimestamp(iso: string): string {
 export const CaseHoldModal: React.FC<CaseHoldModalProps> = ({
   caseId, accession, caseHolds, currentUserId, currentUserName, onUpdated, onClose,
 }) => {
+  const { t } = useTranslation();
   const activeHold = caseHolds.find(h => h.active);
   const pastHolds = caseHolds.filter(h => !h.active).sort((a, b) => b.setAt.localeCompare(a.setAt));
 
@@ -79,54 +98,55 @@ export const CaseHoldModal: React.FC<CaseHoldModalProps> = ({
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">⛔ Case Hold</div>
+        <div className="ps-ms-header">⛔ {t('caseHoldModal.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-intraop-note" style={{ marginBottom: 16 }}>
-            Case <span data-phi="accession">{accession}</span> — a hold means something genuinely needs resolving before this case can move
-            forward. It blocks finalize until explicitly released. For a case that's simply waiting on routine
-            ancillary results (IHC, molecular), leave it as a normal in-progress case instead — a hold is for
-            something actually wrong.
+          <p className="ps-intraop-note ps-mb-16">
+            <Trans
+              i18nKey="caseHoldModal.intro"
+              values={{ accession }}
+              components={{ case: <span data-phi="accession" /> }}
+            />
           </p>
 
           {activeHold ? (
             <>
-              <div className="ps-intraop-note" style={{ borderColor: 'rgba(248,113,113,0.4)' }}>
-                <span className="ps-intraop-note-label" style={{ color: '#f87171' }}>
-                  Active — {CASE_HOLD_REASON_LABEL[activeHold.reason]}
+              <div className="ps-intraop-note ps-intraop-note--danger">
+                <span className="ps-intraop-note-label ps-intraop-note-label--danger">
+                  {t('retentionHoldModal.activeLabel', { reason: t(REASON_LABEL_KEY[activeHold.reason]) })}
                 </span>
                 {activeHold.note}
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                  Set by {activeHold.setByUserName} — {formatTimestamp(activeHold.setAt)}
+                <div className="ps-retentionhold-meta">
+                  {t('retentionHoldModal.setByLine', { name: activeHold.setByUserName, timestamp: formatTimestamp(activeHold.setAt) })}
                 </div>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Release Note — required</label>
+                <label className="ps-conf-label">{t('retentionHoldModal.releaseNoteLabel')}</label>
                 <textarea
                   className="ps-conf-input ps-conf-textarea"
                   value={releaseNote}
                   onChange={e => setReleaseNote(e.target.value)}
-                  placeholder='Specific explanation — e.g. "Re-cut received from histology, block 2 now adequate for diagnosis."'
+                  placeholder={t('caseHoldModal.releaseNotePlaceholder')}
                 />
               </div>
             </>
           ) : (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="case-hold-reason">Hold Reason</label>
+                <label className="ps-conf-label" htmlFor="case-hold-reason">{t('retentionHoldModal.holdReasonLabel')}</label>
                 <select id="case-hold-reason" className="ps-conf-select"
                   value={reason} onChange={e => setReason(e.target.value as CaseHoldReason)}>
-                  {Object.entries(CASE_HOLD_REASON_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
+                  {(Object.keys(REASON_LABEL_KEY) as CaseHoldReason[]).map(value => (
+                    <option key={value} value={value}>{t(REASON_LABEL_KEY[value])}</option>
                   ))}
                 </select>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Note — required</label>
+                <label className="ps-conf-label">{t('retentionHoldModal.noteLabel')}</label>
                 <textarea
                   className="ps-conf-input ps-conf-textarea"
                   value={note}
                   onChange={e => setNote(e.target.value)}
-                  placeholder='Specific explanation — e.g. "Block 2 tissue fragmented on sectioning, re-cut requested from histology."'
+                  placeholder={t('caseHoldModal.notePlaceholder')}
                 />
               </div>
             </>
@@ -134,15 +154,15 @@ export const CaseHoldModal: React.FC<CaseHoldModalProps> = ({
 
           {pastHolds.length > 0 && (
             <>
-              <div className="ps-syn-section-label" style={{ marginTop: 20 }}>Past Holds ({pastHolds.length})</div>
+              <div className="ps-syn-section-label ps-mt-20">{t('retentionHoldModal.pastHoldsHeading', { count: pastHolds.length })}</div>
               {pastHolds.map(h => (
-                <div key={h.id} className="ps-intraop-note" style={{ opacity: 0.75, marginBottom: 8 }}>
-                  <span className="ps-intraop-note-label">{CASE_HOLD_REASON_LABEL[h.reason]}</span>
+                <div key={h.id} className="ps-intraop-note ps-intraop-note--dimmed ps-mb-8">
+                  <span className="ps-intraop-note-label">{t(REASON_LABEL_KEY[h.reason])}</span>
                   {h.note}
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                    Set by {h.setByUserName} — {formatTimestamp(h.setAt)}
+                  <div className="ps-retentionhold-meta">
+                    {t('retentionHoldModal.setByLine', { name: h.setByUserName, timestamp: formatTimestamp(h.setAt) })}
                     <br />
-                    Released by {h.releasedByUserName} — {h.releasedAt && formatTimestamp(h.releasedAt)}: {h.releaseNote}
+                    {t('retentionHoldModal.releasedByLine', { name: h.releasedByUserName, timestamp: h.releasedAt && formatTimestamp(h.releasedAt), note: h.releaseNote })}
                   </div>
                 </div>
               ))}
@@ -150,14 +170,14 @@ export const CaseHoldModal: React.FC<CaseHoldModalProps> = ({
           )}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-btn-secondary" onClick={onClose} disabled={busy}>Close</button>
+          <button className="ps-btn-secondary" onClick={onClose} disabled={busy}>{t('common.close')}</button>
           {activeHold ? (
             <button className="ps-ms-btn-apply" onClick={releaseHold} disabled={busy || !releaseNote.trim()}>
-              Release Hold
+              {t('retentionHoldModal.releaseHoldButton')}
             </button>
           ) : (
             <button className="ps-ms-btn-apply" onClick={placeHold} disabled={busy || !note.trim()}>
-              Place Hold
+              {t('retentionHoldModal.placeHoldButton')}
             </button>
           )}
         </div>

@@ -24,6 +24,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+// File-by-file cleanup sweep: Home.tsx's tile titles now go through
+// useTranslation()/t() — same real mocking convention already established
+// in OrSuiteDashboardPage.test.tsx/GrossingScreenPage.test.tsx (return the
+// raw key, so assertions target the stable key rather than one locale's
+// translated text).
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -52,28 +61,28 @@ async function renderHome() {
 describe('Home — real keyboard accessibility fix', () => {
   it('a real, live card is reachable via Tab (tabIndex 0) and reports role="button"', async () => {
     await renderHome();
-    const card = screen.getByText('Accession').closest('[role="button"]');
+    const card = screen.getByText('home.accessionTile.title').closest('[role="button"]');
     expect(card).not.toBeNull();
     expect(card?.getAttribute('tabindex')).toBe('0');
   });
 
   it('pressing Enter on a focused card navigates to its real route', async () => {
     await renderHome();
-    const card = screen.getByText('Accession').closest('[role="button"]')!;
+    const card = screen.getByText('home.accessionTile.title').closest('[role="button"]')!;
     fireEvent.keyDown(card, { key: 'Enter' });
     expect(mockNavigate).toHaveBeenCalledWith('/accession');
   });
 
   it('pressing Space on a focused card navigates to its real route', async () => {
     await renderHome();
-    const card = screen.getByText('Worklist').closest('[role="button"]')!;
+    const card = screen.getByText('home.worklistTile.title').closest('[role="button"]')!;
     fireEvent.keyDown(card, { key: ' ' });
     expect(mockNavigate).toHaveBeenCalledWith('/worklist');
   });
 
   it('an unrelated key (e.g. Tab itself) does not trigger navigation', async () => {
     await renderHome();
-    const card = screen.getByText('Search').closest('[role="button"]')!;
+    const card = screen.getByText('home.searchTile.title').closest('[role="button"]')!;
     fireEvent.keyDown(card, { key: 'Tab' });
     expect(mockNavigate).not.toHaveBeenCalled();
   });

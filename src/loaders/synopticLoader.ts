@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
 import { caseRouter } from "../services/cases/CaseRouter";
-import { facilityService } from "../services";
-import { getSessionUser, resolvePediatricAccess, resolveOrchestrationAccess } from "../services/auth/caseAccessControl";
+import { getSessionUser } from "../services/auth/caseAccessControl";
+import { resolveCaseAccessGate } from "../services/auth/resolveCaseAccessGate";
 
 export async function synopticLoader({ params }: LoaderFunctionArgs) {
   const caseId = params.caseId;
@@ -34,23 +34,16 @@ export async function synopticLoader({ params }: LoaderFunctionArgs) {
   // reasoning — this is now the single, real enforcement point, and the
   // UI-level checks call the same functions rather than their own
   // separately-drifting logic.
+  //
+  // File-by-file cleanup sweep: the actual two-check sequence (was
+  // duplicated here and in FullReportPage.tsx's own useEffect) now lives
+  // once, in resolveCaseAccessGate.ts — both real case-view entry points
+  // call the same function instead of two independently-maintained copies.
   const session = getSessionUser();
-
-  const orchDecision = resolveOrchestrationAccess(session, caseData as any);
-  if (!orchDecision.granted) {
-    console.warn(`Orchestration access denied for case ${caseId}: ${orchDecision.reason}`);
-    return redirect(`/worklist?accessDenied=orchestration&caseId=${caseId}`);
-  }
-
-  const facilityId = (caseData as any)?.order?.facilityId;
-  if (facilityId) {
-    const facilityRes = await facilityService.getById(facilityId).catch(() => undefined);
-    const facility = facilityRes?.ok ? facilityRes.data : null;
-    const pedDecision = resolvePediatricAccess(session, caseData as any, facility);
-    if (!pedDecision.granted) {
-      console.warn(`Pediatric access denied for case ${caseId}: ${pedDecision.reason}`);
-      return redirect(`/worklist?accessDenied=pediatric&caseId=${caseId}`);
-    }
+  const gate = await resolveCaseAccessGate(session, caseData as any);
+  if (!gate.granted) {
+    console.warn(`${gate.reason === 'orchestration' ? 'Orchestration' : 'Pediatric'} access denied for case ${caseId}: ${gate.detail}`);
+    return redirect(`/worklist?accessDenied=${gate.reason}&caseId=${caseId}`);
   }
 
   return caseData;

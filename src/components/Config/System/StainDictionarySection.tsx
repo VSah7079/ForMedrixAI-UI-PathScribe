@@ -12,9 +12,27 @@
 // and future testing suites (PCR/NGS), not stains alone. File/
 // component name intentionally left as-is - an internal identifier,
 // not the user-facing label this rename is actually about.
+//
+// i18n sweep (batch 60): every on-screen label, placeholder, button,
+// hint, table header, and validation message across all 4 modals
+// (Stain Type, Sectioning Protocol, Master Target, Quick-Order Macro)
+// and the main tabbed section now goes through a new
+// `stainDictionarySection` namespace. StainCategory and
+// MolecularTarget['targetType'] each got their own `*_LABEL_KEY` map
+// (the same pattern used for TAT types etc. earlier in this sweep) so
+// the stored enum values stay unchanged while the displayed text
+// translates. Real data stays untranslated: stain/protocol/macro
+// names and descriptions, antibody clones, vendors, billing/CPT
+// codes, control-tissue text, and every real target symbol/detail
+// (ERBB2, TP53, etc. — genuine molecular-dictionary content, same
+// convention as SNOMED codes elsewhere in this sweep) are shown
+// exactly as entered/stored. CSV export headers/values in
+// handleDownloadStainTypes stay English per this sweep's established
+// "exported data stays English" convention.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { stainTypeService, sectioningProtocolService, stainOrderMacroService } from '../../../services';
@@ -30,6 +48,22 @@ type SubTab = 'types' | 'protocols' | 'macros' | 'targets';
 
 const STAIN_CATEGORIES: StainCategory[] = ['Routine', 'Special Stain', 'IHC', 'Immunofluorescence', 'Molecular', 'Cytology', 'Other'];
 
+const STAIN_CATEGORY_LABEL_KEY: Record<StainCategory, string> = {
+  'Routine':             'stainDictionarySection.categories.routine',
+  'Special Stain':       'stainDictionarySection.categories.specialStain',
+  'IHC':                 'stainDictionarySection.categories.ihc',
+  'Immunofluorescence':  'stainDictionarySection.categories.immunofluorescence',
+  'Molecular':           'stainDictionarySection.categories.molecular',
+  'Cytology':            'stainDictionarySection.categories.cytology',
+  'Other':               'stainDictionarySection.categories.other',
+};
+
+const TARGET_TYPE_LABEL_KEY: Record<MolecularTarget['targetType'], string> = {
+  PROBE:            'stainDictionarySection.targetTypes.probe',
+  GENE:             'stainDictionarySection.targetTypes.gene',
+  MUTATION_REGION:  'stainDictionarySection.targetTypes.mutationRegion',
+};
+
 interface StainTypeModalProps {
   mode: 'add' | 'edit';
   entry?: StainType;
@@ -40,6 +74,7 @@ interface StainTypeModalProps {
   onClose: () => void;
 }
 const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEntries, masterTargets, onAddTarget, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [name, setName] = useState(entry?.name ?? '');
   const [category, setCategory] = useState<StainCategory>(entry?.category ?? 'Routine');
   const [description, setDescription] = useState(entry?.description ?? '');
@@ -81,7 +116,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
     // an existing entry but is still a real add) nothing is excluded,
     // so saving a duplicate without renaming it is correctly caught.
     const collision = findDuplicate(existingEntries, { name: name.trim() }, ['name'], mode === 'edit' ? entry?.id : undefined);
-    if (collision) { setNameError(`A stain type named "${collision.name}" already exists.`); return; }
+    if (collision) { setNameError(t('stainDictionarySection.typeModal.nameDuplicateError', { name: collision.name })); return; }
     setNameError(null);
 
     // Real, per direct guidance: only the fields the chosen billingModel
@@ -119,40 +154,39 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Diagnostic Process'}</div>
+        <div className="ps-ms-header">
+          {mode === 'edit' ? t('stainDictionarySection.editTitle', { value: entry?.name })
+            : entry ? t('stainDictionarySection.duplicateTitle', { value: entry.name })
+            : t('stainDictionarySection.typeModal.addTitle')}
+        </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder="e.g. Ki-67" />
+              <label className="ps-conf-label">{t('stainDictionarySection.nameLabel')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder={t('stainDictionarySection.typeModal.namePlaceholder')} />
               {nameError && <div className="ps-body-modal-error">{nameError}</div>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="stain-category">Category</label>
+              <label className="ps-conf-label" htmlFor="stain-category">{t('stainDictionarySection.table.category')}</label>
               <select id="stain-category" className="ps-conf-select" value={category} onChange={e => setCategory(e.target.value as StainCategory)}>
-                {STAIN_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {STAIN_CATEGORIES.map(c => <option key={c} value={c}>{t(STAIN_CATEGORY_LABEL_KEY[c])}</option>)}
               </select>
             </div>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
-            <textarea className="ps-conf-input ps-conf-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="What this stain is used for" />
+            <label className="ps-conf-label">{t('stainDictionarySection.descriptionLabel')}</label>
+            <textarea className="ps-conf-input ps-conf-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder={t('stainDictionarySection.typeModal.descriptionPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Default Billing Code</label>
+            <label className="ps-conf-label">{t('stainDictionarySection.typeModal.billingCodeLabel')}</label>
             <input
               className="ps-conf-input"
               value={defaultBillingCode}
               onChange={e => setDefaultBillingCode(e.target.value.trim())}
-              placeholder="e.g. PIN4-PANEL — leave blank to use the generic IHC/special-stain rule"
+              placeholder={t('stainDictionarySection.typeModal.billingCodePlaceholder')}
             />
             <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-              References a Billing Dictionary entry by its billingCode — never a raw CPT code directly (CPT
-              values/RVUs/payer rules live only in the Billing Dictionary, the one authoritative source for them).
-              Set this for a stain billed differently than the generic first/additional IHC rule, or a real multiplex
-              panel (e.g. a "PIN-4"-style combination stain, billed as its own distinct code). Leave blank to use the
-              app's generic rule. Free text for now — a real picker against the Billing Dictionary is pending that
-              dictionary's own build.
+              {t('stainDictionarySection.typeModal.billingCodeHint')}
             </p>
             {defaultBillingCode.trim() && category === 'IHC' && (
               <div className="ps-conf-toggle-row ps-conf-section-subtitle--top-gap">
@@ -161,37 +195,32 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
                   <div className="ps-conf-toggle-thumb" />
                 </div>
                 <span className={`ps-conf-toggle-label ${excludeFromIhcSequenceCounting ? 'ps-conf-toggle-label--active' : ''}`}>
-                  Standalone billing unit — exclude from the IHC first/additional sequence
+                  {t('stainDictionarySection.typeModal.standaloneBillingToggle')}
                 </span>
               </div>
             )}
             {defaultBillingCode.trim() && category === 'IHC' && (
               <p className="ps-conf-section-subtitle">
-                Off (default): this stain still occupies a real position in the specimen's IHC sequence for whatever
-                comes after it — use this for a single antibody billed at its own rate but still, clinically, one
-                real IHC stain. On: this stain neither gets sequence-assigned itself nor consumes a slot for a
-                later stain — use this for a self-contained multiplex/combination panel like "PIN-4," which was
-                never really a countable individual IHC stain to begin with.
+                {t('stainDictionarySection.typeModal.standaloneBillingHint')}
               </p>
             )}
           </div>
 
           {(category === 'IHC' || category === 'Special Stain') && (
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">QC & Control Slide Settings</label>
+              <label className="ps-conf-label">{t('stainDictionarySection.typeModal.qcSettingsLabel')}</label>
 
               <div className="ps-conf-form-row">
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label" htmlFor="stain-qc-mode">Post-Run QC Enforcement Mode</label>
+                  <label className="ps-conf-label" htmlFor="stain-qc-mode">{t('stainDictionarySection.typeModal.qcModeLabel')}</label>
                   <select id="stain-qc-mode" className="ps-conf-select" value={qcEnforcementMode ?? ''} onChange={e => setQcEnforcementMode((e.target.value || undefined) as StainType['qcEnforcementMode'])}>
-                    <option value="">\u2014 No override (use bench default) \u2014</option>
-                    <option value="Enforced">Enforced</option>
-                    <option value="Auto-Resolve">Auto-Resolve</option>
-                    <option value="Hybrid">Hybrid</option>
+                    <option value="">{t('stainDictionarySection.typeModal.qcModeNoOverride')}</option>
+                    <option value="Enforced">{t('stainDictionarySection.typeModal.qcModeEnforced')}</option>
+                    <option value="Auto-Resolve">{t('stainDictionarySection.typeModal.qcModeAutoResolve')}</option>
+                    <option value="Hybrid">{t('stainDictionarySection.typeModal.qcModeHybrid')}</option>
                   </select>
                   <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                    Overrides the Workstation Group's own instrument-level default for any batch running this
-                    specific stain. Leave unset to defer entirely to the bench.
+                    {t('stainDictionarySection.typeModal.qcModeHint')}
                   </p>
                 </div>
               </div>
@@ -202,7 +231,7 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
                   <div className="ps-conf-toggle-thumb" />
                 </div>
                 <span className={`ps-conf-toggle-label ${requiresTargetControl ? 'ps-conf-toggle-label--active' : ''}`}>
-                  Require target control slide (enforces the QC gate at sign-out)
+                  {t('stainDictionarySection.typeModal.requireControlToggle')}
                 </span>
               </div>
 
@@ -214,21 +243,18 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
                       <div className="ps-conf-toggle-thumb" />
                     </div>
                     <span className={`ps-conf-toggle-label ${allowControlAutoAppend ? 'ps-conf-toggle-label--active' : ''}`}>
-                      Auto-append control slide on batch creation
+                      {t('stainDictionarySection.typeModal.autoAppendToggle')}
                     </span>
                   </div>
                   <p className="ps-conf-section-subtitle">
-                    Off: turn this off if this stain relies on a real, internal tissue control, or the lab allocates
-                    its control slide manually — the QC gate above still applies, it just won't be satisfied by an
-                    auto-created slide.
+                    {t('stainDictionarySection.typeModal.autoAppendHint')}
                   </p>
 
                   <div className="ps-conf-form-field ps-conf-section-subtitle--top-gap">
-                    <label className="ps-conf-label">Default Control Tissue</label>
-                    <input className="ps-conf-input" value={defaultControlTissueType} onChange={e => setDefaultControlTissueType(e.target.value)} placeholder="e.g. Tonsil, Breast, Colon (normal mucosa)" />
+                    <label className="ps-conf-label">{t('stainDictionarySection.typeModal.controlTissueLabel')}</label>
+                    <input className="ps-conf-input" value={defaultControlTissueType} onChange={e => setDefaultControlTissueType(e.target.value)} placeholder={t('stainDictionarySection.typeModal.controlTissuePlaceholder')} />
                     <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                      Informational only — pre-fills the auto-created control's own specimen description. Never
-                      validated or enforced; a real run's own control tissue choice can differ.
+                      {t('stainDictionarySection.typeModal.controlTissueHint')}
                     </p>
                   </div>
                 </>
@@ -238,70 +264,69 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
           {(category === 'IHC' || category === 'Immunofluorescence') && (
             <div className="ps-conf-form-row">
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Antibody Clone</label>
-                <input className="ps-conf-input" value={antibodyClone} onChange={e => setAntibodyClone(e.target.value)} placeholder="e.g. 30-9" />
+                <label className="ps-conf-label">{t('stainDictionarySection.typeModal.antibodyCloneLabel')}</label>
+                <input className="ps-conf-input" value={antibodyClone} onChange={e => setAntibodyClone(e.target.value)} placeholder={t('stainDictionarySection.typeModal.antibodyClonePlaceholder')} />
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Vendor</label>
-                <input className="ps-conf-input" value={vendor} onChange={e => setVendor(e.target.value)} placeholder="e.g. Ventana" />
+                <label className="ps-conf-label">{t('stainDictionarySection.typeModal.vendorLabel')}</label>
+                <input className="ps-conf-input" value={vendor} onChange={e => setVendor(e.target.value)} placeholder={t('stainDictionarySection.typeModal.vendorPlaceholder')} />
               </div>
             </div>
           )}
           {category === 'Molecular' && (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="stain-methodology">Methodology</label>
+                <label className="ps-conf-label" htmlFor="stain-methodology">{t('stainDictionarySection.typeModal.methodologyLabel')}</label>
                 <select id="stain-methodology" className="ps-conf-select" value={methodology} onChange={e => setMethodology(e.target.value as MolecularMethodology)}>
-                  <option value="">— Select —</option>
-                  <option value="FISH_ANATOMIC">Anatomic Pathology FISH</option>
-                  <option value="FISH_CYTOGENETICS">Cytogenetic FISH</option>
-                  <option value="PCR_SINGLE">Single-Gene / Targeted PCR</option>
-                  <option value="NGS_PANEL">NGS Panel</option>
+                  <option value="">{t('stainDictionarySection.typeModal.methodologySelectPlaceholder')}</option>
+                  <option value="FISH_ANATOMIC">{t('stainDictionarySection.typeModal.methodologyFishAnatomic')}</option>
+                  <option value="FISH_CYTOGENETICS">{t('stainDictionarySection.typeModal.methodologyFishCytogenetics')}</option>
+                  <option value="PCR_SINGLE">{t('stainDictionarySection.typeModal.methodologyPcrSingle')}</option>
+                  <option value="NGS_PANEL">{t('stainDictionarySection.typeModal.methodologyNgsPanel')}</option>
                 </select>
               </div>
 
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Default Targets</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {selectedTargets.map(t => (
-                    <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', fontSize: 12, color: '#a78bfa' }}>
-                      {t.symbol}{t.detail ? ` (${t.detail})` : ''}
+                <label className="ps-conf-label">{t('stainDictionarySection.typeModal.defaultTargetsLabel')}</label>
+                <div className="ps-staindict__target-chips">
+                  {selectedTargets.map(target => (
+                    <span key={target.id} className="ps-staindict__target-chip">
+                      {target.symbol}{target.detail ? ` (${target.detail})` : ''}
                       <button
                         type="button"
-                        onClick={() => setSelectedTargets(prev => prev.filter(x => x.id !== t.id))}
-                        style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}
-                        aria-label={`Remove ${t.symbol}`}
+                        onClick={() => setSelectedTargets(prev => prev.filter(x => x.id !== target.id))}
+                        className="ps-staindict__target-chip-remove"
+                        aria-label={t('stainDictionarySection.typeModal.removeTargetAria', { symbol: target.symbol })}
                       >×</button>
                     </span>
                   ))}
-                  {selectedTargets.length === 0 && <span className="ps-conf-hint">No default targets yet — search below to add from the master target dictionary.</span>}
+                  {selectedTargets.length === 0 && <span className="ps-conf-hint">{t('stainDictionarySection.typeModal.noDefaultTargets')}</span>}
                 </div>
                 <input
                   className="ps-conf-input"
-                  placeholder="Search master targets (e.g. ERBB2, BCL2)…"
+                  placeholder={t('stainDictionarySection.typeModal.targetSearchPlaceholder')}
                   value={targetSearch}
                   onChange={e => setTargetSearch(e.target.value)}
                 />
                 {targetSearch.trim() && (
-                  <div style={{ maxHeight: 140, overflowY: 'auto', marginTop: 4, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+                  <div className="ps-staindict__target-dropdown">
                     {masterTargets
-                      .filter(t => !selectedTargets.some(s => s.id === t.id))
-                      .filter(t => t.symbol.toLowerCase().includes(targetSearch.trim().toLowerCase()) || t.detail?.toLowerCase().includes(targetSearch.trim().toLowerCase()))
-                      .map(t => (
-                        <div key={t.id} onClick={() => { setSelectedTargets(prev => [...prev, t]); setTargetSearch(''); }}
-                          style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>
-                          <strong>{t.symbol}</strong>{t.detail ? <span style={{ color: '#64748b' }}> — {t.detail}</span> : null}
+                      .filter(target => !selectedTargets.some(s => s.id === target.id))
+                      .filter(target => target.symbol.toLowerCase().includes(targetSearch.trim().toLowerCase()) || target.detail?.toLowerCase().includes(targetSearch.trim().toLowerCase()))
+                      .map(target => (
+                        <div key={target.id} onClick={() => { setSelectedTargets(prev => [...prev, target]); setTargetSearch(''); }}
+                          className="ps-staindict__target-option">
+                          <strong>{target.symbol}</strong>{target.detail ? <span className="ps-staindict__target-option-detail"> — {target.detail}</span> : null}
                         </div>
                       ))}
                   </div>
                 )}
                 <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                  Copied onto each new order at order time, then freely editable there — changing this dictionary
-                  default never touches an existing order's own targets.
+                  {t('stainDictionarySection.typeModal.defaultTargetsHint')}
                 </p>
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <input className="ps-conf-input" placeholder="New target symbol (e.g. TP53)" value={newTargetSymbol} onChange={e => setNewTargetSymbol(e.target.value)} style={{ flex: 1 }} />
-                  <input className="ps-conf-input" placeholder="Detail (e.g. 17p13.1) — optional" value={newTargetDetail} onChange={e => setNewTargetDetail(e.target.value)} style={{ flex: 1 }} />
+                <div className="ps-staindict__new-target-row">
+                  <input className="ps-conf-input ps-staindict__new-target-input" placeholder={t('stainDictionarySection.typeModal.newTargetSymbolPlaceholder')} value={newTargetSymbol} onChange={e => setNewTargetSymbol(e.target.value)} />
+                  <input className="ps-conf-input ps-staindict__new-target-input" placeholder={t('stainDictionarySection.typeModal.newTargetDetailPlaceholder')} value={newTargetDetail} onChange={e => setNewTargetDetail(e.target.value)} />
                   <button
                     type="button"
                     className="ps-conf-btn-secondary"
@@ -310,75 +335,74 @@ const StainTypeModal: React.FC<StainTypeModalProps> = ({ mode, entry, existingEn
                       const created = await onAddTarget(newTargetSymbol.trim(), newTargetDetail.trim());
                       if (created) { setSelectedTargets(prev => [...prev, created]); setNewTargetSymbol(''); setNewTargetDetail(''); }
                     }}
-                  >Add to master dictionary</button>
+                  >{t('stainDictionarySection.typeModal.addToMasterDictBtn')}</button>
                 </div>
               </div>
 
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="billing-model">Billing Model</label>
+                <label className="ps-conf-label" htmlFor="billing-model">{t('stainDictionarySection.typeModal.billingModelLabel')}</label>
                 <select id="billing-model" className="ps-conf-select" value={billingModel} onChange={e => setBillingModel(e.target.value as BillingModel)}>
-                  <option value="BASE_ADDON">Base + Add-on (with multiplex threshold)</option>
-                  <option value="PER_UNIT_MULTIPLIER">Per-Unit Multiplier (N units of one code)</option>
-                  <option value="FLAT_FEE">Flat Fee (one code regardless of target count)</option>
+                  <option value="BASE_ADDON">{t('stainDictionarySection.typeModal.billingModelBaseAddon')}</option>
+                  <option value="PER_UNIT_MULTIPLIER">{t('stainDictionarySection.typeModal.billingModelPerUnit')}</option>
+                  <option value="FLAT_FEE">{t('stainDictionarySection.typeModal.billingModelFlatFee')}</option>
                 </select>
               </div>
               {billingModel === 'BASE_ADDON' && (
                 <div className="ps-conf-form-row">
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label">Base billingCode (1st target)</label>
-                    <input className="ps-conf-input" value={baseCptCode} onChange={e => setBaseCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-BASE" />
+                    <label className="ps-conf-label">{t('stainDictionarySection.typeModal.baseCptLabel')}</label>
+                    <input className="ps-conf-input" value={baseCptCode} onChange={e => setBaseCptCode(e.target.value)} placeholder={t('stainDictionarySection.typeModal.baseCptPlaceholder')} />
                   </div>
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label">Add-on billingCode (each additional)</label>
-                    <input className="ps-conf-input" value={addOnCptCode} onChange={e => setAddOnCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-ADDL" />
+                    <label className="ps-conf-label">{t('stainDictionarySection.typeModal.addOnCptLabel')}</label>
+                    <input className="ps-conf-input" value={addOnCptCode} onChange={e => setAddOnCptCode(e.target.value)} placeholder={t('stainDictionarySection.typeModal.addOnCptPlaceholder')} />
                   </div>
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label">Multiplex billingCode</label>
-                    <input className="ps-conf-input" value={multiplexCptCode} onChange={e => setMultiplexCptCode(e.target.value)} placeholder="e.g. FISH-MANUAL-MULTIPLEX" />
+                    <label className="ps-conf-label">{t('stainDictionarySection.typeModal.multiplexCptLabel')}</label>
+                    <input className="ps-conf-input" value={multiplexCptCode} onChange={e => setMultiplexCptCode(e.target.value)} placeholder={t('stainDictionarySection.typeModal.multiplexCptPlaceholder')} />
                   </div>
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label">Multiplex threshold</label>
+                    <label className="ps-conf-label">{t('stainDictionarySection.typeModal.multiplexThresholdLabel')}</label>
                     <input className="ps-conf-input" type="number" min="1" value={multiplexThreshold} onChange={e => setMultiplexThreshold(e.target.value)} />
                   </div>
                 </div>
               )}
               {billingModel === 'PER_UNIT_MULTIPLIER' && (
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">Per-unit billingCode</label>
-                  <input className="ps-conf-input" value={perUnitCptCode} onChange={e => setPerUnitCptCode(e.target.value)} placeholder="e.g. FISH-CYTO-PROBE" />
+                  <label className="ps-conf-label">{t('stainDictionarySection.typeModal.perUnitCptLabel')}</label>
+                  <input className="ps-conf-input" value={perUnitCptCode} onChange={e => setPerUnitCptCode(e.target.value)} placeholder={t('stainDictionarySection.typeModal.perUnitCptPlaceholder')} />
                 </div>
               )}
               {billingModel === 'FLAT_FEE' && (
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">Flat-fee billingCode</label>
-                  <input className="ps-conf-input" value={flatFeeCptCode} onChange={e => setFlatFeeCptCode(e.target.value)} placeholder="e.g. NGS-PANEL-5-50" />
+                  <label className="ps-conf-label">{t('stainDictionarySection.typeModal.flatFeeCptLabel')}</label>
+                  <input className="ps-conf-input" value={flatFeeCptCode} onChange={e => setFlatFeeCptCode(e.target.value)} placeholder={t('stainDictionarySection.typeModal.flatFeeCptPlaceholder')} />
                 </div>
               )}
               <p className="ps-conf-section-subtitle">
-                References real Billing Dictionary entries by their billingCode — never a raw CPT code directly,
-                same convention as Default Billing Code above.
+                {t('stainDictionarySection.typeModal.molecularBillingHint')}
               </p>
             </>
           )}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Default Turnaround (hours)</label>
-              <input className="ps-conf-input" type="number" min="0" value={turnaround} onChange={e => setTurnaround(e.target.value)} placeholder="e.g. 24" />
+              <label className="ps-conf-label">{t('stainDictionarySection.typeModal.turnaroundLabel')}</label>
+              <input className="ps-conf-input" type="number" min="0" value={turnaround} onChange={e => setTurnaround(e.target.value)} placeholder={t('stainDictionarySection.typeModal.turnaroundPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Status</label>
+              <label className="ps-conf-label">{t('stainDictionarySection.statusLabel')}</label>
               <div className="ps-conf-toggle-row">
                 <div onClick={() => setActive(!active)} className={`ps-conf-toggle-track ${active ? 'ps-conf-toggle-track--active' : ''}`}>
                   <div className="ps-conf-toggle-thumb" />
                 </div>
-                <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? 'Active' : 'Inactive'}</span>
+                <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? t('common.active') : t('common.inactive')}</span>
               </div>
             </div>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Diagnostic Process'}</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? t('stainDictionarySection.saveChangesBtn') : t('stainDictionarySection.typeModal.addTitle')}</button>
         </div>
       </div>
     </div>
@@ -395,6 +419,7 @@ interface ProtocolModalProps {
   onClose: () => void;
 }
 const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [name, setName] = useState(entry?.name ?? '');
   const [description, setDescription] = useState(entry?.description ?? '');
   const [active, setActive] = useState(entry?.active ?? true);
@@ -403,7 +428,7 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntr
   const handleSave = () => {
     if (!name.trim()) return;
     const collision = findDuplicate(existingEntries, { name: name.trim() }, ['name'], mode === 'edit' ? entry?.id : undefined);
-    if (collision) { setNameError(`A sectioning protocol named "${collision.name}" already exists.`); return; }
+    if (collision) { setNameError(t('stainDictionarySection.protocolModal.nameDuplicateError', { name: collision.name })); return; }
     setNameError(null);
     onSave({ name: name.trim(), description: description.trim() || undefined, active });
   };
@@ -411,30 +436,34 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntr
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.name}` : entry ? `Duplicate — ${entry.name}` : 'Add Sectioning Protocol'}</div>
+        <div className="ps-ms-header">
+          {mode === 'edit' ? t('stainDictionarySection.editTitle', { value: entry?.name })
+            : entry ? t('stainDictionarySection.duplicateTitle', { value: entry.name })
+            : t('stainDictionarySection.protocolModal.addTitle')}
+        </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Name <span className="ps-conf-required">*</span></label>
-            <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder="e.g. Level x 3" />
+            <label className="ps-conf-label">{t('stainDictionarySection.nameLabel')} <span className="ps-conf-required">*</span></label>
+            <input className="ps-conf-input" value={name} onChange={e => { setName(e.target.value); setNameError(null); }} placeholder={t('stainDictionarySection.protocolModal.namePlaceholder')} />
             {nameError && <div className="ps-body-modal-error">{nameError}</div>}
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
-            <textarea className="ps-conf-input ps-conf-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="What this sectioning instruction means" />
+            <label className="ps-conf-label">{t('stainDictionarySection.descriptionLabel')}</label>
+            <textarea className="ps-conf-input ps-conf-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder={t('stainDictionarySection.protocolModal.descriptionPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('stainDictionarySection.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => setActive(!active)} className={`ps-conf-toggle-track ${active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Protocol'}</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? t('stainDictionarySection.saveChangesBtn') : t('stainDictionarySection.protocolModal.addTitle')}</button>
         </div>
       </div>
     </div>
@@ -458,6 +487,7 @@ interface MolecularTargetModalProps {
   onClose: () => void;
 }
 const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [symbol, setSymbol] = useState(entry?.symbol ?? '');
   const [detail, setDetail] = useState(entry?.detail ?? '');
   const [targetType, setTargetType] = useState<MolecularTarget['targetType']>(entry?.targetType ?? 'PROBE');
@@ -470,12 +500,19 @@ const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry
     // already guards against (symbol + detail together, not symbol
     // alone - ERBB2 with no detail and ERBB2 at a different real
     // locus are both legitimately real, distinct entries).
-    const collision = existingEntries.find(t =>
-      t.id !== (mode === 'edit' ? entry?.id : undefined) &&
-      t.symbol.toLowerCase() === symbol.trim().toLowerCase() &&
-      (t.detail ?? '') === detail.trim()
+    const collision = existingEntries.find(target =>
+      target.id !== (mode === 'edit' ? entry?.id : undefined) &&
+      target.symbol.toLowerCase() === symbol.trim().toLowerCase() &&
+      (target.detail ?? '') === detail.trim()
     );
-    if (collision) { setSymbolError(`A target "${collision.symbol}"${collision.detail ? ` (${collision.detail})` : ''} already exists.`); return; }
+    if (collision) {
+      setSymbolError(
+        collision.detail
+          ? t('stainDictionarySection.targetModal.symbolDuplicateErrorWithDetail', { symbol: collision.symbol, detail: collision.detail })
+          : t('stainDictionarySection.targetModal.symbolDuplicateError', { symbol: collision.symbol })
+      );
+      return;
+    }
     setSymbolError(null);
     onSave({ symbol: symbol.trim(), detail: detail.trim() || undefined, targetType, active });
   };
@@ -483,44 +520,47 @@ const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.symbol}` : entry ? `Duplicate — ${entry.symbol}` : 'Add Target'}</div>
+        <div className="ps-ms-header">
+          {mode === 'edit' ? t('stainDictionarySection.editTitle', { value: entry?.symbol })
+            : entry ? t('stainDictionarySection.duplicateTitle', { value: entry.symbol })
+            : t('stainDictionarySection.targetModal.addTitle')}
+        </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Symbol <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={symbol} onChange={e => { setSymbol(e.target.value); setSymbolError(null); }} placeholder="e.g. ERBB2" />
+              <label className="ps-conf-label">{t('stainDictionarySection.targetModal.symbolLabel')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={symbol} onChange={e => { setSymbol(e.target.value); setSymbolError(null); }} placeholder={t('stainDictionarySection.targetModal.symbolPlaceholder')} />
               {symbolError && <div className="ps-body-modal-error">{symbolError}</div>}
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="target-type">Type</label>
+              <label className="ps-conf-label" htmlFor="target-type">{t('stainDictionarySection.table.type')}</label>
               <select id="target-type" className="ps-conf-select" value={targetType} onChange={e => setTargetType(e.target.value as MolecularTarget['targetType'])}>
-                <option value="PROBE">Probe (FISH)</option>
-                <option value="GENE">Gene (NGS)</option>
-                <option value="MUTATION_REGION">Mutation Region (PCR)</option>
+                <option value="PROBE">{t('stainDictionarySection.targetModal.targetTypeProbeOption')}</option>
+                <option value="GENE">{t('stainDictionarySection.targetModal.targetTypeGeneOption')}</option>
+                <option value="MUTATION_REGION">{t('stainDictionarySection.targetModal.targetTypeMutationRegionOption')}</option>
               </select>
             </div>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Detail</label>
-            <input className="ps-conf-input" value={detail} onChange={e => setDetail(e.target.value)} placeholder="e.g. 17q12 (locus), or V600E (mutation) — optional" />
+            <label className="ps-conf-label">{t('stainDictionarySection.targetModal.detailLabel')}</label>
+            <input className="ps-conf-input" value={detail} onChange={e => setDetail(e.target.value)} placeholder={t('stainDictionarySection.targetModal.detailPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('stainDictionarySection.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => setActive(!active)} className={`ps-conf-toggle-track ${active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? t('common.active') : t('common.inactive')}</span>
             </div>
             <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-              Inactive targets stay searchable in existing Stain Type entries that already reference them, but won't
-              appear when searching to add a new default target.
+              {t('stainDictionarySection.targetModal.inactiveHint')}
             </p>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Target'}</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? t('stainDictionarySection.saveChangesBtn') : t('stainDictionarySection.targetModal.addTitle')}</button>
         </div>
       </div>
     </div>
@@ -539,6 +579,7 @@ interface MacroModalProps {
   onClose: () => void;
 }
 const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, stainTypes, protocols, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [label, setLabel] = useState(entry?.label ?? '');
   const [stainTypeId, setStainTypeId] = useState(entry?.stainTypeId ?? stainTypes[0]?.id ?? '');
   const [sectioningProtocolId, setSectioningProtocolId] = useState(entry?.sectioningProtocolId ?? protocols[0]?.id ?? '');
@@ -549,7 +590,7 @@ const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, s
   const handleSave = () => {
     if (!label.trim() || !stainTypeId || !sectioningProtocolId) return;
     const collision = findDuplicate(existingEntries, { label: label.trim() }, ['label'], mode === 'edit' ? entry?.id : undefined);
-    if (collision) { setLabelError(`A macro labeled "${collision.label}" already exists.`); return; }
+    if (collision) { setLabelError(t('stainDictionarySection.macroModal.labelDuplicateError', { label: collision.label })); return; }
     setLabelError(null);
     onSave({ label: label.trim(), stainTypeId, sectioningProtocolId, sortOrder: Number(sortOrder) || 99, active });
   };
@@ -557,22 +598,26 @@ const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, s
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.label}` : entry ? `Duplicate — ${entry.label}` : 'Add Quick-Order Macro'}</div>
+        <div className="ps-ms-header">
+          {mode === 'edit' ? t('stainDictionarySection.editTitle', { value: entry?.label })
+            : entry ? t('stainDictionarySection.duplicateTitle', { value: entry.label })
+            : t('stainDictionarySection.macroModal.addTitle')}
+        </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Label <span className="ps-conf-required">*</span></label>
-            <input className="ps-conf-input" value={label} onChange={e => { setLabel(e.target.value); setLabelError(null); }} placeholder='e.g. "H&E x 3"' />
+            <label className="ps-conf-label">{t('stainDictionarySection.macroModal.labelLabel')} <span className="ps-conf-required">*</span></label>
+            <input className="ps-conf-input" value={label} onChange={e => { setLabel(e.target.value); setLabelError(null); }} placeholder={t('stainDictionarySection.macroModal.labelPlaceholder')} />
             {labelError && <div className="ps-body-modal-error">{labelError}</div>}
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="macro-stain-type">Stain Type <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="macro-stain-type">{t('stainDictionarySection.macroModal.stainTypeLabel')} <span className="ps-conf-required">*</span></label>
               <select id="macro-stain-type" className="ps-conf-select" value={stainTypeId} onChange={e => setStainTypeId(e.target.value)}>
                 {stainTypes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="macro-sectioning-protocol">Sectioning Protocol <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="macro-sectioning-protocol">{t('stainDictionarySection.macroModal.sectioningProtocolLabel')} <span className="ps-conf-required">*</span></label>
               <select id="macro-sectioning-protocol" className="ps-conf-select" value={sectioningProtocolId} onChange={e => setSectioningProtocolId(e.target.value)}>
                 {protocols.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -580,23 +625,23 @@ const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, s
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Sort Order</label>
+              <label className="ps-conf-label">{t('stainDictionarySection.macroModal.sortOrderLabel')}</label>
               <input className="ps-conf-input" type="number" value={sortOrder} onChange={e => setSortOrder(e.target.value)} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Status</label>
+              <label className="ps-conf-label">{t('stainDictionarySection.statusLabel')}</label>
               <div className="ps-conf-toggle-row">
                 <div onClick={() => setActive(!active)} className={`ps-conf-toggle-track ${active ? 'ps-conf-toggle-track--active' : ''}`}>
                   <div className="ps-conf-toggle-thumb" />
                 </div>
-                <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? 'Active' : 'Inactive'}</span>
+                <span className={`ps-conf-toggle-label ${active ? 'ps-conf-toggle-label--active' : ''}`}>{active ? t('common.active') : t('common.inactive')}</span>
               </div>
             </div>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? 'Save Changes' : 'Add Macro'}</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="ps-ms-btn-apply" onClick={handleSave}>{mode === 'edit' ? t('stainDictionarySection.saveChangesBtn') : t('stainDictionarySection.macroModal.addTitle')}</button>
         </div>
       </div>
     </div>
@@ -606,6 +651,7 @@ const MacroModal: React.FC<MacroModalProps> = ({ mode, entry, existingEntries, s
 // ── Main section ─────────────────────────────────────────────────────────
 
 const StainDictionarySection: React.FC = () => {
+  const { t } = useTranslation();
   const [subTab, setSubTab] = useState<SubTab>('types');
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [protocols, setProtocols] = useState<SectioningProtocol[]>([]);
@@ -680,7 +726,7 @@ const StainDictionarySection: React.FC = () => {
 
   const handleStainFileUpload = async (file: File) => {
     if (!isCsvFile(file)) {
-      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      alert(t('stainDictionarySection.csvUploadError', { fileName: file.name }));
       return;
     }
     const text = await readFileAsText(file);
@@ -723,71 +769,87 @@ const StainDictionarySection: React.FC = () => {
   const stainName = (id: string) => stainTypes.find(s => s.id === id)?.name ?? '—';
   const protocolName = (id: string) => protocols.find(p => p.id === id)?.name ?? '—';
 
+  const typesTableHeaders = [
+    t('stainDictionarySection.table.name'), t('stainDictionarySection.table.category'),
+    t('stainDictionarySection.table.cloneVendor'), t('stainDictionarySection.table.billingCode'),
+    t('stainDictionarySection.table.turnaround'), t('stainDictionarySection.table.status'), t('stainDictionarySection.table.actions'),
+  ];
+  const protocolsTableHeaders = [
+    t('stainDictionarySection.table.name'), t('stainDictionarySection.table.description'),
+    t('stainDictionarySection.table.status'), t('stainDictionarySection.table.actions'),
+  ];
+  const macrosTableHeaders = [
+    t('stainDictionarySection.table.label'), t('stainDictionarySection.table.stainType'),
+    t('stainDictionarySection.table.sectioningProtocol'), t('stainDictionarySection.table.status'), t('stainDictionarySection.table.actions'),
+  ];
+  const targetsTableHeaders = [
+    t('stainDictionarySection.table.symbol'), t('stainDictionarySection.table.type'),
+    t('stainDictionarySection.table.detail'), t('stainDictionarySection.table.status'), t('stainDictionarySection.table.actions'),
+  ];
+
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Diagnostic Catalog</h3>
+          <h3 className="ps-conf-section-title">{t('stainDictionarySection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Stains, FISH/molecular testing, and future testing suites, all in one catalog. Stain Type and
-            Sectioning Protocol are independent dimensions — Quick-Order Macros compose one of each into a single
-            ordering preset for the UX, without merging them in the data.
+            {t('stainDictionarySection.subtitle')}
           </p>
         </div>
       </div>
 
       <div className="ps-tab-bar ps-staindict-tabs">
-        <button className={`ps-tab-btn ${subTab === 'types' ? 'active' : ''}`} onClick={() => setSubTab('types')}>Diagnostic Assays ({stainTypes.length})</button>
-        <button className={`ps-tab-btn ${subTab === 'protocols' ? 'active' : ''}`} onClick={() => setSubTab('protocols')}>Sectioning Protocols ({protocols.length})</button>
-        <button className={`ps-tab-btn ${subTab === 'macros' ? 'active' : ''}`} onClick={() => setSubTab('macros')}>Quick-Order Macros ({macros.length})</button>
-        <button className={`ps-tab-btn ${subTab === 'targets' ? 'active' : ''}`} onClick={() => setSubTab('targets')}>Master Targets ({masterTargets.length})</button>
+        <button className={`ps-tab-btn ${subTab === 'types' ? 'active' : ''}`} onClick={() => setSubTab('types')}>{t('stainDictionarySection.tabs.types', { count: stainTypes.length })}</button>
+        <button className={`ps-tab-btn ${subTab === 'protocols' ? 'active' : ''}`} onClick={() => setSubTab('protocols')}>{t('stainDictionarySection.tabs.protocols', { count: protocols.length })}</button>
+        <button className={`ps-tab-btn ${subTab === 'macros' ? 'active' : ''}`} onClick={() => setSubTab('macros')}>{t('stainDictionarySection.tabs.macros', { count: macros.length })}</button>
+        <button className={`ps-tab-btn ${subTab === 'targets' ? 'active' : ''}`} onClick={() => setSubTab('targets')}>{t('stainDictionarySection.tabs.targets', { count: masterTargets.length })}</button>
       </div>
 
       {subTab === 'types' && (
         <>
           <div className="ps-conf-form-row--3">
-            <input type="text" placeholder="Search stain types..." value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
+            <input type="text" placeholder={t('stainDictionarySection.searchTypesPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} className="ps-conf-search" />
             <div className="ps-specdict-header-actions">
-              <button className="ps-conf-btn-secondary" onClick={handleDownloadStainTypes}>Export</button>
-              <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>Import Spreadsheet</button>
+              <button className="ps-conf-btn-secondary" onClick={handleDownloadStainTypes}>{t('common.export')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => stainImportFileInputRef.current?.click()}>{t('stainDictionarySection.importSpreadsheetBtn')}</button>
               <input ref={stainImportFileInputRef} type="file" hidden accept=".csv,text/csv" onChange={e => { if (e.target.files?.[0]) handleStainFileUpload(e.target.files[0]); e.target.value = ''; }} />
             </div>
-            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>+ Add Diagnostic Process</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTypeModal({ mode: 'add' })}>{t('stainDictionarySection.addTypeBtn')}</button>
           </div>
           {stainImportPreview && (
             <div className="ps-conf-import-preview">
-              <p>{stainImportCounts.newCount} new, {stainImportCounts.updateCount} to update, parsed from the spreadsheet.</p>
-              <button className="ps-conf-btn-primary" onClick={handleApplyStainImport}>Apply Import</button>
-              <button className="ps-conf-btn-row" onClick={() => setStainImportPreview(null)}>Cancel</button>
+              <p>{t('stainDictionarySection.importPreview', { newCount: stainImportCounts.newCount, updateCount: stainImportCounts.updateCount })}</p>
+              <button className="ps-conf-btn-primary" onClick={handleApplyStainImport}>{t('stainDictionarySection.applyImportBtn')}</button>
+              <button className="ps-conf-btn-row" onClick={() => setStainImportPreview(null)}>{t('common.cancel')}</button>
             </div>
           )}
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
                 <thead className="ps-conf-thead-sticky">
-                  <tr>{['Name', 'Category', 'Clone / Vendor', 'Billing Code', 'Turnaround', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+                  <tr>{typesTableHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredTypes.map(s => (
                     <tr key={s.id} className="ps-conf-tr">
                       <td className="ps-conf-td"><div className="ps-conf-identity-name">{s.name}</div></td>
-                      <td className="ps-conf-td">{s.category}</td>
+                      <td className="ps-conf-td">{t(STAIN_CATEGORY_LABEL_KEY[s.category])}</td>
                       <td className="ps-conf-td"><div className="ps-specreq-meta">{[s.antibodyClone, s.vendor].filter(Boolean).join(' · ') || '—'}</div></td>
                       <td className="ps-conf-td">{s.defaultBillingCode || '—'}</td>
-                      <td className="ps-conf-td">{s.defaultTurnaroundHours ? `${s.defaultTurnaroundHours}h` : '—'}</td>
+                      <td className="ps-conf-td">{s.defaultTurnaroundHours ? t('stainDictionarySection.hoursShort', { h: s.defaultTurnaroundHours }) : '—'}</td>
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
                           <span className={`ps-conf-status-dot ${s.active ? 'ps-conf-status-dot--active' : ''}`} />
-                          <span className={`ps-conf-status-text ${s.active ? 'ps-conf-status-text--active' : ''}`}>{s.active ? 'Active' : 'Inactive'}</span>
+                          <span className={`ps-conf-status-text ${s.active ? 'ps-conf-status-text--active' : ''}`}>{s.active ? t('common.active') : t('common.inactive')}</span>
                         </span>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => setTypeModal({ mode: 'edit', entry: s })}>Edit</button>
-                        <button className="ps-conf-btn-row" onClick={() => handleCloneStainType(s)}>Duplicate</button>
+                        <button className="ps-conf-btn-row" onClick={() => setTypeModal({ mode: 'edit', entry: s })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneStainType(s)}>{t('common.duplicate')}</button>
                       </td>
                     </tr>
                   ))}
-                  {filteredTypes.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={6}>No stain types match the current search.</td></tr>}
+                  {filteredTypes.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={6}>{t('stainDictionarySection.noTypesMatch')}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -799,12 +861,12 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setProtocolModal({ mode: 'add' })}>+ Add Protocol</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setProtocolModal({ mode: 'add' })}>{t('stainDictionarySection.addProtocolBtn')}</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
-                <thead className="ps-conf-thead-sticky"><tr>{['Name', 'Description', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                <thead className="ps-conf-thead-sticky"><tr>{protocolsTableHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
                 <tbody>
                   {protocols.map(p => (
                     <tr key={p.id} className="ps-conf-tr">
@@ -813,12 +875,12 @@ const StainDictionarySection: React.FC = () => {
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
                           <span className={`ps-conf-status-dot ${p.active ? 'ps-conf-status-dot--active' : ''}`} />
-                          <span className={`ps-conf-status-text ${p.active ? 'ps-conf-status-text--active' : ''}`}>{p.active ? 'Active' : 'Inactive'}</span>
+                          <span className={`ps-conf-status-text ${p.active ? 'ps-conf-status-text--active' : ''}`}>{p.active ? t('common.active') : t('common.inactive')}</span>
                         </span>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => setProtocolModal({ mode: 'edit', entry: p })}>Edit</button>
-                        <button className="ps-conf-btn-row" onClick={() => handleCloneProtocol(p)}>Duplicate</button>
+                        <button className="ps-conf-btn-row" onClick={() => setProtocolModal({ mode: 'edit', entry: p })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneProtocol(p)}>{t('common.duplicate')}</button>
                       </td>
                     </tr>
                   ))}
@@ -833,12 +895,12 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setMacroModal({ mode: 'add' })}>+ Add Macro</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setMacroModal({ mode: 'add' })}>{t('stainDictionarySection.addMacroBtn')}</button>
           </div>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
-                <thead className="ps-conf-thead-sticky"><tr>{['Label', 'Stain Type', 'Sectioning Protocol', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                <thead className="ps-conf-thead-sticky"><tr>{macrosTableHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
                 <tbody>
                   {macros.map(m => (
                     <tr key={m.id} className="ps-conf-tr">
@@ -848,12 +910,12 @@ const StainDictionarySection: React.FC = () => {
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
                           <span className={`ps-conf-status-dot ${m.active ? 'ps-conf-status-dot--active' : ''}`} />
-                          <span className={`ps-conf-status-text ${m.active ? 'ps-conf-status-text--active' : ''}`}>{m.active ? 'Active' : 'Inactive'}</span>
+                          <span className={`ps-conf-status-text ${m.active ? 'ps-conf-status-text--active' : ''}`}>{m.active ? t('common.active') : t('common.inactive')}</span>
                         </span>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => setMacroModal({ mode: 'edit', entry: m })}>Edit</button>
-                        <button className="ps-conf-btn-row" onClick={() => handleCloneMacro(m)}>Duplicate</button>
+                        <button className="ps-conf-btn-row" onClick={() => setMacroModal({ mode: 'edit', entry: m })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneMacro(m)}>{t('common.duplicate')}</button>
                       </td>
                     </tr>
                   ))}
@@ -868,37 +930,35 @@ const StainDictionarySection: React.FC = () => {
         <>
           <div className="ps-conf-form-row--3">
             <div /><div />
-            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTargetModal({ mode: 'add' })}>+ Add Target</button>
+            <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setTargetModal({ mode: 'add' })}>{t('stainDictionarySection.addTargetBtn')}</button>
           </div>
           <p className="ps-conf-section-subtitle">
-            The real, master probe/gene/mutation-region catalog every Stain Type's own Default Targets is built
-            from — edit an existing entry here to fix a symbol/detail typo across every Stain Type that already
-            references it, or deactivate one that's no longer in use.
+            {t('stainDictionarySection.targetsIntro')}
           </p>
           <div className="ps-conf-table-wrap">
             <div className="ps-conf-table-scroll">
               <table className="ps-conf-table">
-                <thead className="ps-conf-thead-sticky"><tr>{['Symbol', 'Type', 'Detail', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                <thead className="ps-conf-thead-sticky"><tr>{targetsTableHeaders.map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
                 <tbody>
-                  {masterTargets.map(t => (
-                    <tr key={t.id} className="ps-conf-tr">
-                      <td className="ps-conf-td"><div className="ps-conf-identity-name">{t.symbol}</div></td>
-                      <td className="ps-conf-td">{t.targetType === 'PROBE' ? 'Probe' : t.targetType === 'GENE' ? 'Gene' : 'Mutation Region'}</td>
-                      <td className="ps-conf-td">{t.detail ?? '—'}</td>
+                  {masterTargets.map(target => (
+                    <tr key={target.id} className="ps-conf-tr">
+                      <td className="ps-conf-td"><div className="ps-conf-identity-name">{target.symbol}</div></td>
+                      <td className="ps-conf-td">{t(TARGET_TYPE_LABEL_KEY[target.targetType])}</td>
+                      <td className="ps-conf-td">{target.detail ?? '—'}</td>
                       <td className="ps-conf-td">
                         <span className="ps-conf-status-cell">
-                          <span className={`ps-conf-status-dot ${t.active ? 'ps-conf-status-dot--active' : ''}`} />
-                          <span className={`ps-conf-status-text ${t.active ? 'ps-conf-status-text--active' : ''}`}>{t.active ? 'Active' : 'Inactive'}</span>
+                          <span className={`ps-conf-status-dot ${target.active ? 'ps-conf-status-dot--active' : ''}`} />
+                          <span className={`ps-conf-status-text ${target.active ? 'ps-conf-status-text--active' : ''}`}>{target.active ? t('common.active') : t('common.inactive')}</span>
                         </span>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => setTargetModal({ mode: 'edit', entry: t })}>Edit</button>
-                        <button className="ps-conf-btn-row" onClick={() => handleCloneTarget(t)}>Duplicate</button>
+                        <button className="ps-conf-btn-row" onClick={() => setTargetModal({ mode: 'edit', entry: target })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleCloneTarget(target)}>{t('common.duplicate')}</button>
                       </td>
                     </tr>
                   ))}
                   {masterTargets.length === 0 && (
-                    <tr><td className="ps-conf-empty-row" colSpan={5}>No targets yet.</td></tr>
+                    <tr><td className="ps-conf-empty-row" colSpan={5}>{t('stainDictionarySection.noTargetsYet')}</td></tr>
                   )}
                 </tbody>
               </table>

@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockDeliveryRuleService } from '../../../services/delivery/mockDeliveryRuleService';
 import { resolveDeliveryAction } from '../../../services/delivery/resolveDeliveryAction';
@@ -21,11 +22,13 @@ import type { DeliveryRule, DeliveryAction } from '../../../types/delivery/Deliv
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import type { Physician } from '../../../services/physicians/IPhysicianService';
 
-const ACTION_LABELS: Record<DeliveryAction, string> = {
-  ELECTRONIC_ONLY: 'Electronic Only',
-  PRINT_ONLY: 'Print Only',
-  DUAL: 'Dual Delivery',
-  SUPPRESS: 'Suppress (hold for manual retrieval)',
+// Real i18n key-maps, not raw strings — ACTION_COLORS stays a plain
+// constant (hex codes aren't translatable content).
+const ACTION_LABEL_KEY: Record<DeliveryAction, string> = {
+  ELECTRONIC_ONLY: 'deliveryRulesSection.actionLabels.electronicOnly',
+  PRINT_ONLY: 'deliveryRulesSection.actionLabels.printOnly',
+  DUAL: 'deliveryRulesSection.actionLabels.dual',
+  SUPPRESS: 'deliveryRulesSection.actionLabels.suppress',
 };
 const ACTION_COLORS: Record<DeliveryAction, string> = {
   ELECTRONIC_ONLY: '#0891B2',
@@ -33,8 +36,11 @@ const ACTION_COLORS: Record<DeliveryAction, string> = {
   DUAL: '#059669',
   SUPPRESS: '#dc2626',
 };
-const REPORT_TYPE_LABELS: Record<string, string> = {
-  PRELIMINARY: 'Preliminary', FINAL: 'Final', CORRECTED: 'Corrected', ADDENDUM: 'Addendum',
+const REPORT_TYPE_LABEL_KEY: Record<string, string> = {
+  PRELIMINARY: 'deliveryRulesSection.reportTypeLabels.preliminary',
+  FINAL: 'deliveryRulesSection.reportTypeLabels.final',
+  CORRECTED: 'deliveryRulesSection.reportTypeLabels.corrected',
+  ADDENDUM: 'deliveryRulesSection.reportTypeLabels.addendum',
 };
 
 // ── Add/Edit Rule Modal ──────────────────────────────────────────────────────
@@ -47,6 +53,7 @@ const RuleModal: React.FC<{
   onSave: (rule: Partial<DeliveryRule>) => void;
   onClose: () => void;
 }> = ({ rule, facilities, physicians, pointsOfCare, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [providerId, setProviderId] = useState(rule?.providerId ?? '');
   const [orderingFacilityId, setOrderingFacilityId] = useState(rule?.orderingFacilityId ?? '');
   const [pointOfCare, setPointOfCare] = useState(rule?.pointOfCare ?? '');
@@ -60,70 +67,68 @@ const RuleModal: React.FC<{
     <div className="ps-overlay" onClick={onClose}>
       <div className="ps-modal-dark ps-modal-dark--narrow" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">{rule ? 'Edit' : 'Add'} Delivery Rule</span>
+          <span className="ps-modal-dark-title">{rule ? t('deliveryRulesSection.modal.editTitle') : t('deliveryRulesSection.modal.addTitle')}</span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="ps-modal-dark-body ps-rr-modal-body">
-          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px' }}>
-            Every field below is optional — a rule matches only the criteria you set here, and the most
-            specific real match (the rule matching the most fields) wins. Leave a field blank to match any value.
+          <p className="ps-rr-modal-hint">
+            {t('deliveryRulesSection.modal.hint')}
           </p>
 
           <div>
-            <div className="ps-conf-label">Provider</div>
-            <select className="ps-conf-select" aria-label="Provider" value={providerId} onChange={e => setProviderId(e.target.value)}>
-              <option value="">— Any provider —</option>
+            <div className="ps-conf-label">{t('deliveryRulesSection.fields.provider')}</div>
+            <select className="ps-conf-select" aria-label={t('deliveryRulesSection.fields.provider')} value={providerId} onChange={e => setProviderId(e.target.value)}>
+              <option value="">{t('deliveryRulesSection.modal.providerPlaceholder')}</option>
               {physicians.map(p => <option key={p.id as string} value={p.id as string}>{p.lastName}, {p.firstName} — {p.specialty}</option>)}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Ordering Facility</div>
-            <select className="ps-conf-select" aria-label="Ordering Facility" value={orderingFacilityId} onChange={e => setOrderingFacilityId(e.target.value)}>
-              <option value="">— Any facility —</option>
+            <div className="ps-conf-label">{t('deliveryRulesSection.fields.orderingFacility')}</div>
+            <select className="ps-conf-select" aria-label={t('deliveryRulesSection.fields.orderingFacility')} value={orderingFacilityId} onChange={e => setOrderingFacilityId(e.target.value)}>
+              <option value="">{t('deliveryRulesSection.modal.facilityPlaceholder')}</option>
               {facilities.map(f => <option key={f.id as string} value={f.id as string}>{f.name} ({f.assigningAuthority})</option>)}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Patient Location (Point of Care)</div>
-            <select className="ps-conf-select" aria-label="Patient Location" value={pointOfCare} onChange={e => setPointOfCare(e.target.value)}>
-              <option value="">— Any location —</option>
+            <div className="ps-conf-label">{t('deliveryRulesSection.modal.locationLabel')}</div>
+            <select className="ps-conf-select" aria-label={t('deliveryRulesSection.fields.patientLocation')} value={pointOfCare} onChange={e => setPointOfCare(e.target.value)}>
+              <option value="">{t('deliveryRulesSection.modal.locationPlaceholder')}</option>
               {pointsOfCare.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Report Type</div>
-            <select className="ps-conf-select" aria-label="Report Type" value={reportType} onChange={e => setReportType(e.target.value)}>
-              <option value="">— Any report type —</option>
-              {Object.entries(REPORT_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <div className="ps-conf-label">{t('deliveryRulesSection.fields.reportType')}</div>
+            <select className="ps-conf-select" aria-label={t('deliveryRulesSection.fields.reportType')} value={reportType} onChange={e => setReportType(e.target.value)}>
+              <option value="">{t('deliveryRulesSection.modal.reportTypePlaceholder')}</option>
+              {Object.entries(REPORT_TYPE_LABEL_KEY).map(([value, key]) => <option key={value} value={value}>{t(key)}</option>)}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Action *</div>
-            <select className="ps-conf-select" aria-label="Action" value={action} onChange={e => setAction(e.target.value as DeliveryAction)}>
-              {Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <div className="ps-conf-label">{t('deliveryRulesSection.modal.actionLabel')}</div>
+            <select className="ps-conf-select" aria-label={t('deliveryRulesSection.modal.actionAriaLabel')} value={action} onChange={e => setAction(e.target.value as DeliveryAction)}>
+              {Object.entries(ACTION_LABEL_KEY).map(([value, key]) => <option key={value} value={value}>{t(key)}</option>)}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Note</div>
-            <input className="ps-conf-input" placeholder="Why does this rule exist?" value={note} onChange={e => setNote(e.target.value)} />
+            <div className="ps-conf-label">{t('deliveryRulesSection.modal.noteLabel')}</div>
+            <input className="ps-conf-input" placeholder={t('deliveryRulesSection.modal.notePlaceholder')} value={note} onChange={e => setNote(e.target.value)} />
           </div>
 
           {!hasAnyCriterion && (
-            <p style={{ fontSize: 12, color: '#f59e0b', margin: '4px 0 0' }}>
-              ⚠ No criteria set — this rule will match every case, but only ever as the lowest-priority match
-              behind any more specific rule.
+            <p className="ps-rr-modal-warn">
+              {t('deliveryRulesSection.modal.noCriteriaWarning')}
             </p>
           )}
         </div>
 
         <div className="ps-modal-dark-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             onClick={() => onSave({
@@ -136,7 +141,7 @@ const RuleModal: React.FC<{
               active: rule?.active ?? true,
             })}
           >
-            {rule ? 'Save Changes' : 'Add Rule'}
+            {rule ? t('deliveryRulesSection.modal.saveChangesButton') : t('deliveryRulesSection.modal.addRuleButton')}
           </button>
         </div>
       </div>
@@ -148,6 +153,7 @@ const RuleModal: React.FC<{
 
 const TestPanel: React.FC<{ rules: DeliveryRule[]; facilities: Facility[]; physicians: Physician[]; pointsOfCare: string[] }> =
   ({ rules, facilities, physicians, pointsOfCare }) => {
+  const { t } = useTranslation();
   const [providerId, setProviderId] = useState('');
   const [orderingFacilityId, setOrderingFacilityId] = useState('');
   const [pointOfCare, setPointOfCare] = useState('');
@@ -169,41 +175,43 @@ const TestPanel: React.FC<{ rules: DeliveryRule[]; facilities: Facility[]; physi
 
   return (
     <div className="ps-rr-test">
-      <div className="ps-rr-test-title">🧪 Test Delivery Resolution</div>
-      <div className="ps-rr-test-subtitle">Enter real case details to see which action would be selected and why.</div>
+      <div className="ps-rr-test-title">{t('deliveryRulesSection.testPanel.title')}</div>
+      <div className="ps-rr-test-subtitle">{t('deliveryRulesSection.testPanel.subtitle')}</div>
 
-      <div className="ps-conf-label">Provider</div>
+      <div className="ps-conf-label">{t('deliveryRulesSection.fields.provider')}</div>
       <select className="ps-conf-select" value={providerId} onChange={e => setProviderId(e.target.value)}>
-        <option value="">— Any —</option>
+        <option value="">{t('deliveryRulesSection.testPanel.anyPlaceholder')}</option>
         {physicians.map(p => <option key={p.id as string} value={p.id as string}>{p.lastName}, {p.firstName}</option>)}
       </select>
 
-      <div className="ps-conf-label">Ordering Facility</div>
+      <div className="ps-conf-label">{t('deliveryRulesSection.fields.orderingFacility')}</div>
       <select className="ps-conf-select" value={orderingFacilityId} onChange={e => setOrderingFacilityId(e.target.value)}>
-        <option value="">— Any —</option>
+        <option value="">{t('deliveryRulesSection.testPanel.anyPlaceholder')}</option>
         {facilities.map(f => <option key={f.id as string} value={f.id as string}>{f.name}</option>)}
       </select>
 
-      <div className="ps-conf-label">Patient Location</div>
+      <div className="ps-conf-label">{t('deliveryRulesSection.fields.patientLocation')}</div>
       <select className="ps-conf-select" value={pointOfCare} onChange={e => setPointOfCare(e.target.value)}>
-        <option value="">— Any —</option>
+        <option value="">{t('deliveryRulesSection.testPanel.anyPlaceholder')}</option>
         {pointsOfCare.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
 
-      <div className="ps-conf-label">Report Type</div>
+      <div className="ps-conf-label">{t('deliveryRulesSection.fields.reportType')}</div>
       <select className="ps-conf-select" value={reportType} onChange={e => setReportType(e.target.value)}>
-        <option value="">— Any —</option>
-        {Object.entries(REPORT_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        <option value="">{t('deliveryRulesSection.testPanel.anyPlaceholder')}</option>
+        {Object.entries(REPORT_TYPE_LABEL_KEY).map(([value, key]) => <option key={value} value={value}>{t(key)}</option>)}
       </select>
 
-      <button className="ps-conf-btn-primary" style={{ marginTop: 12 }} onClick={test}>Resolve</button>
+      <button className="ps-conf-btn-primary ps-mt-12" onClick={test}>{t('deliveryRulesSection.testPanel.resolveButton')}</button>
 
       {result && (
-        <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>Resolved action:</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: ACTION_COLORS[result.action] }}>{ACTION_LABELS[result.action]}</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
-            {matchedRule ? `Matched rule: ${matchedRule.note || matchedRule.id}` : 'No rule matched — this is the real, spec-stated default (Electronic Only) applied when nothing else qualifies.'}
+        <div className="ps-rr-test-result-box">
+          <div className="ps-rr-test-result-label">{t('deliveryRulesSection.testPanel.resolvedActionLabel')}</div>
+          <div className="ps-rr-test-result-value" style={{ color: ACTION_COLORS[result.action] }}>{t(ACTION_LABEL_KEY[result.action])}</div>
+          <div className="ps-rr-test-result-matched">
+            {matchedRule
+              ? t('deliveryRulesSection.testPanel.matchedRule', { note: matchedRule.note || matchedRule.id })
+              : t('deliveryRulesSection.testPanel.noRuleMatched')}
           </div>
         </div>
       )}
@@ -214,6 +222,7 @@ const TestPanel: React.FC<{ rules: DeliveryRule[]; facilities: Facility[]; physi
 // ── Main Component ───────────────────────────────────────────────────────────
 
 const DeliveryRulesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<DeliveryRule[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [physicians, setPhysicians] = useState<Physician[]>([]);
@@ -263,27 +272,25 @@ const DeliveryRulesSection: React.FC = () => {
 
   const describeCriteria = (rule: DeliveryRule): string => {
     const parts: string[] = [];
-    if (rule.providerId) parts.push(`Provider: ${physicians.find(p => p.id === rule.providerId)?.lastName ?? rule.providerId}`);
-    if (rule.orderingFacilityId) parts.push(`Facility: ${facilities.find(f => f.id === rule.orderingFacilityId)?.name ?? rule.orderingFacilityId}`);
-    if (rule.pointOfCare) parts.push(`Location: ${rule.pointOfCare}`);
-    if (rule.reportType) parts.push(`Report: ${REPORT_TYPE_LABELS[rule.reportType] ?? rule.reportType}`);
-    return parts.length ? parts.join(' · ') : 'Matches every case (lowest priority)';
+    if (rule.providerId) parts.push(t('deliveryRulesSection.criteriaDescription.provider', { name: physicians.find(p => p.id === rule.providerId)?.lastName ?? rule.providerId }));
+    if (rule.orderingFacilityId) parts.push(t('deliveryRulesSection.criteriaDescription.facility', { name: facilities.find(f => f.id === rule.orderingFacilityId)?.name ?? rule.orderingFacilityId }));
+    if (rule.pointOfCare) parts.push(t('deliveryRulesSection.criteriaDescription.location', { location: rule.pointOfCare }));
+    if (rule.reportType) parts.push(t('deliveryRulesSection.criteriaDescription.report', { type: t(REPORT_TYPE_LABEL_KEY[rule.reportType]) }));
+    return parts.length ? parts.join(' · ') : t('deliveryRulesSection.criteriaDescription.matchesEvery');
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading delivery rules…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('deliveryRulesSection.loading')}</div>;
 
   return (
     <div className="ps-rr-root">
       <div className="ps-rr-header">
         <div>
-          <h2 className="tmpl-list-title">Delivery Configuration Rules</h2>
+          <h2 className="tmpl-list-title">{t('deliveryRulesSection.title')}</h2>
           <p className="tmpl-list-subtitle">
-            Decide whether a released report is dispatched electronically, printed, both, or held for
-            manual retrieval — by provider, ordering facility, patient location, and report type. The most
-            specific real match wins; when nothing matches, delivery defaults to Electronic Only.
+            {t('deliveryRulesSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({})}>+ Add Rule</button>
+        <button className="ps-conf-btn-primary" onClick={() => setModal({})}>{t('deliveryRulesSection.addRuleButton')}</button>
       </div>
 
       <div className="ps-rr-layout">
@@ -291,28 +298,28 @@ const DeliveryRulesSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead>
               <tr>
-                <th>Criteria</th>
-                <th>Action</th>
-                <th>Note</th>
-                <th>Active</th>
+                <th>{t('deliveryRulesSection.table.headers.criteria')}</th>
+                <th>{t('deliveryRulesSection.table.headers.action')}</th>
+                <th>{t('deliveryRulesSection.table.headers.note')}</th>
+                <th>{t('common.active')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {rules.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: 24 }}>No delivery rules configured yet — every case resolves to the real, spec-stated default (Electronic Only).</td></tr>
+                <tr><td colSpan={5} className="ps-rr-empty-row">{t('deliveryRulesSection.table.emptyState')}</td></tr>
               )}
               {rules.map(rule => (
-                <tr key={rule.id} style={{ opacity: rule.active ? 1 : 0.5 }}>
+                <tr key={rule.id} className={rule.active ? undefined : 'ps-rr-delivery-row--inactive'}>
                   <td>{describeCriteria(rule)}</td>
-                  <td><span style={{ color: ACTION_COLORS[rule.action], fontWeight: 600 }}>{ACTION_LABELS[rule.action]}</span></td>
+                  <td><span className="ps-rr-action-label" style={{ color: ACTION_COLORS[rule.action] }}>{t(ACTION_LABEL_KEY[rule.action])}</span></td>
                   <td>{rule.note ?? '—'}</td>
                   <td>
-                    <button className="ps-rr-btn" onClick={() => handleToggle(rule)}>{rule.active ? 'Active' : 'Inactive'}</button>
+                    <button className="ps-rr-btn" onClick={() => handleToggle(rule)}>{rule.active ? t('common.active') : t('common.inactive')}</button>
                   </td>
                   <td>
-                    <button className="ps-rr-btn" onClick={() => setModal({ rule })}>Edit</button>
-                    <button className="ps-rr-btn ps-rr-btn--danger" onClick={() => handleDelete(rule.id)}>Delete</button>
+                    <button className="ps-rr-btn" onClick={() => setModal({ rule })}>{t('common.edit')}</button>
+                    <button className="ps-rr-btn ps-rr-btn--danger" onClick={() => handleDelete(rule.id)}>{t('common.delete')}</button>
                   </td>
                 </tr>
               ))}

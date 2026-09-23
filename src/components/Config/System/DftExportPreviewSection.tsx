@@ -17,9 +17,19 @@
 // billing-admin lookup tool, same shape as every other screen in this
 // Financial & Revenue Lookups group, not a per-case clinical workflow
 // action.
+//
+// i18n sweep (batch 56): the real JSON payload / HL7 message text
+// (`result.jsonPayload`, `result.dftMessage`) and every real charge/
+// deficiency record field (`sourceLabel`, `cptCode`, `cptDescription`,
+// `modifier`, `billingType`, `resolvedAt`, `deficiencyType`,
+// `auditorNotes`) stay exactly as generated/stored — this screen's
+// whole purpose is showing the real, unmodified output PathScribe (and
+// the downstream interface engine) actually produces, so none of that
+// can be run through the UI locale. Only page chrome is translated.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
 import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
@@ -30,6 +40,7 @@ import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 import type { BillingDeficiencyRecord } from '@/types/billing/BillingDeficiencyRecord';
 
 const DftExportPreviewSection: React.FC = () => {
+  const { t } = useTranslation();
   const [caseIdInput, setCaseIdInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -99,44 +110,40 @@ const DftExportPreviewSection: React.FC = () => {
   return (
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
-        <h2 className="ps-conf-section-title">Billing Export Preview</h2>
+        <h2 className="ps-conf-section-title">{t('dftExportPreviewSection.title')}</h2>
         <p className="ps-conf-section-subtitle">
-          Look up a real case to preview the real JSON payload PathScribe sends to your interface engine, alongside
-          the governance gate that blocks export while a billing deficiency is open. A preview of what your
-          interface engine would build from that JSON (HL7 DFT^P03) is shown underneath — PathScribe itself never
-          generates or transmits HL7.
+          {t('dftExportPreviewSection.subtitle')}
         </p>
       </div>
 
       <div className="ps-qa-tab-toolbar">
         <input
-          className="ps-conf-input"
-          style={{ maxWidth: 320 }}
-          placeholder="Case ID or accession number"
+          className="ps-conf-input ps-dft-export__case-input"
+          placeholder={t('dftExportPreviewSection.caseIdPlaceholder')}
           value={caseIdInput}
           onChange={e => setCaseIdInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleLookup(); }}
         />
         <button className="ps-conf-btn-primary" disabled={busy || !caseIdInput.trim()} onClick={handleLookup}>
-          {busy ? 'Looking up…' : 'Preview Export'}
+          {busy ? t('dftExportPreviewSection.lookingUpBtn') : t('dftExportPreviewSection.previewExportBtn')}
         </button>
       </div>
 
-      {notFound && <p className="ps-conf-hint" style={{ color: '#f59e0b' }}>⚠ No case found with that ID.</p>}
+      {notFound && <p className="ps-conf-hint ps-conf-hint--warning">{t('dftExportPreviewSection.notFound')}</p>}
 
       {result && (
         <>
           {result.blocking.length > 0 ? (
-            <div className="ps-conf-hint" style={{ color: '#ef4444', fontWeight: 600 }}>
-              🚫 Export blocked — {result.blocking.length} open billing deficienc{result.blocking.length === 1 ? 'y' : 'ies'}:
+            <div className="ps-conf-hint ps-conf-hint--danger">
+              {t('dftExportPreviewSection.blockedHeader', { count: result.blocking.length })}
               <ul>
                 {result.blocking.map(d => <li key={d.id}>{d.deficiencyType}: {d.auditorNotes}</li>)}
               </ul>
             </div>
           ) : result.charges.length === 0 ? (
-            <p className="ps-conf-hint">No real charges recorded for this case yet — nothing to export.</p>
+            <p className="ps-conf-hint">{t('dftExportPreviewSection.noCharges')}</p>
           ) : (
-            <p className="ps-conf-hint" style={{ color: '#10b981' }}>✓ Clear for export — {result.charges.length} real charge{result.charges.length === 1 ? '' : 's'}.</p>
+            <p className="ps-conf-hint ps-conf-hint--success">{t('dftExportPreviewSection.clearForExport', { count: result.charges.length })}</p>
           )}
 
           {result.charges.length > 0 && (
@@ -145,12 +152,12 @@ const DftExportPreviewSection: React.FC = () => {
                 <table className="ps-conf-table">
                   <thead className="ps-conf-thead-sticky">
                     <tr>
-                      <th className="ps-conf-th">Source</th>
-                      <th className="ps-conf-th">CPT</th>
-                      <th className="ps-conf-th">Description</th>
-                      <th className="ps-conf-th">Modifier</th>
-                      <th className="ps-conf-th">Component</th>
-                      <th className="ps-conf-th">Service Date</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.source')}</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.cpt')}</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.description')}</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.modifier')}</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.component')}</th>
+                      <th className="ps-conf-th">{t('dftExportPreviewSection.table.serviceDate')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -172,14 +179,13 @@ const DftExportPreviewSection: React.FC = () => {
 
           {result.jsonPayload && (
             <>
-              <div className="ps-conf-section-header" style={{ marginTop: 20 }}>
-                <h2 className="ps-conf-section-title">Real Output — JSON Payload to Interface Engine</h2>
-                <p className="ps-conf-section-subtitle">This is what PathScribe actually sends — the real, captured charge data as JSON.</p>
+              <div className="ps-conf-section-header ps-dft-export__section-header--spaced">
+                <h2 className="ps-conf-section-title">{t('dftExportPreviewSection.jsonSection.title')}</h2>
+                <p className="ps-conf-section-subtitle">{t('dftExportPreviewSection.jsonSection.subtitle')}</p>
               </div>
               <textarea
                 readOnly
-                className="ps-conf-input"
-                style={{ width: '100%', minHeight: 280, fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre' }}
+                className="ps-conf-input ps-dft-export__mono-textarea ps-dft-export__mono-textarea--json"
                 value={result.jsonPayload}
               />
             </>
@@ -187,14 +193,13 @@ const DftExportPreviewSection: React.FC = () => {
 
           {result.dftMessage && (
             <>
-              <div className="ps-conf-section-header" style={{ marginTop: 20 }}>
-                <h2 className="ps-conf-section-title">Preview — What Your Interface Engine Would Build (HL7 DFT^P03)</h2>
-                <p className="ps-conf-section-subtitle">PathScribe doesn't generate or send this — shown to confirm the JSON above carries everything your interface engine needs to build it.</p>
+              <div className="ps-conf-section-header ps-dft-export__section-header--spaced">
+                <h2 className="ps-conf-section-title">{t('dftExportPreviewSection.dftSection.title')}</h2>
+                <p className="ps-conf-section-subtitle">{t('dftExportPreviewSection.dftSection.subtitle')}</p>
               </div>
               <textarea
                 readOnly
-                className="ps-conf-input"
-                style={{ width: '100%', minHeight: 220, fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre' }}
+                className="ps-conf-input ps-dft-export__mono-textarea ps-dft-export__mono-textarea--hl7"
                 value={result.dftMessage.split('\r').join('\n')}
               />
             </>

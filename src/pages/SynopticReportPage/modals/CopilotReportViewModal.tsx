@@ -18,13 +18,16 @@
 // from here.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { ResolvedAnswer } from '@/orchestrator/contextBuilder';
 
-const NOTIFICATION_METHOD_LABEL: Record<string, string> = {
-  verbal_phone: 'Verbal / Phone Call',
-  secure_page: 'Secure Page',
-  direct_lis_flag: 'Direct LIS Flag',
+// Real, persisted notification-method enum values stay as data; only the
+// displayed label is translated (this sweep's usual LABEL_KEY pattern).
+const NOTIFICATION_METHOD_LABEL_KEY: Record<string, string> = {
+  verbal_phone: 'copilotReportViewModal.notificationMethod.verbalPhone',
+  secure_page: 'copilotReportViewModal.notificationMethod.securePage',
+  direct_lis_flag: 'copilotReportViewModal.notificationMethod.directLisFlag',
 };
 
 export interface CopilotReportVersionOption {
@@ -70,6 +73,7 @@ interface Props {
 }
 
 export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accession, patient, mrn, instances }) => {
+  const { t } = useTranslation();
   // Default every instance to its most recent version.
   const [selectedVersion, setSelectedVersion] = React.useState<Record<string, number>>({});
   const [activeInstanceId, setActiveInstanceId] = React.useState<string | null>(null);
@@ -104,13 +108,13 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
     if (!printArea) return;
     const printWindow = window.open('', '_blank', 'width=900,height=1000');
     if (!printWindow) {
-      alert('Please allow pop-ups for this site to print the report.');
+      alert(t('copilotReportViewModal.popupBlockedAlert'));
       return;
     }
     printWindow.document.write(`<!DOCTYPE html>
 <html>
 <head>
-<title>Synoptic Report — ${accession}</title>
+<title>${t('copilotReportViewModal.printWindowTitle', { accession })}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #000; padding: 32px; }
   .ps-copilot-report-header { display: flex; gap: 24px; font-size: 12pt; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #ccc; }
@@ -163,10 +167,10 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
     <div className="ps-overlay ps-overlay--copilot-report" data-capture-hide="true">
       <div className="ps-copilot-report-view ps-copilot-report-view--two-pane">
         <div className="ps-copilot-report-view-toolbar" data-print-hide="true">
-          <span className="ps-copilot-report-view-title">Synoptic Report — as sent to LIS</span>
+          <span className="ps-copilot-report-view-title">{t('copilotReportViewModal.toolbarTitle')}</span>
           <div>
-            <button className="ps-btn-ghost-dark" onClick={handlePrint}>🖨 Print</button>
-            <button className="ps-btn-ghost-dark" onClick={onClose}>Close</button>
+            <button className="ps-btn-ghost-dark" onClick={handlePrint}>🖨 {t('copilotReportViewModal.printButton')}</button>
+            <button className="ps-btn-ghost-dark" onClick={onClose}>{t('common.close')}</button>
           </div>
         </div>
 
@@ -181,7 +185,7 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
                     <span className="ps-copilot-report-specimen-num">{si + 1}</span>
                     <div>
                       <div className="ps-copilot-report-specimen-name">{sp.label}: {sp.desc ?? sp.instances[0]?.templateName}</div>
-                      <div className="ps-copilot-report-specimen-count">{sp.instances.length} synoptic{sp.instances.length === 1 ? '' : 's'}</div>
+                      <div className="ps-copilot-report-specimen-count">{t('copilotReportViewModal.synopticCount', { count: sp.instances.length })}</div>
                     </div>
                   </div>
 
@@ -214,7 +218,7 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
               );
             })}
             <p className="ps-copilot-report-left-hint">
-              Select a version to include it in the printed report. Defaults to each report's most recent version.
+              {t('copilotReportViewModal.versionSelectHint')}
             </p>
           </div>
 
@@ -222,13 +226,13 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
           <div className="ps-copilot-report-right">
             <div className="ps-copilot-report-view-body" id="ps-copilot-print-area">
               <div className="ps-copilot-report-header">
-                <div data-phi="accession"><strong>Accession:</strong> {accession}</div>
-                <div data-phi="name"><strong>Patient:</strong> {patient}</div>
-                <div data-phi="mrn"><strong>MRN:</strong> {mrn}</div>
+                <div data-phi="accession"><strong>{t('copilotReportViewModal.accessionLabel')}</strong> {accession}</div>
+                <div data-phi="name"><strong>{t('copilotReportViewModal.patientLabel')}</strong> {patient}</div>
+                <div data-phi="mrn"><strong>{t('copilotReportViewModal.mrnLabel')}</strong> {mrn}</div>
               </div>
 
               {instances.length === 0 && (
-                <p className="ps-copilot-report-empty">No completed synoptic data available for this case yet.</p>
+                <p className="ps-copilot-report-empty">{t('copilotReportViewModal.noDataAvailable')}</p>
               )}
 
               {instances.map(inst => {
@@ -240,16 +244,16 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
                 return (
                   <div key={inst.instanceId} id={`ps-copilot-report-instance-${inst.instanceId}`} className="ps-copilot-report-section">
                     <h3 className="ps-copilot-report-section-title">
-                      Specimen {inst.specimenLabel} — {inst.templateName}
+                      {t('copilotReportViewModal.specimenSectionTitle', { label: inst.specimenLabel, templateName: inst.templateName })}
                       {activeVersion && <span className="ps-copilot-report-section-version-tag">{activeVersion.label}</span>}
                     </h3>
 
                     {activeVersion?.explanationOfChange && (
                       <div className="ps-copilot-report-amendment-narrative">
-                        <div className="ps-copilot-report-amendment-flag">AMENDED</div>
-                        <p><strong>Reason for Amendment:</strong> {activeVersion.explanationOfChange}</p>
+                        <div className="ps-copilot-report-amendment-flag">{t('copilotReportViewModal.amendedFlag')}</div>
+                        <p><strong>{t('copilotReportViewModal.reasonForAmendmentLabel')}</strong> {activeVersion.explanationOfChange}</p>
                         {activeVersion.notification && (
-                          <p><strong>Clinician Notified:</strong> {activeVersion.notification.clinicianName} — {NOTIFICATION_METHOD_LABEL[activeVersion.notification.method] ?? activeVersion.notification.method}, {formatDateTime(activeVersion.notification.notifiedAt)}</p>
+                          <p><strong>{t('copilotReportViewModal.clinicianNotifiedLabel')}</strong> {activeVersion.notification.clinicianName} — {NOTIFICATION_METHOD_LABEL_KEY[activeVersion.notification.method] ? t(NOTIFICATION_METHOD_LABEL_KEY[activeVersion.notification.method]) : activeVersion.notification.method}, {formatDateTime(activeVersion.notification.notifiedAt)}</p>
                         )}
                       </div>
                     )}
@@ -258,17 +262,17 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
                       <table className="ps-copilot-report-table ps-copilot-report-diff-table">
                         <thead>
                           <tr>
-                            <th>Synoptic Element</th>
-                            <th>Originally Reported As</th>
-                            <th>Currently Reported As</th>
+                            <th>{t('copilotReportViewModal.diffTable.element')}</th>
+                            <th>{t('copilotReportViewModal.diffTable.originallyReported')}</th>
+                            <th>{t('copilotReportViewModal.diffTable.currentlyReported')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {activeVersion.changedFromPrevious.map((c, i) => (
                             <tr key={i}>
                               <td className="ps-copilot-report-field-label">{c.fieldLabel}</td>
-                              <td className="ps-copilot-report-field-value ps-copilot-report-diff-previous">{String(c.previousValue ?? '') || '(empty)'}</td>
-                              <td className="ps-copilot-report-field-value ps-copilot-report-diff-current">{String(c.currentValue ?? '') || '(empty)'}</td>
+                              <td className="ps-copilot-report-field-value ps-copilot-report-diff-previous">{String(c.previousValue ?? '') || t('copilotReportViewModal.emptyValue')}</td>
+                              <td className="ps-copilot-report-field-value ps-copilot-report-diff-current">{String(c.currentValue ?? '') || t('copilotReportViewModal.emptyValue')}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -288,7 +292,7 @@ export const CopilotReportViewModal: React.FC<Props> = ({ show, onClose, accessi
                                     title: s.title,
                                     items: s.fieldKeys.map(k => answerByFieldId.get(k)).filter((a): a is ResolvedAnswer => !!a),
                                   })),
-                                  ...(unsectioned.length > 0 ? [{ title: 'Other', items: unsectioned }] : []),
+                                  ...(unsectioned.length > 0 ? [{ title: t('copilotReportViewModal.otherSectionTitle'), items: unsectioned }] : []),
                                 ]
                               : [{ title: null, items: displayedAnswers }];
                           return rowGroups.filter(g => g.items.length > 0).map(group => (

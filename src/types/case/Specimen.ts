@@ -1440,6 +1440,15 @@ export interface Specimen {
    * HPV/educational-notes fields below.
    */
   cytologyScreening?: CytologyScreeningRecord;
+  /** PS-324. The real surgical-pathology analog of `cytologyScreening`
+   *  above, scoped to just the two post-sign-out QA fields that
+   *  actually apply to a surgical specimen — see
+   *  SurgicalPeerReviewRecord's own header for why this is a separate,
+   *  smaller interface rather than reusing CytologyScreeningRecord
+   *  itself. Undefined for any specimen that has never been through
+   *  post-sign-out peer-review selection or biopsy-to-resection
+   *  candidate detection — genuinely different from an empty object. */
+  surgicalPeerReview?: SurgicalPeerReviewRecord;
   /** Audit metadata */
   createdAt?: string;
   updatedAt?: string;
@@ -1664,6 +1673,63 @@ export interface CytologyScreeningRecord {
    *  Adjunctive Testing): "If an automated imaging system... was used
    *  in screening, this must be explicitly documented." */
   computerAssistedScreening?: { used: boolean; system?: string };
+}
+
+/**
+ * PS-324. The real surgical-pathology analog of the two Cytology-side
+ * post-sign-out QA fields above (`postSignOutPeerReviewFlag`,
+ * `histologyCorrelationCandidates`) — deliberately its OWN small
+ * interface rather than folded into `CytologyScreeningRecord` itself,
+ * since every other field on that interface (adequacy, ROSE,
+ * preparationMethod, ...) is genuinely Cytology-specific and would
+ * never apply to a surgical specimen. Same real "flag it, let a human
+ * confirm/record it" boundary as the Cytology fields it mirrors — see
+ * this session's own resolveSurgicalBiopsyToResectionCorrelationCandidates.ts
+ * and resolveSurgicalPeerReviewSelectionForCase.ts for the real,
+ * mechanical detection logic that populates these fields at sign-out.
+ */
+export interface SurgicalPeerReviewRecord {
+  /** Real, per direct guidance (PS-324): set at sign-out when
+   *  resolveSurgicalPeerReviewSelectionForCase.ts selects this case —
+   *  either the flat, activity-configured random sample, or the one
+   *  real targeted signal this app currently models
+   *  (QaCaseSelectionSignal — a non-deferred intraop frozen category).
+   *  Same real `reason` shape as Cytology's own
+   *  `postSignOutPeerReviewFlag`, reused deliberately rather than a
+   *  second, differently-named field for the identical real concept.
+   *  Cleared once a real QaActivityRecord against the "Surgical
+   *  Post-Sign-Out Peer Review" activity type
+   *  (SURGICAL_PEER_REVIEW_ACTIVITY_TYPE_ID) records the reviewer's
+   *  actual, independent read. */
+  postSignOutPeerReviewFlag?: {
+    reason: 'random_selection' | 'targeted_high_risk';
+    flaggedAt: string;
+  };
+  /** Real FK to the QaActivityRecord a reviewer created once they
+   *  actually performed and recorded the peer review this flag
+   *  requested — undefined until that happens, matching
+   *  histologyCorrelationCandidates' own recordedActivityRecordId
+   *  convention below. */
+  peerReviewRecordedActivityRecordId?: string;
+  /** Real, per direct guidance (PS-324): which of this patient's
+   *  other real surgical specimens are plausible biopsy-to-resection
+   *  correlation candidates for THIS specimen — see
+   *  resolveSurgicalBiopsyToResectionCorrelationCandidates.ts's own
+   *  header for the real, honest "mechanical case-selection only,
+   *  never the actual diagnosis comparison" boundary this respects,
+   *  identical to Cytology's own histologyCorrelationCandidates. */
+  biopsyToResectionCandidates?: {
+    candidateCaseId: string;
+    candidateSpecimenId: string;
+    detectedAt: string;
+    /** Real, per resolveSurgicalBiopsyToResectionCorrelationCandidates.ts's
+     *  own SurgicalSiteMatchStatus — carried through so a reviewer can
+     *  see and prioritize by it rather than it being silently lost
+     *  once the candidate is persisted. */
+    siteMatchStatus: 'matched' | 'mismatched' | 'unknown';
+    recordedActivityRecordId?: string;
+    dismissedAsNotRelevant?: boolean;
+  }[];
 }
 
 /**

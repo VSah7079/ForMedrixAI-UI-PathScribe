@@ -31,6 +31,7 @@ import {
   CaseMask, CaseMaskScopeType, DEFAULT_FALLBACK_MASK, DEFAULT_FALLBACK_PREFIX, DEFAULT_FALLBACK_SEQUENCE_DIGITS,
 } from '@/types/config/CaseMask';
 import { getFacilityDateParts } from '@/utils/facilityTime';
+import { renderCaseMask as renderMask } from './renderCaseMask';
 
 const STORAGE_KEY = 'ps_case_masks_v1';
 
@@ -70,23 +71,6 @@ function load(): Record<string, CaseMask> {
 }
 function persist(masks: Record<string, CaseMask>): void {
   storageSet(STORAGE_KEY, masks);
-}
-
-/** Renders a mask pattern given a resolved prefix and sequence number.
- *  {SEQ:N} is the only parameterized token; N is read from
- *  sequenceDigits rather than re-parsed out of the pattern string
- *  itself. No {SITE}/{CAT}/{DEPT} — see CaseMask.ts's own header
- *  comment for why those tokens' real job no longer exists. */
-function renderMask(pattern: string, prefix: string, seq: number, sequenceDigits: number, timezone: string): string {
-  const { year: year4num } = getFacilityDateParts(new Date(), timezone);
-  const year4 = String(year4num);
-  const year2 = year4.slice(-2);
-
-  return pattern
-    .split('{PREFIX}').join(prefix)
-    .split('{YEAR:4}').join(year4)
-    .split('{YEAR:2}').join(year2)
-    .replace(/\{SEQ:(\d+)\}/, (_m, digits) => String(seq).padStart(Number(digits) || sequenceDigits, '0'));
 }
 
 function needsAnnualReset(mask: Pick<CaseMask, 'resetSequenceAnnually' | 'lastResetYear'>, timezone: string): boolean {

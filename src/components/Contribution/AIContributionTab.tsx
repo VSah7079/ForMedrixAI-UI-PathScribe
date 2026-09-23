@@ -1,5 +1,6 @@
 // src/components/Contribution/AIContributionTab.tsx
 import React, { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -36,55 +37,34 @@ interface CaseComparison {
 
 interface MonthlyPoint { month: string; rate: number; }
 
+// Real fix (batch 34, i18n sweep): WorkflowDataset used to also carry a
+// full set of UI label/title/subtitle strings (tileAssistedLabel,
+// breakdownTitle, overridesAiCol, etc.) — leftover from a removed
+// "workflow" toggle concept (see the real-fix comment below) that once
+// switched between multiple named datasets. With only one dataset left,
+// those fields were always-static English text baked into a plain data
+// object with no way to reach a live t() call. They're now resolved via
+// t() directly inside the component (see the labels below); this
+// interface keeps only the fields that hold genuine data.
 interface WorkflowDataset {
-  label: string;
-  tileAssistedLabel: string;
-  tileAssistedIcon: string;
-  tileOverridesLabel: string;
-  tileConfidenceLabel: string;
-  breakdownTitle: string;
-  breakdownSubtitle: string;
-  breakdownUnit: string;
-  overridesTitle: string;
-  overridesSubtitle: string;
-  overridesAiCol: string;
-  overridesFinalCol: string;
-  overridesReasonCol: string;
-  comparisonTitle: string;
-  comparisonSubtitle: string;
-  comparisonAiLabel: string;
-  comparisonManualLabel: string;
-  trendTitle: string;
-  trendSubtitle: string;
   summary: { totalAssisted: number; totalCases: number; avgConfidence: number };
   breakdown: BreakdownRow[];
   overridden: OverriddenCase[];
   comparison: CaseComparison[];
-  monthlyShape: number[]; // illustrative full-year pattern; actual displayed months are derived live from the real date
 }
 
 // ─── Mock Data — Synoptic AI (CoPilot field-suggestion AI) ────────────────────
+//
+// The `overridden`/`comparison` entries below are illustrative fallback
+// content (medical diagnostic terminology used as example data, e.g.
+// "Gleason 3+4=7", "Atypical ductal hyperplasia") — left in English
+// deliberately rather than run through casual machine translation:
+// clinical terminology is precision-critical in a pathology LIS, and
+// these are the same kind of real-diagnosis-shaped strings this app
+// never translates when they come from a real case record. They're
+// replaced by real per-user data (see `ds` below) as soon as any exists.
 
 const synopticDataset: WorkflowDataset = {
-  label: "Synoptic AI (Assist)",
-  tileAssistedLabel:   "AI-Assisted Cases",
-  tileAssistedIcon:    "🤖",
-  tileOverridesLabel:  "Overrides",
-  tileConfidenceLabel: "Avg AI Confidence",
-  breakdownTitle:    "Acceptance by Case Type",
-  breakdownSubtitle: "% of AI synoptic field suggestions accepted",
-  breakdownUnit:     "cases",
-  overridesTitle:    "AI Overrides",
-  overridesSubtitle: "Cases where AI suggestion was reviewed and changed by pathologist",
-  overridesAiCol:     "AI Suggestion",
-  overridesFinalCol:  "Final Diagnosis",
-  overridesReasonCol: "Override Reason",
-  comparisonTitle:    "AI-Assisted vs Manual",
-  comparisonSubtitle: "Case volume and average turnaround time by workflow type",
-  comparisonAiLabel:     "AI-Assisted",
-  comparisonManualLabel: "Manual",
-  trendTitle:    "Acceptance Trend",
-  trendSubtitle: "AI suggestion acceptance rate over the selected period",
   summary: { totalAssisted: 92, totalCases: 128, avgConfidence: 91.4 },
   // breakdown is intentionally empty here — for the synoptic workflow this is
   // replaced at render time with categories derived live from the real
@@ -105,7 +85,6 @@ const synopticDataset: WorkflowDataset = {
     { caseType: "GU",      aiAssisted: 19, manual: 2, aiTat: 1.9, manualTat: 3.1 },
     { caseType: "Derm",    aiAssisted: 15, manual: 2, aiTat: 1.2, manualTat: 2.0 },
   ],
-  monthlyShape: [82, 84, 83, 86, 85, 88, 87, 87, 86, 89, 90, 91],
 };
 
 // Real fix: narrativeDataset (and the whole "workflow" toggle concept)
@@ -121,6 +100,14 @@ const synopticDataset: WorkflowDataset = {
 // a formal "AI Narrative Quality" report - not duplicated here under a
 // personal framing it was never built for. See the real, direct link
 // to that section further down this file.
+//
+// Real fix (batch 34): `label` (the old per-dataset workflow name,
+// "Synoptic AI (Assist)") and `monthlyShape` (a hardcoded illustrative
+// full-year pattern) were both dead — neither was read anywhere in this
+// component. `monthlyShape` in particular is explicitly superseded by
+// `buildRealTrend()` below (see that function's own comment); both
+// fields, and their WorkflowDataset entries, were removed rather than
+// carried forward unused.
 
 // Display labels for known subspecialty values from the specimen dictionary.
 // Falls back to a humanized version of the raw name for anything not listed here,
@@ -171,13 +158,17 @@ function deriveBreakdownFromSpecimens(specimens: SpecimenEntry[]): BreakdownRow[
  *  intent (a visible, honest "this is illustrative" signal for an
  *  actual user, not just a code comment), different implementation
  *  since this file uses pathscribe.css classes throughout. */
-const DemoDataBadge: React.FC = () => (
-  <span className="ps-demo-data-badge" title="Illustrative only — not calculated from your real case data yet">
-    Demo data
-  </span>
-);
+const DemoDataBadge: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <span className="ps-demo-data-badge" title={t('aiContributionTab.demoDataBadge.tooltip')}>
+      {t('aiContributionTab.demoDataBadge.label')}
+    </span>
+  );
+};
 
 const AIContributionTab: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [section,   setSection]   = useState<Section>("acceptance");
@@ -285,7 +276,28 @@ const AIContributionTab: React.FC = () => {
   const periodAvgRate = +(trendRows.reduce((s, d) => s + d.rate, 0) / trendRows.length).toFixed(1);
   const rateDelta = +(periodAvgRate - ytdAvgRate).toFixed(1);
 
-  const periodTitleLabel = dateRange === "30d" ? "Last 4 Weeks" : dateRange === "90d" ? "Last 90 Days" : "Year to Date";
+  // Static UI labels — a single dataset remains (see the WorkflowDataset
+  // comment above), so these are resolved once via t() here instead of
+  // living on the data object.
+  const tileAssistedLabel   = t('aiContributionTab.tiles.assisted');
+  const tileOverridesLabel  = t('aiContributionTab.tiles.overrides');
+  const tileConfidenceLabel = t('aiContributionTab.tiles.confidence');
+  const breakdownTitle      = t('aiContributionTab.breakdown.title');
+  const breakdownSubtitle   = t('aiContributionTab.breakdown.subtitle');
+  const breakdownUnit       = t('aiContributionTab.breakdown.unit');
+  const overridesTitle      = t('aiContributionTab.overrides.title');
+  const overridesSubtitle   = t('aiContributionTab.overrides.subtitle');
+  const overridesAiCol      = t('aiContributionTab.overrides.aiCol');
+  const overridesFinalCol   = t('aiContributionTab.overrides.finalCol');
+  const overridesReasonCol  = t('aiContributionTab.overrides.reasonCol');
+  const comparisonTitle     = t('aiContributionTab.comparison.title');
+  const comparisonSubtitle  = t('aiContributionTab.comparison.subtitle');
+  const comparisonAiLabel     = t('aiContributionTab.comparison.aiLabel');
+  const comparisonManualLabel = t('aiContributionTab.comparison.manualLabel');
+  const trendTitle    = t('aiContributionTab.trend.title');
+  const trendSubtitle = t('aiContributionTab.trend.subtitle');
+
+  const periodTitleLabel = dateRange === "30d" ? t('aiContributionTab.trend.period.thirtyDays') : dateRange === "90d" ? t('aiContributionTab.trend.period.ninetyDays') : t('aiContributionTab.trend.period.ytd');
 
   // monthly now spans however many real months have elapsed this year so far —
   // use that as the YTD baseline window for proportional volume scaling
@@ -309,15 +321,18 @@ const AIContributionTab: React.FC = () => {
   }));
 
   const summaryTiles = [
-    { label: "AI Acceptance Rate",     value: periodAvgRate,             unit: "%", color: "#34d399", icon: "✓",
-      delta: `${rateDelta >= 0 ? "+" : ""}${rateDelta}% vs YTD avg`, deltaUp: rateDelta >= 0 },
-    { label: ds.tileAssistedLabel,     value: scaledTotalAssisted,       unit: "",  color: "#38bdf8", icon: ds.tileAssistedIcon,
-      delta: `of ${scaledTotalCases} total`, deltaUp: null as boolean | null },
-    { label: ds.tileOverridesLabel,    value: filteredOverridden.length, unit: "",  color: "#fbbf24", icon: "✏️",
-      delta: "pathologist-changed", deltaUp: null as boolean | null },
-    { label: ds.tileConfidenceLabel,   value: ds.summary.avgConfidence,  unit: "%", color: "#0891b2", icon: "📊",
-      delta: "not period-filtered", deltaUp: null as boolean | null },
+    { label: t('aiContributionTab.tiles.acceptanceRate'), value: periodAvgRate,       unit: "%", color: "#34d399", icon: "✓",
+      delta: t('aiContributionTab.tiles.deltaVsYtdAvg', { sign: rateDelta >= 0 ? "+" : "", value: rateDelta }), deltaUp: rateDelta >= 0 },
+    { label: tileAssistedLabel,     value: scaledTotalAssisted,       unit: "",  color: "#38bdf8", icon: "🤖",
+      delta: t('aiContributionTab.tiles.ofTotal', { count: scaledTotalCases }), deltaUp: null as boolean | null },
+    { label: tileOverridesLabel,    value: filteredOverridden.length, unit: "",  color: "#fbbf24", icon: "✏️",
+      delta: t('aiContributionTab.tiles.pathologistChanged'), deltaUp: null as boolean | null },
+    { label: tileConfidenceLabel,   value: ds.summary.avgConfidence,  unit: "%", color: "#0891b2", icon: "📊",
+      delta: t('aiContributionTab.tiles.notPeriodFiltered'), deltaUp: null as boolean | null },
   ];
+
+  const dateRangeLabel = (r: DateRange) =>
+    r === "30d" ? t('aiContributionTab.dateRange.thirtyDays') : r === "90d" ? t('aiContributionTab.dateRange.ninetyDays') : t('aiContributionTab.dateRange.ytd');
 
   return (
     <div className="ps-quality-container">
@@ -326,9 +341,9 @@ const AIContributionTab: React.FC = () => {
           practice-wide AI narrative-quality data — this page stays
           entirely personal. */}
       <div className="ps-contrib-validation-pointer">
-        Looking for practice-wide AI narrative performance?{' '}
+        {t('aiContributionTab.validationPointer.question')}{' '}
         <button type="button" className="ps-contrib-validation-link" onClick={() => navigate('/configuration?tab=validation')}>
-          View Validation Studies →
+          {t('aiContributionTab.validationPointer.link')}
         </button>
       </div>
 
@@ -341,7 +356,7 @@ const AIContributionTab: React.FC = () => {
               <span>{s.icon}</span>
             </div>
             <div className="ps-quality-summary-tile__value-row">
-              <span className="ps-quality-summary-tile__value" style={{ color: s.color }}>
+              <span className="ps-quality-summary-tile__value" style={{ '--tile-color': s.color } as React.CSSProperties}>
                 {s.value}
               </span>
               {s.unit && <span className="ps-quality-summary-tile__unit">{s.unit}</span>}
@@ -349,7 +364,7 @@ const AIContributionTab: React.FC = () => {
             <div className="ps-quality-summary-tile__period">
               {s.deltaUp === null
                 ? s.delta
-                : <span style={{ color: s.deltaUp ? "#34d399" : "#f87171" }}>{s.deltaUp ? "▲" : "▼"} {s.delta}</span>
+                : <span className={`ps-quality-summary-tile__delta--${s.deltaUp ? 'good' : 'bad'}`}>{s.deltaUp ? "▲" : "▼"} {s.delta}</span>
               }
             </div>
           </div>
@@ -359,13 +374,13 @@ const AIContributionTab: React.FC = () => {
       {/* ── Section nav + date range ── */}
       <div className="ps-quality-nav">
         <div className="ps-quality-nav__left">
-          <button className={`ps-quality-btn${section === "acceptance" ? " active" : ""}`} onClick={() => setSection("acceptance")}>Acceptance Rate</button>
-          <button className={`ps-quality-btn${section === "overrides"  ? " active" : ""}`} onClick={() => setSection("overrides")}>{ds.tileOverridesLabel}</button>
-          <button className={`ps-quality-btn${section === "comparison" ? " active" : ""}`} onClick={() => setSection("comparison")}>{ds.comparisonAiLabel} vs {ds.comparisonManualLabel}</button>
+          <button className={`ps-quality-btn${section === "acceptance" ? " active" : ""}`} onClick={() => setSection("acceptance")}>{t('aiContributionTab.nav.acceptanceRate')}</button>
+          <button className={`ps-quality-btn${section === "overrides"  ? " active" : ""}`} onClick={() => setSection("overrides")}>{tileOverridesLabel}</button>
+          <button className={`ps-quality-btn${section === "comparison" ? " active" : ""}`} onClick={() => setSection("comparison")}>{t('aiContributionTab.nav.aiVsManual', { ai: comparisonAiLabel, manual: comparisonManualLabel })}</button>
         </div>
         <div className="ps-quality-nav__right">
           {(["30d", "90d", "ytd"] as DateRange[]).map(r => (
-            <button key={r} className={`ps-quality-btn${dateRange === r ? " active" : ""}`} onClick={() => setDateRange(r)}>{r.toUpperCase()}</button>
+            <button key={r} className={`ps-quality-btn${dateRange === r ? " active" : ""}`} onClick={() => setDateRange(r)}>{dateRangeLabel(r)}</button>
           ))}
         </div>
       </div>
@@ -378,22 +393,22 @@ const AIContributionTab: React.FC = () => {
           <div className="ps-quality-card">
             <div className="ps-quality-card__header">
               <div className="ps-quality-card__title">
-                {ds.breakdownTitle}
+                {breakdownTitle}
                 <DemoDataBadge />
               </div>
-              <div className="ps-quality-card__subtitle">{ds.breakdownSubtitle}</div>
+              <div className="ps-quality-card__subtitle">{breakdownSubtitle}</div>
             </div>
             <div className="ps-quality-bar-list">
               {specimens === null
-                ? <div className="ps-quality-empty">Loading case types…</div>
+                ? <div className="ps-quality-empty">{t('aiContributionTab.breakdown.loading')}</div>
                 : scaledBreakdown.map(r => (
                 <div key={r.label} className="ps-quality-bar-row">
                   <div className="ps-quality-bar-row__label-row">
                     <span className="ps-quality-bar-row__type">
-                      {r.code && <span className="ps-client-authority-badge" style={{ marginRight: "6px" }}>{r.code}</span>}
+                      {r.code && <span className="ps-client-authority-badge ps-quality-bar-row__code-badge">{r.code}</span>}
                       {r.label}
                     </span>
-                    <span className="ps-quality-bar-row__meta">{r.cases} {ds.breakdownUnit} &middot; <span className="ps-quality-bar-row__rate">{r.rate}%</span></span>
+                    <span className="ps-quality-bar-row__meta">{r.cases} {breakdownUnit} &middot; <span className="ps-quality-bar-row__rate">{r.rate}%</span></span>
                   </div>
                   <div className="ps-quality-progress-track">
                     <div className="ps-quality-progress-fill" style={{ width: `${r.rate}%` }} />
@@ -406,10 +421,10 @@ const AIContributionTab: React.FC = () => {
           {/* Acceptance trend chart */}
           <div className="ps-quality-card">
             <div className="ps-quality-card__header">
-              <div className="ps-quality-card__title">{ds.trendTitle} &mdash; {periodTitleLabel}</div>
-              <div className="ps-quality-card__subtitle">{ds.trendSubtitle}</div>
+              <div className="ps-quality-card__title">{trendTitle} &mdash; {periodTitleLabel}</div>
+              <div className="ps-quality-card__subtitle">{trendSubtitle}</div>
             </div>
-            <div style={{ padding: "8px 16px 16px" }}>
+            <div className="ps-quality-trend-chart-wrap">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendRows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -422,7 +437,7 @@ const AIContributionTab: React.FC = () => {
                     return (
                       <div className="ps-tat-trend__tooltip">
                         <div className="ps-tat-trend__tooltip-header">{label}</div>
-                        <div className="ps-tat-trend__tooltip-ft">{val}% acceptance</div>
+                        <div className="ps-tat-trend__tooltip-ft">{t('aiContributionTab.trend.tooltipAcceptance', { value: val })}</div>
                       </div>
                     );
                   }} />
@@ -439,15 +454,19 @@ const AIContributionTab: React.FC = () => {
       {section === "overrides" && (
         <div className="ps-quality-card">
           <div className="ps-quality-card__header">
-            <div className="ps-quality-card__title">{ds.overridesTitle}</div>
-            <div className="ps-quality-card__subtitle">{ds.overridesSubtitle}</div>
+            <div className="ps-quality-card__title">{overridesTitle}</div>
+            <div className="ps-quality-card__subtitle">{overridesSubtitle}</div>
           </div>
           {filteredOverridden.length === 0
-            ? <div className="ps-quality-empty">✓ No {ds.tileOverridesLabel.toLowerCase()} this period</div>
+            ? <div className="ps-quality-empty">{t('aiContributionTab.overrides.emptyState', { label: tileOverridesLabel.toLowerCase() })}</div>
             : (
               <table className="ps-quality-table">
                 <thead>
-                  <tr>{["Case", "Type", ds.overridesAiCol, ds.overridesFinalCol, ds.overridesReasonCol, "Date"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+                  <tr>{[
+                    t('aiContributionTab.overrides.caseCol'), t('aiContributionTab.overrides.typeCol'),
+                    overridesAiCol, overridesFinalCol, overridesReasonCol,
+                    t('aiContributionTab.overrides.dateCol'),
+                  ].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredOverridden.map(c => (
@@ -474,24 +493,31 @@ const AIContributionTab: React.FC = () => {
         <div className="ps-quality-card">
           <div className="ps-quality-card__header">
             <div className="ps-quality-card__title">
-              {ds.comparisonTitle}
+              {comparisonTitle}
               <DemoDataBadge />
             </div>
-            <div className="ps-quality-card__subtitle">{ds.comparisonSubtitle} — no real "manual, non-AI-assisted" case tracking exists yet, so this comparison remains illustrative</div>
+            <div className="ps-quality-card__subtitle">{t('aiContributionTab.comparison.subtitleFull', { subtitle: comparisonSubtitle })}</div>
             <div className="ps-quality-legend">
               <div className="ps-quality-legend__item">
-                <div className="ps-quality-legend__swatch" style={{ background: "var(--ps-teal-light)" }} />
-                <span>{ds.comparisonAiLabel}</span>
+                <div className="ps-quality-legend__swatch ps-quality-legend__swatch--ai" />
+                <span>{comparisonAiLabel}</span>
               </div>
               <div className="ps-quality-legend__item">
-                <div className="ps-quality-legend__swatch" style={{ background: "#64748b" }} />
-                <span>{ds.comparisonManualLabel}</span>
+                <div className="ps-quality-legend__swatch ps-quality-legend__swatch--manual" />
+                <span>{comparisonManualLabel}</span>
               </div>
             </div>
           </div>
           <table className="ps-quality-table">
             <thead>
-              <tr>{["Case Type", `${ds.comparisonAiLabel} Cases`, `${ds.comparisonManualLabel} Cases`, `${ds.comparisonAiLabel} Avg TAT`, `${ds.comparisonManualLabel} Avg TAT`, "TAT Improvement"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+              <tr>{[
+                t('aiContributionTab.comparison.headers.caseType'),
+                t('aiContributionTab.comparison.headers.cases', { label: comparisonAiLabel }),
+                t('aiContributionTab.comparison.headers.cases', { label: comparisonManualLabel }),
+                t('aiContributionTab.comparison.headers.avgTat', { label: comparisonAiLabel }),
+                t('aiContributionTab.comparison.headers.avgTat', { label: comparisonManualLabel }),
+                t('aiContributionTab.comparison.headers.tatImprovement'),
+              ].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
             </thead>
             <tbody>
               {scaledComparison.map(c => {
@@ -504,7 +530,7 @@ const AIContributionTab: React.FC = () => {
                     <td className="ps-quality-td ps-quality-td--accent">{c.aiTat}d</td>
                     <td className="ps-quality-td ps-quality-td--muted">{c.manualTat}d</td>
                     <td className="ps-quality-td">
-                      <span className="ps-quality-delta--concordant">&#9650; {improvement}% faster</span>
+                      <span className="ps-quality-delta--concordant">{t('aiContributionTab.comparison.fasterBy', { value: improvement })}</span>
                     </td>
                   </tr>
                 );

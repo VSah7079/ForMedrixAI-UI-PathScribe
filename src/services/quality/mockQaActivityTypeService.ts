@@ -54,6 +54,12 @@ export const GYN_CYTOLOGY_SECONDARY_SCREENING_ACTIVITY_TYPE_ID = 'qa-activity-gy
 // activity type id above already is, rather than a second, informal
 // string literal repeated at each real call site.
 export const CYTO_HISTO_CORRELATION_ACTIVITY_TYPE_ID = 'qa-activity-cyto-histo';
+// PS-324. The real surgical-pathology consumer of PS-117's generic
+// case-selection engine and PS-118's generic review-capture workbench
+// — exported the same way every other real activity type id above
+// already is.
+export const SURGICAL_PEER_REVIEW_ACTIVITY_TYPE_ID = 'qa-activity-surgical-peer-review';
+export const SURGICAL_BIOPSY_RESECTION_CORRELATION_ACTIVITY_TYPE_ID = 'qa-activity-surgical-biopsy-resection';
 
 /** Real, deliberate translation of the old ReconciliationRecord's own
  *  fixed frozenCategory/finalCategory/frozenDx/finalDx properties into
@@ -207,6 +213,72 @@ const SEED_TYPES: QaActivityType[] = [
     teachingOnboardingEnabled: false,
     active: true,
     createdAt: '2026-09-03T00:00:00.000Z',
+    createdBy: 'system-seed',
+  },
+  // PS-324, first real consumer of PS-117's generic case-selection
+  // engine. This is genuinely the first real, live source of the
+  // "Peer Review Discordance" CAPA trigger named — but never built —
+  // in Abnormal/Critical Finding Confirmation's own header comment
+  // above ("a SECOND pathologist's independent read disagrees with
+  // the first... No real, live second-read/peer-review workflow
+  // exists anywhere in this app yet to produce this signal"). This
+  // activity IS that workflow, so capaTriggerRule is real here, unlike
+  // its siblings above.
+  //
+  // samplingPercentage below is the real, admin-configurable BASE
+  // rate — resolveSurgicalPeerReviewSelectionForCase.ts (this ticket)
+  // is what actually applies the real, additional subspecialty risk
+  // weight on top of it (ISurgicalPeerReviewRiskWeightService), a
+  // separate, standalone layer per this ticket's own recorded design
+  // decision, not a second field on this type itself.
+  //
+  // targetedSelectionRule reuses the one real signal PS-117's engine
+  // currently models (hasNonDeferredFrozenCategory) — a real,
+  // non-deferred intraop frozen-section call is exactly the kind of
+  // high-risk surgical case CAP's own "initial cancer diagnoses"
+  // targeted-review mandate means, and it's the one real signal this
+  // app can express today without inventing a new one speculatively.
+  {
+    id: SURGICAL_PEER_REVIEW_ACTIVITY_TYPE_ID,
+    name: 'Surgical Post-Sign-Out Peer Review',
+    description: 'A second pathologist\'s independent review of an already-signed-out surgical case, selected by random and/or targeted sampling (PS-324) or a manual QA request, comparing the reviewer\'s own independent diagnostic impression against the original sign-out diagnosis.',
+    tabScope: 'standard',
+    jurisdictions: ['US', 'CA', 'GB_EW', 'GB_SCT', 'GB_NIR', 'IE', 'BE', 'NL', 'DE', 'FR', 'AU', 'NZ', 'KR'],
+    fields: [
+      { id: 'originalSignOutDx', label: 'Original Sign-Out Diagnosis', type: 'text', required: true, options: [] },
+      { id: 'reviewerIndependentDx', label: 'Reviewer\'s Independent Diagnosis', type: 'text', required: true, options: [] },
+      { id: 'selectionReason', label: 'Selection Reason', type: 'dropdown', required: true, options: [
+        { id: 'random_selection', label: 'Random Sample' },
+        { id: 'targeted_high_risk', label: 'Targeted — Non-Deferred Frozen Category' },
+        { id: 'manual', label: 'Manually Requested' },
+      ] },
+    ],
+    teachingOnboardingEnabled: false,
+    active: true,
+    samplingPercentage: 10,
+    targetedSelectionRule: { signal: 'hasNonDeferredFrozenCategory' },
+    capaTriggerRule: { triggerSeverities: ['high'], deficiencyTypeId: 'def-peer-review-discordance' },
+    createdAt: '2026-09-19T00:00:00.000Z',
+    createdBy: 'system-seed',
+  },
+  // PS-324. The direct surgical-pathology analog of Cytology-Histology
+  // Correlation above — same real "audit trail only, no capaTriggerRule"
+  // posture, for the distinct real case where BOTH the antecedent and
+  // the subsequent specimen are surgical (not cytologic). Real
+  // candidate detection: resolveSurgicalBiopsyToResectionCorrelationCandidates.ts.
+  {
+    id: SURGICAL_BIOPSY_RESECTION_CORRELATION_ACTIVITY_TYPE_ID,
+    name: 'Surgical Biopsy-to-Resection Correlation',
+    description: 'Reconciles a prior surgical biopsy diagnosis against the subsequent resection specimen diagnosis for the same patient/anatomic site.',
+    tabScope: 'standard',
+    jurisdictions: ['US', 'CA', 'GB_EW', 'GB_SCT', 'GB_NIR', 'IE', 'BE', 'NL', 'DE', 'FR', 'AU', 'NZ', 'KR'],
+    fields: [
+      { id: 'biopsyDx', label: 'Biopsy Diagnosis', type: 'text', required: true, options: [] },
+      { id: 'resectionDx', label: 'Resection Diagnosis', type: 'text', required: true, options: [] },
+    ],
+    teachingOnboardingEnabled: false,
+    active: true,
+    createdAt: '2026-09-19T00:00:00.000Z',
     createdBy: 'system-seed',
   },
 ];

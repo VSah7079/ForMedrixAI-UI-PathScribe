@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { DeficiencyType } from '@/services/deficiencies/IDeficiencyService';
 
@@ -47,6 +48,7 @@ interface Props {
 }
 
 export const ReportDeficiencyModal: React.FC<Props> = ({ context, specimenLabel, deficiencyTypes, existing, onSave, onClose }) => {
+  const { t } = useTranslation();
   // Real, local editing session — the caller only finds out the result
   // when Done is clicked, same as the single-item version never
   // persisted until Save either.
@@ -57,8 +59,8 @@ export const ReportDeficiencyModal: React.FC<Props> = ({ context, specimenLabel,
   // level after the fact, and a previously-saved record referencing it
   // shouldn't silently disappear from its own edit dropdown.
   const existingTypeIds = new Set(existing.map(e => e.deficiencyTypeId));
-  const applicableTypes = deficiencyTypes.filter(t =>
-    !t.level || t.level === 'both' || t.level === context || existingTypeIds.has(t.id)
+  const applicableTypes = deficiencyTypes.filter(dt =>
+    !dt.level || dt.level === 'both' || dt.level === context || existingTypeIds.has(dt.id)
   );
 
   const [newTypeId, setNewTypeId] = useState(applicableTypes[0]?.id ?? '');
@@ -74,36 +76,32 @@ export const ReportDeficiencyModal: React.FC<Props> = ({ context, specimenLabel,
     setEntries(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const typeName = (id: string) => deficiencyTypes.find(t => t.id === id)?.name ?? id;
+  const typeName = (id: string) => deficiencyTypes.find(dt => dt.id === id)?.name ?? id;
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          ⚠ Report Deficiencies{specimenLabel ? ` — Specimen ${specimenLabel}` : ' — Whole Case'}
+          {specimenLabel ? t('accessionPage.deficiencyModal.headerSpecimen', { label: specimenLabel }) : t('accessionPage.deficiencyModal.headerCase')}
         </div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            Each one creates an open nonconformance record, tracked to resolution independently of this case —
-            not something you're expected to resolve right now. A specimen can genuinely have more than one.
+            {t('accessionPage.deficiencyModal.intro')}
           </p>
 
           {entries.length > 0 && (
-            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="ps-deficiency-entry-list">
               {entries.map((entry, idx) => (
-                <div key={idx} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px',
-                  background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 6,
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fbbf24' }}>{typeName(entry.deficiencyTypeId)}</div>
-                    {entry.comment && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{entry.comment}</div>}
+                <div key={idx} className="ps-deficiency-entry-row">
+                  <div className="ps-deficiency-entry-info">
+                    <div className="ps-deficiency-entry-type">{typeName(entry.deficiencyTypeId)}</div>
+                    {entry.comment && <div className="ps-deficiency-entry-comment">{entry.comment}</div>}
                   </div>
                   <button
                     type="button"
                     onClick={() => handleRemove(idx)}
-                    title="Remove this deficiency"
-                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, padding: 2 }}
+                    title={t('accessionPage.deficiencyModal.removeThis')}
+                    className="ps-deficiency-entry-remove-btn"
                   >
                     ✕
                   </button>
@@ -114,25 +112,25 @@ export const ReportDeficiencyModal: React.FC<Props> = ({ context, specimenLabel,
 
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="report-deficiency-type">
-              {entries.length > 0 ? 'Add another issue' : 'Issue'} <span className="ps-conf-required">*</span>
+              {entries.length > 0 ? t('accessionPage.deficiencyModal.addAnotherIssue') : t('accessionPage.deficiencyModal.issue')} <span className="ps-conf-required">*</span>
             </label>
             <select id="report-deficiency-type" className="ps-conf-select" value={newTypeId} onChange={e => setNewTypeId(e.target.value)}>
-              {applicableTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {applicableTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Detail</label>
+            <label className="ps-conf-label">{t('accessionPage.deficiencyModal.detail')}</label>
             <textarea className="ps-conf-input ps-conf-textarea" value={newComment} onChange={e => setNewComment(e.target.value)}
-              placeholder="What's wrong, specifically?" />
+              placeholder={t('accessionPage.deficiencyModal.detailPlaceholder')} />
           </div>
           <button type="button" className="ps-btn-secondary" onClick={handleAdd} disabled={!newTypeId}>
-            + Add Deficiency
+            {t('accessionPage.deficiencyModal.addDeficiency')}
           </button>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('accessionPage.deficiencyModal.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={() => onSave(entries)}>
-            Done{entries.length > 0 ? ` (${entries.length})` : ''}
+            {t('accessionPage.deficiencyModal.done')}{entries.length > 0 ? ` (${entries.length})` : ''}
           </button>
         </div>
       </div>

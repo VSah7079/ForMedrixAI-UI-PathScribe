@@ -13,54 +13,67 @@
 // cannot undo `display: none` on an ancestor no matter how correct
 // this component's own print CSS is.
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// i18n note: this print view is a portal-rendered copy of
+// CytologyQaTab.tsx's own on-screen histology-correlation table, so
+// every summary label, column header and category label reuses that
+// screen's own exact keys (`cytologyQaTab.histologyTable.*`/
+// `.category.*`) rather than re-wording a duplicate report — the two
+// should read identically. "CYT-QA-04" is this app's own internal QA
+// metric identifier and stays literal, like other internal
+// ticket/rule references elsewhere in the app. `r.cytoDiagnosis`/
+// `r.histDiagnosis` (real diagnosis text) and every id/MRN/date value
+// are real data, left as-is.
 
 import React from 'react';
 import ReactDOM from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import type { CytologyHistologyCorrelationReport } from '@/services/cytology/resolveCytologyHistologyCorrelationReport';
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
-const CATEGORY_LABEL: Record<string, string> = {
-  concordant: 'Concordant',
-  minor_discrepancy: 'Minor Discrepancy',
-  major_discrepancy: 'Major Discrepancy',
-  discordant_unspecified: 'Discordant (unspecified)',
+const CATEGORY_LABEL_KEY: Record<string, string> = {
+  concordant: 'cytologyQaTab.category.concordant',
+  minor_discrepancy: 'cytologyQaTab.category.minorDiscrepancy',
+  major_discrepancy: 'cytologyQaTab.category.majorDiscrepancy',
+  discordant_unspecified: 'cytologyQaTab.category.discordantUnspecified',
 };
 
 export const CytologyHistologyCorrelationPrintView: React.FC<{ report: CytologyHistologyCorrelationReport; scopeLabel: string; onClose: () => void }> = ({ report, scopeLabel, onClose }) => {
+  const { t } = useTranslation();
   return ReactDOM.createPortal(
     <div className="ps-overlay ps-cyto-histo-print-overlay" onClick={onClose}>
       <div className="ps-modal-dark ps-cyto-histo-print-modal ps-cyto-histo-print-area" onClick={e => e.stopPropagation()}>
         <div className="ps-cyto-histo-print-header">
           <div>
-            <div className="ps-cyto-histo-print-title">CYT-QA-04 — Cyto-Histologic Correlation and Discrepancy Matrix</div>
-            <div className="ps-cyto-histo-print-scope">Scope: {scopeLabel} — Generated {new Date().toLocaleString()}</div>
+            <div className="ps-cyto-histo-print-title">{t('cytologyHistologyCorrelationPrintView.title')}</div>
+            <div className="ps-cyto-histo-print-scope">{t('cytologyHistologyCorrelationPrintView.scopeLine', { scope: scopeLabel, date: new Date().toLocaleString() })}</div>
           </div>
           <div className="ps-cyto-histo-print-header-actions">
-            <button className="ps-btn-small" onClick={() => window.print()}>🖨️ Print</button>
-            <button className="ps-btn-small" onClick={onClose}>Close</button>
+            <button className="ps-btn-small" onClick={() => window.print()}>🖨️ {t('cytologyQaTab.histologyTable.printButton')}</button>
+            <button className="ps-btn-small" onClick={onClose}>{t('common.close')}</button>
           </div>
         </div>
 
         <div className="ps-cyto-histo-print-summary">
-          <div><b>{report.totalCorrelated}</b> Cases Correlated</div>
-          <div><b>{report.concordantCount}</b> Concordant</div>
-          <div><b>{pct(report.correlationRatePercent)}</b> Correlation Rate</div>
-          <div><b>{report.ppvHsilPercent === undefined ? '—' : pct(report.ppvHsilPercent)}</b> PPV (HSIL Cytology → CIN2+ Histology)</div>
+          <div><b>{report.totalCorrelated}</b> {t('cytologyQaTab.histologyTable.casesCorrelated')}</div>
+          <div><b>{report.concordantCount}</b> {t('cytologyQaTab.category.concordant')}</div>
+          <div><b>{pct(report.correlationRatePercent)}</b> {t('cytologyQaTab.histologyTable.correlationRate')}</div>
+          <div><b>{report.ppvHsilPercent === undefined ? '—' : pct(report.ppvHsilPercent)}</b> {t('cytologyQaTab.histologyTable.ppvHsil')}</div>
         </div>
 
         <table className="ps-cyto-histo-print-table">
           <thead>
             <tr>
-              <th>Patient MRN</th>
-              <th>Cyto Accession</th>
-              <th>Cyto Date</th>
-              <th>Cyto Diagnosis</th>
-              <th>Hist Accession</th>
-              <th>Hist Date</th>
-              <th>Hist Diagnosis</th>
-              <th>Days to Biopsy</th>
-              <th>Correlation Category</th>
+              <th>{t('cytologyQaTab.histologyTable.patientMrn')}</th>
+              <th>{t('cytologyQaTab.histologyTable.cytoAccession')}</th>
+              <th>{t('cytologyQaTab.histologyTable.cytoDate')}</th>
+              <th>{t('cytologyQaTab.histologyTable.cytoDiagnosis')}</th>
+              <th>{t('cytologyQaTab.histologyTable.histAccession')}</th>
+              <th>{t('cytologyQaTab.histologyTable.histDate')}</th>
+              <th>{t('cytologyQaTab.histologyTable.histDiagnosis')}</th>
+              <th>{t('cytologyQaTab.histologyTable.daysToBiopsy')}</th>
+              <th>{t('cytologyQaTab.histologyTable.correlationCategory')}</th>
             </tr>
           </thead>
           <tbody>
@@ -74,11 +87,11 @@ export const CytologyHistologyCorrelationPrintView: React.FC<{ report: CytologyH
                 <td>{r.histDate ? new Date(r.histDate).toLocaleDateString() : '—'}</td>
                 <td>{r.histDiagnosis}</td>
                 <td>{r.daysToBiopsy ?? '—'}</td>
-                <td>{CATEGORY_LABEL[r.correlationCategory]}</td>
+                <td>{t(CATEGORY_LABEL_KEY[r.correlationCategory])}</td>
               </tr>
             ))}
             {report.rows.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 16 }}>No correlations recorded for this scope yet.</td></tr>
+              <tr><td className="ps-cyto-histo-print-empty-row" colSpan={9}>{t('cytologyQaTab.histologyTable.noCorrelationsYet')}</td></tr>
             )}
           </tbody>
         </table>

@@ -1,4 +1,6 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
 import { SystemAction } from '../../../services/actionRegistry/IActionRegistryService';
 import { toTitleCase } from '../../../utils/formatLabel';
@@ -10,12 +12,37 @@ import { WORKSTATION_DISCIPLINES, FUNCTIONAL_AREAS_BY_DISCIPLINE } from '../../.
 // area names (confirmed directly), so a flat list stays unambiguous.
 const ALL_FUNCTIONAL_AREAS = WORKSTATION_DISCIPLINES.flatMap(d => FUNCTIONAL_AREAS_BY_DISCIPLINE[d]);
 
+// Builds the post-import alert() report. A plain function (not a
+// hook), so it takes t explicitly — this is UI-facing text the admin
+// reads right after a bulk import, distinct from the CSV file's own
+// column headers/instructions above (exported/persisted data, which
+// stay English per this app's established convention).
+function buildImportSummary(
+  successLog: string[], errorLog: string[], noChangeCount: number, t: TFunction
+): string {
+  let summary = `${t('actionsTab.import.summary.header')}\n----------------\n`;
+  if (successLog.length > 0) {
+    summary += `${t('actionsTab.import.summary.updated', { count: successLog.length })}\n`;
+    successLog.slice(0, 5).forEach(s => summary += ` &bull; ${s}\n`);
+    if (successLog.length > 5) summary += ` ${t('actionsTab.import.summary.andMore', { count: successLog.length - 5 })}\n`;
+    summary += `\n`;
+  }
+  if (noChangeCount > 0) summary += `${t('actionsTab.import.summary.skipped', { count: noChangeCount })}\n\n`;
+  if (errorLog.length > 0) {
+    summary += `${t('actionsTab.import.summary.failures', { count: errorLog.length })}\n`;
+    errorLog.slice(0, 5).forEach(err => summary += ` &bull; ${err}\n`);
+    if (errorLog.length > 5) summary += ` ${t('actionsTab.import.summary.andMore', { count: errorLog.length - 5 })}`;
+  }
+  return summary;
+}
+
 export const ActionsTab: React.FC = () => {
+  const { t } = useTranslation();
   const [actions, setActions] = useState<SystemAction[]>(mockActionRegistryService.getActions());
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [editingAction, setEditingAction] = useState<SystemAction | null>(null);
   const [tempShortcut, setTempShortcut] = useState('');
   const [tempTriggers, setTempTriggers] = useState('');
@@ -73,7 +100,7 @@ export const ActionsTab: React.FC = () => {
     if (!combo) return;
     const conflict = actions.find(a => a.id !== currentId && a.shortcut.toLowerCase() === combo.toLowerCase());
     if (conflict) {
-      setShortcutError('"' + combo + '" is already assigned to "' + conflict.label + '"');
+      setShortcutError(t('actionsTab.edit.shortcutConflict', { combo, label: conflict.label }));
       // Suggest Alt+Shift variant or Ctrl variant
       const base = combo.replace(/^(Ctrl[+]|Alt[+]|Shift[+])*/i, '').replace(/[+]$/, '');
       const suggestions = [
@@ -86,9 +113,9 @@ export const ActionsTab: React.FC = () => {
   const handleSave = async () => {
     if (!editingAction) return;
     if (shortcutError) return;
-    const triggers = tempTriggers.split(',').map(t => t.trim()).filter(t => t !== "");
-    await mockActionRegistryService.updateAction(editingAction.id, { 
-      shortcut: tempShortcut, 
+    const triggers = tempTriggers.split(',').map(trig => trig.trim()).filter(trig => trig !== "");
+    await mockActionRegistryService.updateAction(editingAction.id, {
+      shortcut: tempShortcut,
       voiceTriggers: triggers,
       stationProfiles: tempStationProfiles.length > 0 ? tempStationProfiles : undefined,
     });
@@ -97,6 +124,10 @@ export const ActionsTab: React.FC = () => {
   };
 
   // ─── Export Logic ───────────────────────────────────────────────────────
+  // Exported CSV content — column headers, editing-rules instructions and
+  // the disabled-row marker are all persisted/exported file content, not
+  // on-screen UI copy, so they stay English per this app's established
+  // convention (exported data keeps its own fixed shape/language).
   const exportCurrentRegistry = () => {
     const instructions = [
       ["# ================================================================================"],
@@ -108,7 +139,7 @@ export const ActionsTab: React.FC = () => {
       ["# 4. DO NOT add new rows. Only existing System Actions are supported."],
       ["# 5. VOICE TRIGGERS: Use a semi-colon (;) to separate multiple phrases."],
       ["# ================================================================================"],
-      [""], 
+      [""],
       ["ID (DO NOT ALTER)", "Label (READ ONLY)", "Category (READ ONLY)", "Shortcut (UNIQUE)", "Voice Triggers (EDITABLE)"]
     ];
 
@@ -135,7 +166,7 @@ export const ActionsTab: React.FC = () => {
     ]);
 
     const csvContent = [...instructions, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob(["\uFEFF", csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(["﻿", csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
@@ -154,7 +185,7 @@ export const ActionsTab: React.FC = () => {
     reader.onload = async (e) => {
       const content = e.target?.result as string;
       const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-      
+
       const successLog: string[] = [];
       const errorLog: string[] = [];
       const seenIds = new Set<string>();
@@ -167,27 +198,27 @@ export const ActionsTab: React.FC = () => {
 
         const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
         if (parts.length >= 5) {
-          const id = parts[0].replace(/["\s]/g, ''); 
+          const id = parts[0].replace(/["\s]/g, '');
           const label = parts[1].replace(/"/g, '').trim();
           const category = parts[2].replace(/"/g, '').trim();
           const shortcut = parts[3].replace(/"/g, '').trim().toLowerCase();
           const triggersRaw = parts[4] || "";
-          
-          const voiceTriggers = triggersRaw.replace(/"/g, '').split(';').map(t => t.trim()).filter(t => t !== "");
+
+          const voiceTriggers = triggersRaw.replace(/"/g, '').split(';').map(trig => trig.trim()).filter(trig => trig !== "");
 
           const original = actions.find(a => a.id === id);
-          
+
           // 1. Basic Validations
           if (!original) {
-            errorLog.push(`Line ${excelRow}: Unknown ID "${id}".`);
+            errorLog.push(t('actionsTab.import.errors.unknownId', { line: excelRow, id }));
             return;
           }
           if (seenIds.has(id)) {
-            errorLog.push(`Line ${excelRow}: Duplicate ID "${id}" in file.`);
+            errorLog.push(t('actionsTab.import.errors.duplicateId', { line: excelRow, id }));
             return;
           }
           if (original.label !== label || original.category !== category) {
-            errorLog.push(`Line ${excelRow} (${original.label}): Blocked change to Label/Category.`);
+            errorLog.push(t('actionsTab.import.errors.blockedLabelCategoryChange', { line: excelRow, label: original.label }));
             return;
           }
           // Real, per direct follow-up ("someone can edit the action if
@@ -198,21 +229,21 @@ export const ActionsTab: React.FC = () => {
           // confirmed directly, nothing here checked isActive at all.
           // Same "Blocked change" pattern as the check just above.
           if (!original.isActive) {
-            errorLog.push(`Line ${excelRow} (${original.label}): Blocked — this action is deliberately disabled (not voice/keyboard-eligible) and editing it here would not make it functional.`);
+            errorLog.push(t('actionsTab.import.errors.blockedDisabled', { line: excelRow, label: original.label }));
             return;
           }
 
           // 2. Shortcut Collision Detection
           // Check if this shortcut is used by another action in this file
           if (shortcut && usedShortcutsInFile.has(shortcut)) {
-            errorLog.push(`Line ${excelRow}: Shortcut "${shortcut}" already assigned to "${usedShortcutsInFile.get(shortcut)}" in this file.`);
+            errorLog.push(t('actionsTab.import.errors.shortcutDupInFile', { line: excelRow, shortcut, label: usedShortcutsInFile.get(shortcut) }));
             return;
           }
-          
+
           // Check if this shortcut is used by an action NOT in this file (global system check)
           const globalCollision = actions.find(a => a.id !== id && a.shortcut.toLowerCase() === shortcut);
           if (shortcut && globalCollision) {
-            errorLog.push(`Line ${excelRow}: Shortcut "${shortcut}" is already reserved for "${globalCollision.label}".`);
+            errorLog.push(t('actionsTab.import.errors.shortcutReserved', { line: excelRow, shortcut, label: globalCollision.label }));
             return;
           }
 
@@ -229,26 +260,13 @@ export const ActionsTab: React.FC = () => {
           }
 
           mockActionRegistryService.updateAction(id, { shortcut, voiceTriggers });
-          successLog.push(`Line ${excelRow}: ${original.label}`);
+          successLog.push(t('actionsTab.import.success.line', { line: excelRow, label: original.label }));
         }
       });
 
       setActions([...mockActionRegistryService.getActions()]);
 
-      let summary = `Import Report\n----------------\n`;
-      if (successLog.length > 0) {
-        summary += `✅ UPDATED (${successLog.length}):\n`;
-        successLog.slice(0, 5).forEach(s => summary += ` &bull; ${s}\n`);
-        if (successLog.length > 5) summary += ` ...and ${successLog.length - 5} more.\n`;
-        summary += `\n`;
-      }
-      if (noChangeCount > 0) summary += `ℹ️ ${noChangeCount} rows skipped (no changes).\n\n`;
-      if (errorLog.length > 0) {
-        summary += `❌ FAILURES/COLLISIONS (${errorLog.length}):\n`;
-        errorLog.slice(0, 5).forEach(err => summary += ` &bull; ${err}\n`);
-        if (errorLog.length > 5) summary += ` ...and ${errorLog.length - 5} more.`;
-      }
-      alert(summary);
+      alert(buildImportSummary(successLog, errorLog, noChangeCount, t));
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -257,55 +275,55 @@ export const ActionsTab: React.FC = () => {
   const allCategories = Array.from(new Set(actions.map(a => a.category)));
   const filterOptions = ['All', ...allCategories];
   const filteredActions = actions.filter(a => {
-    const matchesSearch = a.label.toLowerCase().includes(search.toLowerCase()) || 
-                         a.voiceTriggers.some(t => t.toLowerCase().includes(search.toLowerCase()));
+    const matchesSearch = a.label.toLowerCase().includes(search.toLowerCase()) ||
+                         a.voiceTriggers.some(trig => trig.toLowerCase().includes(search.toLowerCase()));
     const matchesCategory = selectedCategory === 'All' || a.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
   const displayedCategories = Array.from(new Set(filteredActions.map(a => a.category)));
 
   return (
-    <div style={{ padding: '24px', color: 'var(--ps-conf-text)' }}>
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className="ps-actionstab-page">
+      <div className="ps-actionstab-header-row">
         <div>
-          <h3 style={{ fontSize: '24px', marginBottom: '8px' }}>⚙️ System Action Registry</h3>
-          <p style={{ color: 'var(--ps-conf-text-2)' }}>Admin-only command configuration. Keyboard shortcuts must be unique system-wide.</p>
+          <h3 className="ps-actionstab-title">⚙️ {t('actionsTab.header.title')}</h3>
+          <p className="ps-actionstab-subtitle">{t('actionsTab.header.subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <button onClick={exportCurrentRegistry} className="ps-conf-btn-secondary">Download Template</button>
-            <button onClick={() => fileInputRef.current?.click()} className="ps-conf-btn-secondary">📥 Bulk Import</button>
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} accept=".csv" />
+        <div className="ps-actionstab-header-actions">
+            <button onClick={exportCurrentRegistry} className="ps-conf-btn-secondary">{t('actionsTab.header.downloadTemplate')}</button>
+            <button onClick={() => fileInputRef.current?.click()} className="ps-conf-btn-secondary">📥 {t('actionsTab.header.bulkImport')}</button>
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="ps-actionstab-hidden-file-input" accept=".csv" />
         </div>
       </div>
 
-      <input type="text" placeholder="Search actions..." value={search} onChange={(e) => setSearch(e.target.value)} className="registry-search-input" />
+      <input type="text" placeholder={t('actionsTab.search.placeholder')} value={search} onChange={(e) => setSearch(e.target.value)} className="registry-search-input" />
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+      <div className="ps-actionstab-filter-row">
         {filterOptions.map(cat => (
-          <button key={cat} onClick={() => setSelectedCategory(cat)} className={`ps-conf-category-btn${selectedCategory === cat ? ' active' : ''}`}>{cat === 'All' ? cat : toTitleCase(cat)}</button>
+          <button key={cat} onClick={() => setSelectedCategory(cat)} className={`ps-conf-category-btn${selectedCategory === cat ? ' active' : ''}`}>{cat === 'All' ? t('actionsTab.filters.all') : toTitleCase(cat)}</button>
         ))}
       </div>
 
-      <div style={{ overflowX: 'auto', opacity: editingAction ? 0.2 : 1, pointerEvents: editingAction ? 'none' : 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+      <div className={`ps-actionstab-table-wrap${editingAction ? ' ps-actionstab-table-wrap--dimmed' : ''}`}>
+        <table className="ps-actionstab-table">
           <thead>
-            <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.2)', color: 'var(--ps-conf-text-3)', fontSize: '12px', textTransform: 'uppercase', position: 'sticky', top: 0, background: 'var(--ps-conf-bg)', zIndex: 2 }}>
-              <th style={{ padding: '12px' }}>Action</th>
-              <th style={{ padding: '12px' }}>Shortcut</th>
-              <th style={{ padding: '12px' }}>Voice Triggers</th>
-              <th style={{ padding: '12px', textAlign: 'right' }}>Settings</th>
+            <tr className="ps-actionstab-thead-row">
+              <th className="ps-actionstab-th">{t('actionsTab.table.action')}</th>
+              <th className="ps-actionstab-th">{t('actionsTab.table.shortcut')}</th>
+              <th className="ps-actionstab-th">{t('actionsTab.table.voiceTriggers')}</th>
+              <th className="ps-actionstab-th ps-actionstab-th--right">{t('actionsTab.table.settings')}</th>
             </tr>
           </thead>
           <tbody>
             {displayedCategories.map(cat => (
               <React.Fragment key={cat}>
-                <tr style={{ background: 'rgba(10,15,30,0.98)', borderTop: '1px solid rgba(255,255,255,0.15)', borderBottom: '1px solid rgba(255,255,255,0.15)', position: 'sticky', top: '41px', zIndex: 1 }}>
-                  <td colSpan={4} style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 'bold', color: '#38bdf8' }}>{toTitleCase(cat)}</td>
+                <tr className="ps-actionstab-category-row">
+                  <td colSpan={4} className="ps-actionstab-category-cell">{toTitleCase(cat)}</td>
                 </tr>
                 {filteredActions.filter(a => a.category === cat).map((action) => (
-                  <tr key={action.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', opacity: action.isActive ? 1 : 0.5 }}>
-                    <td style={{ padding: '16px 32px' }}>
-                       <div style={{ fontWeight: '500', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <tr key={action.id} className={`ps-actionstab-row${action.isActive ? '' : ' ps-actionstab-row--inactive'}`}>
+                    <td className="ps-actionstab-td ps-actionstab-td--label">
+                       <div className="ps-actionstab-label-row">
                          {action.label}
                          {/* Real, per direct follow-up ("someone can edit the
                              action if they really want to type some voice
@@ -317,30 +335,29 @@ export const ActionsTab: React.FC = () => {
                              that missing signal. */}
                          {!action.isActive && (
                            <span
-                             title="Deliberately not voice/keyboard-enabled — a real, per-row action with no safe default target for a bare trigger (see this action's own comment in mockActionRegistryService.ts). Editing here would not make it functional."
-                             style={{ fontSize: '9px', fontWeight: 'bold', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                             title={t('actionsTab.table.disabledBadgeTitle')}
+                             className="ps-actionstab-disabled-badge"
                            >
-                             Disabled
+                             {t('actionsTab.table.disabled')}
                            </span>
                          )}
                        </div>
-                       <div style={{ fontSize: '10px', color: '#475569' }}>{action.requiredRole}</div>
+                       <div className="ps-actionstab-role">{action.requiredRole}</div>
                     </td>
-                    <td style={{ padding: '16px' }}><code style={{ background: 'var(--ps-conf-surface)', padding: '4px 8px', borderRadius: '4px', color: '#38bdf8' }}>{action.shortcut}</code></td>
-                    <td style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {action.voiceTriggers.map(t => <span key={t} style={{ background: 'rgba(8, 145, 178, 0.15)', color: '#22d3ee', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', border: '1px solid rgba(34, 211, 238, 0.2)' }}>{t}</span>)}
+                    <td className="ps-actionstab-td"><code className="ps-actionstab-shortcut-code">{action.shortcut}</code></td>
+                    <td className="ps-actionstab-td">
+                      <div className="ps-actionstab-triggers-wrap">
+                        {action.voiceTriggers.map(trig => <span key={trig} className="ps-actionstab-trigger-pill">{trig}</span>)}
                       </div>
                     </td>
-                    <td style={{ padding: '16px', textAlign: 'right' }}>
+                    <td className="ps-actionstab-td ps-actionstab-td--right">
                       <button
                         onClick={() => openEditModal(action)}
-                        className="ps-conf-btn-row"
+                        className={`ps-conf-btn-row${action.isActive ? '' : ' ps-actionstab-edit-btn--disabled'}`}
                         disabled={!action.isActive}
-                        title={action.isActive ? undefined : 'Disabled — editing would not make this action functional (see the Disabled badge)'}
-                        style={action.isActive ? undefined : { opacity: 0.4, cursor: 'not-allowed' }}
+                        title={action.isActive ? undefined : t('actionsTab.table.editDisabledTitle')}
                       >
-                        Edit
+                        {t('common.edit')}
                       </button>
                     </td>
                   </tr>
@@ -354,57 +371,57 @@ export const ActionsTab: React.FC = () => {
       {editingAction && (
         <div className="ps-conf-edit-modal-overlay">
           <div className="ps-conf-edit-modal">
-            <h4 style={{ fontSize: '20px', marginBottom: '4px' }}>Edit Action</h4>
-            <p style={{ color: 'var(--ps-conf-text-3)', fontSize: '14px', marginBottom: '24px' }}>{editingAction.label}</p>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', color: 'var(--ps-conf-text-2)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>Shortcut</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <h4 className="ps-actionstab-modal-title">{t('actionsTab.edit.title')}</h4>
+            <p className="ps-actionstab-modal-subtitle">{editingAction.label}</p>
+            <div className="ps-actionstab-field-group">
+              <label className="ps-actionstab-field-label">{t('actionsTab.table.shortcut')}</label>
+              <div className="ps-actionstab-shortcut-row">
                 <input
-                  value={isRecording ? '⏺ Press your keys now…' : (tempShortcut || 'None')}
+                  value={isRecording ? t('actionsTab.edit.recordingPlaceholder') : (tempShortcut || t('actionsTab.edit.noneLabel'))}
                   readOnly
                   onKeyDown={handleShortcutKeyDown}
                   onFocus={() => { setIsRecording(true); setShortcutError(''); setShortcutSuggestion(''); }}
                   onBlur={() => setIsRecording(false)}
-                  style={{ flex: 1, background: isRecording ? 'rgba(56,189,248,0.1)' : 'var(--ps-conf-surface)', border: `1px solid ${isRecording ? '#38bdf8' : shortcutError ? '#ef4444' : 'var(--ps-conf-border)'}`, color: isRecording ? '#38bdf8' : 'var(--ps-conf-text)', padding: '12px', borderRadius: '6px', outline: 'none', cursor: 'pointer', fontFamily: 'monospace', fontSize: 14 }}
-                  placeholder="Click then press keys"
+                  className={`ps-actionstab-shortcut-input${isRecording ? ' ps-actionstab-shortcut-input--recording' : shortcutError ? ' ps-actionstab-shortcut-input--error' : ''}`}
+                  placeholder={t('actionsTab.edit.shortcutInputPlaceholder')}
                 />
                 {tempShortcut && (
                   <button onClick={() => { setTempShortcut(''); setShortcutError(''); setShortcutSuggestion(''); }}
                     className="ps-conf-shortcut-clear">
-                    Clear
+                    {t('common.clear')}
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 11, color: '#475569', marginTop: 5 }}>
-                {isRecording ? '🎯 Recording — press your key combination now' : 'Click the field and press the key combination you want to assign'}
+              <div className="ps-actionstab-shortcut-hint">
+                {isRecording ? `🎯 ${t('actionsTab.edit.recordingHint')}` : t('actionsTab.edit.idleHint')}
               </div>
               {shortcutError && (
-                <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 12, color: '#f87171' }}>
+                <div className="ps-actionstab-shortcut-error">
                   ⚠ {shortcutError}
                   {shortcutSuggestion && (
                     <span
                       onClick={() => { setTempShortcut(shortcutSuggestion); validateShortcut(shortcutSuggestion, editingAction?.id ?? ''); }}
-                      style={{ marginLeft: 10, color: '#38bdf8', cursor: 'pointer', textDecoration: 'underline' }}>
-                      {'Use "' + shortcutSuggestion + '" instead?'}
+                      className="ps-actionstab-shortcut-suggestion">
+                      {t('actionsTab.edit.useSuggestionInstead', { suggestion: shortcutSuggestion })}
                     </span>
                   )}
                 </div>
               )}
             </div>
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{ display: 'block', color: 'var(--ps-conf-text-2)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>Voice Triggers (Comma Separated)</label>
-              <textarea value={tempTriggers} onChange={(e) => setTempTriggers(e.target.value)} style={{ width: '100%', background: 'var(--ps-conf-surface)', border: '1px solid #334155', color: '#fff', padding: '12px', borderRadius: '6px', height: '100px', resize: 'none', outline: 'none' }} />
+            <div className="ps-actionstab-field-group ps-actionstab-field-group--wide">
+              <label className="ps-actionstab-field-label">{t('actionsTab.edit.voiceTriggersLabel')}</label>
+              <textarea value={tempTriggers} onChange={(e) => setTempTriggers(e.target.value)} className="ps-actionstab-triggers-textarea" />
             </div>
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{ display: 'block', color: 'var(--ps-conf-text-2)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>Station Profiles</label>
-              <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>
-                Scopes this action to the selected functional areas — eligible whenever a technician has a matching station selected, alongside its existing category.
+            <div className="ps-actionstab-field-group ps-actionstab-field-group--wide">
+              <label className="ps-actionstab-field-label">{t('actionsTab.edit.stationProfilesLabel')}</label>
+              <div className="ps-actionstab-station-hint">
+                {t('actionsTab.edit.stationProfilesHint')}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', maxHeight: 140, overflowY: 'auto', border: '1px solid #334155', borderRadius: 6, padding: 10 }}>
+              <div className="ps-actionstab-station-grid">
                 {ALL_FUNCTIONAL_AREAS.map(area => {
                   const checked = tempStationProfiles.includes(area);
                   return (
-                    <label key={area} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ps-conf-text-2)', cursor: 'pointer' }}>
+                    <label key={area} className="ps-actionstab-station-checkbox-label">
                       <input type="checkbox" checked={checked}
                         onChange={() => setTempStationProfiles(prev => checked ? prev.filter(a => a !== area) : [...prev, area])} />
                       {area}
@@ -413,10 +430,10 @@ export const ActionsTab: React.FC = () => {
                 })}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditingAction(null)} className="fm-btn-cancel">Cancel</button>
+            <div className="ps-actionstab-modal-footer">
+              <button onClick={() => setEditingAction(null)} className="fm-btn-cancel">{t('common.cancel')}</button>
               <button onClick={handleSave} className="ps-conf-btn-primary" disabled={!!shortcutError}>
-                SAVE CHANGES
+                {t('actionsTab.edit.saveChanges').toUpperCase()}
               </button>
             </div>
           </div>

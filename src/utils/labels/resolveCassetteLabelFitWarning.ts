@@ -46,9 +46,17 @@ export const CONSERVATIVE_DATAMATRIX_MODULE_COUNT = 26;
  *  optional, per-block content an admin can't predict in advance. */
 export const CASSETTE_LABEL_TEXT_LINE_COUNT = 4;
 
+// `requiredMm`/`configuredMm` replace the old pre-built English
+// `message` string — this is a pure, non-hook function with no access
+// to `useTranslation()`'s `t`, and its only consumer
+// (CassetteLabelLayoutEditor.tsx) needs a translatable sentence, not a
+// fixed English one. Same "return a translation descriptor, not
+// English text" pattern ResearchFeedSection.tsx's own module-level
+// `stalenessStatus()` helper already established (batch 85).
 export interface CassetteLabelFitWarning {
-  message: string;
   kind: 'height_overflow' | 'width_overflow';
+  requiredMm: string;
+  configuredMm: number;
 }
 
 /**
@@ -71,7 +79,8 @@ export function resolveCassetteLabelFitWarnings(config: CassetteLabelLayoutConfi
   if (requiredHeightMm > config.faceHeightMm) {
     warnings.push({
       kind: 'height_overflow',
-      message: `At this module size and font height, the label needs about ${requiredHeightMm.toFixed(1)}mm of height, but the configured face is only ${config.faceHeightMm}mm tall. Content will print past the real edge of the cassette.`,
+      requiredMm: requiredHeightMm.toFixed(1),
+      configuredMm: config.faceHeightMm,
     });
   }
 
@@ -79,7 +88,8 @@ export function resolveCassetteLabelFitWarnings(config: CassetteLabelLayoutConfi
   if (barcodeWidthMm > config.faceWidthMm) {
     warnings.push({
       kind: 'width_overflow',
-      message: `At this module size, the barcode alone needs about ${barcodeWidthMm.toFixed(1)}mm of width, but the configured face is only ${config.faceWidthMm}mm wide, leaving no room for any text.`,
+      requiredMm: barcodeWidthMm.toFixed(1),
+      configuredMm: config.faceWidthMm,
     });
   }
 

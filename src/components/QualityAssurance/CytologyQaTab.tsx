@@ -15,6 +15,8 @@
 // be actionable), patient name/MRN/DOB are not.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { mockCytologyQaReportService } from '@/services/cytology/mockCytologyQaReportService';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import { auditService } from '@/services';
@@ -40,10 +42,15 @@ import { scopeLabel, exportQaReportRows, QaScope } from './qaReportUtils';
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const num = (n: number, digits = 2) => n.toFixed(digits);
 
-const LEVEL_LABEL: Record<string, { text: string; color: string }> = {
-  exact: { text: 'Exact', color: '#10B981' },
-  minor_discrepancy: { text: 'Minor', color: '#f59e0b' },
-  major_discrepancy: { text: 'Major', color: '#ef4444' },
+// Real, computed comparison-classification labels (classifyCytologyAgreement.ts's
+// own output) — the underlying level value (c.level) is real, persisted
+// classification data and is never touched; only the displayed badge
+// text translates, via the same label-key indirection used for
+// persisted enums throughout this sweep.
+const LEVEL_LABEL: Record<string, { textKey: string; color: string }> = {
+  exact: { textKey: 'cytologyQaTab.level.exact', color: '#10B981' },
+  minor_discrepancy: { textKey: 'cytologyQaTab.level.minor', color: '#f59e0b' },
+  major_discrepancy: { textKey: 'cytologyQaTab.level.major', color: '#ef4444' },
 };
 
 // Real, per direct guidance: "each report can get their own tile" —
@@ -52,24 +59,26 @@ const LEVEL_LABEL: Record<string, { text: string; color: string }> = {
 // directly rather than a second, competing tile style.
 type CytologyQaReportKey = 'random' | 'high-risk' | 'ct-path' | 'peer-review' | 'ct-stats' | 'ascus-hpv' | 'workload' | 'transmission' | 'secondary-screening-audit' | 'histology-correlation' | 'unscreened-backlog' | 'uk-failsafe' | 'eu-compliance' | 'hpv-positivity' | 'mol-qc-failure' | 'mol-lot-trend' | 'apac-pt';
 
-const REPORT_TILES: { key: CytologyQaReportKey; label: string; color: string }[] = [
-  { key: 'random', label: '🎲 10% Random Rescreening', color: '#009E73' },
-  { key: 'high-risk', label: '⚠️ Directed / High-Risk Rescreening', color: '#f59e0b' },
-  { key: 'ct-path', label: '⚖️ CT vs. Pathologist Correlation', color: '#38bdf8' },
-  { key: 'peer-review', label: '🔍 Post-Sign-Out Peer Review', color: '#14B8A6' },
-  { key: 'ct-stats', label: '📊 CT Statistical Comparison', color: '#8B5CF6' },
-  { key: 'ascus-hpv', label: '🧬 ASC-US / HPV Reflex Concordance', color: '#EC4899' },
-  { key: 'workload', label: '⏱️ Workload Tracking', color: '#261CE3' },
-  { key: 'transmission', label: '📡 Registry Transmission Audit', color: '#0891B2' },
-  { key: 'secondary-screening-audit', label: '📋 Secondary Screening Audit', color: '#DC2626' },
-  { key: 'histology-correlation', label: '🔬 Cyto-Histologic Correlation', color: '#F472B6' },
-  { key: 'unscreened-backlog', label: '⏳ Unscreened Backlog & TAT', color: '#F97316' },
-  { key: 'uk-failsafe', label: '🇬🇧 Primary HPV Failsafe Audit', color: '#7C3AED' },
-  { key: 'eu-compliance', label: '🇪🇺 EU Compliance Matrix', color: '#0EA5E9' },
-  { key: 'hpv-positivity', label: '🦠 HPV Positivity Monitor', color: '#65A30D' },
-  { key: 'mol-qc-failure', label: '🧪 Molecular QC Failure Rate', color: '#B91C1C' },
-  { key: 'mol-lot-trend', label: '📈 Molecular Lot-to-Lot Trend', color: '#9333EA' },
-  { key: 'apac-pt', label: '🌏 External Proficiency Testing (APAC-QA-01)', color: '#0891B2' },
+// Tile labels are UI chrome — icon kept as literal, text resolved via
+// t() at render with labelKey below.
+const REPORT_TILES: { key: CytologyQaReportKey; icon: string; labelKey: string; color: string }[] = [
+  { key: 'random', icon: '🎲', labelKey: 'cytologyQaTab.tiles.random', color: '#009E73' },
+  { key: 'high-risk', icon: '⚠️', labelKey: 'cytologyQaTab.tiles.highRisk', color: '#f59e0b' },
+  { key: 'ct-path', icon: '⚖️', labelKey: 'cytologyQaTab.tiles.ctPath', color: '#38bdf8' },
+  { key: 'peer-review', icon: '🔍', labelKey: 'cytologyQaTab.tiles.peerReview', color: '#14B8A6' },
+  { key: 'ct-stats', icon: '📊', labelKey: 'cytologyQaTab.tiles.ctStats', color: '#8B5CF6' },
+  { key: 'ascus-hpv', icon: '🧬', labelKey: 'cytologyQaTab.tiles.ascusHpv', color: '#EC4899' },
+  { key: 'workload', icon: '⏱️', labelKey: 'cytologyQaTab.tiles.workload', color: '#261CE3' },
+  { key: 'transmission', icon: '📡', labelKey: 'cytologyQaTab.tiles.transmission', color: '#0891B2' },
+  { key: 'secondary-screening-audit', icon: '📋', labelKey: 'cytologyQaTab.tiles.secondaryScreeningAudit', color: '#DC2626' },
+  { key: 'histology-correlation', icon: '🔬', labelKey: 'cytologyQaTab.tiles.histologyCorrelation', color: '#F472B6' },
+  { key: 'unscreened-backlog', icon: '⏳', labelKey: 'cytologyQaTab.tiles.unscreenedBacklog', color: '#F97316' },
+  { key: 'uk-failsafe', icon: '🇬🇧', labelKey: 'cytologyQaTab.tiles.ukFailsafe', color: '#7C3AED' },
+  { key: 'eu-compliance', icon: '🇪🇺', labelKey: 'cytologyQaTab.tiles.euCompliance', color: '#0EA5E9' },
+  { key: 'hpv-positivity', icon: '🦠', labelKey: 'cytologyQaTab.tiles.hpvPositivity', color: '#65A30D' },
+  { key: 'mol-qc-failure', icon: '🧪', labelKey: 'cytologyQaTab.tiles.molQcFailure', color: '#B91C1C' },
+  { key: 'mol-lot-trend', icon: '📈', labelKey: 'cytologyQaTab.tiles.molLotTrend', color: '#9333EA' },
+  { key: 'apac-pt', icon: '🌏', labelKey: 'cytologyQaTab.tiles.apacPt', color: '#0891B2' },
 ];
 
 // Real, per direct follow-up: "we don't see the records themselves" —
@@ -77,91 +86,106 @@ const REPORT_TILES: { key: CytologyQaReportKey; label: string; color: string }[]
 // comparisons a percentage summarizes. Same real .ps-conf-table
 // pattern this page's own Financials tables already use, not a new,
 // competing table style.
-const ComparisonDetailTable: React.FC<{ comparisons: CytologyQaAggregateReport['comparisons'] }> = ({ comparisons }) => (
-  <div className="ps-conf-table-wrap" style={{ marginTop: 12 }}>
+const ComparisonDetailTable: React.FC<{ comparisons: CytologyQaAggregateReport['comparisons'] }> = ({ comparisons }) => {
+  const { t } = useTranslation();
+  return (
+  <div className="ps-conf-table-wrap ps-qa-table-wrap--spaced">
     <div className="ps-conf-table-scroll">
       <table className="ps-conf-table">
         <thead className="ps-conf-thead-sticky">
           <tr>
-            <th className="ps-conf-th">Case</th>
-            <th className="ps-conf-th">Initial Screen</th>
-            <th className="ps-conf-th">Follow-Up Review</th>
-            <th className="ps-conf-th">Result</th>
-            <th className="ps-conf-th">Adequacy</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.case')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.comparisonTable.initialScreen')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.comparisonTable.followUpReview')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.comparisonTable.result')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.comparisonTable.adequacy')}</th>
           </tr>
         </thead>
         <tbody>
           {comparisons.map((c, i) => {
-            const level = LEVEL_LABEL[c.level] ?? { text: c.level, color: '#9ca3af' };
+            const level = LEVEL_LABEL[c.level];
+            const levelText = level ? t(level.textKey) : c.level;
+            const levelColor = level ? level.color : '#9ca3af';
             return (
               <tr key={`${c.caseId}-${i}`} className="ps-conf-tr">
                 <td className="ps-conf-td" data-phi="accession">{c.caseId}</td>
                 <td className="ps-conf-td">
                   <div>{c.initialInterpretationLabel}</div>
-                  <div style={{ fontSize: 11, color: '#6b7280' }}>{c.initialReviewerName ?? '—'}</div>
+                  <div className="ps-qa-subtext">{c.initialReviewerName ?? '—'}</div>
                 </td>
                 <td className="ps-conf-td">
                   <div>{c.followUpInterpretationLabel}</div>
-                  <div style={{ fontSize: 11, color: '#6b7280' }}>{c.followUpReviewerName ?? '—'}</div>
+                  <div className="ps-qa-subtext">{c.followUpReviewerName ?? '—'}</div>
                 </td>
                 <td className="ps-conf-td">
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: `${level.color}18`, color: level.color, border: `1px solid ${level.color}33` }}>
-                    {level.text}{c.majorSubtype ? ` — ${c.majorSubtype.replace(/_/g, ' ')}` : ''}
+                  <span className="ps-qa-badge" style={{ '--qa-badge-color': levelColor } as React.CSSProperties}>
+                    {levelText}{c.majorSubtype ? ` — ${c.majorSubtype.replace(/_/g, ' ')}` : ''}
                   </span>
                 </td>
-                <td className="ps-conf-td">{c.adequacyDiscrepancy ? 'Discrepant' : '—'}</td>
+                <td className="ps-conf-td">{c.adequacyDiscrepancy ? t('cytologyQaTab.comparisonTable.discrepant') : '—'}</td>
               </tr>
             );
           })}
           {comparisons.length === 0 && (
-            <tr><td className="ps-conf-empty-row" colSpan={5}>No comparisons on file for this report yet.</td></tr>
+            <tr><td className="ps-conf-empty-row" colSpan={5}>{t('cytologyQaTab.comparisonTable.noComparisonsYet')}</td></tr>
           )}
         </tbody>
       </table>
     </div>
   </div>
-);
+  );
+};
 
-const ReportCard: React.FC<{ title: string; report: CytologyQaAggregateReport }> = ({ title, report }) => (
-  <div style={{ background: '#161616', border: '1px solid #2a2a2a', borderRadius: 10, padding: 20 }}>
-    <div style={{ fontSize: 14, fontWeight: 700, color: '#e5e5e5', marginBottom: 14 }}>{title}</div>
-    <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+const ReportCard: React.FC<{ titleKey: string; titleCode?: string; report: CytologyQaAggregateReport }> = ({ titleKey, titleCode, report }) => {
+  const { t } = useTranslation();
+  return (
+  <div className="ps-qa-report-card">
+    <div className="ps-qa-report-card-title">{t(titleKey)}{titleCode ? ` (${titleCode})` : ''}</div>
+    <div className="ps-qa-report-card-stats">
       <div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: '#009E73' }}>{pct(report.overallAgreementPercent)}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af' }}>Overall Agreement</div>
+        <div className="ps-qa-stat-value ps-qa-stat-value--teal">{pct(report.overallAgreementPercent)}</div>
+        <div className="ps-qa-stat-label">{t('cytologyQaTab.reportCard.overallAgreement')}</div>
       </div>
       <div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: '#38bdf8' }}>{pct(report.majorConcordancePercent)}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af' }}>Major Concordance</div>
+        <div className="ps-qa-stat-value ps-qa-stat-value--blue">{pct(report.majorConcordancePercent)}</div>
+        <div className="ps-qa-stat-label">{t('cytologyQaTab.reportCard.majorConcordance')}</div>
       </div>
       <div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: '#e5e5e5' }}>{report.totalCompared}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af' }}>Cases Compared</div>
+        <div className="ps-qa-stat-value ps-qa-stat-value--plain">{report.totalCompared}</div>
+        <div className="ps-qa-stat-label">{t('cytologyQaTab.reportCard.casesCompared')}</div>
       </div>
     </div>
-    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#9ca3af', flexWrap: 'wrap' }}>
-      <span>Exact: <b style={{ color: '#e5e5e5' }}>{report.exactCount}</b></span>
-      <span>Minor: <b style={{ color: '#e5e5e5' }}>{report.minorDiscrepancyCount}</b></span>
-      <span>Major: <b style={{ color: '#ef4444' }}>{report.majorDiscrepancyCount}</b></span>
-      <span>False Negative: <b style={{ color: '#ef4444' }}>{report.majorFalseNegativeCount}</b> ({pct(report.falseNegativeRatePercent)})</span>
-      <span>False Positive: <b style={{ color: '#f59e0b' }}>{report.majorFalsePositiveCount}</b></span>
-      <span>Adequacy Discrepancy: <b style={{ color: '#e5e5e5' }}>{report.adequacyDiscrepancyCount}</b></span>
-      <span>Diagnostic Upgrade: <b style={{ color: '#f59e0b' }}>{report.diagnosticUpgradeCount}</b></span>
-      <span>Diagnostic Downgrade: <b style={{ color: '#ef4444' }}>{report.diagnosticDowngradeCount}</b></span>
+    <div className="ps-qa-report-card-breakdown">
+      <span>{t('cytologyQaTab.level.exact')}: <b className="ps-qa-breakdown-value">{report.exactCount}</b></span>
+      <span>{t('cytologyQaTab.level.minor')}: <b className="ps-qa-breakdown-value">{report.minorDiscrepancyCount}</b></span>
+      <span>{t('cytologyQaTab.level.major')}: <b className="ps-qa-breakdown-value--danger">{report.majorDiscrepancyCount}</b></span>
+      <span>{t('cytologyQaTab.reportCard.falseNegative')}: <b className="ps-qa-breakdown-value--danger">{report.majorFalseNegativeCount}</b> ({pct(report.falseNegativeRatePercent)})</span>
+      <span>{t('cytologyQaTab.reportCard.falsePositive')}: <b className="ps-qa-breakdown-value--warn">{report.majorFalsePositiveCount}</b></span>
+      <span>{t('cytologyQaTab.reportCard.adequacyDiscrepancy')}: <b className="ps-qa-breakdown-value">{report.adequacyDiscrepancyCount}</b></span>
+      <span>{t('cytologyQaTab.reportCard.diagnosticUpgrade')}: <b className="ps-qa-breakdown-value--warn">{report.diagnosticUpgradeCount}</b></span>
+      <span>{t('cytologyQaTab.reportCard.diagnosticDowngrade')}: <b className="ps-qa-breakdown-value--danger">{report.diagnosticDowngradeCount}</b></span>
     </div>
     <ComparisonDetailTable comparisons={report.comparisons} />
   </div>
-);
+  );
+};
 
 // CYT-QA-01 — CT Statistical Comparison.
-const CtStatisticalComparisonTable: React.FC<{ rows: CytologyCtStatisticalComparisonRow[] }> = ({ rows }) => (
+const CtStatisticalComparisonTable: React.FC<{ rows: CytologyCtStatisticalComparisonRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-conf-table-wrap">
     <div className="ps-conf-table-scroll">
       <table className="ps-conf-table">
         <thead className="ps-conf-thead-sticky">
           <tr>
-            <th className="ps-conf-th">Cytotechnologist</th>
-            <th className="ps-conf-th">Total Screened</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.cytotechnologist')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.ctStatsTable.totalScreened')}</th>
+            {/* Unsat/NILM/ASC-US/ASC-H/LSIL/HSIL+ are standardized Bethesda
+                System cytology diagnostic-category abbreviations — real,
+                internationally recognized clinical nomenclature, left
+                untranslated exactly like CPT codes and other fixed
+                clinical vocabulary elsewhere in this sweep. */}
             <th className="ps-conf-th">Unsat %</th>
             <th className="ps-conf-th">NILM %</th>
             <th className="ps-conf-th">ASC-US %</th>
@@ -169,8 +193,8 @@ const CtStatisticalComparisonTable: React.FC<{ rows: CytologyCtStatisticalCompar
             <th className="ps-conf-th">LSIL %</th>
             <th className="ps-conf-th">HSIL+ %</th>
             <th className="ps-conf-th">ASC-US:LSIL</th>
-            <th className="ps-conf-th">Lab Avg</th>
-            <th className="ps-conf-th">Variance</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.ctStatsTable.labAvg')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.ctStatsTable.variance')}</th>
           </tr>
         </thead>
         <tbody>
@@ -188,25 +212,27 @@ const CtStatisticalComparisonTable: React.FC<{ rows: CytologyCtStatisticalCompar
               <td className="ps-conf-td">{r.labAvgAscusLsilRatio === null ? '—' : num(r.labAvgAscusLsilRatio)}</td>
               <td className="ps-conf-td">
                 {r.varianceFlag ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>Outlier</span>
+                  <span className="ps-qa-badge ps-qa-badge--danger">{t('cytologyQaTab.outlierBadge')}</span>
                 ) : '—'}
               </td>
             </tr>
           ))}
-          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={11}>No real primary-screen reviews on file for this scope yet.</td></tr>)}
+          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={11}>{t('cytologyQaTab.ctStatsTable.noReviewsYet')}</td></tr>)}
         </tbody>
       </table>
     </div>
   </div>
-);
+  );
+};
 
 // MOL-QA-03 — ASC-US / HPV Reflex Concordance.
 const AscusHpvReflexTable: React.FC<{ rows: CytologyAscusHpvReflexRow[] }> = ({ rows }) => {
-  const OUTLIER_LABEL: Record<string, { text: string; color: string }> = {
-    normal: { text: 'Normal', color: '#10B981' },
-    under_calling: { text: 'Under-calling', color: '#f59e0b' },
-    over_calling: { text: 'Over-calling', color: '#ef4444' },
-    insufficient_data: { text: 'Insufficient Data', color: '#6b7280' },
+  const { t } = useTranslation();
+  const OUTLIER_LABEL: Record<string, { textKey: string; color: string }> = {
+    normal: { textKey: 'cytologyQaTab.ascusHpvTable.outlier.normal', color: '#10B981' },
+    under_calling: { textKey: 'cytologyQaTab.ascusHpvTable.outlier.underCalling', color: '#f59e0b' },
+    over_calling: { textKey: 'cytologyQaTab.ascusHpvTable.outlier.overCalling', color: '#ef4444' },
+    insufficient_data: { textKey: 'cytologyQaTab.ascusHpvTable.outlier.insufficientData', color: '#6b7280' },
   };
   return (
     <div className="ps-conf-table-wrap">
@@ -214,13 +240,13 @@ const AscusHpvReflexTable: React.FC<{ rows: CytologyAscusHpvReflexRow[] }> = ({ 
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Cytotechnologist</th>
-              <th className="ps-conf-th">Total ASC-US</th>
-              <th className="ps-conf-th">Reflex HPV Ordered</th>
-              <th className="ps-conf-th">Reflex Order Rate</th>
-              <th className="ps-conf-th">HPV+ Count</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.cytotechnologist')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ascusHpvTable.totalAscus')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ascusHpvTable.reflexHpvOrdered')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ascusHpvTable.reflexOrderRate')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ascusHpvTable.hpvPositiveCount')}</th>
               <th className="ps-conf-th">ASC-US HPV+ %</th>
-              <th className="ps-conf-th">Status</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -235,12 +261,12 @@ const AscusHpvReflexTable: React.FC<{ rows: CytologyAscusHpvReflexRow[] }> = ({ 
                   <td className="ps-conf-td">{r.hpvPositiveCount}</td>
                   <td className="ps-conf-td">{pct(r.ascusHpvPosPercent)}</td>
                   <td className="ps-conf-td">
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: `${status.color}18`, color: status.color, border: `1px solid ${status.color}33` }}>{status.text}</span>
+                    <span className="ps-qa-badge" style={{ '--qa-badge-color': status.color } as React.CSSProperties}>{t(status.textKey)}</span>
                   </td>
                 </tr>
               );
             })}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>No real ASC-US calls on file for this scope yet.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>{t('cytologyQaTab.ascusHpvTable.noCallsYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -249,20 +275,22 @@ const AscusHpvReflexTable: React.FC<{ rows: CytologyAscusHpvReflexRow[] }> = ({ 
 };
 
 // CYT-QA-05 — Workload Tracking & Exceedance.
-const WorkloadTrackingTable: React.FC<{ rows: CytologyWorkloadTrackingRow[] }> = ({ rows }) => (
+const WorkloadTrackingTable: React.FC<{ rows: CytologyWorkloadTrackingRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-conf-table-wrap">
     <div className="ps-conf-table-scroll">
       <table className="ps-conf-table">
         <thead className="ps-conf-thead-sticky">
           <tr>
-            <th className="ps-conf-th">Cytotechnologist</th>
-            <th className="ps-conf-th">Shift Date</th>
-            <th className="ps-conf-th">Hours Screened</th>
-            <th className="ps-conf-th">Manual Slides</th>
-            <th className="ps-conf-th">Imager Slides</th>
-            <th className="ps-conf-th">Total Equiv. Slides</th>
-            <th className="ps-conf-th">Max Allowed</th>
-            <th className="ps-conf-th">Exceedance</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.cytotechnologist')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.shiftDate')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.hoursScreened')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.manualSlides')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.imagerSlides')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.totalEquivSlides')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.maxAllowed')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.workloadTable.exceedance')}</th>
           </tr>
         </thead>
         <tbody>
@@ -277,34 +305,37 @@ const WorkloadTrackingTable: React.FC<{ rows: CytologyWorkloadTrackingRow[] }> =
               <td className="ps-conf-td">{num(r.maxAllowedVolume, 1)}</td>
               <td className="ps-conf-td">
                 {r.exceedanceFlag ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>Exceeded</span>
+                  <span className="ps-qa-badge ps-qa-badge--danger">{t('cytologyQaTab.exceededBadge')}</span>
                 ) : '—'}
               </td>
             </tr>
           ))}
-          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>No real workload ledger entries on file for this scope yet.</td></tr>)}
+          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>{t('cytologyQaTab.workloadTable.noLedgerEntriesYet')}</td></tr>)}
         </tbody>
       </table>
     </div>
   </div>
-);
+  );
+};
 
 // GYN Cytology Secondary Screening Audit — real, per direct follow-up
 // ("Yes, wire cytology"): the first real view of QaActivityRecord
 // entries this activity type ever produces, closing the "recorded but
 // never surfaced" gap the wiring itself would otherwise have left.
-const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = ({ records }) => (
+const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = ({ records }) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-conf-table-wrap">
     <div className="ps-conf-table-scroll">
       <table className="ps-conf-table">
         <thead className="ps-conf-thead-sticky">
           <tr>
-            <th className="ps-conf-th">Case</th>
-            <th className="ps-conf-th">Trigger</th>
-            <th className="ps-conf-th">Outcome</th>
-            <th className="ps-conf-th">Added by Event</th>
-            <th className="ps-conf-th">Missed by Event</th>
-            <th className="ps-conf-th">Reviewer</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.case')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.secondaryScreeningTable.trigger')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.outcome')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.secondaryScreeningTable.addedByEvent')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.secondaryScreeningTable.missedByEvent')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.secondaryScreeningTable.reviewer')}</th>
           </tr>
         </thead>
         <tbody>
@@ -313,8 +344,8 @@ const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = 
               <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
               <td className="ps-conf-td">{String(r.fieldValues.trigger ?? '—')}</td>
               <td className="ps-conf-td">
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: r.outcome === 'concordant' ? '#10B98118' : '#ef444418', color: r.outcome === 'concordant' ? '#10B981' : '#ef4444', border: `1px solid ${r.outcome === 'concordant' ? '#10B98133' : '#ef444433'}` }}>
-                  {r.outcome === 'concordant' ? 'Concordant' : 'Discordant'}
+                <span className={`ps-qa-badge ${r.outcome === 'concordant' ? 'ps-qa-badge--success' : 'ps-qa-badge--danger'}`}>
+                  {r.outcome === 'concordant' ? t('cytologyQaTab.concordantBadge') : t('cytologyQaTab.discordantBadge')}
                 </span>
               </td>
               <td className="ps-conf-td">{String(r.fieldValues.addedByEvent ?? '') || '—'}</td>
@@ -322,12 +353,13 @@ const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = 
               <td className="ps-conf-td">{r.recordedBy.userName}</td>
             </tr>
           ))}
-          {records.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={6}>No real secondary screening events on file for this scope yet.</td></tr>)}
+          {records.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={6}>{t('cytologyQaTab.secondaryScreeningTable.noEventsYet')}</td></tr>)}
         </tbody>
       </table>
     </div>
   </div>
-);
+  );
+};
 
 // CYT-QA-04 — Cyto-Histologic Correlation and Discrepancy Matrix.
 // Real, per direct guidance ("Make sure it can be downloaded and
@@ -335,11 +367,22 @@ const SecondaryScreeningAuditTable: React.FC<{ records: QaActivityRecord[] }> = 
 // existing exportQaReportRows XLSX utility every other real QA tab
 // already uses) and Print (this report's own dedicated portal-based
 // print view, CytologyHistologyCorrelationPrintView.tsx) actions.
-const CATEGORY_LABEL: Record<string, { text: string; color: string }> = {
-  concordant: { text: 'Concordant', color: '#10B981' },
-  minor_discrepancy: { text: 'Minor Discrepancy', color: '#f59e0b' },
-  major_discrepancy: { text: 'Major Discrepancy', color: '#ef4444' },
-  discordant_unspecified: { text: 'Discordant (unspecified)', color: '#ef4444' },
+const CATEGORY_LABEL: Record<string, { textKey: string; color: string }> = {
+  concordant: { textKey: 'cytologyQaTab.category.concordant', color: '#10B981' },
+  minor_discrepancy: { textKey: 'cytologyQaTab.category.minorDiscrepancy', color: '#f59e0b' },
+  major_discrepancy: { textKey: 'cytologyQaTab.category.majorDiscrepancy', color: '#ef4444' },
+  discordant_unspecified: { textKey: 'cytologyQaTab.category.discordantUnspecified', color: '#ef4444' },
+};
+
+// Fixed English text for the same correlation-category enum, used only
+// for the CSV export column value below — exported/persisted data
+// stays English regardless of the UI's active locale, same convention
+// as every other CSV/XLSX export in this sweep.
+const CATEGORY_LABEL_EXPORT_TEXT: Record<string, string> = {
+  concordant: 'Concordant',
+  minor_discrepancy: 'Minor Discrepancy',
+  major_discrepancy: 'Major Discrepancy',
+  discordant_unspecified: 'Discordant (Unspecified)',
 };
 
 const HistologyCorrelationTable: React.FC<{
@@ -347,19 +390,20 @@ const HistologyCorrelationTable: React.FC<{
   onDownload: () => void;
   onPrint: () => void;
 }> = ({ report, onDownload, onPrint }) => {
+  const { t } = useTranslation();
   if (!report) return null;
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 24, fontSize: 13, color: '#e5e5e5', flexWrap: 'wrap' }}>
-          <div><b>{report.totalCorrelated}</b> Cases Correlated</div>
-          <div><b>{report.concordantCount}</b> Concordant</div>
-          <div><b>{pct(report.correlationRatePercent)}</b> Correlation Rate</div>
-          <div><b>{report.ppvHsilPercent === undefined ? '—' : pct(report.ppvHsilPercent)}</b> PPV (HSIL Cytology → CIN2+ Histology)</div>
+      <div className="ps-qa-histo-summary-row">
+        <div className="ps-qa-histo-summary-stats">
+          <div><b>{report.totalCorrelated}</b> {t('cytologyQaTab.histologyTable.casesCorrelated')}</div>
+          <div><b>{report.concordantCount}</b> {t('cytologyQaTab.category.concordant')}</div>
+          <div><b>{pct(report.correlationRatePercent)}</b> {t('cytologyQaTab.histologyTable.correlationRate')}</div>
+          <div><b>{report.ppvHsilPercent === undefined ? '—' : pct(report.ppvHsilPercent)}</b> {t('cytologyQaTab.histologyTable.ppvHsil')}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ps-conf-btn-secondary" onClick={onDownload}>⬇️ Download</button>
-          <button className="ps-conf-btn-secondary" onClick={onPrint}>🖨️ Print</button>
+        <div className="ps-qa-histo-summary-actions">
+          <button className="ps-conf-btn-secondary" onClick={onDownload}>⬇️ {t('cytologyQaTab.histologyTable.downloadButton')}</button>
+          <button className="ps-conf-btn-secondary" onClick={onPrint}>🖨️ {t('cytologyQaTab.histologyTable.printButton')}</button>
         </div>
       </div>
       <div className="ps-conf-table-wrap">
@@ -367,15 +411,15 @@ const HistologyCorrelationTable: React.FC<{
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">Patient MRN</th>
-                <th className="ps-conf-th">Cyto Accession</th>
-                <th className="ps-conf-th">Cyto Date</th>
-                <th className="ps-conf-th">Cyto Diagnosis</th>
-                <th className="ps-conf-th">Hist Accession</th>
-                <th className="ps-conf-th">Hist Date</th>
-                <th className="ps-conf-th">Hist Diagnosis</th>
-                <th className="ps-conf-th">Days to Biopsy</th>
-                <th className="ps-conf-th">Correlation Category</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.patientMrn')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.cytoAccession')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.cytoDate')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.cytoDiagnosis')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.histAccession')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.histDate')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.histDiagnosis')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.daysToBiopsy')}</th>
+                <th className="ps-conf-th">{t('cytologyQaTab.histologyTable.correlationCategory')}</th>
               </tr>
             </thead>
             <tbody>
@@ -392,12 +436,12 @@ const HistologyCorrelationTable: React.FC<{
                     <td className="ps-conf-td">{r.histDiagnosis}</td>
                     <td className="ps-conf-td">{r.daysToBiopsy ?? '—'}</td>
                     <td className="ps-conf-td">
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: `${cat.color}18`, color: cat.color, border: `1px solid ${cat.color}33` }}>{cat.text}</span>
+                      <span className="ps-qa-badge" style={{ '--qa-badge-color': cat.color } as React.CSSProperties}>{t(cat.textKey)}</span>
                     </td>
                   </tr>
                 );
               })}
-              {report.rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={9}>No real cyto-histologic correlations recorded for this scope yet.</td></tr>)}
+              {report.rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={9}>{t('cytologyQaTab.histologyTable.noCorrelationsYet')}</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -407,19 +451,21 @@ const HistologyCorrelationTable: React.FC<{
 };
 
 // US-QA-02 — Unscreened Backlog & TAT.
-const UnscreenedBacklogTable: React.FC<{ rows: CytologyUnscreenedBacklogRow[] }> = ({ rows }) => (
+const UnscreenedBacklogTable: React.FC<{ rows: CytologyUnscreenedBacklogRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-conf-table-wrap">
     <div className="ps-conf-table-scroll">
       <table className="ps-conf-table">
         <thead className="ps-conf-thead-sticky">
           <tr>
-            <th className="ps-conf-th">Case</th>
-            <th className="ps-conf-th">Accession</th>
-            <th className="ps-conf-th">Collected</th>
-            <th className="ps-conf-th">Received</th>
-            <th className="ps-conf-th">Status</th>
-            <th className="ps-conf-th">Elapsed Hours</th>
-            <th className="ps-conf-th">TAT Exceeded</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.case')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.accession')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.unscreenedBacklogTable.collected')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.unscreenedBacklogTable.received')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.headers.status')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.unscreenedBacklogTable.elapsedHours')}</th>
+            <th className="ps-conf-th">{t('cytologyQaTab.unscreenedBacklogTable.tatExceeded')}</th>
           </tr>
         </thead>
         <tbody>
@@ -429,38 +475,40 @@ const UnscreenedBacklogTable: React.FC<{ rows: CytologyUnscreenedBacklogRow[] }>
               <td className="ps-conf-td">{r.accessionId ?? '—'}</td>
               <td className="ps-conf-td">{r.collectionDate ? new Date(r.collectionDate).toLocaleDateString() : '—'}</td>
               <td className="ps-conf-td">{r.receivedDate ? new Date(r.receivedDate).toLocaleDateString() : '—'}</td>
-              <td className="ps-conf-td">{r.currentStatus === 'unscreened' ? 'Unscreened' : 'Pending Path Review'}</td>
+              <td className="ps-conf-td">{r.currentStatus === 'unscreened' ? t('cytologyQaTab.unscreenedBacklogTable.unscreenedStatus') : t('cytologyQaTab.unscreenedBacklogTable.pendingPathReviewStatus')}</td>
               <td className="ps-conf-td">{r.elapsedHours !== undefined ? r.elapsedHours.toFixed(1) : '—'}</td>
               <td className="ps-conf-td">
                 {r.tatExceeded ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>Exceeded</span>
+                  <span className="ps-qa-badge ps-qa-badge--danger">{t('cytologyQaTab.exceededBadge')}</span>
                 ) : '—'}
               </td>
             </tr>
           ))}
-          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>No real cytology specimens currently in backlog for this scope.</td></tr>)}
+          {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>{t('cytologyQaTab.unscreenedBacklogTable.noBacklogYet')}</td></tr>)}
         </tbody>
       </table>
     </div>
   </div>
-);
+  );
+};
 
 // UK-QA-01 — Primary HPV Screening Failsafe Audit.
-const PrimaryHpvFailsafeAuditTable: React.FC<{ rows: CytologyPrimaryHpvFailsafeAuditRow[] }> = ({ rows }) => (
+const PrimaryHpvFailsafeAuditTable: React.FC<{ rows: CytologyPrimaryHpvFailsafeAuditRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      Failsafe referral tracking (direct colposcopy referrals, non-responded alerts) is not shown — no mechanism exists in this
-      app yet for tracking whether a positive result's required follow-up action was actually taken.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.ukFailsafeTable.disclaimer')}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Jurisdiction</th>
-              <th className="ps-conf-th">HPV Primary Positives</th>
-              <th className="ps-conf-th">Cytology Triage Performed</th>
-              <th className="ps-conf-th">Inadequate Cytology Rate</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ukFailsafeTable.jurisdiction')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ukFailsafeTable.hpvPrimaryPositives')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ukFailsafeTable.cytologyTriagePerformed')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.ukFailsafeTable.inadequateCytologyRate')}</th>
             </tr>
           </thead>
           <tbody>
@@ -472,33 +520,33 @@ const PrimaryHpvFailsafeAuditTable: React.FC<{ rows: CytologyPrimaryHpvFailsafeA
                 <td className="ps-conf-td">{pct(r.inadequateCytologyRatePercent)}</td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={4}>No real UK primary HPV screening data on file for this scope.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={4}>{t('cytologyQaTab.ukFailsafeTable.noDataYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // EU-QA-01 — Trans-National Compliance Matrix.
-const EuComplianceMatrixTable: React.FC<{ rows: CytologyEuComplianceMatrixRow[] }> = ({ rows }) => (
+const EuComplianceMatrixTable: React.FC<{ rows: CytologyEuComplianceMatrixRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      National_Registry_ID, Specimen_Type, and Screening_Interval_Adherence_Years are not shown — no corresponding field
-      exists in this app for the first two, and the third is genuinely age-dependent per country (France, Germany,
-      Netherlands, Belgium each have their own real, age-banded intervals), which this app cannot yet compute correctly for
-      every country here.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.euComplianceTable.disclaimer')}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Country</th>
-              <th className="ps-conf-th">Total Cases</th>
-              <th className="ps-conf-th">HPV Primary</th>
-              <th className="ps-conf-th">HPV Co-Test</th>
-              <th className="ps-conf-th">Internal Audit Non-Conformities</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.euComplianceTable.country')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.euComplianceTable.totalCases')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.euComplianceTable.hpvPrimary')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.euComplianceTable.hpvCoTest')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.euComplianceTable.internalAuditNonConformities')}</th>
             </tr>
           </thead>
           <tbody>
@@ -511,46 +559,47 @@ const EuComplianceMatrixTable: React.FC<{ rows: CytologyEuComplianceMatrixRow[] 
                 <td className="ps-conf-td">{r.internalAuditNonConformityCount}</td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={5}>No real EU cytology data on file for this scope.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={5}>{t('cytologyQaTab.euComplianceTable.noDataYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // MOL-QA-01 — HPV Positivity Monitor.
-const INDICATION_LABEL: Record<string, string> = {
-  primary_screening: 'Primary Screening', co_testing: 'Co-Testing',
-  ascus_triage: 'ASC-US Triage', post_treatment_follow_up: 'Post-Treatment Follow-up',
+const INDICATION_LABEL_KEY: Record<string, string> = {
+  primary_screening: 'cytologyQaTab.indication.primaryScreening', co_testing: 'cytologyQaTab.indication.coTesting',
+  ascus_triage: 'cytologyQaTab.indication.ascusTriage', post_treatment_follow_up: 'cytologyQaTab.indication.postTreatmentFollowUp',
 };
-const HpvPositivityMonitorTable: React.FC<{ rows: CytologyHpvPositivityMonitorRow[] }> = ({ rows }) => (
+const HpvPositivityMonitorTable: React.FC<{ rows: CytologyHpvPositivityMonitorRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      Test_Assay_Name (the commercial platform — Roche cobas, Hologic Aptima, etc.) is not shown — no field for which
-      platform produced a result exists anywhere in this app. Variance is shown relative to this report's own aggregate
-      mean across sites, not an external regional baseline this app has no access to.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.hpvPositivityTable.disclaimer')}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Testing Site</th>
-              <th className="ps-conf-th">Indication</th>
-              <th className="ps-conf-th">Total Tested</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.hpvPositivityTable.testingSite')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.hpvPositivityTable.indication')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.hpvPositivityTable.totalTested')}</th>
               <th className="ps-conf-th">HR-HPV+ %</th>
               <th className="ps-conf-th">HPV16 %</th>
               <th className="ps-conf-th">HPV18/45 %</th>
-              <th className="ps-conf-th">Other HR %</th>
-              <th className="ps-conf-th">Variance vs. Mean</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.hpvPositivityTable.otherHrPercent')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.hpvPositivityTable.varianceVsMean')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} className="ps-conf-tr">
                 <td className="ps-conf-td">{r.testingSite}</td>
-                <td className="ps-conf-td">{INDICATION_LABEL[r.indicationType]}</td>
+                <td className="ps-conf-td">{t(INDICATION_LABEL_KEY[r.indicationType])}</td>
                 <td className="ps-conf-td">{r.totalHpvTested}</td>
                 <td className="ps-conf-td">{pct(r.hrHpvPositivityPercent)}</td>
                 <td className="ps-conf-td">{pct(r.hpv16PositivityPercent)}</td>
@@ -559,38 +608,39 @@ const HpvPositivityMonitorTable: React.FC<{ rows: CytologyHpvPositivityMonitorRo
                 <td className="ps-conf-td">{r.positivityVarianceFromAggregateMean >= 0 ? '+' : ''}{r.positivityVarianceFromAggregateMean.toFixed(1)}pp</td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>No real completed HPV tests on file for this scope.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>{t('cytologyQaTab.hpvPositivityTable.noDataYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // MOL-QA-02 — Internal Control Failure, Invalid, and Inhibitor Rate.
 // Real, per direct instruction: reads real, synthetic seed data from
 // mockMolecularQcRunRecordService.ts so this capability can actually
 // be demoed.
-const MolecularQcFailureRateTable: React.FC<{ rows: CytologyMolecularQcFailureRateRow[] }> = ({ rows }) => (
+const MolecularQcFailureRateTable: React.FC<{ rows: CytologyMolecularQcFailureRateRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      Reads synthetic, seeded instrument run data (two demo instruments, CYTO-1/CYTO-2) so this capability can be
-      demonstrated. Threshold_Exceeded uses a real, configurable 5% default — a stated default, not a fabricated
-      regulatory number.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.molQcFailureTable.disclaimer')}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Run Date</th>
-              <th className="ps-conf-th">Instrument</th>
-              <th className="ps-conf-th">Reagent Lot</th>
-              <th className="ps-conf-th">Samples Run</th>
-              <th className="ps-conf-th">Invalid Controls</th>
-              <th className="ps-conf-th">Inhibitors</th>
-              <th className="ps-conf-th">Failure Rate</th>
-              <th className="ps-conf-th">Threshold</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.runDate')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.instrument')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.reagentLot')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.samplesRun')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.invalidControls')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.inhibitors')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.failureRate')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.threshold')}</th>
             </tr>
           </thead>
           <tbody>
@@ -605,39 +655,41 @@ const MolecularQcFailureRateTable: React.FC<{ rows: CytologyMolecularQcFailureRa
                 <td className="ps-conf-td">{pct(r.overallFailureRatePercent)}</td>
                 <td className="ps-conf-td">
                   {r.thresholdExceeded ? (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>Exceeded</span>
+                    <span className="ps-qa-badge ps-qa-badge--danger">{t('cytologyQaTab.exceededBadge')}</span>
                   ) : '—'}
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>No molecular QC run data on file.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>{t('cytologyQaTab.molQcFailureTable.noDataYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // MOL-QA-04 — Molecular Assay Lot-to-Lot and Run QC Trend.
-const MolecularLotToLotTrendTable: React.FC<{ rows: CytologyMolecularLotToLotTrendRow[] }> = ({ rows }) => (
+const MolecularLotToLotTrendTable: React.FC<{ rows: CytologyMolecularLotToLotTrendRow[] }> = ({ rows }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      Reads the same synthetic, seeded instrument run data. Pass/Fail uses a real, configurable ~1.0 Ct default — a
-      commonly-cited practical rule of thumb, not a single universal manufacturer or regulatory standard.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.molLotTrendTable.disclaimer')}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Instrument</th>
-              <th className="ps-conf-th">Lot (Old)</th>
-              <th className="ps-conf-th">Lot (New)</th>
-              <th className="ps-conf-th">Control Level</th>
-              <th className="ps-conf-th">Mean Ct (Old)</th>
-              <th className="ps-conf-th">Mean Ct (New)</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molQcFailureTable.instrument')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molLotTrendTable.lotOld')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molLotTrendTable.lotNew')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molLotTrendTable.controlLevel')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molLotTrendTable.meanCtOld')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.molLotTrendTable.meanCtNew')}</th>
               <th className="ps-conf-th">Δ Ct</th>
-              <th className="ps-conf-th">Status</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -651,44 +703,44 @@ const MolecularLotToLotTrendTable: React.FC<{ rows: CytologyMolecularLotToLotTre
                 <td className="ps-conf-td">{r.meanCtNew.toFixed(1)}</td>
                 <td className="ps-conf-td">{r.deltaCtDifference >= 0 ? '+' : ''}{r.deltaCtDifference.toFixed(2)}</td>
                 <td className="ps-conf-td">
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: r.passFailStatus === 'pass' ? '#10B98118' : '#ef444418', color: r.passFailStatus === 'pass' ? '#10B981' : '#ef4444', border: `1px solid ${r.passFailStatus === 'pass' ? '#10B98133' : '#ef444433'}` }}>
-                    {r.passFailStatus === 'pass' ? 'Pass' : 'Fail'}
+                  <span className={`ps-qa-badge ${r.passFailStatus === 'pass' ? 'ps-qa-badge--success' : 'ps-qa-badge--danger'}`}>
+                    {r.passFailStatus === 'pass' ? t('cytologyQaTab.passBadge') : t('cytologyQaTab.failBadge')}
                   </span>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>No real lot changeovers on file yet.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={8}>{t('cytologyQaTab.molLotTrendTable.noLotChangeoversYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // APAC-QA-01 — External Proficiency Testing (EQA).
-const ApacProficiencyTestTable: React.FC<{ report: CytologyApacProficiencyTestReport }> = ({ report }) => (
+const ApacProficiencyTestTable: React.FC<{ report: CytologyApacProficiencyTestReport }> = ({ report }) => {
+  const { t } = useTranslation();
+  return (
   <div>
-    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, maxWidth: 680 }}>
-      Reads real, received grades from an external EQA provider (CAP, RCPAQAP, etc.) — PathScribe never computes or
-      stores the known answer itself; the provider is the sole source of the grade. "Flagged" applies the real,
-      researched CLIA rule directly: two unsatisfactory/no-response events out of three consecutive events triggers
-      a real deficiency citation.
+    <div className="ps-qa-disclaimer">
+      {t('cytologyQaTab.apacPtTable.disclaimer')}
     </div>
-    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
-      {report.satisfactoryCount} / {report.totalEvents} satisfactory ({pct(report.satisfactoryRatePercent)})
+    <div className="ps-qa-apac-summary">
+      {t('cytologyQaTab.apacPtTable.satisfactorySummary', { satisfactory: report.satisfactoryCount, total: report.totalEvents, rate: pct(report.satisfactoryRatePercent) })}
     </div>
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Received</th>
-              <th className="ps-conf-th">Accession</th>
-              <th className="ps-conf-th">Provider</th>
-              <th className="ps-conf-th">Challenge</th>
-              <th className="ps-conf-th">Outcome</th>
-              <th className="ps-conf-th">Score Detail</th>
-              <th className="ps-conf-th">Deficiency</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.apacPtTable.received')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.accession')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.apacPtTable.provider')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.apacPtTable.challenge')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.outcome')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.apacPtTable.scoreDetail')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.apacPtTable.deficiency')}</th>
             </tr>
           </thead>
           <tbody>
@@ -699,51 +751,54 @@ const ApacProficiencyTestTable: React.FC<{ report: CytologyApacProficiencyTestRe
                 <td className="ps-conf-td">{r.provider}</td>
                 <td className="ps-conf-td">{r.challengeReferenceId}</td>
                 <td className="ps-conf-td">
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: r.outcome === 'satisfactory' ? '#10B98118' : '#ef444418', color: r.outcome === 'satisfactory' ? '#10B981' : '#ef4444', border: `1px solid ${r.outcome === 'satisfactory' ? '#10B98133' : '#ef444433'}` }}>
-                    {r.outcome.replace('_', ' ')}
+                  <span className={`ps-qa-badge ${r.outcome === 'satisfactory' ? 'ps-qa-badge--success' : 'ps-qa-badge--danger'}`}>
+                    {r.outcome === 'satisfactory' ? t('cytologyQaTab.apacPtTable.satisfactoryOutcome') : t('cytologyQaTab.apacPtTable.unsatisfactoryOutcome')}
                   </span>
                 </td>
                 <td className="ps-conf-td">{r.scoreDetail ?? '—'}</td>
                 <td className="ps-conf-td">
                   {r.consecutiveDeficiencyFlagged ? (
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>Flagged</span>
+                    <span className="ps-qa-badge ps-qa-badge--danger">{t('cytologyQaTab.apacPtTable.flaggedBadge')}</span>
                   ) : '—'}
                 </td>
               </tr>
             ))}
-            {report.rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>No proficiency-testing grades on file yet.</td></tr>)}
+            {report.rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>{t('cytologyQaTab.apacPtTable.noGradesYet')}</td></tr>)}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // ANZ-QA-01 — Registry Transmission Audit.
+const TRANSMISSION_STATUS_LABEL_KEY: Record<string, { textKey: string; color: string }> = {
+  SENT: { textKey: 'cytologyQaTab.transmissionTable.status.sent', color: '#10B981' },
+  QUEUED: { textKey: 'cytologyQaTab.transmissionTable.status.queued', color: '#f59e0b' },
+  FAILED: { textKey: 'cytologyQaTab.transmissionTable.status.failed', color: '#ef4444' },
+};
+
 const TransmissionAuditTable: React.FC<{ rows: CytologyRegistryTransmissionAuditRow[] }> = ({ rows }) => {
-  const STATUS_LABEL: Record<string, { text: string; color: string }> = {
-    SENT: { text: 'Sent', color: '#10B981' },
-    QUEUED: { text: 'Queued', color: '#f59e0b' },
-    FAILED: { text: 'Failed', color: '#ef4444' },
-  };
+  const { t } = useTranslation();
   return (
     <div className="ps-conf-table-wrap">
       <div className="ps-conf-table-scroll">
         <table className="ps-conf-table">
           <thead className="ps-conf-thead-sticky">
             <tr>
-              <th className="ps-conf-th">Accession</th>
-              <th className="ps-conf-th">MRN</th>
-              <th className="ps-conf-th">HPV Result</th>
-              <th className="ps-conf-th">Cytology Result</th>
-              <th className="ps-conf-th">Transmitted</th>
-              <th className="ps-conf-th">Status</th>
-              <th className="ps-conf-th">Error</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.headers.accession')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.mrn')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.hpvResult')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.cytologyResult')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.transmitted')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.status.header')}</th>
+              <th className="ps-conf-th">{t('cytologyQaTab.transmissionTable.error')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const status = STATUS_LABEL[r.transmissionStatus];
+              const status = TRANSMISSION_STATUS_LABEL_KEY[r.transmissionStatus];
               return (
                 <tr key={`${r.caseId}-${i}`} className="ps-conf-tr">
                   <td className="ps-conf-td" data-phi="accession">{r.accessionNumber}</td>
@@ -752,13 +807,13 @@ const TransmissionAuditTable: React.FC<{ rows: CytologyRegistryTransmissionAudit
                   <td className="ps-conf-td">{r.cytologyResultCode}</td>
                   <td className="ps-conf-td">{r.transmissionTimestamp ?? '—'}</td>
                   <td className="ps-conf-td">
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: `${status.color}18`, color: status.color, border: `1px solid ${status.color}33` }}>{status.text}</span>
+                    <span className="ps-qa-badge" style={{ '--qa-badge-color': status.color } as React.CSSProperties}>{t(status.textKey)}</span>
                   </td>
                   <td className="ps-conf-td">{r.errorReasonCode ?? '—'}</td>
                 </tr>
               );
             })}
-            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>No real registry dispatches on file for this scope yet.</td></tr>)}
+            {rows.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={7}>{t('cytologyQaTab.transmissionTable.noneOnFile')}</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -882,63 +937,65 @@ export const CytologyQaTab: React.FC = () => {
     return () => { cancelled = true; };
   }, [activeReport, scope, transmissionRegistryId]);
 
+  const { t } = useTranslation();
+
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#9ca3af' }}>Scope: {scopeLabel(scope)}</div>
+    <div className="ps-qa-tab-page">
+      <div className="ps-qa-tab-header">
+        <div className="ps-qa-tab-scope-label">{t('cytologyQaTab.scopeLabel', { scope: scopeLabel(scope) })}</div>
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={undefined} />
       </div>
 
-      <div className="ps-qa-tab-tiles" style={{ marginBottom: 20 }}>
-        {REPORT_TILES.map(t => {
-          const isActive = activeReport === t.key;
+      <div className="ps-qa-tab-tiles">
+        {REPORT_TILES.map(tile => {
+          const isActive = activeReport === tile.key;
           return (
             <button
-              key={t.key}
+              key={tile.key}
               className="ps-wl-filter-tile"
-              title={`View: ${t.label}`}
-              onClick={() => setActiveReport(t.key)}
+              title={t('cytologyQaTab.tileViewTooltip', { label: `${tile.icon} ${t(tile.labelKey)}` })}
+              onClick={() => setActiveReport(tile.key)}
               style={{
-                '--tile-bg': isActive ? `${t.color}2e` : `${t.color}0d`,
-                '--tile-border': isActive ? t.color : `${t.color}2e`,
-                '--tile-shadow': isActive ? `0 0 12px ${t.color}66` : 'none',
+                '--tile-bg': isActive ? `${tile.color}2e` : `${tile.color}0d`,
+                '--tile-border': isActive ? tile.color : `${tile.color}2e`,
+                '--tile-shadow': isActive ? `0 0 12px ${tile.color}66` : 'none',
               } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? t.color : '#8899aa' } as React.CSSProperties}>{t.label}</div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': t.color } as React.CSSProperties}>{'\u00A0'}</div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': t.color, '--tile-sublabel-opacity': 0 } as React.CSSProperties}>{'\u00A0'}</div>
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? tile.color : '#8899aa' } as React.CSSProperties}>{tile.icon} {t(tile.labelKey)}</div>
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': tile.color } as React.CSSProperties}>{'\u00A0'}</div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': tile.color, '--tile-sublabel-opacity': 0 } as React.CSSProperties}>{'\u00A0'}</div>
             </button>
           );
         })}
       </div>
 
       {activeReport === 'transmission' && (
-        <div style={{ marginBottom: 12 }}>
-          <label className="ps-label" htmlFor="qa-transmission-registry" style={{ marginRight: 8 }}>Registry</label>
+        <div className="ps-qa-registry-picker">
+          <label className="ps-label ps-mr-8" htmlFor="qa-transmission-registry">{t('cytologyQaTab.registryLabel')}</label>
           <select
             id="qa-transmission-registry"
             className="ps-input-dark"
             value={transmissionRegistryId}
             onChange={e => setTransmissionRegistryId(e.target.value as RegistryId)}
           >
-            <option value="ncsr_australia">Australia — NCSR</option>
-            <option value="kncsp_kccr_korea">South Korea — KNCSP/KCCR</option>
-            <option value="csms_uk">England — CSMS</option>
-            <option value="cervicalcheck_ireland">Ireland — CervicalCheck</option>
-            <option value="palga_netherlands">Netherlands — PALGA</option>
-            <option value="nicsp_northern_ireland">Northern Ireland — NICSP</option>
+            <option value="ncsr_australia">{t('cytologyQaTab.registry.australia')} — NCSR</option>
+            <option value="kncsp_kccr_korea">{t('cytologyQaTab.registry.southKorea')} — KNCSP/KCCR</option>
+            <option value="csms_uk">{t('cytologyQaTab.registry.england')} — CSMS</option>
+            <option value="cervicalcheck_ireland">{t('cytologyQaTab.registry.ireland')} — CervicalCheck</option>
+            <option value="palga_netherlands">{t('cytologyQaTab.registry.netherlands')} — PALGA</option>
+            <option value="nicsp_northern_ireland">{t('cytologyQaTab.registry.northernIreland')} — NICSP</option>
           </select>
         </div>
       )}
 
       {loading ? (
-        <div style={{ padding: 24, color: '#9ca3af' }}>Loading Cytology QA data…</div>
+        <div className="ps-qa-loading">{t('cytologyQaTab.loading')}</div>
       ) : (
         <>
-          {activeReport === 'random' && <ReportCard title="10% Random Rescreening (CYT-QA-02)" report={aggregateReport} />}
-          {activeReport === 'high-risk' && <ReportCard title="Directed / High-Risk Rescreening" report={aggregateReport} />}
-          {activeReport === 'ct-path' && <ReportCard title="CT vs. Pathologist Correlation (US-QA-01)" report={aggregateReport} />}
-          {activeReport === 'peer-review' && <ReportCard title="Post-Sign-Out Peer Review Correlation" report={aggregateReport} />}
+          {activeReport === 'random' && <ReportCard titleKey="cytologyQaTab.reportTitle.random" titleCode="CYT-QA-02" report={aggregateReport} />}
+          {activeReport === 'high-risk' && <ReportCard titleKey="cytologyQaTab.reportTitle.highRisk" report={aggregateReport} />}
+          {activeReport === 'ct-path' && <ReportCard titleKey="cytologyQaTab.reportTitle.ctPath" titleCode="US-QA-01" report={aggregateReport} />}
+          {activeReport === 'peer-review' && <ReportCard titleKey="cytologyQaTab.reportTitle.peerReview" report={aggregateReport} />}
           {activeReport === 'ct-stats' && <CtStatisticalComparisonTable rows={ctStatsReport} />}
           {activeReport === 'ascus-hpv' && <AscusHpvReflexTable rows={ascusHpvReport} />}
           {activeReport === 'workload' && <WorkloadTrackingTable rows={workloadReport} />}
@@ -955,7 +1012,7 @@ export const CytologyQaTab: React.FC = () => {
                   'Cyto Diagnosis': r.cytoDiagnosis, 'Hist Accession': r.histAccessionId ?? '',
                   'Hist Date': r.histDate ? new Date(r.histDate).toLocaleDateString() : '',
                   'Hist Diagnosis': r.histDiagnosis, 'Days to Biopsy': r.daysToBiopsy ?? '',
-                  'Correlation Category': CATEGORY_LABEL[r.correlationCategory].text,
+                  'Correlation Category': CATEGORY_LABEL_EXPORT_TEXT[r.correlationCategory],
                 }));
                 exportQaReportRows(rows, `cyto-histo-correlation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
               }}

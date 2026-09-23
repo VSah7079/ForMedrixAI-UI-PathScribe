@@ -19,7 +19,18 @@
 // common-denominator row.
 // ─────────────────────────────────────────────────────────────────────────────
 
+//
+// i18n note: `payload.message` (CassetteDispatchOutcomeEventPayload)
+// and `payload.note` (BlockExceptionEventPayload) are both real, free
+// text from an external system/middleware or a user's own manual
+// entry — shown as-is per those types' own header comments, never
+// translated. `payload.outcome`/`payload.status` are real, persisted
+// enum values, so OUTCOME_BADGE/BLOCK_STATUS_BADGE carry a `labelKey`
+// per entry instead of a literal `label`, resolved with `t()` at each
+// render site.
+
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DispatchHistoryEntry } from '@/services/engravers/fetchDispatchHistoryForCase';
 
 interface Props {
@@ -37,72 +48,73 @@ function formatTimestamp(iso: string): string {
   catch { return iso; }
 }
 
-const OUTCOME_BADGE: Record<string, { label: string; color: string }> = {
-  dispatched: { label: 'Dispatched Cleanly', color: '#34d399' },
-  fallback_used: { label: 'Fallback Used', color: '#f59e0b' },
-  prompted: { label: 'Needs Decision', color: '#f59e0b' },
-  error: { label: 'Dispatch Failed', color: '#f87171' },
+const OUTCOME_BADGE: Record<string, { labelKey: string; color: string }> = {
+  dispatched: { labelKey: 'dispatchHistoryTimeline.outcomeLabels.dispatched', color: '#34d399' },
+  fallback_used: { labelKey: 'dispatchHistoryTimeline.outcomeLabels.fallbackUsed', color: '#f59e0b' },
+  prompted: { labelKey: 'dispatchHistoryTimeline.outcomeLabels.prompted', color: '#f59e0b' },
+  error: { labelKey: 'dispatchHistoryTimeline.outcomeLabels.error', color: '#f87171' },
 };
 
-const BLOCK_STATUS_BADGE: Record<string, { label: string; color: string }> = {
-  Lost: { label: 'Block Lost', color: '#f87171' },
-  Damaged: { label: 'Block Damaged', color: '#f87171' },
+const BLOCK_STATUS_BADGE: Record<string, { labelKey: string; color: string }> = {
+  Lost: { labelKey: 'dispatchHistoryTimeline.blockStatusLabels.lost', color: '#f87171' },
+  Damaged: { labelKey: 'dispatchHistoryTimeline.blockStatusLabels.damaged', color: '#f87171' },
 };
 
 function Badge({ label, color }: { label: string; color: string }) {
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
-      background: `${color}22`, color, whiteSpace: 'nowrap',
-    }}>
+    <span className="ps-dht-badge" style={{ background: `${color}22`, color }}>
       {label}
     </span>
   );
 }
 
 const DispatchHistoryTimeline: React.FC<Props> = ({ entries, colorNames }) => {
+  const { t } = useTranslation();
+
   if (entries.length === 0) {
-    return <div className="ps-mth-empty">No cassette dispatch or block exception events recorded yet for this case.</div>;
+    return <div className="ps-mth-empty">{t('dispatchHistoryTimeline.emptyState')}</div>;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="ps-dht-list">
       {entries.map((entry, i) => {
         if (entry.eventType === 'cassette-dispatch-outcome') {
           const { payload } = entry;
-          const badge = OUTCOME_BADGE[payload.outcome] ?? { label: payload.outcome, color: '#8899aa' };
+          const badge: { labelKey?: string; color: string } = OUTCOME_BADGE[payload.outcome] ?? { color: '#8899aa' };
+          const badgeLabel = badge.labelKey ? t(badge.labelKey) : payload.outcome;
           const requested = resolveColor(payload.requestedColorKey, colorNames);
           const actual = resolveColor(payload.actualColorKey, colorNames);
           return (
-            <div key={i} style={{ borderLeft: `3px solid ${badge.color}`, paddingLeft: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {payload.specimenLabel ? `Specimen ${payload.specimenLabel}` : 'Cassette dispatch'}
+            <div key={i} className="ps-dht-entry" style={{ borderLeftColor: badge.color }}>
+              <div className="ps-dht-entry-row">
+                <span className="ps-dht-entry-title">
+                  {payload.specimenLabel ? t('dispatchHistoryTimeline.specimenLabel', { label: payload.specimenLabel }) : t('dispatchHistoryTimeline.cassetteDispatch')}
                 </span>
-                <Badge label={badge.label} color={badge.color} />
+                <Badge label={badgeLabel} color={badge.color} />
               </div>
-              <div style={{ fontSize: 12, color: '#8899aa', marginTop: 2 }}>
-                Requested {requested}
-                {actual && actual !== requested ? ` \u2192 Used ${actual}` : ''}
+              <div className="ps-dht-entry-detail">
+                {t('dispatchHistoryTimeline.requestedColor', { color: requested })}
+                {actual && actual !== requested ? ` \u2192 ${t('dispatchHistoryTimeline.usedColor', { color: actual })}` : ''}
                 {payload.message ? ` \u2014 ${payload.message}` : ''}
               </div>
-              <div style={{ fontSize: 11, color: '#8899aa', marginTop: 2 }}>{formatTimestamp(entry.createdAt)}</div>
+              <div className="ps-dht-entry-timestamp">{formatTimestamp(entry.createdAt)}</div>
             </div>
           );
         }
 
         const { payload } = entry;
-        const badge = BLOCK_STATUS_BADGE[payload.status] ?? { label: payload.status, color: '#8899aa' };
+        const badge: { labelKey?: string; color: string } = BLOCK_STATUS_BADGE[payload.status] ?? { color: '#8899aa' };
+        const badgeLabel = badge.labelKey ? t(badge.labelKey) : payload.status;
         return (
-          <div key={i} style={{ borderLeft: `3px solid ${badge.color}`, paddingLeft: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>
+          <div key={i} className="ps-dht-entry" style={{ borderLeftColor: badge.color }}>
+            <div className="ps-dht-entry-row">
+              <span className="ps-dht-entry-title">
                 {payload.specimenLetter}{payload.blockNumber}
               </span>
-              <Badge label={badge.label} color={badge.color} />
+              <Badge label={badgeLabel} color={badge.color} />
             </div>
-            {payload.note && <div style={{ fontSize: 12, color: '#8899aa', marginTop: 2 }}>{payload.note}</div>}
-            <div style={{ fontSize: 11, color: '#8899aa', marginTop: 2 }}>{formatTimestamp(entry.createdAt)}</div>
+            {payload.note && <div className="ps-dht-entry-detail">{payload.note}</div>}
+            <div className="ps-dht-entry-timestamp">{formatTimestamp(entry.createdAt)}</div>
           </div>
         );
       })}

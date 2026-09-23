@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { IncomingOrder } from '@/services';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
@@ -56,6 +57,7 @@ export const OrderLookupModal: React.FC<Props> = ({
   isOpen, initialQuery, pendingOrders, organisationId, searchDobFormat, dobFormatHint,
   onSelectOrder, onSelectPatient, onClose,
 }) => {
+  const { t } = useTranslation();
   const [query, setQuery] = useState(initialQuery);
   const [patientResults, setPatientResults] = useState<MasterPatientRecord[]>([]);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
@@ -120,9 +122,9 @@ export const OrderLookupModal: React.FC<Props> = ({
   return (
     <div className="ps-ms-overlay" onClick={onClose}>
       <div className="ps-ms-modal ps-ms-modal--grid" onClick={e => e.stopPropagation()}>
-        <div className="ps-ms-header">Order Lookup &amp; Patient Verification</div>
+        <div className="ps-ms-header">{t('accessionPage.orderLookupModal.header')}</div>
         <div className="ps-ms-subheader">
-          Search across pending orders and this lab's known patients — useful when a name, MRN, or DOB alone isn't enough to tell two records apart.
+          {t('accessionPage.orderLookupModal.subheader')}
         </div>
 
         <div className="ps-order-lookup-search-row">
@@ -130,7 +132,7 @@ export const OrderLookupModal: React.FC<Props> = ({
             type="text"
             autoFocus
             className="ps-order-lookup-search-input"
-            placeholder={`Search by Order #, MRN, Patient Name, DOB (${dobFormatHint}), or Facility Code…`}
+            placeholder={t('accessionPage.orderLookupModal.searchPlaceholder', { format: dobFormatHint })}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -138,18 +140,18 @@ export const OrderLookupModal: React.FC<Props> = ({
 
         <div className="ps-ms-body">
           {!hasQuery ? (
-            <div className="ps-order-lookup-empty">Type at least 2 characters to search.</div>
+            <div className="ps-order-lookup-empty">{t('accessionPage.orderLookupModal.typeAtLeast2')}</div>
           ) : (
             <>
               <div className="ps-order-lookup-section-label">
-                Pending Orders {orderMatches.length > 0 ? `(${orderMatches.length})` : ''}
+                {t('accessionPage.orderLookupModal.pendingOrders')} {orderMatches.length > 0 ? `(${orderMatches.length})` : ''}
               </div>
               {orderMatches.length === 0 ? (
-                <div className="ps-order-lookup-empty">No pending orders match.</div>
+                <div className="ps-order-lookup-empty">{t('accessionPage.orderLookupModal.noMatch')}</div>
               ) : (
                 <div className="ps-order-lookup-grid">
                   <div className="ps-order-lookup-grid-header">
-                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Facility</div>
+                    <div>{t('accessionPage.orderLookupModal.gridOrderNumber')}</div><div>{t('accessionPage.orderLookupModal.gridPatient')}</div><div>{t('accessionPage.orderLookupModal.gridMrn')}</div><div>{t('accessionPage.orderLookupModal.gridDob', { format: dobFormatHint })}</div><div>{t('accessionPage.orderLookupModal.gridFacility')}</div>
                   </div>
                   {orderMatches.map(o => (
                     <div key={o.id} className="ps-order-lookup-grid-row" onClick={() => onSelectOrder(o.id)}>
@@ -164,16 +166,16 @@ export const OrderLookupModal: React.FC<Props> = ({
               )}
 
               <div className="ps-order-lookup-section-label">
-                Known Patients {patientResults.length > 0 ? `(${patientResults.length})` : ''}
+                {t('accessionPage.orderLookupModal.knownPatients')} {patientResults.length > 0 ? `(${patientResults.length})` : ''}
               </div>
               {patientSearchLoading ? (
-                <div className="ps-order-lookup-loading">Searching patient index…</div>
+                <div className="ps-order-lookup-loading">{t('accessionPage.orderLookupModal.searchingIndex')}</div>
               ) : patientResults.length === 0 ? (
-                <div className="ps-order-lookup-empty">No existing patient record matches.</div>
+                <div className="ps-order-lookup-empty">{t('accessionPage.orderLookupModal.noPatientMatch')}</div>
               ) : (
                 <div className="ps-order-lookup-grid">
                   <div className="ps-order-lookup-grid-header">
-                    <div>Order #</div><div>Patient</div><div>MRN</div><div>DOB ({dobFormatHint})</div><div>Facility</div>
+                    <div>{t('accessionPage.orderLookupModal.gridOrderNumber')}</div><div>{t('accessionPage.orderLookupModal.gridPatient')}</div><div>{t('accessionPage.orderLookupModal.gridMrn')}</div><div>{t('accessionPage.orderLookupModal.gridDob', { format: dobFormatHint })}</div><div>{t('accessionPage.orderLookupModal.gridFacility')}</div>
                   </div>
                   {patientResults.map(p => (
                     <div key={p.id} className="ps-order-lookup-grid-row" onClick={() => onSelectPatient(p)}>
@@ -189,7 +191,7 @@ export const OrderLookupModal: React.FC<Props> = ({
 
               {noResultsAtAll && (
                 <div className="ps-order-lookup-empty">
-                  Nothing matches "{query.trim()}" — check spelling, or continue and enter this patient's details manually.
+                  {t('accessionPage.orderLookupModal.nothingMatches', { query: query.trim() })}
                 </div>
               )}
             </>
@@ -197,7 +199,7 @@ export const OrderLookupModal: React.FC<Props> = ({
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Close</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('accessionPage.orderLookupModal.close')}</button>
         </div>
       </div>
     </div>

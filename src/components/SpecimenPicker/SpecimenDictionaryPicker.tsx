@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { SpecimenEntry } from '../../services/specimenDictionary/specimenTypes';
 
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export const SpecimenDictionaryPicker: React.FC<Props> = ({ dictionary, currentEntryId, onSelect, onClose }) => {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
@@ -38,6 +40,10 @@ export const SpecimenDictionaryPicker: React.FC<Props> = ({ dictionary, currentE
   const grouped = useMemo(() => {
     const map = new Map<string, SpecimenEntry[]>();
     for (const e of filtered) {
+      // 'Other' here is an internal grouping key only, not displayed
+      // directly — real per-org dictionary type values (e.g. "Breast",
+      // "Skin") stay untranslated as admin-configured dictionary data;
+      // only the fallback-bucket label is translated at render time.
       const key = e.type || 'Other';
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
@@ -48,13 +54,13 @@ export const SpecimenDictionaryPicker: React.FC<Props> = ({ dictionary, currentE
   return (
     <div className="ps-ms-overlay" onClick={onClose}>
       <div className="ps-ms-modal ps-ms-modal--wide ps-specimen-picker-modal" onClick={e => e.stopPropagation()}>
-        <div className="ps-ms-header">Select Specimen — Dictionary Entry</div>
+        <div className="ps-ms-header">{t('specimenDictionaryPicker.header')}</div>
 
         <div className="ps-ms-body ps-specimen-picker-body">
           <input
             autoFocus
             className="ps-input-dark"
-            placeholder="Search by name, type, site, or procedure…"
+            placeholder={t('specimenDictionaryPicker.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -63,15 +69,17 @@ export const SpecimenDictionaryPicker: React.FC<Props> = ({ dictionary, currentE
             className={`ps-specimen-picker-item ps-specimen-picker-item--custom${!currentEntryId ? ' ps-specimen-picker-item--selected' : ''}`}
             onClick={() => { onSelect(null); onClose(); }}
           >
-            — Custom specimen (not in dictionary) —
+            {t('specimenDictionaryPicker.customSpecimen')}
           </button>
 
           <div className="ps-specimen-picker-list">
             {grouped.length === 0 ? (
-              <div className="ps-specimen-picker-empty">No dictionary entries match "{search}".</div>
+              <div className="ps-specimen-picker-empty">{t('specimenDictionaryPicker.noMatches', { search })}</div>
             ) : grouped.map(([type, entries]) => (
               <div key={type} className="ps-specimen-picker-group">
-                <div className="ps-specimen-picker-group-label">{type}</div>
+                <div className="ps-specimen-picker-group-label">
+                  {type === 'Other' ? t('specimenDictionaryPicker.otherGroup') : type}
+                </div>
                 {entries.map(e => (
                   <button
                     key={e.id}
@@ -92,7 +100,7 @@ export const SpecimenDictionaryPicker: React.FC<Props> = ({ dictionary, currentE
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('specimenDictionaryPicker.cancel')}</button>
         </div>
       </div>
     </div>

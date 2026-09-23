@@ -13,6 +13,8 @@
 // unchanged. New code should read/write givenNames/familyNames directly.
 // ─────────────────────────────────────────────────────────────
 
+import type { Patient } from '@/types/case/Patient';
+
 export interface PersonNameValue {
   namePrefix?: string;
   givenNames: string;
@@ -66,4 +68,22 @@ export function formatFullDisplayName(name: PersonNameValue): string {
 export function fromLegacyName(firstName: string, lastName: string, opts?: { middleName?: string }): PersonNameValue {
   const given = opts?.middleName ? `${firstName} ${opts.middleName}`.trim() : firstName;
   return { givenNames: given, familyNames: lastName };
+}
+
+/**
+ * Shared "which name fields does this patient actually have" resolver —
+ * prefers the real givenNames/familyNames fields, falls back to the legacy
+ * firstName/lastName bridge above, using the ordinary (not identification)
+ * display format. File-by-file cleanup sweep: consolidates a duplicated
+ * inline implementation that had been copy-pasted into both
+ * CytologyQcQueuePage.tsx and SurgicalQaWorklistPage.tsx. Returns null for
+ * a missing patient — never a fabricated placeholder; callers decide their
+ * own fallback (e.g. the case id).
+ */
+export function resolvePatientFullDisplayName(patient: Patient | undefined | null): string | null {
+  if (!patient) return null;
+  if (patient.givenNames && patient.familyNames) {
+    return formatFullDisplayName({ ...patient, givenNames: patient.givenNames, familyNames: patient.familyNames });
+  }
+  return formatFullDisplayName(fromLegacyName(patient.firstName, patient.lastName));
 }

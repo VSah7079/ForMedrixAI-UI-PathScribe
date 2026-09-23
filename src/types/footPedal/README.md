@@ -4,7 +4,7 @@ Hands-free peripheral control config — originally built for sign-out dictation
 
 ## Files
 
-- **`FootPedalConfig.ts`** — pedal-to-action mapping (Pedal 1/2/3, action keys kept stable across pages; see `FOOT_PEDAL_ACTION_LABELS`'s own doc comment for the full, real per-page mapping).
+- **`FootPedalConfig.ts`** — pedal-to-action mapping (Pedal 1/2/3, action keys kept stable across pages; see its own doc comment for the full, real per-page mapping). Labels are exposed as i18n keys (`FOOT_PEDAL_ACTION_LABEL_KEYS`) rather than hardcoded English strings, resolved via `t()` at their one real render site (`FootPedalSection.tsx`).
 
 ---
 *See [types/README.md](../README.md) for how this folder fits the whole types/ layer.*

@@ -8,11 +8,17 @@
 // itself, the pathologist-facing half of External Consult Access, had none.
 //
 // Same real mocking conventions as OrSuiteDashboardPage.test.tsx: mocks
-// every service the component imports and drives it with fireEvent. This
-// component has no useTranslation() calls (its own header notes it's not
-// yet i18n-converted), so react-i18next isn't mocked here.
+// every service the component imports and drives it with fireEvent.
+//
+// Real update alongside the component's i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and every assertion below would see the raw
+// key string instead of its English text.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import type { Case } from '@/types/case/Case';

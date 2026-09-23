@@ -83,7 +83,7 @@ export default function PathologyWorkspacePage() {
       description: t('pathologyWorkspace.microtomyTile.description'),
       route: '/workstations/microtomy',
       color: '#56B4E9',
-      image: '/worklist.webp',
+      image: '/microtomy.webp',
     },
     {
       key: 'embedding',
@@ -91,6 +91,11 @@ export default function PathologyWorkspacePage() {
       description: t('pathologyWorkspace.embeddingTile.description'),
       route: '/workstations/embedding',
       color: '#F97316',
+      // TODO: still borrowing Worklist's image — no dedicated
+      // Embedding Workspace photo was provided in the Sep 2026 tile-image
+      // refresh (Cytology/Microtomy/Slide Distribution/Molecular all got
+      // their own real photo; this one didn't). Swap in a real image once
+      // one's available — see UPDATE_288_SUMMARY.md.
       image: '/worklist.webp',
     },
     {
@@ -99,7 +104,7 @@ export default function PathologyWorkspacePage() {
       description: t('pathologyWorkspace.slideDistributionTile.description'),
       route: '/workstations/slide-distribution',
       color: '#14B8A6',
-      image: '/worklist.webp',
+      image: '/slide_distribution.webp',
     },
     {
       key: 'molecular',
@@ -107,7 +112,7 @@ export default function PathologyWorkspacePage() {
       description: t('pathologyWorkspace.molecularTile.description'),
       route: '/molecular',
       color: '#7C3AED',
-      image: '/batch_management.webp',
+      image: '/molecular.webp',
     },
   ];
 

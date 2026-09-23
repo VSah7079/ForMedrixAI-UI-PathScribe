@@ -30,6 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { printSettingsService, facilityPrintSettingsService, printerProfileService } from '@/services/index';
 import type { PrintSettingsConfig } from '@/services/printSettings/IPrintSettingsService';
@@ -43,13 +44,18 @@ import type { Facility } from '@/services';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 import CassetteLabelLayoutEditor from './CassetteLabelLayoutEditor';
 
-const SYMBOLOGY_LABEL: Record<LabelBarcodeSymbology, string> = {
-  code128: 'Code 128 (1D)',
-  qr: 'QR Code (2D)',
-  datamatrix: 'DataMatrix (2D)',
+// Data-key-stays-English, label-is-translated: the stored
+// LabelBarcodeSymbology values ('code128'/'qr'/'datamatrix') stay the
+// real, persisted config values — only the displayed option text is
+// translated.
+const SYMBOLOGY_LABEL_KEY: Record<LabelBarcodeSymbology, string> = {
+  code128: 'printSettingsSection.symbology.code128',
+  qr: 'printSettingsSection.symbology.qr',
+  datamatrix: 'printSettingsSection.symbology.datamatrix',
 };
 
 const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selectedFacilityId }) => {
+  const { t } = useTranslation();
   const [globalConfig, setGlobalConfig] = useState<PrintSettingsConfig | null>(null);
   const [facilityOverride, setFacilityOverride] = useState<FacilityPrintSettings | null>(null);
   const [labs, setLabs] = useState<Facility[]>([]);
@@ -120,7 +126,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
 
   if (loading || !effective) return (
     <div className="ps-conf-loading">
-      Loading print settings…
+      {t('printSettingsSection.loading')}
     </div>
   );
 
@@ -128,35 +134,35 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Print Settings</h2>
+      <h2 className="ps-conf-section-title">{t('printSettingsSection.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        Default label-printing behavior for this lab — individual accessioners can still override per action unless guardrails are enforced below.
+        {t('printSettingsSection.subtitle')}
       </p>
 
       {selectedFacilityId && !hasOverride && (
         <div className="ps-conf-callout-banner">
           <span className="ps-conf-callout-banner-text">
-            ℹ️ Showing System Defaults. <strong>{facilityName}</strong> currently inherits global print settings.
+            ℹ️ <Trans i18nKey="printSettingsSection.banner.inheriting" values={{ facilityName }} components={{ strong: <strong /> }} />
           </span>
-          <button className="ps-conf-callout-banner-link" onClick={handleCreateOverride} disabled={saving}>+ Create Facility Override</button>
+          <button className="ps-conf-callout-banner-link" onClick={handleCreateOverride} disabled={saving}>{t('printSettingsSection.banner.createOverride')}</button>
         </div>
       )}
       {selectedFacilityId && hasOverride && (
         <div className="ps-conf-callout-banner">
           <span className="ps-conf-callout-banner-text">
-            ✓ Facility override active for <strong>{facilityName}</strong>.
+            ✓ <Trans i18nKey="printSettingsSection.banner.overrideActive" values={{ facilityName }} components={{ strong: <strong /> }} />
           </span>
-          <button className="ps-conf-callout-banner-link" onClick={handleRevertOverride} disabled={saving}>Revert to System Default</button>
+          <button className="ps-conf-callout-banner-link" onClick={handleRevertOverride} disabled={saving}>{t('printSettingsSection.banner.revertOverride')}</button>
         </div>
       )}
 
       {/* ── Default Print Behavior ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Default Print Behavior
+          {t('printSettingsSection.defaultBehavior.title')}
         </div>
         <div className="ps-conf-card-description">
-          On-Demand prints each cassette label as it's logged during grossing. Batch defers all printing to an explicit, per-case bulk action.
+          {t('printSettingsSection.defaultBehavior.description')}
         </div>
         <div className="ps-conf-radio-group">
           {(['on_demand', 'batch'] as const).map(mode => (
@@ -170,7 +176,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
                 className="ps-conf-radio-input"
               />
               <span className="ps-conf-option-text">
-                {mode === 'on_demand' ? 'On-Demand (per block/container)' : 'Batch (per case/order)'}
+                {mode === 'on_demand' ? t('printSettingsSection.defaultBehavior.onDemandOption') : t('printSettingsSection.defaultBehavior.batchOption')}
               </span>
             </label>
           ))}
@@ -182,10 +188,10 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
         <div className="ps-conf-row">
           <div>
             <div className="ps-conf-card-title">
-              Enforce On-Demand Guardrails
+              {t('printSettingsSection.guardrails.title')}
             </div>
             <div className="ps-conf-card-description--tight">
-              When on, the default above is fixed lab-wide — accessioners cannot switch to Batch for an individual case.
+              {t('printSettingsSection.guardrails.description')}
             </div>
           </div>
           <label className="ps-conf-toggle-label-row">
@@ -193,7 +199,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
               onChange={e => update({ enforceOnDemandGuardrails: e.target.checked })}
               disabled={readOnly}
               className="ps-conf-radio-input" />
-            <span className="ps-conf-option-text">Enabled</span>
+            <span className="ps-conf-option-text">{t('printSettingsSection.enabledLabel')}</span>
           </label>
         </div>
       </div>
@@ -203,10 +209,10 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
         <div className="ps-conf-row">
           <div>
             <div className="ps-conf-card-title">
-              Require Scan Verification
+              {t('printSettingsSection.scanVerification.title')}
             </div>
             <div className="ps-conf-card-description--tight">
-              Require scanning the newly printed cassette/container barcode before advancing to the next specimen block.
+              {t('printSettingsSection.scanVerification.description')}
             </div>
           </div>
           <label className="ps-conf-toggle-label-row">
@@ -214,7 +220,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
               onChange={e => update({ requireScanVerificationBeforeNextBlock: e.target.checked })}
               disabled={readOnly}
               className="ps-conf-radio-input" />
-            <span className="ps-conf-option-text">Enabled</span>
+            <span className="ps-conf-option-text">{t('printSettingsSection.enabledLabel')}</span>
           </label>
         </div>
       </div>
@@ -222,11 +228,16 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
       {/* ── Container Label Size ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Container Label Size
+          {t('printSettingsSection.containerLabelSize.title')}
         </div>
         <div className="ps-conf-card-description">
-          Physical label size for specimen container labels. Requisition labels use their own, separate size setting below.
+          {t('printSettingsSection.containerLabelSize.description')}
         </div>
+        {/* LABEL_SIZE_PRESETS (types/labels/LabelSizePreset.ts) is a shared,
+            foundational constant, not owned by this component - each
+            preset's own `name` is left untouched here, same "shared
+            display-label constant left untouched" precedent as
+            MATERIAL_TYPE_LABEL/BILLING_TYPE_LABEL elsewhere in this sweep. */}
         <select
           value={effective.containerLabelPresetId}
           onChange={e => update({ containerLabelPresetId: e.target.value })}
@@ -242,10 +253,10 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
       {/* ── Requisition Label Size ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Requisition Label Size
+          {t('printSettingsSection.requisitionLabelSize.title')}
         </div>
         <div className="ps-conf-card-description">
-          Physical sheet size for the requisition sticker sheet (tracking header plus log-in, specimen, and cassette/slide peel-off stickers). Defaults to a standard 4″×6″ thermal multi-peel sheet — a full-page size can still be chosen here if your lab genuinely uses one.
+          {t('printSettingsSection.requisitionLabelSize.description')}
         </div>
         <select
           value={effective.requisitionLabelPresetId}
@@ -262,10 +273,10 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
       {/* ── Container Label Printer Profile ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Container Label Printer Profile
+          {t('printSettingsSection.containerPrinterProfile.title')}
         </div>
         <div className="ps-conf-card-description">
-          When set to a real printer profile using the QZ Tray bridge, container labels dispatch directly to that thermal printer instead of opening the browser's own print dialog. Leave unset to keep using the browser print dialog.
+          {t('printSettingsSection.containerPrinterProfile.description')}
         </div>
         <select
           value={effective.containerLabelPrinterProfileId ?? ''}
@@ -273,19 +284,19 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
-          <option value="">— Use browser print dialog —</option>
+          <option value="">{t('printSettingsSection.useBrowserDialogOption')}</option>
           {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
         </select>
-        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
+        <span className="ps-conf-field-hint">{t('printSettingsSection.qzTrayHint')}</span>
       </div>
 
       {/* ── Molecular Label Printer Profile ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Molecular Label Printer Profile
+          {t('printSettingsSection.molecularPrinterProfile.title')}
         </div>
         <div className="ps-conf-card-description">
-          Same real hardware-bridge choice as above, for the Molecular Testing Execution Module's own plate, rack, specimen, and deck location labels.
+          {t('printSettingsSection.molecularPrinterProfile.description')}
         </div>
         <select
           value={effective.molecularLabelPrinterProfileId ?? ''}
@@ -293,19 +304,19 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
-          <option value="">— Use browser print dialog —</option>
+          <option value="">{t('printSettingsSection.useBrowserDialogOption')}</option>
           {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
         </select>
-        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
+        <span className="ps-conf-field-hint">{t('printSettingsSection.qzTrayHint')}</span>
       </div>
 
       {/* ── Requisition Label Printer Profile ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Requisition Label Printer Profile
+          {t('printSettingsSection.requisitionPrinterProfile.title')}
         </div>
         <div className="ps-conf-card-description">
-          Same real hardware-bridge choice as above, for the multi-zone requisition sticker sheet (tracking header plus log-in, specimen, and cassette/slide peel-off stickers). Every real sticker's own position is computed from real millimeter geometry, not guessed coordinates.
+          {t('printSettingsSection.requisitionPrinterProfile.description')}
         </div>
         <select
           value={effective.requisitionLabelPrinterProfileId ?? ''}
@@ -313,19 +324,19 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
-          <option value="">— Use browser print dialog —</option>
+          <option value="">{t('printSettingsSection.useBrowserDialogOption')}</option>
           {printerProfiles.map(p => <option key={p.id} value={p.id}>{p.printerId} ({p.model}, {p.bridgeType})</option>)}
         </select>
-        <span className="ps-conf-field-hint">Only a profile using the qz_tray bridge type actually dispatches today — any other bridge type falls back to the browser print dialog automatically.</span>
+        <span className="ps-conf-field-hint">{t('printSettingsSection.qzTrayHint')}</span>
       </div>
 
       {/* ── Container Barcode Symbology ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Container Barcode Symbology
+          {t('printSettingsSection.containerBarcodeSymbology.title')}
         </div>
         <div className="ps-conf-card-description">
-          Applied to Batch Management's own Master Batch Barcode labels (New Container).
+          {t('printSettingsSection.containerBarcodeSymbology.description')}
         </div>
         <select
           value={effective.containerBarcodeSymbology}
@@ -333,21 +344,28 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           disabled={readOnly}
           className="ps-input-dark ps-conf-select-wide"
         >
-          {(Object.keys(SYMBOLOGY_LABEL) as LabelBarcodeSymbology[]).map(s => <option key={s} value={s}>{SYMBOLOGY_LABEL[s]}</option>)}
+          {(Object.keys(SYMBOLOGY_LABEL_KEY) as LabelBarcodeSymbology[]).map(s => <option key={s} value={s}>{t(SYMBOLOGY_LABEL_KEY[s])}</option>)}
         </select>
       </div>
 
       {/* ── Barcode Prefix Conventions ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Barcode Prefix Conventions
+          {t('printSettingsSection.barcodePrefixConventions.title')}
         </div>
         <div className="ps-conf-card-description">
-          Printed as {effective.disposableBarcodePrefix || '…'}-{'{TYPE}'}-{'{YYYYMMDD}'}-{'{XXXX}'} on a new disposable label, or {effective.rackBarcodePrefix || '…'}-{'{TYPE}'}-{'{NN}'} on a physical, laser-engraved reusable rack.
+          {/* {TYPE}/{YYYYMMDD}/{XXXX}/{NN} below are literal format-token
+              text shown to the admin (single braces) - not i18next
+              interpolation syntax (which uses double braces), so they
+              pass through the translation string unchanged. */}
+          {t('printSettingsSection.barcodePrefixConventions.description', {
+            disposablePrefix: effective.disposableBarcodePrefix || '…',
+            rackPrefix: effective.rackBarcodePrefix || '…',
+          })}
         </div>
         <div className="ps-conf-prefix-row">
           <div>
-            <label className="ps-conf-prefix-field-label">Disposable Label</label>
+            <label className="ps-conf-prefix-field-label">{t('printSettingsSection.barcodePrefixConventions.disposableLabel')}</label>
             <input
               className="ps-input-dark ps-conf-input-code"
               value={effective.disposableBarcodePrefix}
@@ -357,7 +375,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
             />
           </div>
           <div>
-            <label className="ps-conf-prefix-field-label">Reusable Rack</label>
+            <label className="ps-conf-prefix-field-label">{t('printSettingsSection.barcodePrefixConventions.reusableRackLabel')}</label>
             <input
               className="ps-input-dark ps-conf-input-code"
               value={effective.rackBarcodePrefix}
@@ -379,20 +397,17 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
           clear error, until a real value is entered here. */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          GS1 GTIN (Cassette / Slide Labels)
+          {t('printSettingsSection.gs1Gtin.title')}
         </div>
         <div className="ps-conf-card-description">
-          The AI(01) value encoded into every real, printed cassette/slide GS1 DataMatrix label. Requires a real
-          GS1 Company Prefix registered for ForMedrixAI LLC (GS1 US or the applicable regional Member
-          Organisation) — a separate business step. Left empty, real GS1 cassette/slide printing refuses cleanly
-          rather than encoding a fabricated value.
+          {t('printSettingsSection.gs1Gtin.description')}
         </div>
         <input
           className="ps-input-dark ps-conf-input-gtin"
           value={effective.gs1Gtin}
           onChange={e => update({ gs1Gtin: e.target.value })}
           disabled={readOnly}
-          placeholder="e.g. 00850000000000 (not yet registered)"
+          placeholder={t('printSettingsSection.gs1Gtin.placeholder')}
           maxLength={14}
         />
       </div>
@@ -409,10 +424,10 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
       {/* ── Container Type Codes ── */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-card-title">
-          Container Type Codes
+          {t('printSettingsSection.containerTypeCodes.title')}
         </div>
         <div className="ps-conf-card-description">
-          The short code for each real container type, used in every generated Master Batch Barcode.
+          {t('printSettingsSection.containerTypeCodes.description')}
         </div>
         {CONTAINER_TYPES.map(type => (
           <div key={type} className="ps-conf-container-type-row">
@@ -429,7 +444,7 @@ const PrintSettingsSection: React.FC<{ selectedFacilityId?: string }> = ({ selec
       </div>
 
       {saving && (
-        <div className="ps-conf-saving-indicator">Saving…</div>
+        <div className="ps-conf-saving-indicator">{t('printSettingsSection.savingIndicator')}</div>
       )}
     </div>
   );

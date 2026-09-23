@@ -13,15 +13,22 @@
 // real equivalent in NHS or H&C Number, and collapsing them into one
 // "generic Modulus 11 checker" would silently drop that real, jurisdiction-
 // specific structure.
+//
+// i18n note: this is a plain utility with no `useTranslation()` of its
+// own, so `reason` is a translation KEY (`reasonKey`), not rendered
+// text — the consuming component (`patientIdStatus.ts` →
+// `PatientIdStatusDot.tsx`) resolves it via `t()`. Keys live under
+// `ukPatientIdValidation.*`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface IdValidationResult {
   valid: boolean;
-  /** Present only when `valid` is false — a real, human-readable reason
-   *  (e.g. "Checksum failed", "Not a valid date of birth"), not just a
-   *  bare boolean, so a caller can show something more useful than
-   *  "invalid" to the person who has to correct it. */
-  reason?: string;
+  /** Present only when `valid` is false — a translation key for a real,
+   *  human-readable reason (e.g. "Checksum failed", "Not a valid date
+   *  of birth"), not just a bare boolean, so a caller can show
+   *  something more useful than "invalid" to the person who has to
+   *  correct it. */
+  reasonKey?: string;
 }
 
 // ── Shared Modulus 11 primitive ─────────────────────────────────────────────
@@ -65,15 +72,15 @@ function computeModulus11CheckDigit(firstNineDigits: string): number {
 export function validateNhsNumber(raw: string): IdValidationResult {
   const digits = raw.replace(/[\s-]/g, '');
   if (!/^\d{10}$/.test(digits)) {
-    return { valid: false, reason: 'NHS Number must be exactly 10 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.nhsWrongLength' };
   }
   const expected = computeModulus11CheckDigit(digits.slice(0, 9));
   if (expected === -1) {
-    return { valid: false, reason: 'Not a valid NHS Number — checksum algorithm produces no valid check digit for these 9 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.nhsNoValidCheckDigit' };
   }
   const actual = Number(digits[9]);
   if (expected !== actual) {
-    return { valid: false, reason: 'Checksum (Modulus 11) failed — check digit does not match' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.checksumMismatch' };
   }
   return { valid: true };
 }
@@ -94,7 +101,7 @@ export function validateNhsNumber(raw: string): IdValidationResult {
 export function validateChiNumber(raw: string): IdValidationResult {
   const digits = raw.replace(/[\s-]/g, '');
   if (!/^\d{10}$/.test(digits)) {
-    return { valid: false, reason: 'CHI Number must be exactly 10 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.chiWrongLength' };
   }
 
   // First 6 digits: DDMMYY. Validated as a real, syntactically
@@ -107,20 +114,20 @@ export function validateChiNumber(raw: string): IdValidationResult {
   const dd = Number(digits.slice(0, 2));
   const mm = Number(digits.slice(2, 4));
   if (mm < 1 || mm > 12) {
-    return { valid: false, reason: 'First 6 digits are not a valid date of birth (month out of range)' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.chiInvalidDobMonth' };
   }
   const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]; // Feb given the leap-year benefit of the doubt
   if (dd < 1 || dd > daysInMonth[mm - 1]) {
-    return { valid: false, reason: 'First 6 digits are not a valid date of birth (day out of range)' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.chiInvalidDobDay' };
   }
 
   const expected = computeModulus11CheckDigit(digits.slice(0, 9));
   if (expected === -1) {
-    return { valid: false, reason: 'Not a valid CHI Number — checksum algorithm produces no valid check digit for these 9 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.chiNoValidCheckDigit' };
   }
   const actual = Number(digits[9]);
   if (expected !== actual) {
-    return { valid: false, reason: 'Checksum (Modulus 11) failed — check digit does not match' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.checksumMismatch' };
   }
   return { valid: true };
 }
@@ -160,19 +167,19 @@ export function chiNumberGenderParity(raw: string): 'M' | 'F' | undefined {
 export function validateHcNumber(raw: string): IdValidationResult {
   const digits = raw.replace(/[\s-]/g, '');
   if (!/^\d{10}$/.test(digits)) {
-    return { valid: false, reason: 'H&C Number must be exactly 10 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.hcWrongLength' };
   }
   const asNumber = Number(digits);
   if (asNumber < 3_200_000_001 || asNumber > 3_999_999_999) {
-    return { valid: false, reason: 'H&C Number must be in the allocated 3,200,000,001–3,999,999,999 range' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.hcOutOfRange' };
   }
   const expected = computeModulus11CheckDigit(digits.slice(0, 9));
   if (expected === -1) {
-    return { valid: false, reason: 'Not a valid H&C Number — checksum algorithm produces no valid check digit for these 9 digits' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.hcNoValidCheckDigit' };
   }
   const actual = Number(digits[9]);
   if (expected !== actual) {
-    return { valid: false, reason: 'Checksum (Modulus 11) failed — check digit does not match' };
+    return { valid: false, reasonKey: 'ukPatientIdValidation.checksumMismatch' };
   }
   return { valid: true };
 }

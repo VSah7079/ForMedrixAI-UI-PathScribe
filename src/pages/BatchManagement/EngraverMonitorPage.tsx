@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { fetchEngraverDevices } from '@/services/engravers/fetchEngraverDevices';
@@ -35,20 +36,30 @@ const STATUS_COLOR: Record<EngraverStatus, string> = {
   online: '#34d399', engraving: '#38bdf8', warning: '#f59e0b', fault: '#f87171', offline: '#8899aa',
 };
 
-const STATUS_LABEL: Record<EngraverStatus, string> = {
-  online: 'Online', engraving: 'Engraving', warning: 'Warning', fault: 'Fault', offline: 'Offline',
+// Real, label-key-map — the real EngraverStatus value stays untouched
+// (used to index STATUS_COLOR above); only the on-screen label is
+// translated.
+const STATUS_LABEL_KEY: Record<EngraverStatus, string> = {
+  online: 'engraverMonitor.status.online', engraving: 'engraverMonitor.status.engraving', warning: 'engraverMonitor.status.warning',
+  fault: 'engraverMonitor.status.fault', offline: 'engraverMonitor.status.offline',
 };
 
 // Real, per direct guidance's own explicit example ("Warning: Yellow
 // Biopsy Low") — a short, human phrase per real, closed supply state,
 // combined with the color's own real displayName below, never the raw
 // SupplyWarningCode/colorKey shown to a technician.
-const SUPPLY_WARNING_LABEL: Record<SupplyWarningCode, string> = {
-  CASSETTE_SUPPLY_LOW: 'Low', CASSETTE_SUPPLY_DEPLETED: 'Depleted', COLOR_UNAVAILABLE: 'Unavailable',
+const SUPPLY_WARNING_LABEL_KEY: Record<SupplyWarningCode, string> = {
+  CASSETTE_SUPPLY_LOW: 'engraverMonitor.supplyWarning.CASSETTE_SUPPLY_LOW',
+  CASSETTE_SUPPLY_DEPLETED: 'engraverMonitor.supplyWarning.CASSETTE_SUPPLY_DEPLETED',
+  COLOR_UNAVAILABLE: 'engraverMonitor.supplyWarning.COLOR_UNAVAILABLE',
 };
 
-function formatSupplyWarning(warning: SupplyWarning, colorNames: Record<string, string>): string {
-  const stateLabel = SUPPLY_WARNING_LABEL[warning.code];
+// Real, module-level (non-hook) helper — takes `t` as a param, same
+// pattern established for buildSummary()/resolveSynopticFieldLabel.ts
+// elsewhere in this sweep, since it's called from a .map() outside any
+// component's own render scope.
+function formatSupplyWarning(t: (key: string) => string, warning: SupplyWarning, colorNames: Record<string, string>): string {
+  const stateLabel = t(SUPPLY_WARNING_LABEL_KEY[warning.code]);
   if (!warning.colorKey) return stateLabel;
   const colorName = colorNames[warning.colorKey] ?? warning.colorKey;
   return `${colorName} ${stateLabel}`;
@@ -60,8 +71,9 @@ function formatTimestamp(iso: string): string {
 }
 
 const EngraverMonitorPage: React.FC = () => {
+  const { t } = useTranslation();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Engraver Monitor', '/batch-management/engraver-monitor'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('engraverMonitor.pageTitle'), '/batch-management/engraver-monitor'); }, [pushCrumb, t]);
 
   const [devices, setDevices] = useState<EngraverDevice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,70 +112,65 @@ const EngraverMonitorPage: React.FC = () => {
       <div className="ps-batch-scroll">
         <div className="ps-batch-inner">
           <div className="ps-batch-page-header">
-            <h1 className="ps-batch-page-title">🖨️ Engraver Monitor</h1>
+            <h1 className="ps-batch-page-title">🖨️ {t('engraverMonitor.pageTitle')}</h1>
             <p className="ps-batch-page-subtitle">
-              A real, high-level status summary for every engraver the Cassette Engine reports on — status, real
-              warning summaries, and a direct link to the Engine's own diagnostics for anything deeper. PathScribe
-              doesn't model hopper-level detail or hardware telemetry here; that stays the Engine's own job.
+              {t('engraverMonitor.pageSubtitle')}
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div className="ps-engraver-status-summary">
             {(['online', 'engraving', 'warning', 'fault', 'offline'] as EngraverStatus[]).map(status => (
-              <div key={status} style={{
-                flex: '1 1 120px', padding: '12px 16px', borderRadius: 8,
+              <div key={status} className="ps-engraver-status-tile" style={{
                 background: `${STATUS_COLOR[status]}14`, border: `1px solid ${STATUS_COLOR[status]}2e`,
               }}>
-                <div style={{ fontSize: 12, color: '#8899aa' }}>{STATUS_LABEL[status]}</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: STATUS_COLOR[status] }}>{counts[status]}</div>
+                <div className="ps-engraver-status-tile-label">{t(STATUS_LABEL_KEY[status])}</div>
+                <div className="ps-engraver-status-tile-count" style={{ color: STATUS_COLOR[status] }}>{counts[status]}</div>
               </div>
             ))}
           </div>
 
           <div className="ps-batch-toolbar">
             <button className="ps-btn-secondary" onClick={refresh} disabled={loading}>
-              {loading ? 'Refreshing…' : '↻ Refresh'}
+              {loading ? t('engraverMonitor.refreshing') : `↻ ${t('engraverMonitor.refresh')}`}
             </button>
           </div>
 
-          <div className="ps-batch-section-label">Devices ({devices.length})</div>
+          <div className="ps-batch-section-label">{t('engraverMonitor.devicesSection', { count: devices.length })}</div>
           {loading && devices.length === 0 ? (
-            <div className="ps-batch-empty">Loading real device status…</div>
+            <div className="ps-batch-empty">{t('engraverMonitor.loadingDevices')}</div>
           ) : devices.length === 0 ? (
-            <div className="ps-batch-empty">No engraver has reported status yet.</div>
+            <div className="ps-batch-empty">{t('engraverMonitor.noDevices')}</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+            <div className="ps-engraver-device-grid">
               {devices.map(device => (
-                <div key={device.deviceId} style={{
-                  border: '1px solid #2a3542', borderRadius: 8, padding: 14,
+                <div key={device.deviceId} className="ps-engraver-device-card" style={{
                   borderLeft: `3px solid ${STATUS_COLOR[device.status]}`,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div className="ps-engraver-device-card-header">
                     <div>
-                      <div style={{ fontWeight: 600 }}>{device.deviceName ?? device.deviceId}</div>
-                      <div style={{ fontSize: 12, color: '#8899aa' }}>{device.deviceId}</div>
-                      {device.locationLabel && <div style={{ fontSize: 12, color: '#8899aa' }}>{device.locationLabel}</div>}
+                      <div className="ps-engraver-device-name">{device.deviceName ?? device.deviceId}</div>
+                      <div className="ps-engraver-device-id">{device.deviceId}</div>
+                      {device.locationLabel && <div className="ps-engraver-device-id">{device.locationLabel}</div>}
                     </div>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                    <span className="ps-batch-row-status" style={{
                       background: `${STATUS_COLOR[device.status]}22`, color: STATUS_COLOR[device.status],
                     }}>
-                      {STATUS_LABEL[device.status]}
+                      {t(STATUS_LABEL_KEY[device.status])}
                     </span>
                   </div>
 
                   {(device.supplyWarnings.length > 0 || device.warnings.length > 0) && (
-                    <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#f59e0b' }}>
-                      {device.supplyWarnings.map((w, i) => <li key={`supply-${i}`}>{formatSupplyWarning(w, colorNames)}</li>)}
+                    <ul className="ps-engraver-device-warnings">
+                      {device.supplyWarnings.map((w, i) => <li key={`supply-${i}`}>{formatSupplyWarning(t, w, colorNames)}</li>)}
                       {device.warnings.map((w, i) => <li key={`warn-${i}`}>{w}</li>)}
                     </ul>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-                    <span style={{ fontSize: 11, color: '#8899aa' }}>Reported {formatTimestamp(device.lastReportedAt)}</span>
+                  <div className="ps-engraver-device-footer">
+                    <span className="ps-engraver-device-reported">{t('engraverMonitor.reportedAt', { time: formatTimestamp(device.lastReportedAt) })}</span>
                     {device.diagnosticsUrl && (
-                      <a href={device.diagnosticsUrl} target="_blank" rel="noopener noreferrer" className="ps-btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }}>
-                        Launch Engine Diagnostics ↗
+                      <a href={device.diagnosticsUrl} target="_blank" rel="noopener noreferrer" className="ps-btn-secondary ps-engraver-diagnostics-link">
+                        {t('engraverMonitor.launchDiagnostics')} ↗
                       </a>
                     )}
                   </div>

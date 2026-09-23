@@ -12,18 +12,36 @@
 // only via its own direct route, told to the person who asked for it.
 // ─────────────────────────────────────────────────────────────────────────────
 
+//
+// i18n note: `mode` itself ('always_succeed'/'always_fail'/'timeout')
+// is a real, persisted settings enum value — MODE_LABEL_KEY/
+// MODE_DESCRIPTION_KEY carry a translation key per entry, resolved
+// with `t()` at each render site, rather than the raw
+// `mode.replace(/_/g, ' ')` display used before. The literal API path
+// (`POST /api/v1/events/molecular-worklist`) and ticket reference
+// (PS-239) are real, internal identifiers, left as-is inside their
+// own `<Trans>` component slots.
+
 import React, { useState, useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { getMockInterfaceEngineSettings, setMockInterfaceEngineSettings } from '../../services/mockInterfaceEngine/mockInterfaceEngineSettings';
 import type { MockInterfaceEngineMode, MockInterfaceEngineSettings } from '../../services/mockInterfaceEngine/mockInterfaceEngineSettings';
 
-const MODE_DESCRIPTIONS: Record<MockInterfaceEngineMode, string> = {
-  always_succeed: 'Every real dispatch call receives an immediate HTTP 200 — the real "Worklist dispatched successfully" path.',
-  always_fail: 'Every real dispatch call receives the HTTP status below — exercises the real "PathScribe\'s own backend rejected this worklist dispatch" error path.',
-  timeout: 'Every real dispatch call hangs forever — exercises the real, indefinite "Dispatching…" state a genuinely unreachable Interface Engine would produce.',
+const MODE_LABEL_KEY: Record<MockInterfaceEngineMode, string> = {
+  always_succeed: 'mockInterfaceEnginePage.modeLabels.alwaysSucceed',
+  always_fail: 'mockInterfaceEnginePage.modeLabels.alwaysFail',
+  timeout: 'mockInterfaceEnginePage.modeLabels.timeout',
+};
+
+const MODE_DESCRIPTION_KEY: Record<MockInterfaceEngineMode, string> = {
+  always_succeed: 'mockInterfaceEnginePage.modeDescriptions.alwaysSucceed',
+  always_fail: 'mockInterfaceEnginePage.modeDescriptions.alwaysFail',
+  timeout: 'mockInterfaceEnginePage.modeDescriptions.timeout',
 };
 
 const MockInterfaceEnginePage: React.FC = () => {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<MockInterfaceEngineSettings>(getMockInterfaceEngineSettings());
   const [workerStatus, setWorkerStatus] = useState<'stopped' | 'starting' | 'running'>('stopped');
 
@@ -60,42 +78,45 @@ const MockInterfaceEnginePage: React.FC = () => {
 
   return (
     <div className="ps-app-root ps-page-container ps-page-container--narrow">
-      <div style={{ padding: 14, marginBottom: 22, borderRadius: 8, background: '#f59e0b18', border: '1px solid #f59e0b33', color: '#f59e0b', fontSize: 13, fontWeight: 600 }}>
-        ⚠ Developer tool — not real functionality. This fakes the response PathScribe's own backend would eventually send at <code>POST /api/v1/events/molecular-worklist</code> (PS-239). It never touches real case data or any real batch logic — it only answers the real network call in place of a real backend that doesn't exist yet.
+      <div className="ps-mie-banner">
+        <Trans
+          i18nKey="mockInterfaceEnginePage.devToolBanner"
+          components={{ code: <code /> }}
+        />
       </div>
 
-      <h1 className="ps-page-title">Mock Interface Engine (PS-239)</h1>
-      <p className="ps-page-subtitle" style={{ marginBottom: 22 }}>
-        Lets you click "Dispatch Worklist" on a real molecular batch and see a real, realistic response — success, a specific rejection, or a hung connection — without PS-239's own real backend endpoint existing yet.
+      <h1 className="ps-page-title">{t('mockInterfaceEnginePage.title')}</h1>
+      <p className="ps-page-subtitle ps-mie-subtitle">
+        {t('mockInterfaceEnginePage.subtitle')}
       </p>
 
-      <div className="ps-panel-box" style={{ marginBottom: 20 }}>
-        <div className="ps-flex-row-gap-8" style={{ justifyContent: 'space-between' }}>
+      <div className="ps-panel-box ps-mb-20">
+        <div className="ps-flex-row-gap-8 ps-flex-row-gap-8--between">
           <div>
-            <strong>{settings.enabled ? 'Enabled' : 'Disabled'}</strong>
-            <span className="ps-helper-text" style={{ marginLeft: 8 }}>
-              {workerStatus === 'running' ? '● intercepting real dispatch calls' : workerStatus === 'starting' ? '● starting…' : '○ not intercepting'}
+            <strong>{settings.enabled ? t('aiTab.enabledLabel') : t('actionsTab.table.disabled')}</strong>
+            <span className="ps-helper-text ps-ml-8">
+              {workerStatus === 'running' ? t('mockInterfaceEnginePage.status.intercepting') : workerStatus === 'starting' ? t('mockInterfaceEnginePage.status.starting') : t('mockInterfaceEnginePage.status.notIntercepting')}
             </span>
           </div>
           <button className="ps-conf-btn-secondary" onClick={handleToggleEnabled}>
-            {settings.enabled ? 'Disable' : 'Enable'}
+            {settings.enabled ? t('templateAssemblyPage.disableTooltip') : t('templateAssemblyPage.enableTooltip')}
           </button>
         </div>
       </div>
 
       <div className="ps-panel-box">
-        <h3 className="ps-panel-heading">Response Mode</h3>
+        <h3 className="ps-panel-heading">{t('mockInterfaceEnginePage.responseModeHeading')}</h3>
         {(['always_succeed', 'always_fail', 'timeout'] as MockInterfaceEngineMode[]).map(mode => (
-          <label key={mode} style={{ display: 'block', marginBottom: 10, cursor: 'pointer' }}>
-            <input type="radio" name="mie-mode" checked={settings.mode === mode} onChange={() => updateSettings({ mode })} style={{ marginRight: 8 }} />
-            <strong>{mode.replace(/_/g, ' ')}</strong>
-            <div className="ps-helper-text" style={{ marginLeft: 22 }}>{MODE_DESCRIPTIONS[mode]}</div>
+          <label key={mode} className="ps-mie-radio-label">
+            <input type="radio" name="mie-mode" checked={settings.mode === mode} onChange={() => updateSettings({ mode })} className="ps-mr-8" />
+            <strong>{t(MODE_LABEL_KEY[mode])}</strong>
+            <div className="ps-helper-text ps-ml-22">{t(MODE_DESCRIPTION_KEY[mode])}</div>
           </label>
         ))}
 
         {settings.mode === 'always_fail' && (
-          <div style={{ marginTop: 12 }}>
-            <label className="ps-label" htmlFor="mie-failure-status">Failure HTTP Status</label>
+          <div className="ps-mt-12">
+            <label className="ps-label" htmlFor="mie-failure-status">{t('mockInterfaceEnginePage.failureHttpStatusLabel')}</label>
             <input
               id="mie-failure-status"
               className="ps-input-dark"

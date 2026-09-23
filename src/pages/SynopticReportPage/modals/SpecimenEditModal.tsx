@@ -16,6 +16,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '@/pathscribe.css';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { containerTypeService } from '@/services';
@@ -23,6 +24,25 @@ import type { ContainerType, ContainerCategory } from '@/services/containerTypes
 import type { Specimen, SpecimenLisStatus, SpecimenComplexity } from '@/types/case/Specimen';
 import { findForeignIdCollision } from '@/utils/foreignIdCollision';
 import type { ForeignIdCollision } from '@/utils/foreignIdCollision';
+
+// ─── Persisted-value label maps ─────────────────────────────────────────────
+// Laterality and container-category values below are real, stored/matched
+// tokens (laterality feeds inferLateralityFromText.ts's own English word-
+// matching and is persisted as typed) — only the displayed label translates.
+
+const LATERALITY_LABEL_KEY: Record<string, string> = {
+  Left:              'specimenEditModal.laterality.left',
+  Right:             'specimenEditModal.laterality.right',
+  Bilateral:         'specimenEditModal.laterality.bilateral',
+  Midline:           'specimenEditModal.laterality.midline',
+  'Not applicable':  'specimenEditModal.laterality.notApplicable',
+};
+
+const CONTAINER_CATEGORY_LABEL_KEY: Record<ContainerCategory, string> = {
+  histology:      'specimenEditModal.containerCategory.histology',
+  cytology:       'specimenEditModal.containerCategory.cytology',
+  special_media:  'specimenEditModal.containerCategory.specialMedia',
+};
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +76,7 @@ const genId = () => crypto.randomUUID();
 const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
   specimen, nextLabel, existingSpecimens, isOrchestrationMode, effectiveComplexity, onSave, onClose,
 }) => {
+  const { t } = useTranslation();
   const isEdit = !!specimen;
   const { dictionary } = useSpecimenDictionary();
 
@@ -145,15 +166,15 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
     const e: Record<string, string> = {};
     const trimLabel = label.trim().toUpperCase();
     if (!trimLabel) {
-      e.label = 'Specimen label is required';
+      e.label = t('specimenEditModal.errors.labelRequired');
     } else {
       // Check uniqueness (allow same label when editing the same specimen)
       const conflict = existingSpecimens.find(s =>
         s.label.toUpperCase() === trimLabel && s.id !== specimen?.id
       );
-      if (conflict) e.label = `Label "${trimLabel}" already exists on this case`;
+      if (conflict) e.label = t('specimenEditModal.errors.labelExists', { label: trimLabel });
     }
-    if (!description.trim()) e.description = 'Description is required';
+    if (!description.trim()) e.description = t('specimenEditModal.errors.descriptionRequired');
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -213,15 +234,15 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
         <div className="ps-specedit-header">
           <div>
             <h2 className="ps-specedit-title">
-              {isEdit ? `Edit Specimen ${specimen!.label}` : 'Add Specimen'}
+              {isEdit ? t('specimenEditModal.title.edit', { label: specimen!.label }) : t('specimenEditModal.title.add')}
             </h2>
             <div className="ps-specedit-subtitle">
               {isEdit
-                ? 'Update specimen details — changes apply to this case only'
-                : 'Search the specimen dictionary or enter details manually'}
+                ? t('specimenEditModal.header.editSubtitle')
+                : t('specimenEditModal.header.addSubtitle')}
             </div>
           </div>
-          <button className="ps-research-close" onClick={onClose} aria-label="Close">✕</button>
+          <button className="ps-research-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
         {/* Body */}
@@ -232,7 +253,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             <div className="ps-specedit-search-wrap">
               <input
                 className="ps-search-input"
-                placeholder="Search specimen dictionary…"
+                placeholder={t('specimenEditModal.dictSearch.placeholder')}
                 value={dictSearch}
                 onChange={e => setDictSearch(e.target.value)}
                 autoFocus={!isEdit}
@@ -241,11 +262,11 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             <div className="ps-specedit-dict-list">
               {activeEntries.length === 0 ? (
                 <div className="ps-specedit-dict-empty">
-                  {dictSearch ? `No matches for "${dictSearch}"` : 'No specimens in dictionary'}
+                  {dictSearch ? t('specimenEditModal.dictSearch.noMatches', { query: dictSearch }) : t('specimenEditModal.dictSearch.empty')}
                 </div>
               ) : grouped.map(([type, entries]) => (
                 <div key={type}>
-                  <div className="ps-specedit-dict-section">{type}</div>
+                  <div className="ps-specedit-dict-section">{type === 'Other' ? t('specimenEditModal.dictSearch.otherType') : type}</div>
                   {entries.map(e => (
                     <div
                       key={e.id}
@@ -269,14 +290,17 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* Dictionary hint */}
             {selectedEntryObj && (
               <div className="ps-specedit-dict-hint">
-                Pre-filled from: <span className="ps-specedit-dict-hint-name">{selectedEntryObj.name}</span>
-                {' '}— you can edit any field below
+                <Trans
+                  i18nKey="specimenEditModal.dictHint"
+                  values={{ name: selectedEntryObj.name }}
+                  components={{ nameSpan: <span className="ps-specedit-dict-hint-name" /> }}
+                />
               </div>
             )}
 
             {/* Label */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label ps-specedit-label--required">Specimen Label</label>
+              <label className="ps-specedit-label ps-specedit-label--required">{t('specimenEditModal.fields.specimenLabel')}</label>
               <div className="ps-specedit-label-row">
                 <span className="ps-specedit-label-badge">{label || '?'}</span>
                 <input
@@ -286,52 +310,58 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                   maxLength={3}
                   placeholder="A"
                 />
-                <span className="ps-specedit-label-hint">Letter or short code (A, B, 1, 1A…)</span>
+                <span className="ps-specedit-label-hint">{t('specimenEditModal.fields.specimenLabelHint')}</span>
               </div>
               {errors.label && <span className="ps-specedit-error-msg">{errors.label}</span>}
             </div>
 
             {/* Description */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label ps-specedit-label--required">Description</label>
+              <label className="ps-specedit-label ps-specedit-label--required">{t('specimenEditModal.fields.description')}</label>
               <input
                 className={`ps-specedit-input${errors.description ? ' ps-specedit-input--error' : ''}`}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="e.g. Left breast mastectomy"
+                placeholder={t('specimenEditModal.fields.descriptionPlaceholder')}
               />
               {errors.description && <span className="ps-specedit-error-msg">{errors.description}</span>}
             </div>
 
             {/* Complexity */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label">Complexity</label>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <label className="ps-specedit-label">{t('specimenEditModal.complexity.label')}</label>
+              <div className="ps-specedit-complexity-row">
                 <button
                   type="button"
                   onClick={() => setComplexity('GROSS_ONLY')}
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${complexity === 'GROSS_ONLY' ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}`, background: complexity === 'GROSS_ONLY' ? 'rgba(139,92,246,0.15)' : 'transparent', color: complexity === 'GROSS_ONLY' ? '#a78bfa' : '#94a3b8' }}
+                  className={`ps-specedit-complexity-btn${complexity === 'GROSS_ONLY' ? ' ps-specedit-complexity-btn--active' : ''}`}
                 >
-                  Gross Only
+                  {t('specimenEditModal.complexity.grossOnly')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setComplexity('GROSS_AND_MICRO')}
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${complexity === 'GROSS_AND_MICRO' ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}`, background: complexity === 'GROSS_AND_MICRO' ? 'rgba(139,92,246,0.15)' : 'transparent', color: complexity === 'GROSS_AND_MICRO' ? '#a78bfa' : '#94a3b8' }}
+                  className={`ps-specedit-complexity-btn${complexity === 'GROSS_AND_MICRO' ? ' ps-specedit-complexity-btn--active' : ''}`}
                 >
-                  Gross + Micro
+                  {t('specimenEditModal.complexity.grossAndMicro')}
                 </button>
               </div>
               {selectedEntryObj?.defaultComplexity && complexity && complexity !== selectedEntryObj.defaultComplexity && (
-                <p className="ps-specedit-hint" style={{ marginTop: 4 }}>
-                  Overriding this specimen type's usual {selectedEntryObj.defaultComplexity === 'GROSS_ONLY' ? 'gross-only' : 'gross + micro'} default.
+                <p className="ps-specedit-hint ps-specedit-hint--spaced">
+                  {t('specimenEditModal.complexity.overridingDefault', {
+                    default: selectedEntryObj.defaultComplexity === 'GROSS_ONLY'
+                      ? t('specimenEditModal.complexity.grossOnlyLower')
+                      : t('specimenEditModal.complexity.grossAndMicroLower'),
+                  })}
                 </p>
               )}
               {!complexity && effectiveComplexity && (
-                <p className="ps-specedit-hint" style={{ marginTop: 4 }}>
-                  No explicit complexity set — based on this specimen's own real synoptic findings, it
-                  will automatically bill as {effectiveComplexity === 'GROSS_AND_MICRO' ? 'Gross + Micro' : 'Gross Only'} unless
-                  you set one explicitly above.
+                <p className="ps-specedit-hint ps-specedit-hint--spaced">
+                  {t('specimenEditModal.complexity.autoBillHint', {
+                    complexity: effectiveComplexity === 'GROSS_AND_MICRO'
+                      ? t('specimenEditModal.complexity.grossAndMicro')
+                      : t('specimenEditModal.complexity.grossOnly'),
+                  })}
                 </p>
               )}
             </div>
@@ -339,27 +369,25 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* Site + Laterality */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Anatomic Site</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.anatomicSite')}</label>
                 <input
                   className="ps-specedit-input"
                   value={bodySite}
                   onChange={e => setBodySite(e.target.value)}
-                  placeholder="e.g. Breast"
+                  placeholder={t('specimenEditModal.fields.anatomicSitePlaceholder')}
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Laterality</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.laterality')}</label>
                 <select
                   className="ps-specedit-input"
                   value={laterality}
                   onChange={e => setLaterality(e.target.value)}
                 >
-                  <option value="">— not specified —</option>
-                  <option value="Left">Left</option>
-                  <option value="Right">Right</option>
-                  <option value="Bilateral">Bilateral</option>
-                  <option value="Midline">Midline</option>
-                  <option value="Not applicable">Not applicable</option>
+                  <option value="">{t('specimenEditModal.laterality.notSpecified')}</option>
+                  {(['Left', 'Right', 'Bilateral', 'Midline', 'Not applicable'] as const).map(v => (
+                    <option key={v} value={v}>{t(LATERALITY_LABEL_KEY[v])}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -367,28 +395,27 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* Method + Container */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Collection Method</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.collectionMethod')}</label>
                 <input
                   className="ps-specedit-input"
                   value={method}
                   onChange={e => setMethod(e.target.value)}
-                  placeholder="e.g. Core biopsy, Excision"
+                  placeholder={t('specimenEditModal.fields.collectionMethodPlaceholder')}
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Container Type</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.containerType')}</label>
                 <select
                   className="ps-specedit-input"
                   value={container}
                   onChange={e => setContainer(e.target.value)}
                 >
-                  <option value="">Select container type…</option>
+                  <option value="">{t('specimenEditModal.fields.containerTypePlaceholder')}</option>
                   {(['histology', 'cytology', 'special_media'] as ContainerCategory[]).map(cat => {
                     const inCat = containerTypes.filter(c => c.category === cat);
                     if (inCat.length === 0) return null;
-                    const label = cat === 'histology' ? 'Histology' : cat === 'cytology' ? 'Cytology' : 'Special Media';
                     return (
-                      <optgroup key={cat} label={label}>
+                      <optgroup key={cat} label={t(CONTAINER_CATEGORY_LABEL_KEY[cat])}>
                         {inCat.map(c => (
                           <option key={c.id} value={c.name}>{c.name}</option>
                         ))}
@@ -402,21 +429,21 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* SNOMED codes */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">SNOMED Specimen Type</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.snomedType')}</label>
                 <input
                   className="ps-specedit-input"
                   value={snomedCode}
                   onChange={e => setSnomedCode(e.target.value)}
-                  placeholder="e.g. 122643008"
+                  placeholder={t('specimenEditModal.fields.snomedTypePlaceholder')}
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">SNOMED Anatomic Site</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.snomedSite')}</label>
                 <input
                   className="ps-specedit-input"
                   value={siteCode}
                   onChange={e => setSiteCode(e.target.value)}
-                  placeholder="e.g. 80248007"
+                  placeholder={t('specimenEditModal.fields.snomedSitePlaceholder')}
                 />
               </div>
             </div>
@@ -429,30 +456,44 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 own identifier gets linked here, never re-labeled. */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Foreign ID Source</label>
+                {/* Real fix (PS-302) — relabeled, same reasoning as
+                    ForeignIdFields.tsx's own identical relabel.
+                    Real fix (PS-314) — relabeled again to "Referral
+                    Client", same reasoning and same wording as
+                    ForeignIdFields.tsx's own identical follow-up
+                    relabel (this modal keeps its own, separate copy of
+                    these two fields rather than the shared component,
+                    so both need updating to stay in sync). This
+                    field's own input already used ps-specedit-input,
+                    not ps-conf-select, so it never had that sibling
+                    bug's dropdown-chevron/placeholder issue. */}
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.referralClient')}</label>
                 <input
                   className="ps-specedit-input"
                   value={externalIdSource}
                   onChange={e => setExternalIdSource(e.target.value)}
                   onBlur={checkForeignIdCollision}
-                  placeholder="e.g. Outside Cytology Lab"
+                  placeholder={t('specimenEditModal.fields.referralClientPlaceholder')}
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">Foreign ID</label>
+                <label className="ps-specedit-label">{t('specimenEditModal.fields.referralClientId')}</label>
                 <input
                   className="ps-specedit-input"
                   value={externalId}
                   onChange={e => setExternalId(e.target.value)}
                   onBlur={checkForeignIdCollision}
-                  placeholder="e.g. the id already assigned by that lab"
+                  placeholder={t('specimenEditModal.fields.referralClientIdPlaceholder')}
                 />
               </div>
             </div>
             {foreignIdCollision && (
-              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)' }}>
-                <div style={{ fontSize: 12, color: '#f87171', fontWeight: 600 }}>
-                  ⚠ This foreign ID is already linked to {foreignIdCollision.recordLabel} on case {foreignIdCollision.caseAccession} — double-check before continuing.
+              <div className="ps-specedit-collision-warning">
+                <div className="ps-specedit-collision-warning-text">
+                  ⚠ {t('specimenEditModal.foreignId.collisionWarning', {
+                    recordLabel: foreignIdCollision.recordLabel,
+                    caseAccession: foreignIdCollision.caseAccession,
+                  })}
                 </div>
               </div>
             )}
@@ -466,9 +507,9 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {Object.values(errors)[0] ?? ''}
           </div>
           <div className="ps-specedit-footer-btns">
-            <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+            <button className="ps-btn-ghost-dark" onClick={onClose}>{t('common.cancel')}</button>
             <button className="ps-btn-primary" onClick={handleSave}>
-              {isEdit ? 'Save Changes' : 'Add Specimen'}
+              {isEdit ? t('specimenEditModal.footer.saveChanges') : t('specimenEditModal.title.add')}
             </button>
           </div>
         </div>

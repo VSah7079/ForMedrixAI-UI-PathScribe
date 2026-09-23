@@ -38,6 +38,16 @@ export interface Physician {
   phone: string;
   fax: string;
   email: string;
+  /** Real, per direct guidance (PS-136 automated critical-alert
+   *  dispatch): `phone` above is generic — often a front-desk or
+   *  landline number, never assumed text-capable. This is the
+   *  deliberately separate, optional field for a real, SMS-capable
+   *  mobile number, so automated alert dispatch never guesses that an
+   *  arbitrary phone field can receive a text. Blank/undefined means
+   *  genuinely no known SMS-capable number, not an omission to fix
+   *  later — the automated dispatch rule engine treats it exactly
+   *  that way (see resolveCriticalAlertChannels.ts). */
+  smsCapablePhone?: string;
   preferredContact: 'Email' | 'Fax' | 'Phone';
   clientIds: string[];
   status: 'Active' | 'Inactive' | 'Unverified';

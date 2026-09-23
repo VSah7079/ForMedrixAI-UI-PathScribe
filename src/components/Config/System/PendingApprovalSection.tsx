@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockBillingRuleService } from '@/services/billing/mockBillingRuleService';
 import { mockModifierDictionaryService } from '@/services/billing/mockModifierDictionaryService';
 import type { ModifierTableVersion } from '@/services/billing/ModifierTableVersion';
@@ -27,6 +28,7 @@ import { auditService } from '@/services';
 import { siteLabel } from './BillingDictionarySection';
 
 const PendingApprovalSection: React.FC = () => {
+  const { t } = useTranslation();
   const [pending, setPending] = useState<BillingRuleVersion[]>([]);
   const [pendingModifiers, setPendingModifiers] = useState<ModifierTableVersion[]>([]);
   const [pendingNcci, setPendingNcci] = useState<NcciPtpEditImport[]>([]);
@@ -96,7 +98,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleReject = async (v: BillingRuleVersion) => {
     setErrorMsg(null);
-    if (!rejectionReason.trim()) { setErrorMsg('A real rejection reason is required.'); return; }
+    if (!rejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
     const res = await mockBillingRuleService.rejectVersion(v.billingCode, v.version, v.siteId, currentUserId, rejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
@@ -129,7 +131,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleRejectModifier = async (v: ModifierTableVersion) => {
     setErrorMsg(null);
-    if (!modifierRejectionReason.trim()) { setErrorMsg('A real rejection reason is required.'); return; }
+    if (!modifierRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
     const res = await mockModifierDictionaryService.rejectVersion(v.id, currentUserId, modifierRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
@@ -162,7 +164,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleRejectNcci = async (v: NcciPtpEditImport) => {
     setErrorMsg(null);
-    if (!ncciRejectionReason.trim()) { setErrorMsg('A real rejection reason is required.'); return; }
+    if (!ncciRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
     const res = await mockNcciEditService.rejectImport(v.id, currentUserId, ncciRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
@@ -195,7 +197,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleRejectRvu = async (v: RvuTableVersion) => {
     setErrorMsg(null);
-    if (!rvuRejectionReason.trim()) { setErrorMsg('A real rejection reason is required.'); return; }
+    if (!rvuRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
     const res = await mockRvuCodeMapService.rejectVersion(v.id, currentUserId, rvuRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
@@ -211,18 +213,35 @@ const PendingApprovalSection: React.FC = () => {
     refresh();
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading Pending Approvals...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('pendingApprovalSection.loading')}</div>;
+
+  const billingRuleHeaders = [
+    t('pendingApprovalSection.billingRules.headers.billingCode'),
+    t('pendingApprovalSection.billingRules.headers.cpt'),
+    t('pendingApprovalSection.billingRules.headers.rvuWork'),
+    t('pendingApprovalSection.billingRules.headers.effectiveFrom'),
+    t('pendingApprovalSection.billingRules.headers.scope'),
+    t('pendingApprovalSection.billingRules.headers.draftedBy'),
+    t('pendingApprovalSection.billingRules.headers.submittedBy'),
+    t('pendingApprovalSection.billingRules.headers.changeReason'),
+    t('pendingApprovalSection.billingRules.headers.actions'),
+  ];
+
+  const dictionaryHeaders = [
+    t('pendingApprovalSection.dictionaries.headers.dictionary'),
+    t('pendingApprovalSection.dictionaries.headers.label'),
+    t('pendingApprovalSection.dictionaries.headers.effectiveFrom'),
+    t('pendingApprovalSection.dictionaries.headers.submittedBy'),
+    t('pendingApprovalSection.dictionaries.headers.actions'),
+  ];
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Pending Billing Rule Approvals</h3>
+          <h3 className="ps-conf-section-title">{t('pendingApprovalSection.billingRules.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Real, per the Four-Eyes Principle (dual control): a billing rule change never goes live on its own. Every
-            version below was drafted and submitted by someone else, and genuinely requires a different, real
-            reviewer's decision — the person who drafted or submitted a change can never approve or reject it
-            themselves, enforced here and, as the real backstop, in the service itself.
+            {t('pendingApprovalSection.billingRules.subtitle')}
           </p>
         </div>
       </div>
@@ -233,7 +252,7 @@ const PendingApprovalSection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead>
-              <tr>{['Billing Code', 'CPT', 'RVU (Work)', 'Effective From', 'Scope', 'Drafted By', 'Submitted By', 'Change Reason', 'Actions'].map(h =>
+              <tr>{billingRuleHeaders.map(h =>
                 <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
@@ -253,7 +272,7 @@ const PendingApprovalSection: React.FC = () => {
                     <td className="ps-conf-td">
                       {locked ? (
                         <span className="ps-billing-reason-hint">
-                          You drafted or submitted this change — a different reviewer is required (Four-Eyes Principle).
+                          {t('pendingApprovalSection.billingRules.lockedHint')}
                         </span>
                       ) : isRejecting ? (
                         <div className="ps-conf-row-actions">
@@ -261,16 +280,16 @@ const PendingApprovalSection: React.FC = () => {
                             className="ps-conf-input"
                             value={rejectionReason}
                             onChange={e => setRejectionReason(e.target.value)}
-                            placeholder="Real reason for rejecting"
+                            placeholder={t('pendingApprovalSection.rejectPlaceholder')}
                             autoFocus
                           />
-                          <button className="ps-conf-btn-row" onClick={() => handleReject(v)}>Confirm Reject</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingKey(null); setRejectionReason(''); setErrorMsg(null); }}>Cancel</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleReject(v)}>{t('pendingApprovalSection.confirmReject')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingKey(null); setRejectionReason(''); setErrorMsg(null); }}>{t('common.cancel')}</button>
                         </div>
                       ) : (
                         <div className="ps-conf-row-actions">
-                          <button className="ps-conf-btn-row" onClick={() => handleApprove(v)}>Approve</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingKey(rowKey(v)); setRejectionReason(''); setErrorMsg(null); }}>Reject</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleApprove(v)}>{t('pendingApprovalSection.approve')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingKey(rowKey(v)); setRejectionReason(''); setErrorMsg(null); }}>{t('pendingApprovalSection.reject')}</button>
                         </div>
                       )}
                     </td>
@@ -278,7 +297,7 @@ const PendingApprovalSection: React.FC = () => {
                 );
               })}
               {pending.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={9}>No billing rule changes are currently pending approval.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={9}>{t('pendingApprovalSection.billingRules.emptyRow')}</td></tr>
               )}
             </tbody>
           </table>
@@ -287,11 +306,9 @@ const PendingApprovalSection: React.FC = () => {
 
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Pending Dictionary Updates</h3>
+          <h3 className="ps-conf-section-title">{t('pendingApprovalSection.dictionaries.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            The same real Four-Eyes review, for whole-table reference dictionaries (CPT Modifier Dictionary today) —
-            a manual single-entry edit or a full spreadsheet import, submitted by someone else, genuinely requires a
-            different, real reviewer's decision before it replaces the active table.
+            {t('pendingApprovalSection.dictionaries.subtitle')}
           </p>
         </div>
       </div>
@@ -300,7 +317,7 @@ const PendingApprovalSection: React.FC = () => {
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead>
-              <tr>{['Dictionary', 'Label', 'Effective From', 'Submitted By', 'Actions'].map(h =>
+              <tr>{dictionaryHeaders.map(h =>
                 <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
@@ -309,14 +326,14 @@ const PendingApprovalSection: React.FC = () => {
                 const isRejecting = rejectingModifierId === v.id;
                 return (
                   <tr key={v.id}>
-                    <td className="ps-conf-td">CPT Modifier Dictionary</td>
+                    <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.modifier')}</td>
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.label}</span></td>
                     <td className="ps-conf-td">{new Date(v.effectiveDate).toLocaleDateString()}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.uploadedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
                         <span className="ps-billing-reason-hint">
-                          You submitted this change — a different reviewer is required (Four-Eyes Principle).
+                          {t('pendingApprovalSection.dictionaries.lockedHint')}
                         </span>
                       ) : isRejecting ? (
                         <div className="ps-conf-row-actions">
@@ -324,16 +341,16 @@ const PendingApprovalSection: React.FC = () => {
                             className="ps-conf-input"
                             value={modifierRejectionReason}
                             onChange={e => setModifierRejectionReason(e.target.value)}
-                            placeholder="Real reason for rejecting"
+                            placeholder={t('pendingApprovalSection.rejectPlaceholder')}
                             autoFocus
                           />
-                          <button className="ps-conf-btn-row" onClick={() => handleRejectModifier(v)}>Confirm Reject</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingModifierId(null); setModifierRejectionReason(''); setErrorMsg(null); }}>Cancel</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleRejectModifier(v)}>{t('pendingApprovalSection.confirmReject')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingModifierId(null); setModifierRejectionReason(''); setErrorMsg(null); }}>{t('common.cancel')}</button>
                         </div>
                       ) : (
                         <div className="ps-conf-row-actions">
-                          <button className="ps-conf-btn-row" onClick={() => handleApproveModifier(v)}>Approve</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingModifierId(v.id); setModifierRejectionReason(''); setErrorMsg(null); }}>Reject</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleApproveModifier(v)}>{t('pendingApprovalSection.approve')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingModifierId(v.id); setModifierRejectionReason(''); setErrorMsg(null); }}>{t('pendingApprovalSection.reject')}</button>
                         </div>
                       )}
                     </td>
@@ -345,14 +362,14 @@ const PendingApprovalSection: React.FC = () => {
                 const isRejecting = rejectingNcciId === v.id;
                 return (
                   <tr key={v.id}>
-                    <td className="ps-conf-td">NCCI Edit Rules</td>
-                    <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.quarterVersion}</span> ({v.pairCount} pair{v.pairCount === 1 ? '' : 's'})</td>
+                    <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.ncci')}</td>
+                    <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.quarterVersion}</span> ({t('pendingApprovalSection.pairCount', { count: v.pairCount })})</td>
                     <td className="ps-conf-td">{new Date(v.importedAt).toLocaleDateString()}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.importedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
                         <span className="ps-billing-reason-hint">
-                          You submitted this change — a different reviewer is required (Four-Eyes Principle).
+                          {t('pendingApprovalSection.dictionaries.lockedHint')}
                         </span>
                       ) : isRejecting ? (
                         <div className="ps-conf-row-actions">
@@ -360,16 +377,16 @@ const PendingApprovalSection: React.FC = () => {
                             className="ps-conf-input"
                             value={ncciRejectionReason}
                             onChange={e => setNcciRejectionReason(e.target.value)}
-                            placeholder="Real reason for rejecting"
+                            placeholder={t('pendingApprovalSection.rejectPlaceholder')}
                             autoFocus
                           />
-                          <button className="ps-conf-btn-row" onClick={() => handleRejectNcci(v)}>Confirm Reject</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingNcciId(null); setNcciRejectionReason(''); setErrorMsg(null); }}>Cancel</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleRejectNcci(v)}>{t('pendingApprovalSection.confirmReject')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingNcciId(null); setNcciRejectionReason(''); setErrorMsg(null); }}>{t('common.cancel')}</button>
                         </div>
                       ) : (
                         <div className="ps-conf-row-actions">
-                          <button className="ps-conf-btn-row" onClick={() => handleApproveNcci(v)}>Approve</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingNcciId(v.id); setNcciRejectionReason(''); setErrorMsg(null); }}>Reject</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleApproveNcci(v)}>{t('pendingApprovalSection.approve')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingNcciId(v.id); setNcciRejectionReason(''); setErrorMsg(null); }}>{t('pendingApprovalSection.reject')}</button>
                         </div>
                       )}
                     </td>
@@ -381,14 +398,14 @@ const PendingApprovalSection: React.FC = () => {
                 const isRejecting = rejectingRvuId === v.id;
                 return (
                   <tr key={v.id}>
-                    <td className="ps-conf-td">RVU Code Map</td>
-                    <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.label}</span> ({v.entries.length} code{v.entries.length === 1 ? '' : 's'})</td>
+                    <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.rvu')}</td>
+                    <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.label}</span> ({t('pendingApprovalSection.codeCount', { count: v.entries.length })})</td>
                     <td className="ps-conf-td">{new Date(v.effectiveDate).toLocaleDateString()}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.uploadedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
                         <span className="ps-billing-reason-hint">
-                          You submitted this change — a different reviewer is required (Four-Eyes Principle).
+                          {t('pendingApprovalSection.dictionaries.lockedHint')}
                         </span>
                       ) : isRejecting ? (
                         <div className="ps-conf-row-actions">
@@ -396,16 +413,16 @@ const PendingApprovalSection: React.FC = () => {
                             className="ps-conf-input"
                             value={rvuRejectionReason}
                             onChange={e => setRvuRejectionReason(e.target.value)}
-                            placeholder="Real reason for rejecting"
+                            placeholder={t('pendingApprovalSection.rejectPlaceholder')}
                             autoFocus
                           />
-                          <button className="ps-conf-btn-row" onClick={() => handleRejectRvu(v)}>Confirm Reject</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingRvuId(null); setRvuRejectionReason(''); setErrorMsg(null); }}>Cancel</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleRejectRvu(v)}>{t('pendingApprovalSection.confirmReject')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingRvuId(null); setRvuRejectionReason(''); setErrorMsg(null); }}>{t('common.cancel')}</button>
                         </div>
                       ) : (
                         <div className="ps-conf-row-actions">
-                          <button className="ps-conf-btn-row" onClick={() => handleApproveRvu(v)}>Approve</button>
-                          <button className="ps-conf-btn-row" onClick={() => { setRejectingRvuId(v.id); setRvuRejectionReason(''); setErrorMsg(null); }}>Reject</button>
+                          <button className="ps-conf-btn-row" onClick={() => handleApproveRvu(v)}>{t('pendingApprovalSection.approve')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingRvuId(v.id); setRvuRejectionReason(''); setErrorMsg(null); }}>{t('pendingApprovalSection.reject')}</button>
                         </div>
                       )}
                     </td>
@@ -413,7 +430,7 @@ const PendingApprovalSection: React.FC = () => {
                 );
               })}
               {pendingModifiers.length === 0 && pendingNcci.length === 0 && pendingRvu.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={5}>No dictionary updates are currently pending approval.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={5}>{t('pendingApprovalSection.dictionaries.emptyRow')}</td></tr>
               )}
             </tbody>
           </table>

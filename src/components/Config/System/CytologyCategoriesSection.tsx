@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
 import { mockCytologyCategoryService } from '../../../services/cytology/mockCytologyCategoryService';
@@ -24,8 +25,7 @@ import type {
 // ─── Small chip helpers ─────────────────────────────────────────────────────
 
 const Chip: React.FC<{ label: string; color: string; filled?: boolean }> = ({ label, color, filled = true }) => (
-  <span style={{
-    fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+  <span className="ps-cytcat-chip" style={{
     background: filled ? color + '18' : 'rgba(255,255,255,0.04)',
     color: filled ? color : '#4b5563',
     border: `1px solid ${filled ? color + '33' : 'rgba(255,255,255,0.06)'}`,
@@ -36,13 +36,23 @@ const Chip: React.FC<{ label: string; color: string; filled?: boolean }> = ({ la
 
 const SEVERITY_COLOR: Record<string, string> = { Abnormal: '#f59e0b', Critical: '#f97316', Malignant: '#ef4444' };
 
+// Data-key-stays-English, label-is-translated: 'Abnormal'/'Critical'/
+// 'Malignant' remain the real, literal stored severity values
+// (ICytologyCategoryService.ts's own union type) — this map only
+// translates the displayed text for the <select> options and the Chip.
+const SEVERITY_LABEL_KEY: Record<'Abnormal' | 'Critical' | 'Malignant', string> = {
+  Abnormal: 'cytologyCategoriesSection.severity.abnormal',
+  Critical: 'cytologyCategoriesSection.severity.critical',
+  Malignant: 'cytologyCategoriesSection.severity.malignant',
+};
+
 // ─── Section tabs ────────────────────────────────────────────────────────────
 
-const SECTION_TABS: { id: CytologyCategorySection; label: string }[] = [
-  { id: 'adequacy', label: 'Specimen Adequacy' },
-  { id: 'general_categorization', label: 'General Categorization' },
-  { id: 'interpretation_result', label: 'Interpretation / Result' },
-  { id: 'recommendation', label: 'Recommendations' },
+const SECTION_TABS: { id: CytologyCategorySection; labelKey: string }[] = [
+  { id: 'adequacy', labelKey: 'cytologyCategoriesSection.tabs.adequacy' },
+  { id: 'general_categorization', labelKey: 'cytologyCategoriesSection.tabs.generalCategorization' },
+  { id: 'interpretation_result', labelKey: 'cytologyCategoriesSection.tabs.interpretationResult' },
+  { id: 'recommendation', labelKey: 'cytologyCategoriesSection.tabs.recommendation' },
 ];
 
 // Real, per direct guidance: closing the real, self-documented gap
@@ -54,12 +64,12 @@ const SECTION_TABS: { id: CytologyCategorySection; label: string }[] = [
 // are real, separate, still-open gaps with zero entries today) — an
 // admin managing an as-yet-unseeded system is exactly who this
 // selector exists for.
-const NOMENCLATURE_SYSTEMS: { id: CytologyNomenclatureSystem; label: string }[] = [
-  { id: 'bethesda', label: 'Bethesda System' },
-  { id: 'bscc_rcpath', label: 'BSCC / RCPath (UK, Scotland, Ireland)' },
-  { id: 'munchen_iiib', label: 'München III (Germany)' },
-  { id: 'sfcc', label: 'SFCC (France)' },
-  { id: 'palga_cisoea', label: 'PALGA CISOE-A (Netherlands)' },
+const NOMENCLATURE_SYSTEMS: { id: CytologyNomenclatureSystem; labelKey: string }[] = [
+  { id: 'bethesda', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.bethesda' },
+  { id: 'bscc_rcpath', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.bsccRcpath' },
+  { id: 'munchen_iiib', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.munchenIiib' },
+  { id: 'sfcc', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.sfcc' },
+  { id: 'palga_cisoea', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.palgaCisoea' },
 ];
 
 // ─── Draft / modal ───────────────────────────────────────────────────────────
@@ -84,18 +94,19 @@ const CategoryModal: React.FC<{
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }> = ({ mode, section, nomenclatureSystem, entry, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(entry ? { ...entry } : emptyDraft(section, nomenclatureSystem));
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#141414', border: '1px solid #262626', borderRadius: 14, width: 480, maxWidth: '90vw', maxHeight: '85vh', overflowY: 'auto', padding: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#fff', margin: '0 0 16px' }}>
-          {mode === 'add' ? 'Add Category' : 'Edit Category'}
+    <div className="ps-cytcat-modal-overlay">
+      <div className="ps-cytcat-modal-box">
+        <h2 className="ps-cytcat-modal-title">
+          {mode === 'add' ? t('cytologyCategoriesSection.modal.addTitle') : t('cytologyCategoriesSection.modal.editTitle')}
         </h2>
 
-        <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Label</label>
+        <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.labelField')}</label>
         <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })}
-          style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none' }} />
+          className="ps-cytcat-field-input" />
 
         {/* Real, per direct guidance on SFCC (France): SFCC has no
             entries of its own — it's these same Bethesda entries with
@@ -106,68 +117,67 @@ const CategoryModal: React.FC<{
             canonical English label/description instead. */}
         {draft.nomenclatureSystem === 'bethesda' && (
           <>
-            <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>French Label (SFCC) — optional</label>
+            <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.frenchLabelField')}</label>
             <input value={draft.labelFr ?? ''} onChange={e => setDraft({ ...draft, labelFr: e.target.value || undefined })}
-              style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none' }} />
+              className="ps-cytcat-field-input" />
           </>
         )}
 
-        <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Abbreviation (optional)</label>
+        <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.abbreviationField')}</label>
         <input value={draft.abbreviation ?? ''} onChange={e => setDraft({ ...draft, abbreviation: e.target.value || undefined })}
-          style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none' }} />
+          className="ps-cytcat-field-input" />
 
         {section === 'interpretation_result' && (
           <>
-            <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Group (e.g. "Epithelial Cell Abnormality — Squamous")</label>
+            <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.groupField')}</label>
             <input value={draft.group ?? ''} onChange={e => setDraft({ ...draft, group: e.target.value || undefined })}
-              style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none' }} />
+              className="ps-cytcat-field-input" />
           </>
         )}
 
-        <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Description (optional)</label>
+        <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.descriptionField')}</label>
         <textarea value={draft.description ?? ''} onChange={e => setDraft({ ...draft, description: e.target.value || undefined })}
           rows={2}
-          style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+          className="ps-cytcat-field-textarea" />
 
         {draft.nomenclatureSystem === 'bethesda' && (
           <>
-            <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>French Description (SFCC) — optional</label>
+            <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.frenchDescriptionField')}</label>
             <textarea value={draft.descriptionFr ?? ''} onChange={e => setDraft({ ...draft, descriptionFr: e.target.value || undefined })}
               rows={2}
-              style={{ width: '100%', padding: '9px 12px', fontSize: 13, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+              className="ps-cytcat-field-textarea" />
           </>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#d1d5db', marginBottom: 14, cursor: 'pointer' }}>
+        <label className="ps-cytcat-checkbox-row">
           <input type="checkbox" checked={draft.requiresPathologistReview}
             onChange={e => setDraft({ ...draft, requiresPathologistReview: e.target.checked })} />
-          Requires pathologist review before sign-out
+          {t('cytologyCategoriesSection.modal.requiresReviewLabel')}
         </label>
 
-        <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>Suggested Abnormal-Detection Severity (optional)</label>
+        <label className="ps-cytcat-field-label">{t('cytologyCategoriesSection.modal.severityField')}</label>
         <select value={draft.suggestedAbnormalSeverity ?? ''} onChange={e => setDraft({ ...draft, suggestedAbnormalSeverity: (e.target.value || undefined) as any })}
-          className="ps-conf-select" style={{ width: '100%', marginBottom: 14 }}>
-          <option value="">— None —</option>
-          <option value="Abnormal">Abnormal</option>
-          <option value="Critical">Critical</option>
-          <option value="Malignant">Malignant</option>
+          className="ps-conf-select ps-cytcat-select--full">
+          <option value="">{t('cytologyCategoriesSection.modal.severityNoneOption')}</option>
+          {(Object.keys(SEVERITY_LABEL_KEY) as Array<keyof typeof SEVERITY_LABEL_KEY>).map(s => (
+            <option key={s} value={s}>{t(SEVERITY_LABEL_KEY[s])}</option>
+          ))}
         </select>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#d1d5db', marginBottom: 20, cursor: 'pointer' }}>
+        <label className="ps-cytcat-checkbox-row ps-cytcat-checkbox-row--last">
           <input type="checkbox" checked={draft.active}
             onChange={e => setDraft({ ...draft, active: e.target.checked })} />
-          Active
+          {t('common.active')}
         </label>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button onClick={onClose}
-            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, color: '#9ca3af', background: 'transparent', border: '1px solid #374151', borderRadius: 8, cursor: 'pointer' }}>
-            Cancel
+        <div className="ps-cytcat-modal-actions">
+          <button onClick={onClose} className="ps-cytcat-btn-secondary">
+            {t('common.cancel')}
           </button>
           <button onClick={() => draft.label.trim() && onSave(draft)}
             disabled={!draft.label.trim()}
-            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, color: '#0a0a0a', background: draft.label.trim() ? '#8AB4F8' : '#374151', border: 'none', borderRadius: 8, cursor: draft.label.trim() ? 'pointer' : 'not-allowed' }}>
-            Save
+            className={`ps-cytcat-btn-primary ${draft.label.trim() ? 'ps-cytcat-btn-primary--enabled' : 'ps-cytcat-btn-primary--disabled'}`}>
+            {t('common.save')}
           </button>
         </div>
       </div>
@@ -178,6 +188,7 @@ const CategoryModal: React.FC<{
 // ─── Main component ──────────────────────────────────────────────────────────
 
 const CytologyCategoriesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<CytologyCategoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<CytologyCategorySection>('adequacy');
@@ -240,7 +251,7 @@ const CytologyCategoriesSection: React.FC = () => {
 
   const handleImportFrenchTranslations = async (file: File) => {
     if (!isCsvFile(file)) {
-      alert(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      alert(t('cytologyCategoriesSection.import.invalidFileType', { fileName: file.name }));
       return;
     }
     const text = await readFileAsText(file);
@@ -271,13 +282,12 @@ const CytologyCategoriesSection: React.FC = () => {
   const groups = Array.from(new Set(visible.map(e => e.group ?? '__none__')));
 
   return (
-    <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+    <div className="ps-cytcat-page">
+      <div className="ps-cytcat-header-row">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Interpretation and Recommendations</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4, maxWidth: 640 }}>
-            Standardized specimen adequacy, general categorization, interpretation/result,
-            and clinical recommendation vocabulary used across GYN cytology screening and reporting.
+          <h1 className="ps-cytcat-title">{t('cytologyCategoriesSection.title')}</h1>
+          <p className="ps-cytcat-subtitle">
+            {t('cytologyCategoriesSection.subtitle')}
           </p>
         </div>
         {/* Real, per this file's own direct fix — SFCC is a derived
@@ -288,103 +298,89 @@ const CytologyCategoriesSection: React.FC = () => {
             never reads for that system. */}
         {nomenclatureSystem !== 'sfcc' && (
           <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>
-            + Add Category
+            {t('cytologyCategoriesSection.addCategoryButton')}
           </button>
         )}
-        <button onClick={handleExportFrenchTranslations}
-          style={{ marginLeft: 8, padding: '9px 14px', fontSize: 12, fontWeight: 600, color: '#e5e7eb', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
-          ⬇ Export French Translations
+        <button onClick={handleExportFrenchTranslations} className="ps-cytcat-btn-toolbar">
+          {t('cytologyCategoriesSection.exportButton')}
         </button>
-        <button onClick={() => importFileInputRef.current?.click()}
-          style={{ marginLeft: 8, padding: '9px 14px', fontSize: 12, fontWeight: 600, color: '#e5e7eb', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
-          ⬆ Import French Translations
+        <button onClick={() => importFileInputRef.current?.click()} className="ps-cytcat-btn-toolbar">
+          {t('cytologyCategoriesSection.importButton')}
         </button>
         <input ref={importFileInputRef} type="file" hidden accept=".csv,text/csv"
           onChange={e => { if (e.target.files?.[0]) handleImportFrenchTranslations(e.target.files[0]); e.target.value = ''; }} />
       </div>
 
       {nomenclatureSystem === 'sfcc' && (
-        <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 8, background: '#38bdf818', border: '1px solid #38bdf833', color: '#38bdf8', fontSize: 12 }}>
-          SFCC uses Bethesda's own categories with French text substituted — not a separate system. Switch to
-          Bethesda to add, edit, or translate an entry.
+        <div className="ps-cytcat-sfcc-banner">
+          {t('cytologyCategoriesSection.sfccBanner')}
         </div>
       )}
 
       {/* Real, per this file's own direct fix — the real, previously-
           missing nomenclature-system selector. Defaults to 'bethesda',
           matching this dictionary's own original, real default. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af' }}>Nomenclature System</label>
+      <div className="ps-cytcat-nomenclature-row">
+        <label className="ps-cytcat-nomenclature-label">{t('cytologyCategoriesSection.nomenclatureLabel')}</label>
         <select value={nomenclatureSystem} onChange={e => setNomenclatureSystem(e.target.value as CytologyNomenclatureSystem)}
-          style={{ padding: '6px 10px', fontSize: 13, color: '#e5e7eb', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 6 }}>
-          {NOMENCLATURE_SYSTEMS.map(s => (<option key={s.id} value={s.id}>{s.label}</option>))}
+          className="ps-cytcat-nomenclature-select">
+          {NOMENCLATURE_SYSTEMS.map(s => (<option key={s.id} value={s.id}>{t(s.labelKey)}</option>))}
         </select>
       </div>
 
       {/* Section tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid #1f2937' }}>
-        {SECTION_TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            style={{
-              padding: '10px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              background: 'transparent', border: 'none',
-              borderBottom: activeTab === t.id ? '2px solid #8AB4F8' : '2px solid transparent',
-              color: activeTab === t.id ? '#8AB4F8' : '#6b7280',
-            }}>
-            {t.label}
+      <div className="ps-cytcat-tabs-row">
+        {SECTION_TABS.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`ps-cytcat-tab-btn ${activeTab === tab.id ? 'ps-cytcat-tab-btn--active' : ''}`}>
+            {t(tab.labelKey)}
           </button>
         ))}
-        <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer', paddingBottom: 10 }}>
+        <label className="ps-cytcat-showinactive-label">
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-          Show inactive
+          {t('common.showInactive')}
         </label>
       </div>
 
-      {loading && <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>Loading…</div>}
+      {loading && <div className="ps-cytcat-empty-state">{t('common.loading')}</div>}
 
       {!loading && groups.map(group => (
-        <div key={group} style={{ marginBottom: 24 }}>
+        <div key={group} className="ps-cytcat-group-block">
           {group !== '__none__' && (
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, marginTop: 8 }}>
+            <div className="ps-cytcat-group-heading">
               {group}
             </div>
           )}
-          <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+          <div className="ps-cytcat-group-card">
             {visible.filter(e => (e.group ?? '__none__') === group).map((e, i, arr) => (
               <div key={e.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-                  borderBottom: i < arr.length - 1 ? '1px solid #111827' : 'none',
-                  opacity: e.active ? 1 : 0.5,
-                }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                className={`ps-cytcat-row ${i === arr.length - 1 ? 'ps-cytcat-row--last' : ''} ${e.active ? '' : 'ps-cytcat-row--inactive'}`}>
+                <div className="ps-cytcat-row-content">
+                  <div className="ps-cytcat-row-title-line">
                     {e.abbreviation && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#8AB4F822', color: '#8AB4F8', border: '1px solid #8AB4F844' }}>
+                      <span className="ps-cytcat-abbrev-badge">
                         {e.abbreviation}
                       </span>
                     )}
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }}>{e.label}</span>
-                    {e.isSystem && <span style={{ fontSize: 10, color: '#4b5563' }}>built-in</span>}
+                    <span className="ps-cytcat-row-label">{e.label}</span>
+                    {e.isSystem && <span className="ps-cytcat-builtin-tag">{t('cytologyCategoriesSection.builtin')}</span>}
                   </div>
                   {e.description && (
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>{e.description}</div>
+                    <div className="ps-cytcat-row-description">{e.description}</div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  {e.requiresPathologistReview && <Chip label="Pathologist Review" color="#f59e0b" />}
-                  {e.suggestedAbnormalSeverity && <Chip label={e.suggestedAbnormalSeverity} color={SEVERITY_COLOR[e.suggestedAbnormalSeverity]} />}
-                  {!e.active && <Chip label="Inactive" color="#4b5563" />}
+                <div className="ps-cytcat-chips-wrap">
+                  {e.requiresPathologistReview && <Chip label={t('cytologyCategoriesSection.chips.pathologistReview')} color="#f59e0b" />}
+                  {e.suggestedAbnormalSeverity && <Chip label={t(SEVERITY_LABEL_KEY[e.suggestedAbnormalSeverity])} color={SEVERITY_COLOR[e.suggestedAbnormalSeverity]} />}
+                  {!e.active && <Chip label={t('common.inactive')} color="#4b5563" />}
                 </div>
                 {nomenclatureSystem !== 'sfcc' && (
                   <>
-                    <button onClick={() => toggleActive(e)}
-                      style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
-                      {e.active ? 'Deactivate' : 'Reactivate'}
+                    <button onClick={() => toggleActive(e)} className="ps-cytcat-btn-row-secondary">
+                      {e.active ? t('common.deactivate') : t('common.reactivate')}
                     </button>
-                    <button onClick={() => setModal({ mode: 'edit', entry: e })}
-                      style={{ padding: '5px 16px', fontSize: 12, fontWeight: 600, color: '#e5e7eb', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
-                      Edit
+                    <button onClick={() => setModal({ mode: 'edit', entry: e })} className="ps-cytcat-btn-row-edit">
+                      {t('common.edit')}
                     </button>
                   </>
                 )}
@@ -395,16 +391,16 @@ const CytologyCategoriesSection: React.FC = () => {
       ))}
 
       {!loading && visible.length === 0 && (
-        <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>
-          No categories in this section match the current filter.
+        <div className="ps-cytcat-empty-state">
+          {t('cytologyCategoriesSection.emptyState')}
         </div>
       )}
 
-      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#374151' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: '#22c55e' }}>●</span> System Live Sync
+      <div className="ps-cytcat-footer">
+        <div className="ps-cytcat-livesync">
+          <span className="ps-cytcat-livesync-dot">●</span> {t('cytologyCategoriesSection.footer.liveSync')}
         </div>
-        <div>{entries.filter(e => e.active).length} active · {entries.length} total</div>
+        <div>{t('cytologyCategoriesSection.footer.counts', { active: entries.filter(e => e.active).length, total: entries.length })}</div>
       </div>
 
       {modal && (

@@ -14,6 +14,7 @@
 // operation, not a second, parallel implementation.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { interfaceExceptionService, orderIntakeService, specimenDictionaryService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -41,6 +42,7 @@ interface Props {
 }
 
 const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy, onClose, onResolved }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [sourcePatient, setSourcePatient] = useState<MasterPatientRecord | null>(null);
   const [targetPatient, setTargetPatient] = useState<MasterPatientRecord | null>(null);
@@ -157,7 +159,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
       setMapError(created.error);
       return;
     }
-    const note = `Mapped order code "${exception.rawOrderCode}" to Specimen Dictionary entry ${mapDictionaryEntryId} — real crosswalk entry created.`;
+    const note = `Mapped order code "${exception.rawOrderCode}" to Specimen Dictionary entry ${mapDictionaryEntryId} — crosswalk entry created.`;
     await interfaceExceptionService.resolve(exception.id, requestedBy, note);
     setMapBusy(false);
     setResultNote(note);
@@ -176,7 +178,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
     <div className="ps-modal-overlay" onClick={onClose}>
       <div className="ps-iexc-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-header">
-          <h2 className="ps-modal-title">Review Interface Exception — {exception.eventType}</h2>
+          <h2 className="ps-modal-title">{t('interfaceExceptionReviewModal.title', { eventType: exception.eventType })}</h2>
           <button onClick={onClose} className="ps-modal-close">&#x2715;</button>
         </div>
 
@@ -184,34 +186,38 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
           <div className="ps-iexc-reason-banner">{exception.reason}</div>
 
           {loading ? (
-            <div className="ps-iexc-loading">Loading patient and case details…</div>
+            <div className="ps-iexc-loading">{t('interfaceExceptionReviewModal.loadingDetails')}</div>
           ) : (
             <>
               <div className="ps-iexc-patient-row">
                 <div className="ps-iexc-patient-card">
-                  <div className="ps-iexc-patient-card-label">Source Patient</div>
+                  <div className="ps-iexc-patient-card-label">{t('interfaceExceptionReviewModal.sourcePatient')}</div>
                   {sourcePatient ? (
                     <>
-                      <div className="ps-iexc-patient-name">{sourcePatient.firstName} {sourcePatient.lastName}</div>
-                      <div className="ps-iexc-patient-meta">MRN: {sourcePatient.mrn} · DOB: {sourcePatient.dateOfBirth}</div>
+                      <div className="ps-iexc-patient-name" data-phi="name">{sourcePatient.firstName} {sourcePatient.lastName}</div>
+                      <div className="ps-iexc-patient-meta" data-phi="true">MRN: {sourcePatient.mrn} · DOB: {sourcePatient.dateOfBirth}</div>
                     </>
                   ) : (
-                    <div className="ps-iexc-patient-unresolved">
-                      Patient identity could not be resolved{exception.sourcePatientIdentifier ? ` (raw identifier: ${exception.sourcePatientIdentifier})` : ''}.
+                    <div className="ps-iexc-patient-unresolved" data-phi="true">
+                      {exception.sourcePatientIdentifier
+                        ? t('interfaceExceptionReviewModal.patientUnresolvedWithId', { id: exception.sourcePatientIdentifier })
+                        : t('interfaceExceptionReviewModal.patientUnresolved')}
                     </div>
                   )}
                 </div>
                 <div className="ps-iexc-patient-arrow">→</div>
                 <div className="ps-iexc-patient-card">
-                  <div className="ps-iexc-patient-card-label">Target Patient</div>
+                  <div className="ps-iexc-patient-card-label">{t('interfaceExceptionReviewModal.targetPatient')}</div>
                   {targetPatient ? (
                     <>
-                      <div className="ps-iexc-patient-name">{targetPatient.firstName} {targetPatient.lastName}</div>
-                      <div className="ps-iexc-patient-meta">MRN: {targetPatient.mrn} · DOB: {targetPatient.dateOfBirth}</div>
+                      <div className="ps-iexc-patient-name" data-phi="name">{targetPatient.firstName} {targetPatient.lastName}</div>
+                      <div className="ps-iexc-patient-meta" data-phi="true">MRN: {targetPatient.mrn} · DOB: {targetPatient.dateOfBirth}</div>
                     </>
                   ) : (
-                    <div className="ps-iexc-patient-unresolved">
-                      Patient identity could not be resolved{exception.targetPatientIdentifier ? ` (raw identifier: ${exception.targetPatientIdentifier})` : ''}.
+                    <div className="ps-iexc-patient-unresolved" data-phi="true">
+                      {exception.targetPatientIdentifier
+                        ? t('interfaceExceptionReviewModal.patientUnresolvedWithId', { id: exception.targetPatientIdentifier })
+                        : t('interfaceExceptionReviewModal.patientUnresolved')}
                     </div>
                   )}
                 </div>
@@ -233,10 +239,10 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
               {exception.eventType === 'A43' && sourcePatient && (
                 <div className="ps-iexc-cases-section">
                   <div className="ps-iexc-cases-label">
-                    Source patient's active cases — select which, if any, should move to the target patient
+                    {t('interfaceExceptionReviewModal.casesLabel')}
                   </div>
                   {sourceCases.length === 0 ? (
-                    <div className="ps-iexc-no-cases">No cases currently found under this source patient.</div>
+                    <div className="ps-iexc-no-cases">{t('interfaceExceptionReviewModal.noCasesFound')}</div>
                   ) : (
                     <div className="ps-iexc-cases-list">
                       {sourceCases.map(c => (
@@ -261,35 +267,32 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
               {exception.eventType === 'unmapped_order_code' && (
                 <div className="ps-iexc-no-cases">
                   <p>
-                    A real inbound order code the Specimen Code Crosswalk had no match for, in any coding system
-                    tried — order processing was not blocked; a pending Specimen Dictionary entry was auto-created
-                    so the order could still flow through, but a real crosswalk entry should be added for this code
-                    so future orders resolve automatically instead of repeating this same exception.
+                    {t('interfaceExceptionReviewModal.unmappedOrderCodeIntro')}
                   </p>
                   <div className="ps-conf-form-row">
                     <div className="ps-conf-form-field">
-                      <label className="ps-conf-label">Raw order code</label>
+                      <label className="ps-conf-label">{t('interfaceExceptionReviewModal.rawOrderCodeLabel')}</label>
                       <span className="ps-conf-identity-name">{exception.rawOrderCode ?? '—'}</span>
                     </div>
                     <div className="ps-conf-form-field">
-                      <label className="ps-conf-label">Normalized</label>
+                      <label className="ps-conf-label">{t('interfaceExceptionReviewModal.normalizedLabel')}</label>
                       <span className="ps-conf-identity-name">{exception.normalizedOrderCode ?? '—'}</span>
                     </div>
                     <div className="ps-conf-form-field">
-                      <label className="ps-conf-label">Coding system</label>
-                      <span className="ps-conf-identity-name">{exception.codingSystem ?? 'HL7_LOCAL (default)'}</span>
+                      <label className="ps-conf-label">{t('interfaceExceptionReviewModal.codingSystemLabel')}</label>
+                      <span className="ps-conf-identity-name">{exception.codingSystem ?? `HL7_LOCAL ${t('interfaceExceptionReviewModal.defaultSuffix')}`}</span>
                     </div>
                   </div>
                   {mapError && <p className="ps-conf-error-text">{mapError}</p>}
                   {exception.facilityId ? (
                     <>
                       <div className="ps-conf-form-field">
-                        <label className="ps-conf-label">Map to Specimen Dictionary entry</label>
+                        <label className="ps-conf-label">{t('interfaceExceptionReviewModal.mapDictionaryLabel')}</label>
                         <SearchableCombobox
                           value={mapDictionaryEntryId}
                           onChange={setMapDictionaryEntryId}
-                          placeholder="Select a specimen type…"
-                          noMatchText="No specimen types match"
+                          placeholder={t('interfaceExceptionReviewModal.selectSpecimenTypePlaceholder')}
+                          noMatchText={t('interfaceExceptionReviewModal.noSpecimenTypesMatch')}
                           disabled={mapBusy}
                           options={dictionary.map(d => ({
                             id: d.id,
@@ -300,18 +303,15 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                         />
                       </div>
                       <p>
-                        Creates the real crosswalk entry directly — future orders with this exact code resolve
-                        automatically instead of repeating this exception.
+                        {t('interfaceExceptionReviewModal.createsCrosswalkNote')}
                       </p>
                       <button className="ps-conf-btn-primary" disabled={mapBusy || !mapDictionaryEntryId} onClick={handleMapAndLink}>
-                        {mapBusy ? 'Mapping…' : 'Map & Link'}
+                        {mapBusy ? t('interfaceExceptionReviewModal.mapping') : t('interfaceExceptionReviewModal.mapAndLink')}
                       </button>
                     </>
                   ) : (
                     <p>
-                      This exception was raised before real facility tracking existed for this event type — add the
-                      real crosswalk entry from the Order Type Dictionary screen (Config → Integrations) instead,
-                      then dismiss this exception.
+                      {t('interfaceExceptionReviewModal.noFacilityTrackingNote')}
                     </p>
                   )}
                 </div>
@@ -319,7 +319,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
 
               {exception.eventType !== 'A43' && exception.eventType !== 'unmapped_order_code' && (
                 <div className="ps-iexc-no-cases">
-                  This is a real, unresolved identity issue (ADT^{exception.eventType}), not a case-binding problem — manual identity resolution isn't built into this modal yet. Dismiss once the real, correct identity has been confirmed and corrected upstream (e.g. via a corrected re-send from the EHR).
+                  {t('interfaceExceptionReviewModal.otherEventTypeNote', { eventType: exception.eventType })}
                 </div>
               )}
 
@@ -330,7 +330,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
 
         <div className="ps-modal-footer">
           <button onClick={handleDismiss} disabled={busy} className="ps-conf-btn-secondary">
-            Dismiss — No Action Needed
+            {t('interfaceExceptionReviewModal.dismissNoAction')}
           </button>
           {exception.eventType === 'A43' && (
             <button
@@ -338,7 +338,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
               disabled={busy || selectedCaseIds.size === 0 || !exception.sourcePatientId || !exception.targetPatientId}
               className="ps-conf-btn-primary"
             >
-              {busy ? 'Moving…' : `Move ${selectedCaseIds.size || ''} Selected Case${selectedCaseIds.size === 1 ? '' : 's'}`}
+              {busy ? t('interfaceExceptionReviewModal.moving') : t('interfaceExceptionReviewModal.moveSelectedCases', { count: selectedCaseIds.size })}
             </button>
           )}
         </div>

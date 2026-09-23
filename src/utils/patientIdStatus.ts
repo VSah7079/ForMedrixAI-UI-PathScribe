@@ -26,6 +26,20 @@
 //     format-pattern validity only (PATIENT_ID_BY_JURISDICTION's own
 //     existing pattern), Green/Red, no Amber tier, since there's no
 //     real "untraced" concept to distinguish from "invalid" for these.
+//
+// i18n note: this is a plain utility with no `useTranslation()` of its
+// own, so `label`/`tooltip` were replaced with `labelKey`/`tooltipKey`
+// (+ `tooltipParams`) — translation keys and interpolation data, not
+// rendered text. `tooltipParams` may itself hold translation keys for
+// a nested message (a validation reason, an NHS status-code
+// description); which param names those are is listed in
+// `innerKeys`, so `PatientIdStatusDot.tsx` (which does have `t()`)
+// resolves those first before the outer `t(tooltipKey, ...)` call.
+// `PATIENT_ID_BY_JURISDICTION[...].labelKey`/`.formatKey` (e.g. "NHS
+// Number", "5–10 digits") are now themselves translation keys (see
+// systemConfig.ts's own i18n note on that dictionary) — passed through
+// via `innerKeys` below, same mechanism already used for `reason`/
+// `description`, rather than as literal `tooltipParams` values.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Jurisdiction } from '@/types/systemConfig';
@@ -36,12 +50,19 @@ export type PatientIdStatusColor = 'green' | 'amber' | 'red' | 'gray';
 
 export interface PatientIdStatus {
   color: PatientIdStatusColor;
-  /** Short label for the dot's own accessible name / compact display. */
-  label: string;
-  /** Full sentence for the tooltip — the actual explanation a real user
-   *  reads on hover, per direct specification's own tooltip content
-   *  format ("Code 01 - Verified against PDS"). */
-  tooltip: string;
+  /** Translation key for the dot's own accessible name / compact
+   *  display (e.g. "Missing", "Verified"). */
+  labelKey: string;
+  /** Translation key for the tooltip sentence — the actual
+   *  explanation a real user reads on hover, per direct
+   *  specification's own tooltip content format ("Code 01 - Verified
+   *  against PDS"). */
+  tooltipKey: string;
+  tooltipParams?: Record<string, unknown>;
+  /** Names, within `tooltipParams`, whose value is itself a
+   *  translation key (a nested validation reason or status-code
+   *  description) rather than a literal value to interpolate as-is. */
+  innerKeys?: Record<string, string>;
 }
 
 /**
@@ -56,15 +77,15 @@ export interface PatientIdStatus {
  * reasonable default a Trust can override, not asserted as
  * unquestionably exact.
  */
-const NHS_STATUS_CODE_DESCRIPTIONS: Record<string, string> = {
-  '01': 'Number present and verified against PDS (Spine)',
-  '02': 'Number present but not yet verified',
-  '03': 'Attempted verification without success',
-  '04': 'Verification in progress',
-  '05': 'Trace required',
-  '06': 'Trace attempted — no match found',
-  '07': 'Trace needs to be resolved — multiple matches found',
-  '08': 'Trace not required (e.g. temporary resident)',
+const NHS_STATUS_CODE_DESCRIPTION_KEY: Record<string, string> = {
+  '01': 'patientIdStatus.nhsStatusCode.01',
+  '02': 'patientIdStatus.nhsStatusCode.02',
+  '03': 'patientIdStatus.nhsStatusCode.03',
+  '04': 'patientIdStatus.nhsStatusCode.04',
+  '05': 'patientIdStatus.nhsStatusCode.05',
+  '06': 'patientIdStatus.nhsStatusCode.06',
+  '07': 'patientIdStatus.nhsStatusCode.07',
+  '08': 'patientIdStatus.nhsStatusCode.08',
 };
 
 /** Real, standard "generic format-only" check for jurisdictions with no
@@ -98,20 +119,32 @@ export function computePatientIdStatus(
   if (!trimmed) {
     return {
       color: 'gray',
-      label: 'Missing',
-      tooltip: `${PATIENT_ID_BY_JURISDICTION[jurisdiction].label} not provided or omitted — normal for unidentified/emergency accessions.`,
+      labelKey: 'patientIdStatus.label.missing',
+      tooltipKey: 'patientIdStatus.tooltip.missing',
+      innerKeys: { idType: PATIENT_ID_BY_JURISDICTION[jurisdiction].labelKey },
     };
   }
 
   if (jurisdiction === 'GB_EW') {
     const result = validateNhsNumber(trimmed);
     if (!result.valid) {
-      return { color: 'red', label: 'Invalid', tooltip: `Invalid NHS Number: ${result.reason}.` };
+      return {
+        color: 'red',
+        labelKey: 'patientIdStatus.label.invalid',
+        tooltipKey: 'patientIdStatus.tooltip.invalidNhs',
+        innerKeys: { reason: result.reasonKey! },
+      };
     }
     if (hl7StatusCode) {
-      const description = NHS_STATUS_CODE_DESCRIPTIONS[hl7StatusCode] ?? 'Status code received but not recognised';
+      const descriptionKey = NHS_STATUS_CODE_DESCRIPTION_KEY[hl7StatusCode] ?? 'patientIdStatus.nhsStatusCode.unrecognised';
       const color: PatientIdStatusColor = hl7StatusCode === '01' ? 'green' : 'amber';
-      return { color, label: color === 'green' ? 'Verified' : 'Unverified', tooltip: `Code ${hl7StatusCode} — ${description}.` };
+      return {
+        color,
+        labelKey: color === 'green' ? 'patientIdStatus.label.verified' : 'patientIdStatus.label.unverified',
+        tooltipKey: 'patientIdStatus.tooltip.statusCode',
+        tooltipParams: { code: hl7StatusCode },
+        innerKeys: { description: descriptionKey },
+      };
     }
     // Real, honest state Pete's own table doesn't explicitly name: a
     // format/checksum-valid number with no real HL7 status code known
@@ -120,30 +153,40 @@ export function computePatientIdStatus(
     // local checksum is a genuinely weaker claim than PDS
     // verification, and this app has no real basis to claim the
     // stronger one.
-    return { color: 'amber', label: 'Unverified', tooltip: 'NHS Number format and checksum are valid, but no verification status has been received from PDS yet.' };
+    return { color: 'amber', labelKey: 'patientIdStatus.label.unverified', tooltipKey: 'patientIdStatus.tooltip.nhsNoStatusYet' };
   }
 
   if (jurisdiction === 'GB_SCT') {
     const result = validateChiNumber(trimmed);
     if (!result.valid) {
-      return { color: 'red', label: 'Invalid', tooltip: `Invalid CHI Number: ${result.reason}.` };
+      return {
+        color: 'red',
+        labelKey: 'patientIdStatus.label.invalid',
+        tooltipKey: 'patientIdStatus.tooltip.invalidChi',
+        innerKeys: { reason: result.reasonKey! },
+      };
     }
-    return { color: 'green', label: 'Valid', tooltip: 'CHI Number passes local validation (date of birth pattern + Modulus 11 checksum). Scotland\u2019s CHI system carries no separate PDS-style verification status.' };
+    return { color: 'green', labelKey: 'patientIdStatus.label.valid', tooltipKey: 'patientIdStatus.tooltip.chiValid' };
   }
 
   if (jurisdiction === 'GB_NIR') {
     const result = validateHcNumber(trimmed);
     if (!result.valid) {
-      return { color: 'red', label: 'Invalid', tooltip: `Invalid H&C Number: ${result.reason}.` };
+      return {
+        color: 'red',
+        labelKey: 'patientIdStatus.label.invalid',
+        tooltipKey: 'patientIdStatus.tooltip.invalidHc',
+        innerKeys: { reason: result.reasonKey! },
+      };
     }
-    return { color: 'green', label: 'Valid', tooltip: 'H&C Number passes local validation (Modulus 11 checksum + allocated range). Northern Ireland carries no separate PDS-style verification status.' };
+    return { color: 'green', labelKey: 'patientIdStatus.label.valid', tooltipKey: 'patientIdStatus.tooltip.hcValid' };
   }
 
   // Every other jurisdiction: format-only, no registry-verification
   // concept modeled here yet — see this file's own header comment.
   const formatValid = validateGenericFormat(jurisdiction, trimmed);
-  const label = PATIENT_ID_BY_JURISDICTION[jurisdiction].label;
+  const idTypeKey = PATIENT_ID_BY_JURISDICTION[jurisdiction].labelKey;
   return formatValid
-    ? { color: 'green', label: 'Valid format', tooltip: `${label} matches the expected format for this jurisdiction.` }
-    : { color: 'red', label: 'Invalid format', tooltip: `${label} does not match the expected format (${PATIENT_ID_BY_JURISDICTION[jurisdiction].format}).` };
+    ? { color: 'green', labelKey: 'patientIdStatus.label.validFormat', tooltipKey: 'patientIdStatus.tooltip.genericValidFormat', innerKeys: { idType: idTypeKey } }
+    : { color: 'red', labelKey: 'patientIdStatus.label.invalidFormat', tooltipKey: 'patientIdStatus.tooltip.genericInvalidFormat', innerKeys: { idType: idTypeKey, format: PATIENT_ID_BY_JURISDICTION[jurisdiction].formatKey } };
 }

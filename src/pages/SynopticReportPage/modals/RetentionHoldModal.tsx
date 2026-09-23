@@ -23,13 +23,27 @@
 // gates a real, irreversible physical action (disposal), and needs
 // its own explicit, always-checkable state, not buried in a thread of
 // unrelated remarks.
+//
+// i18n note: `REASON_LABEL_KEY` below is this file's own on-screen-
+// only translation-key map for `RetentionHoldReason`; the imported
+// `RETENTION_HOLD_REASON_LABEL` (types/case/RetentionHold.ts) stays
+// the literal-English source of truth for the type itself and isn't
+// modified. `accession`/`activeHold.note`/`.setByUserName`/
+// `h.releaseNote`/`.releasedByUserName` are all real case/hold data.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { RetentionHold, RetentionHoldReason } from '@/types/case/RetentionHold';
-import { RETENTION_HOLD_REASON_LABEL } from '@/types/case/RetentionHold';
+
+const REASON_LABEL_KEY: Record<RetentionHoldReason, string> = {
+  patient_requested_retention: 'retentionHoldModal.reason.patientRequestedRetention',
+  litigation_hold:             'retentionHoldModal.reason.litigationHold',
+  research_hold:               'retentionHoldModal.reason.researchHold',
+  other:                       'intraopQueue.skipReasons.other',
+};
 
 interface RetentionHoldModalProps {
   caseId: string;
@@ -49,6 +63,7 @@ function formatTimestamp(iso: string): string {
 export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
   caseId, accession, retentionHolds, currentUserId, currentUserName, onUpdated, onClose,
 }) => {
+  const { t } = useTranslation();
   const activeHold = retentionHolds.find(h => h.active);
   const pastHolds = retentionHolds.filter(h => !h.active).sort((a, b) => b.setAt.localeCompare(a.setAt));
 
@@ -90,52 +105,55 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">🔒 Retention Hold</div>
+        <div className="ps-ms-header">🔒 {t('sidebar.retentionHold.label')}</div>
         <div className="ps-ms-body">
-          <p className="ps-intraop-note" style={{ marginBottom: 16 }}>
-            Case <span data-phi="accession">{accession}</span> — a hold blocks this case's own material from ever reaching disposal eligibility,
-            regardless of retention period, until it's explicitly released.
+          <p className="ps-intraop-note ps-mb-16">
+            <Trans
+              i18nKey="retentionHoldModal.intro"
+              values={{ accession }}
+              components={{ case: <span data-phi="accession" /> }}
+            />
           </p>
 
           {activeHold ? (
             <>
-              <div className="ps-intraop-note" style={{ borderColor: 'rgba(248,113,113,0.4)' }}>
-                <span className="ps-intraop-note-label" style={{ color: '#f87171' }}>
-                  Active — {RETENTION_HOLD_REASON_LABEL[activeHold.reason]}
+              <div className="ps-intraop-note ps-intraop-note--danger">
+                <span className="ps-intraop-note-label ps-intraop-note-label--danger">
+                  {t('retentionHoldModal.activeLabel', { reason: t(REASON_LABEL_KEY[activeHold.reason]) })}
                 </span>
                 {activeHold.note}
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                  Set by {activeHold.setByUserName} — {formatTimestamp(activeHold.setAt)}
+                <div className="ps-retentionhold-meta">
+                  {t('retentionHoldModal.setByLine', { name: activeHold.setByUserName, timestamp: formatTimestamp(activeHold.setAt) })}
                 </div>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Release Note — required</label>
+                <label className="ps-conf-label">{t('retentionHoldModal.releaseNoteLabel')}</label>
                 <textarea
                   className="ps-conf-input ps-conf-textarea"
                   value={releaseNote}
                   onChange={e => setReleaseNote(e.target.value)}
-                  placeholder='Specific explanation — e.g. "Patient confirmed no further need for specimen return, 2026-09-01."'
+                  placeholder={t('retentionHoldModal.releaseNotePlaceholder')}
                 />
               </div>
             </>
           ) : (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="retention-hold-reason">Hold Reason</label>
+                <label className="ps-conf-label" htmlFor="retention-hold-reason">{t('retentionHoldModal.holdReasonLabel')}</label>
                 <select id="retention-hold-reason" className="ps-conf-select"
                   value={reason} onChange={e => setReason(e.target.value as RetentionHoldReason)}>
-                  {Object.entries(RETENTION_HOLD_REASON_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
+                  {(Object.keys(REASON_LABEL_KEY) as RetentionHoldReason[]).map(value => (
+                    <option key={value} value={value}>{t(REASON_LABEL_KEY[value])}</option>
                   ))}
                 </select>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Note — required</label>
+                <label className="ps-conf-label">{t('retentionHoldModal.noteLabel')}</label>
                 <textarea
                   className="ps-conf-input ps-conf-textarea"
                   value={note}
                   onChange={e => setNote(e.target.value)}
-                  placeholder='Specific explanation — e.g. "Patient called 2026-08-15 requesting blocks returned for a second opinion at City Hospital"'
+                  placeholder={t('retentionHoldModal.notePlaceholder')}
                 />
               </div>
             </>
@@ -143,15 +161,15 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
 
           {pastHolds.length > 0 && (
             <>
-              <div className="ps-syn-section-label" style={{ marginTop: 20 }}>Past Holds ({pastHolds.length})</div>
+              <div className="ps-syn-section-label ps-mt-20">{t('retentionHoldModal.pastHoldsHeading', { count: pastHolds.length })}</div>
               {pastHolds.map(h => (
-                <div key={h.id} className="ps-intraop-note" style={{ opacity: 0.75, marginBottom: 8 }}>
-                  <span className="ps-intraop-note-label">{RETENTION_HOLD_REASON_LABEL[h.reason]}</span>
+                <div key={h.id} className="ps-intraop-note ps-intraop-note--dimmed ps-mb-8">
+                  <span className="ps-intraop-note-label">{t(REASON_LABEL_KEY[h.reason])}</span>
                   {h.note}
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                    Set by {h.setByUserName} — {formatTimestamp(h.setAt)}
+                  <div className="ps-retentionhold-meta">
+                    {t('retentionHoldModal.setByLine', { name: h.setByUserName, timestamp: formatTimestamp(h.setAt) })}
                     <br />
-                    Released by {h.releasedByUserName} — {h.releasedAt && formatTimestamp(h.releasedAt)}: {h.releaseNote}
+                    {t('retentionHoldModal.releasedByLine', { name: h.releasedByUserName, timestamp: h.releasedAt && formatTimestamp(h.releasedAt), note: h.releaseNote })}
                   </div>
                 </div>
               ))}
@@ -159,14 +177,14 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
           )}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-btn-secondary" onClick={onClose} disabled={busy}>Close</button>
+          <button className="ps-btn-secondary" onClick={onClose} disabled={busy}>{t('common.close')}</button>
           {activeHold ? (
             <button className="ps-ms-btn-apply" onClick={releaseHold} disabled={busy || !releaseNote.trim()}>
-              Release Hold
+              {t('retentionHoldModal.releaseHoldButton')}
             </button>
           ) : (
             <button className="ps-ms-btn-apply" onClick={placeHold} disabled={busy || !note.trim()}>
-              Place Hold
+              {t('retentionHoldModal.placeHoldButton')}
             </button>
           )}
         </div>

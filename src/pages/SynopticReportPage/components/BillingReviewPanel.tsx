@@ -40,6 +40,8 @@
 // -----------------------------------------------------------------------------
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../../pathscribe.css';
 import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
 import { CODE_MAP_TABLE, computeCaseCodingSummary, type SpecimenCodingSummary } from '@/services/billing/codeMapTable';
@@ -213,8 +215,10 @@ function resolveRealCptCode(code: string): string | null {
 }
 
 const BillingReviewPanel: React.FC<BillingReviewPanelProps> = ({
-  specimens, matrixBlocks = [], onSetMatrixEvaluatedCores, onApplyMatrixCode, onRejectMatrixCode, onApprove, onOverride, onRejectOnly, onDelete, onDeleteBaseCode, onCorrect, onCorrectBaseCode, onAddBaseCode, onApproveAll, onHighlight, onHighlightStain, materialSelectedBlockId, onFocusBlock, contextLabel = 'sign-out',
+  specimens, matrixBlocks = [], onSetMatrixEvaluatedCores, onApplyMatrixCode, onRejectMatrixCode, onApprove, onOverride, onRejectOnly, onDelete, onDeleteBaseCode, onCorrect, onCorrectBaseCode, onAddBaseCode, onApproveAll, onHighlight, onHighlightStain, materialSelectedBlockId, onFocusBlock, contextLabel,
 }) => {
+  const { t } = useTranslation();
+  const effectiveContextLabel = contextLabel ?? t('billingReviewPanel.defaultContextLabel');
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
@@ -489,25 +493,27 @@ const BillingReviewPanel: React.FC<BillingReviewPanelProps> = ({
   };
 
   return (
-    <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+    <div className="ps-billing-review-panel">
+      <div className="ps-billing-review-panel-header">
         <div>
-          <div className="fm-eyebrow" style={{ color: '#38bdf8', marginBottom: 4 }}>
-            ✦ AI Billing Code Review
+          <div className="fm-eyebrow ps-billing-eyebrow">
+            ✦ {t('billingReviewPanel.title')}
           </div>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>
-            {pending.length > 0 ? `${pending.length} code${pending.length !== 1 ? 's' : ''} need review before ${contextLabel}` : 'Billing codes'}
+          <h3 className="ps-billing-review-panel-heading">
+            {pending.length > 0
+              ? t('billingReviewPanel.codesNeedReview', { count: pending.length, context: effectiveContextLabel })
+              : t('billingReviewPanel.billingCodesHeading')}
           </h3>
         </div>
         {pending.length > 1 && (
           <button
             onClick={handleConfirmAll}
-            style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 10, cursor: 'pointer', border: '1.5px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#34d399', whiteSpace: 'nowrap', flexShrink: 0 }}
-          >✓ Confirm All ({pending.length})</button>
+            className="ps-billing-confirm-all-btn"
+          >✓ {t('billingReviewPanel.confirmAllButton', { count: pending.length })}</button>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0 }}>
+      <div className="ps-billing-main-row">
         <SpecimenTree
           summary={summary}
           specimens={specimens}
@@ -580,17 +586,19 @@ const BillingReviewPanel: React.FC<BillingReviewPanelProps> = ({
 // the exact same three colors/meaning for visual consistency across
 // the app, rather than inventing a new color vocabulary.
 type DotStatus = 'complete' | 'partial' | 'empty' | 'rejected';
-const DOT_STATUS_LABEL: Record<DotStatus, string> = {
-  complete: 'Applied',
-  partial:  'Pending review',
-  empty:    'No codes',
-  rejected: 'Declined — no code applied',
+// UI-chrome tooltip labels for a computed display status (not a
+// persisted enum value) — translated via the same label-key
+// indirection used for real persisted enums elsewhere in this sweep.
+const DOT_STATUS_LABEL_KEY: Record<DotStatus, string> = {
+  complete: 'billingReviewPanel.dotStatus.applied',
+  partial:  'billingReviewPanel.dotStatus.pendingReview',
+  empty:    'billingReviewPanel.dotStatus.noCodes',
+  rejected: 'billingReviewPanel.dotStatus.declined',
 };
 const StatusDot: React.FC<{ status: DotStatus }> = ({ status }) => {
-  const color = status === 'complete' ? '#10b981' : status === 'partial' ? '#f59e0b' : status === 'rejected' ? '#64748b' : '#334155';
   return (
     <span className="ps-status-dot-wrap">
-      <span className="ps-status-dot" style={{ background: color }} />
+      <span className={`ps-status-dot ps-billing-status-dot--${status}`} />
     </span>
   );
 };
@@ -611,42 +619,39 @@ const SpecimenTree: React.FC<{
   onToggleSpecimenCollapsed: (specimenId: string) => void;
   expandedBlockIds: Set<string>;
   onToggleBlockExpanded: (blockId: string) => void;
-}> = ({ summary, specimens, selected, onSelect, onSelectStain, activePendingKey, manualAddTargetStainId, pendingCountFor, appliedCountFor, collapsedSpecimenIds, onToggleSpecimenCollapsed, expandedBlockIds, onToggleBlockExpanded }) => (
-  <div style={{ width: 240, flexShrink: 0, overflowY: 'auto', borderRight: '1px solid rgba(148,163,184,0.15)', paddingRight: 10 }}>
-    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 8 }}>
-      Specimens
+}> = ({ summary, specimens, selected, onSelect, onSelectStain, activePendingKey, manualAddTargetStainId, pendingCountFor, appliedCountFor, collapsedSpecimenIds, onToggleSpecimenCollapsed, expandedBlockIds, onToggleBlockExpanded }) => {
+  const { t } = useTranslation();
+  return (
+  <div className="ps-billing-tree">
+    <div className="ps-billing-tree-heading">
+      {t('billingReviewPanel.specimensHeading')}
     </div>
     {summary.map(sp => {
       const rawSpecimen = specimens.find(s => s.id === sp.specimenId);
       const isSpecSelected = selected?.type === 'specimen' && selected.specimenId === sp.specimenId;
       const isSpecCollapsed = collapsedSpecimenIds.has(sp.specimenId);
       return (
-        <div key={sp.specimenId} style={{ marginBottom: 10 }}>
+        <div key={sp.specimenId} className="ps-billing-tree-specimen">
           <div
             title={`${sp.specimenLabel}: ${rawSpecimen?.description ?? ''}`}
-            style={{
-              padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
-              background: isSpecSelected ? 'rgba(56,189,248,0.1)' : 'transparent',
-              border: isSpecSelected ? '1px solid rgba(56,189,248,0.35)' : '1px solid transparent',
-              display: 'flex', alignItems: 'flex-start', gap: 4,
-            }}
+            className={`ps-billing-tree-specimen-row${isSpecSelected ? ' ps-billing-tree-row--selected' : ''}`}
           >
             <button
               onClick={e => { e.stopPropagation(); onToggleSpecimenCollapsed(sp.specimenId); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 10, padding: '2px 0', flexShrink: 0, marginTop: 2 }}
-              title={isSpecCollapsed ? 'Expand' : 'Collapse'}
+              className="ps-billing-tree-toggle-btn"
+              title={isSpecCollapsed ? t('billingReviewPanel.expand') : t('billingReviewPanel.collapse')}
             >{isSpecCollapsed ? '▶' : '▼'}</button>
-            <div style={{ flex: 1, minWidth: 0 }} onClick={() => onSelect({ type: 'specimen', specimenId: sp.specimenId })}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
+            <div className="ps-billing-tree-specimen-label" onClick={() => onSelect({ type: 'specimen', specimenId: sp.specimenId })}>
+              <div className="ps-billing-tree-specimen-label-row">
+                <span className="ps-billing-tree-specimen-name">
                   {sp.specimenLabel}: {rawSpecimen?.description ?? ''}
                 </span>
                 <StatusDot status={sp.hasBaseCode ? 'complete' : 'empty'} />
               </div>
-              <div style={{ fontSize: 10, color: sp.hasBaseCode ? '#94a3b8' : '#f59e0b', marginTop: 2 }}>
+              <div className={`ps-billing-tree-base-line${sp.hasBaseCode ? '' : ' ps-billing-tree-base-line--missing'}`}>
                 {sp.hasBaseCode ? (
                   <>
-                    Base:{' '}
+                    {t('billingReviewPanel.baseLabel')}{' '}
                     {sp.baseCptCodes.map((c, i) => {
                       const realCode = resolveRealCptCode(c) ?? c;
                       return (
@@ -657,7 +662,7 @@ const SpecimenTree: React.FC<{
                       );
                     })}
                   </>
-                ) : 'No base code'}
+                ) : t('billingReviewPanel.noBaseCode')}
               </div>
             </div>
           </div>
@@ -686,28 +691,23 @@ const SpecimenTree: React.FC<{
               <div key={block.blockId}>
                 <div
                   title={`${sp.specimenLabel}${block.blockLabel}${block.stainNames.length > 0 ? ` (${block.stainNames.join(', ')})` : ''}`}
-                  style={{
-                    marginLeft: 12, padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
-                    background: isBlockSelected ? 'rgba(56,189,248,0.1)' : 'transparent',
-                    border: isBlockSelected ? '1px solid rgba(56,189,248,0.35)' : '1px solid transparent',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}
+                  className={`ps-billing-tree-block-row${isBlockSelected ? ' ps-billing-tree-row--selected' : ''}`}
                 >
                   {hasStains ? (
                     <button
                       onClick={e => { e.stopPropagation(); onToggleBlockExpanded(block.blockId); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 9, padding: 0, flexShrink: 0 }}
-                      title={isBlockExpanded ? 'Collapse stains' : 'Expand stains'}
+                      className="ps-billing-tree-block-toggle-btn"
+                      title={isBlockExpanded ? t('billingReviewPanel.collapseStains') : t('billingReviewPanel.expandStains')}
                     >{isBlockExpanded ? '▼' : '▶'}</button>
-                  ) : <span style={{ width: 9, flexShrink: 0 }} />}
+                  ) : <span className="ps-billing-tree-block-toggle-spacer" />}
                   <div
                     onClick={() => onSelect({ type: 'block', specimenId: sp.specimenId, blockId: block.blockId })}
-                    style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}
+                    className="ps-billing-tree-block-label"
                   >
-                    <span style={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span className="ps-billing-tree-block-name">
                       {sp.specimenLabel}{block.blockLabel}
                       {hasBlockLevelOnlyCode && (
-                        <span style={{ color: '#34d399', fontSize: 10, marginLeft: 6 }}>
+                        <span className="ps-billing-tree-block-native-codes">
                           {block.blockNativeAppliedCodes.map((c, i) => {
                             const realCode = resolveRealCptCode(c.code) ?? c.code;
                             return (
@@ -720,12 +720,12 @@ const SpecimenTree: React.FC<{
                         </span>
                       )}
                     </span>
-                    <span style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                    <span className="ps-billing-tree-block-counts">
                       {pendingCount > 0 && (
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>{pendingCount}</span>
+                        <span className="ps-billing-tree-count-badge ps-billing-tree-count-badge--pending">{pendingCount}</span>
                       )}
                       {appliedCount > 0 && (
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>{appliedCount}</span>
+                        <span className="ps-billing-tree-count-badge ps-billing-tree-count-badge--applied">{appliedCount}</span>
                       )}
                       <StatusDot status={hasBlockLevelOnlyCode ? 'complete' : 'empty'} />
                     </span>
@@ -743,17 +743,13 @@ const SpecimenTree: React.FC<{
                     <div
                       key={stain.stainOrderId || stain.stainName}
                       onClick={() => onSelectStain(sp.specimenId, block.blockId, pendingKey, stain.stainOrderId)}
-                      title={stain.status === 'not-applicable' ? `${stain.stainName} — no ancillary billing code` : `${stain.stainName} — ${DOT_STATUS_LABEL[stain.status === 'rejected' ? 'rejected' : stain.status === 'applied' ? 'complete' : stain.status === 'pending' ? 'partial' : 'empty']}`}
-                      style={{
-                        marginLeft: 30, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-                        background: isStainSelected ? 'rgba(56,189,248,0.08)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
-                      }}
+                      title={stain.status === 'not-applicable' ? t('billingReviewPanel.noAncillaryCode', { stainName: stain.stainName }) : `${stain.stainName} — ${t(DOT_STATUS_LABEL_KEY[stain.status === 'rejected' ? 'rejected' : stain.status === 'applied' ? 'complete' : stain.status === 'pending' ? 'partial' : 'empty'])}`}
+                      className={`ps-billing-tree-stain-row${isStainSelected ? ' ps-billing-tree-stain-row--selected' : ''}`}
                     >
-                      <span style={{ fontSize: 10, color: stain.status === 'not-applicable' ? '#64748b' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className={`ps-billing-tree-stain-name${stain.status === 'not-applicable' ? ' ps-billing-tree-stain-name--muted' : ''}`}>
                         {stain.stainName}
                         {stain.allAppliedCodes.length > 0 ? (
-                          <span style={{ color: '#34d399', marginLeft: 6 }}>
+                          <span className="ps-billing-tree-stain-codes ps-billing-tree-stain-codes--applied">
                             {stain.allAppliedCodes.map((c, i) => {
                               const realCode = resolveRealCptCode(c) ?? c;
                               return (
@@ -766,7 +762,7 @@ const SpecimenTree: React.FC<{
                           </span>
                         ) : stain.suggestedCode && stain.status === 'pending' && (
                           <span
-                            style={{ color: '#fbbf24', marginLeft: 6 }}
+                            className="ps-billing-tree-stain-codes ps-billing-tree-stain-codes--pending"
                             title={`${resolveRealCptCode(stain.suggestedCode) ?? stain.suggestedCode} — ${describeCode(stain.suggestedCode)}`}
                           >
                             {resolveRealCptCode(stain.suggestedCode) ?? stain.suggestedCode}
@@ -788,7 +784,8 @@ const SpecimenTree: React.FC<{
       );
     })}
   </div>
-);
+  );
+};
 
 // Real, per direct feedback: "code details on the right." Shows
 // whatever's currently selected in the tree - a specimen's own base
@@ -825,8 +822,9 @@ const DetailPanel: React.FC<{
   showOverrideCodeSearch: boolean;
   setShowOverrideCodeSearch: (v: boolean) => void;
 }> = ({ selection, selectedRawSpecimen, selectedSpecimenSummary, selectedBlockSummary, pendingForSelectedBlock, activePendingKey, onSelectPending, overridingKey, onStartOverride, overrideCodeValue, setOverrideCodeValue, overrideCodeAlreadyApplied, onConfirmOverride, onRejectOnly, onApprove, onDelete, onDeleteBaseCode, onCorrect, onCorrectBaseCode, onAddBaseCode, onApproveAll, isManualCodeAlreadyApplied, onHighlightStain, manualAddTargetStainId, showManualCodeSearch, setShowManualCodeSearch, showOverrideCodeSearch, setShowOverrideCodeSearch }) => {
+  const { t } = useTranslation();
   if (!selection || !selectedRawSpecimen) {
-    return <div style={{ flex: 1, color: '#64748b', fontSize: 12 }}>No specimens on this case yet.</div>;
+    return <div className="ps-billing-detail-empty">{t('billingReviewPanel.noSpecimensYet')}</div>;
   }
 
   // Real fix, per direct feedback: the label now reflects the actual,
@@ -838,21 +836,21 @@ const DetailPanel: React.FC<{
     : undefined;
   const targetLabel = selection.type === 'block'
     ? `${selectedSpecimenSummary?.specimenLabel ?? ''}${selectedBlockSummary?.blockLabel ?? ''}`
-    : `Specimen ${selectedSpecimenSummary?.specimenLabel ?? ''}`;
+    : t('billingReviewPanel.specimenLabelPrefix', { label: selectedSpecimenSummary?.specimenLabel ?? '' });
   const manualAddTargetLabel = targetStainName ? `${targetLabel} — ${targetStainName}` : targetLabel;
 
   return (
-    <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
-        Applying to: <strong style={{ color: '#e2e8f0' }}>{targetLabel}</strong>
+    <div className="ps-billing-detail-panel">
+      <div className="ps-billing-applying-to">
+        {t('billingReviewPanel.applyingTo')} <strong className="ps-billing-applying-to-target">{targetLabel}</strong>
       </div>
 
       {selection.type === 'block' && pendingForSelectedBlock.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
-            Pending review
+        <div className="ps-billing-detail-section">
+          <div className="ps-billing-detail-section-heading">
+            {t('billingReviewPanel.pendingReviewHeading')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="ps-billing-detail-section-list">
             {pendingForSelectedBlock.map(item => {
               const key = `${item.blockId}::${item.code}::${item.sourceStainId ?? ''}`;
               const isFirstDefault = !activePendingKey && pendingForSelectedBlock[0] === item;
@@ -881,11 +879,11 @@ const DetailPanel: React.FC<{
       )}
 
       {selection.type === 'block' && (selectedBlockSummary?.appliedAncillaryCodes.length ?? 0) > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
-            Applied codes
+        <div className="ps-billing-detail-section">
+          <div className="ps-billing-detail-section-heading">
+            {t('billingReviewPanel.appliedCodesHeading')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="ps-billing-detail-section-list ps-billing-detail-section-list--tight">
             {selectedBlockSummary!.appliedAncillaryCodes.map((applied, i) => {
               const stainName = applied.stainOrderId
                 ? selectedBlockSummary!.stainCodingStatus.find(s => s.stainOrderId === applied.stainOrderId)?.stainName
@@ -905,12 +903,12 @@ const DetailPanel: React.FC<{
       )}
 
       {selection.type === 'specimen' && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
-            Base code
+        <div className="ps-billing-detail-section">
+          <div className="ps-billing-detail-section-heading">
+            {t('billingReviewPanel.baseCodeHeading')}
           </div>
           {(selectedSpecimenSummary?.baseCptCodes.length ?? 0) > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="ps-billing-detail-section-list ps-billing-detail-section-list--tight">
               {selectedSpecimenSummary!.baseCptCodes.map((code, i) => (
                 <AppliedRow
                   key={`${code}::${i}`}
@@ -921,24 +919,24 @@ const DetailPanel: React.FC<{
               ))}
             </div>
           ) : (
-            <p style={{ fontSize: 12, color: '#f59e0b', margin: 0 }}>No base code applied yet.</p>
+            <p className="ps-billing-empty-note ps-billing-empty-note--warning">{t('billingReviewPanel.noBaseCodeYet')}</p>
           )}
         </div>
       )}
 
       {selection.type === 'block' && pendingForSelectedBlock.length === 0 && (selectedBlockSummary?.appliedAncillaryCodes.length ?? 0) === 0 && (
-        <p style={{ fontSize: 12, color: '#64748b' }}>No AI-suggested or applied billing codes for this block.</p>
+        <p className="ps-billing-empty-note">{t('billingReviewPanel.noCodesForBlock')}</p>
       )}
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
-          + Add a code manually
+      <div className="ps-billing-manual-add">
+        <div className="ps-billing-detail-section-heading">
+          + {t('billingReviewPanel.addCodeManuallyHeading')}
         </div>
         <button
           onClick={() => setShowManualCodeSearch(true)}
           className="ps-btn-primary"
         >
-          Search codes…
+          {t('billingReviewPanel.searchCodesButton')}
         </button>
       </div>
       {showManualCodeSearch && selection.type === 'block' && (
@@ -987,6 +985,7 @@ const MatrixArrayCoverageSection: React.FC<{
   onApplyMatrixCode?: BillingReviewPanelProps['onApplyMatrixCode'];
   onRejectMatrixCode?: BillingReviewPanelProps['onRejectMatrixCode'];
 }> = ({ matrixBlocks, specimens, summary, onSetMatrixEvaluatedCores, onApplyMatrixCode, onRejectMatrixCode }) => {
+  const { t } = useTranslation();
   // Local, per-stain draft of the checklist — only committed via
   // onSetMatrixEvaluatedCores when the pathologist explicitly saves,
   // same "never auto-fires" posture as everywhere else in this
@@ -1009,13 +1008,12 @@ const MatrixArrayCoverageSection: React.FC<{
   if (ancillaryStains.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 16, borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: 14 }}>
-      <div className="fm-eyebrow" style={{ color: '#38bdf8', marginBottom: 4 }}>
-        ✦ Biopsy Array — Evaluated Cores
+    <div className="ps-billing-matrix-section">
+      <div className="fm-eyebrow ps-billing-eyebrow">
+        ✦ {t('billingReviewPanel.matrixSection.title')}
       </div>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
-        Billing only fires for a core a pathologist explicitly confirms as evaluated on the stained slide —
-        targeting a core at order time doesn't bill it by itself.
+      <div className="ps-billing-matrix-intro">
+        {t('billingReviewPanel.matrixSection.intro')}
       </div>
 
       {ancillaryStains.map(({ matrixBlock, stain }) => {
@@ -1027,21 +1025,21 @@ const MatrixArrayCoverageSection: React.FC<{
           summary.find(sp => sp.specimenId === specimenId)?.matrixBlockContributions.find(mb => mb.matrixBlockId === matrixBlock.id);
 
         return (
-          <div key={stain.id} style={{ border: '1px solid rgba(148,163,184,0.15)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
-              {stain.stainName} <span style={{ color: '#64748b', fontWeight: 400 }}>— {matrixBlock.label}</span>
+          <div key={stain.id} className="ps-billing-matrix-stain-card">
+            <div className="ps-billing-matrix-stain-heading">
+              {stain.stainName} <span className="ps-billing-matrix-stain-block-label">— {matrixBlock.label}</span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+            <div className="ps-billing-matrix-core-checklist">
               {(stain.targetSpecimenIds ?? []).map(specimenId => {
                 const sp = specimens.find(s => s.id === specimenId);
                 return (
-                  <label key={specimenId} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#cbd5e1' }}>
+                  <label key={specimenId} className="ps-billing-matrix-core-checkbox-label">
                     <input
                       type="checkbox"
                       checked={draft.has(specimenId)}
                       onChange={() => toggleCore(stain.id!, stain.evaluatedSpecimenIds, specimenId)}
                     />
-                    {sp?.label ?? specimenId} — Evaluated / Reviewed for Diagnosis
+                    {sp?.label ?? specimenId} — {t('billingReviewPanel.matrixSection.evaluatedReviewedForDiagnosis')}
                   </label>
                 );
               })}
@@ -1050,9 +1048,9 @@ const MatrixArrayCoverageSection: React.FC<{
               <button
                 type="button"
                 onClick={() => onSetMatrixEvaluatedCores?.(matrixBlock.id, stain.id!, Array.from(draft))}
-                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8, cursor: 'pointer', border: '1.5px solid rgba(8,145,178,0.4)', background: 'rgba(8,145,178,0.1)', color: '#22d3ee' }}
+                className="ps-billing-matrix-save-btn"
               >
-                Save Evaluation
+                {t('billingReviewPanel.matrixSection.saveEvaluationButton')}
               </button>
             )}
             {/* Real, per direct spec: once evaluatedSpecimenIds is
@@ -1062,26 +1060,26 @@ const MatrixArrayCoverageSection: React.FC<{
                 "explicit confirmation required" posture as every
                 other suggestion in this panel. */}
             {saved.length > 0 && (
-              <div style={{ marginTop: 8 }}>
+              <div className="ps-billing-matrix-suggestions">
                 {saved.map(specimenId => {
                   const contribution = specimenContribution(specimenId);
                   const pendingForThisStain = (contribution?.unappliedSuggestionSources ?? []).filter(s => s.stainOrderId === stain.id);
                   if (pendingForThisStain.length === 0) return null;
                   const sp = specimens.find(s => s.id === specimenId);
                   return pendingForThisStain.map(({ code }, i) => (
-                    <div key={`${specimenId}-${code}-${i}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: '#cbd5e1', padding: '4px 0' }}>
+                    <div key={`${specimenId}-${code}-${i}`} className="ps-billing-matrix-suggestion-row">
                       <span>{sp?.label ?? specimenId}: <strong>{code}</strong></span>
-                      <span style={{ display: 'flex', gap: 6 }}>
+                      <span className="ps-billing-matrix-suggestion-actions">
                         <button
                           type="button"
                           onClick={() => onApplyMatrixCode?.(specimenId, matrixBlock.id, code, stain.id)}
-                          style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#34d399' }}
-                        >Confirm</button>
+                          className="ps-billing-matrix-confirm-btn"
+                        >{t('common.confirm')}</button>
                         <button
                           type="button"
                           onClick={() => onRejectMatrixCode?.(specimenId, matrixBlock.id, code, stain.id)}
-                          style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(148,163,184,0.3)', background: 'transparent', color: '#94a3b8' }}
-                        >Reject</button>
+                          className="ps-billing-matrix-reject-btn"
+                        >{t('billingReviewPanel.matrixSection.rejectButton')}</button>
                       </span>
                     </div>
                   ));
@@ -1120,79 +1118,76 @@ const PendingRow: React.FC<{
   onRejectOnly: () => void;
   showOverrideCodeSearch: boolean;
   setShowOverrideCodeSearch: (v: boolean) => void;
-}> = ({ item, isActive, onClick, onConfirm, isOverriding, onStartOverride, onCancelOverride, overrideCodeValue, setOverrideCodeValue, overrideCodeAlreadyApplied, onConfirmOverride, onRejectOnly, showOverrideCodeSearch, setShowOverrideCodeSearch }) => (
+}> = ({ item, isActive, onClick, onConfirm, isOverriding, onStartOverride, onCancelOverride, overrideCodeValue, setOverrideCodeValue, overrideCodeAlreadyApplied, onConfirmOverride, onRejectOnly, showOverrideCodeSearch, setShowOverrideCodeSearch }) => {
+  const { t } = useTranslation();
+  return (
   <>
   <div
     onClick={isOverriding ? undefined : onClick}
-    style={{
-      padding: '10px 12px', borderRadius: 8, cursor: isOverriding ? 'default' : 'pointer',
-      background: isActive || isOverriding ? 'rgba(56,189,248,0.08)' : 'rgba(255,255,255,0.02)',
-      border: isActive || isOverriding ? '1px solid rgba(56,189,248,0.35)' : '1px solid rgba(148,163,184,0.12)',
-    }}
+    className={`ps-billing-pending-row${isActive || isOverriding ? ' ps-billing-pending-row--active' : ''}${isOverriding ? ' ps-billing-pending-row--overriding' : ''}`}
   >
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }} title={`${resolveRealCptCode(item.code) ?? item.code} — ${describeCode(item.code)}`}>
+    <div className="ps-billing-pending-row-top">
+      <span className="ps-billing-pending-row-code" title={`${resolveRealCptCode(item.code) ?? item.code} — ${describeCode(item.code)}`}>
         {resolveRealCptCode(item.code) ?? item.code}
       </span>
       {!isOverriding && (
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+        <div className="ps-billing-pending-row-actions" onClick={e => e.stopPropagation()}>
           <button
             onClick={onConfirm}
-            style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, cursor: 'pointer', border: '1.5px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#34d399' }}
-          >✓ Confirm</button>
+            className="ps-billing-confirm-btn"
+          >✓ {t('common.confirm')}</button>
           <button
             onClick={onStartOverride}
-            style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, cursor: 'pointer', border: '1.5px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24' }}
-          >✎ Override</button>
+            className="ps-billing-override-btn"
+          >✎ {t('billingReviewPanel.overrideButton')}</button>
           <button
             onClick={onRejectOnly}
             className="ps-btn-icon-danger ps-btn-icon-danger--visible"
-            title="Dismiss — no code needed for this stain"
+            title={t('billingReviewPanel.dismissTooltip')}
           >🗑</button>
         </div>
       )}
     </div>
-    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+    <div className="ps-billing-pending-row-description">
       {describeCode(item.code)}
     </div>
-    <div style={{ marginTop: 4, fontSize: 10, fontStyle: 'italic', color: '#64748b' }}>
-      AI source: {item.sourceStainName ?? (item.stainNames.length > 0 ? item.stainNames.join(', ') : 'stain not recorded')}
+    <div className="ps-billing-pending-row-source">
+      {t('billingReviewPanel.aiSourceLine', { source: item.sourceStainName ?? (item.stainNames.length > 0 ? item.stainNames.join(', ') : t('billingReviewPanel.stainNotRecorded')) })}
     </div>
     {isOverriding && (
-      <div onClick={e => e.stopPropagation()} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(148,163,184,0.15)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
-          Replace with
+      <div onClick={e => e.stopPropagation()} className="ps-billing-override-form">
+        <div className="ps-billing-detail-section-heading">
+          {t('billingReviewPanel.replaceWithHeading')}
         </div>
         <button
           onClick={() => setShowOverrideCodeSearch(true)}
-          style={{ textAlign: 'left', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(255,255,255,0.02)', color: overrideCodeValue ? '#e2e8f0' : '#64748b', fontSize: 12 }}
+          className={`ps-billing-override-search-btn${overrideCodeValue ? ' ps-billing-override-search-btn--filled' : ''}`}
         >
-          {overrideCodeValue ? `${overrideCodeValue} — ${describeCode(overrideCodeValue)}` : 'Search codes…'}
+          {overrideCodeValue ? `${overrideCodeValue} — ${describeCode(overrideCodeValue)}` : t('billingReviewPanel.searchCodesButton')}
         </button>
         {overrideCodeAlreadyApplied && (
-          <p style={{ fontSize: 11, color: '#f59e0b', margin: 0 }}>This code is already applied here.</p>
+          <p className="ps-billing-empty-note ps-billing-empty-note--warning">{t('billingReviewPanel.codeAlreadyAppliedHere')}</p>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="ps-billing-override-confirm-row">
           <button
-            className="ps-btn-primary"
+            className="ps-btn-primary ps-billing-override-confirm-btn"
             disabled={!overrideCodeValue.trim() || overrideCodeAlreadyApplied}
             onClick={onConfirmOverride}
-            style={{ flex: 1 }}
           >
-            Confirm
+            {t('common.confirm')}
           </button>
           <button
             onClick={onCancelOverride}
-            style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(148,163,184,0.3)', background: 'transparent', color: '#94a3b8' }}
+            className="ps-billing-override-cancel-btn"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
         </div>
         <button
           onClick={onRejectOnly}
-          style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0, textAlign: 'left', width: 'fit-content' }}
+          className="ps-billing-reject-only-link"
         >
-          No replacement needed — reject only
+          {t('billingReviewPanel.noReplacementNeeded')}
         </button>
       </div>
     )}
@@ -1200,7 +1195,7 @@ const PendingRow: React.FC<{
   {isOverriding && showOverrideCodeSearch && (
     <CodeSearchModal
       entries={CODE_MAP_TABLE}
-      targetLabel={`Replacing ${item.code}${item.sourceStainName ? ` (${item.sourceStainName})` : ''}`}
+      targetLabel={t('billingReviewPanel.replacingCodeLabel', { code: item.code, stainName: item.sourceStainName ? ` (${item.sourceStainName})` : '' })}
       targetLevel="stain"
       initialValue={overrideCodeValue}
       onSelect={entry => setOverrideCodeValue(entry.code)}
@@ -1209,7 +1204,8 @@ const PendingRow: React.FC<{
     />
   )}
   </>
-);
+  );
+};
 
 // Real feature, per direct request: "we need the delete in case they
 // want to remove the billing on that item." A single, shared row used
@@ -1229,27 +1225,30 @@ const AppliedRow: React.FC<{
    *  to reverse (the caller decides when that's true, never this
    *  presentational component). */
   onCorrect?: () => void;
-}> = ({ code, stainName, onDelete, onCorrect }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(148,163,184,0.12)' }}>
-    <span style={{ fontSize: 12, color: '#e2e8f0' }}>
-      {code} <span style={{ color: '#94a3b8' }}>({describeCode(code)})</span>
-      {stainName && <span style={{ color: '#64748b', fontStyle: 'italic' }}> — {stainName}</span>}
+}> = ({ code, stainName, onDelete, onCorrect }) => {
+  const { t } = useTranslation();
+  return (
+  <div className="ps-billing-applied-row">
+    <span className="ps-billing-applied-row-text">
+      {code} <span className="ps-billing-applied-row-description">({describeCode(code)})</span>
+      {stainName && <span className="ps-billing-applied-row-stain"> — {stainName}</span>}
     </span>
     <div className="ps-billing-applied-row-actions">
       {onCorrect && (
         <button
           onClick={onCorrect}
           className="ps-btn-icon"
-          title="Correct this billing code — credits the original, charges a new one"
+          title={t('billingReviewPanel.correctCodeTooltip')}
         >✏️</button>
       )}
       <button
         onClick={onDelete}
         className="ps-btn-icon-danger ps-btn-icon-danger--visible"
-        title="Remove this billing code"
+        title={t('billingReviewPanel.removeCodeTooltip')}
       >🗑</button>
     </div>
   </div>
-);
+  );
+};
 
 export default BillingReviewPanel;

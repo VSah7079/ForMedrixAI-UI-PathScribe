@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { MatrixBlock } from '@/types/case/MatrixBlock';
 import type { Specimen } from '@/types/case/Specimen';
@@ -36,6 +37,20 @@ import type { StainType } from '@/services/stains/IStainService';
 import ForeignIdFields from './ForeignIdFields';
 
 const BLOCK_STATUSES = ['Pending', 'Grossed', 'Embedded', 'Exhausted', 'Lost', 'Damaged'] as const;
+// Real, persisted enum values (matrixBlock.status) stay as data — only
+// the displayed option text translates, same LABEL_KEY pattern used
+// elsewhere in this sweep for other persisted status enums (and the
+// same real English text as BlockStainEditorModal.tsx's own identical
+// BLOCK_STATUSES, translated fresh here under this component's own
+// namespace per this session's established per-component convention).
+const BLOCK_STATUS_LABEL_KEY: Record<typeof BLOCK_STATUSES[number], string> = {
+  Pending: 'matrixBlockEditorModal.blockStatusLabels.pending',
+  Grossed: 'matrixBlockEditorModal.blockStatusLabels.grossed',
+  Embedded: 'matrixBlockEditorModal.blockStatusLabels.embedded',
+  Exhausted: 'matrixBlockEditorModal.blockStatusLabels.exhausted',
+  Lost: 'matrixBlockEditorModal.blockStatusLabels.lost',
+  Damaged: 'matrixBlockEditorModal.blockStatusLabels.damaged',
+};
 
 type Tab = 'details' | 'array_mapping';
 
@@ -57,6 +72,7 @@ interface MatrixBlockEditorModalProps {
 const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
   matrixBlock, specimens, fullAccession, onUpdate, onPrintCassette, onEditMembership, onOrderTargetedStain, onClose,
 }) => {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('details');
 
   // Real feature, per direct follow-up: "If the lab receives a block
@@ -138,32 +154,15 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
     }
   };
 
-  const tabStyle = (t: Tab): React.CSSProperties => ({
-    padding: '8px 16px',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    border: 'none',
-    background: 'transparent',
-    borderBottom: tab === t ? '2px solid #0891b2' : '2px solid transparent',
-    color: tab === t ? '#0891b2' : '#64748b',
-  });
-
   return (
-    <div
-      onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ background: '#1e293b', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, width: 520, maxHeight: '84vh', display: 'flex', flexDirection: 'column' }}
-      >
-        <div style={{ padding: '18px 20px 0', borderBottom: '1px solid rgba(148,163,184,0.15)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+    <div onClick={onClose} className="ps-ms-overlay">
+      <div onClick={e => e.stopPropagation()} className="ps-ms-modal ps-matrixblock-modal">
+        <div className="ps-matrixblock-header">
+          <div className="ps-matrixblock-header-top">
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>Biopsy Array {matrixBlock.label}</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                One real, physical cassette — status and piece tracking apply to the whole object, not any one participant.
+              <div className="ps-matrixblock-title">{t('matrixBlockEditorModal.header.title', { label: matrixBlock.label })}</div>
+              <div className="ps-matrixblock-subtitle">
+                {t('matrixBlockEditorModal.header.subtitle')}
               </div>
             </div>
             {/* Real feature, per direct follow-up: "primary label
@@ -176,57 +175,67 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
               type="button" onClick={onPrintCassette}
               className="ps-teal-action-btn ps-teal-action-btn--inline"
             >
-              🖨️ Reprint Cassette Label
+              🖨️ {t('matrixBlockEditorModal.header.reprintCassette')}
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
-            <button style={tabStyle('details')} onClick={() => setTab('details')}>Details</button>
-            <button style={tabStyle('array_mapping')} onClick={() => setTab('array_mapping')}>Biopsy Array / Matrix Mapping</button>
+          <div className="ps-matrixblock-tabs">
+            <button
+              className={`ps-matrixblock-tab-btn${tab === 'details' ? ' ps-matrixblock-tab-btn--active' : ''}`}
+              onClick={() => setTab('details')}
+            >
+              {t('matrixBlockEditorModal.tabs.details')}
+            </button>
+            <button
+              className={`ps-matrixblock-tab-btn${tab === 'array_mapping' ? ' ps-matrixblock-tab-btn--active' : ''}`}
+              onClick={() => setTab('array_mapping')}
+            >
+              {t('matrixBlockEditorModal.tabs.arrayMapping')}
+            </button>
           </div>
         </div>
 
         {tab === 'details' && (
-        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>
-            Participants ({matrixBlock.participants.length})
+        <div className="ps-matrixblock-body">
+          <div className="ps-matrixblock-section-title">
+            {t('matrixBlockEditorModal.details.participantsHeading', { count: matrixBlock.participants.length })}
           </div>
-          <div style={{ marginBottom: 16 }}>
+          <div className="ps-matrixblock-participants-list">
             {sortedParticipants
               .map(p => {
                 const sp = specimens.find(s => s.id === p.specimenId);
                 return (
-                  <div key={p.specimenId} style={{ fontSize: 12, color: '#cbd5e1', padding: '3px 0' }}>
-                    Position {p.positionInBlock} — Specimen {sp?.label ?? '?'}{sp?.description ? ` (${sp.description})` : ''}
+                  <div key={p.specimenId} className="ps-matrixblock-participant-row">
+                    {t('matrixBlockEditorModal.details.participantRow', { position: p.positionInBlock, label: sp?.label ?? '?' })}{sp?.description ? ` (${sp.description})` : ''}
                   </div>
                 );
               })}
             <button
               type="button" onClick={onEditMembership}
-              style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+              className="ps-matrixblock-edit-membership-btn"
             >
-              ✏️ Edit membership
+              ✏️ {t('matrixBlockEditorModal.details.editMembership')}
             </button>
           </div>
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="matrix-block-status">Status</label>
+              <label className="ps-conf-label" htmlFor="matrix-block-status">{t('matrixBlockEditorModal.details.statusLabel')}</label>
               <select
                 id="matrix-block-status" className="ps-conf-select" value={matrixBlock.status}
                 onChange={e => onUpdate(matrixBlock.id, { status: e.target.value as MatrixBlock['status'] })}
               >
-                {BLOCK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                {BLOCK_STATUSES.map(s => <option key={s} value={s}>{t(BLOCK_STATUS_LABEL_KEY[s])}</option>)}
               </select>
             </div>
           </div>
 
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="matrix-piece-count">Pieces Grossed</label>
+              <label className="ps-conf-label" htmlFor="matrix-piece-count">{t('matrixBlockEditorModal.details.piecesGrossedLabel')}</label>
               <input
                 id="matrix-piece-count" type="number" min={0} className="ps-conf-select"
                 value={matrixBlock.pieceCount ?? ''}
-                placeholder="e.g. 3"
+                placeholder={t('matrixBlockEditorModal.details.piecesGrossedPlaceholder')}
                 onChange={e => {
                   const n = e.target.value === '' ? undefined : Math.max(0, parseInt(e.target.value, 10) || 0);
                   onUpdate(matrixBlock.id, { pieceCount: n });
@@ -234,24 +243,24 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
               />
             </div>
             <div className="ps-conf-form-field">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 22 }}>
+              <label className="ps-matrixblock-checkbox-label">
                 <input
                   type="checkbox"
                   checked={matrixBlock.isEntirelySubmitted ?? true}
                   onChange={e => onUpdate(matrixBlock.id, { isEntirelySubmitted: e.target.checked })}
-                  style={{ width: 16, height: 16 }}
+                  className="ps-matrixblock-checkbox-input"
                 />
-                <span style={{ fontSize: 13, color: '#e2e8f0' }}>Entirely submitted (none held in wet storage)</span>
+                <span className="ps-matrixblock-checkbox-text">{t('matrixBlockEditorModal.details.entirelySubmitted')}</span>
               </label>
             </div>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="matrix-piece-desc">Piece Description</label>
+            <label className="ps-conf-label" htmlFor="matrix-piece-desc">{t('matrixBlockEditorModal.details.pieceDescriptionLabel')}</label>
             <input
               id="matrix-piece-desc" type="text" className="ps-conf-select"
               value={matrixBlock.pieceDescription ?? ''}
-              placeholder="e.g. 2 core fragments, 1 tiny dust piece"
+              placeholder={t('matrixBlockEditorModal.details.pieceDescriptionPlaceholder')}
               onChange={e => onUpdate(matrixBlock.id, { pieceDescription: e.target.value || undefined })}
             />
           </div>
@@ -269,8 +278,8 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
             externalId={matrixBlock.externalId}
             externalIdSource={matrixBlock.externalIdSource}
             idPrefix={`matrix-${matrixBlock.id}`}
-            sourcePlaceholder="e.g. Riverside Medical Center"
-            idPlaceholder="e.g. the id already engraved on the cassette"
+            sourcePlaceholder={t('matrixBlockEditorModal.details.foreignIdSourcePlaceholder')}
+            idPlaceholder={t('matrixBlockEditorModal.details.foreignIdPlaceholder')}
             collision={foreignIdCollision}
             onCommit={changes => onUpdate(matrixBlock.id, changes)}
             onCheckCollision={checkCollision}
@@ -289,29 +298,25 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
               type="button" onClick={printSecondaryLabel}
               className="ps-teal-action-btn ps-teal-action-btn--block"
             >
-              🖨️ Print Secondary Label (barcode unreadable)
+              🖨️ {t('matrixBlockEditorModal.details.printSecondaryLabel')}
             </button>
           )}
         </div>
         )}
 
         {tab === 'array_mapping' && (
-        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
-            Array Mapper
+        <div className="ps-matrixblock-body">
+          <div className="ps-matrixblock-section-title ps-matrixblock-section-title--tight">
+            {t('matrixBlockEditorModal.arrayMapping.heading')}
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
-            Select the core(s) an ancillary stain actually needs to be ordered against, then pick the stain below.
-            Billing only fires once a pathologist confirms which cores were genuinely evaluated at sign-out —
-            selecting cores here targets the order, it doesn't bill anything by itself.
+          <div className="ps-matrixblock-array-desc">
+            {t('matrixBlockEditorModal.arrayMapping.description')}
           </div>
 
           <div
+            className="ps-matrixblock-core-grid"
             style={{
-              display: 'grid',
               gridTemplateColumns: `repeat(${columnsFor(sortedParticipants.length)}, 1fr)`,
-              gap: 8,
-              marginBottom: 16,
               maxWidth: columnsFor(sortedParticipants.length) * 96,
             }}
           >
@@ -324,16 +329,11 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
                   key={p.specimenId}
                   type="button"
                   onClick={() => toggleCore(p.specimenId)}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    gap: 2, padding: '10px 6px', borderRadius: 6, cursor: 'pointer',
-                    border: selected ? '2px solid #0891b2' : '1px solid rgba(148,163,184,0.3)',
-                    background: selected ? 'rgba(8,145,178,0.18)' : 'rgba(8,145,178,0.06)',
-                  }}
+                  className={`ps-matrixblock-core-btn${selected ? ' ps-matrixblock-core-btn--selected' : ''}`}
                 >
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>{coord}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{sp?.label ?? '?'}</span>
-                  <span style={{ fontSize: 15 }}>{selected ? '☑' : '☐'}</span>
+                  <span className="ps-matrixblock-core-coord">{coord}</span>
+                  <span className="ps-matrixblock-core-label">{sp?.label ?? '?'}</span>
+                  <span className="ps-matrixblock-core-check">{selected ? '☑' : '☐'}</span>
                 </button>
               );
             })}
@@ -342,21 +342,21 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
           {/* Real, per direct spec: an "Order Ancillary Stain" action
               bar that uncollapses once one or more cores are selected. */}
           {selectedSpecimenIds.size > 0 && (
-            <div style={{ border: '1px solid rgba(8,145,178,0.4)', borderRadius: 8, padding: 12, marginBottom: 16, background: 'rgba(8,145,178,0.06)' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>
-                Order Ancillary Stain — targeting {selectedSpecimenIds.size} core{selectedSpecimenIds.size !== 1 ? 's' : ''}
+            <div className="ps-matrixblock-order-bar">
+              <div className="ps-matrixblock-order-bar-title">
+                {t('matrixBlockEditorModal.arrayMapping.orderBarTitle', { count: selectedSpecimenIds.size })}
               </div>
               <input
                 type="text" className="ps-conf-select"
-                placeholder="Search stains (e.g. Ki-67, P53, PIN-4)…"
+                placeholder={t('matrixBlockEditorModal.arrayMapping.searchStainsPlaceholder')}
                 value={stainQuery}
                 onChange={e => setStainQuery(e.target.value)}
                 disabled={ordering}
               />
               {stainQuery.trim().length > 0 && (
-                <div style={{ marginTop: 6, maxHeight: 140, overflowY: 'auto' }}>
+                <div className="ps-matrixblock-stain-results">
                   {stainMatches.length === 0 && (
-                    <div style={{ fontSize: 12, color: '#64748b', padding: '6px 2px' }}>No matching stains.</div>
+                    <div className="ps-matrixblock-stain-empty">{t('matrixBlockEditorModal.arrayMapping.noMatchingStains')}</div>
                   )}
                   {stainMatches.map(s => (
                     <button
@@ -364,14 +364,9 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
                       type="button"
                       disabled={ordering}
                       onClick={() => handleOrderStain(s.name)}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', borderRadius: 5,
-                        fontSize: 13, color: '#e2e8f0', background: 'transparent', border: 'none', cursor: ordering ? 'default' : 'pointer',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(148,163,184,0.1)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      className="ps-matrixblock-stain-btn"
                     >
-                      {s.name} <span style={{ color: '#64748b', fontSize: 11 }}>({s.category})</span>
+                      {s.name} <span className="ps-matrixblock-stain-cat">({s.category})</span>
                     </button>
                   ))}
                 </div>
@@ -379,24 +374,24 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
             </div>
           )}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>
-            Ancillary Stains on This Block
+          <div className="ps-matrixblock-section-title">
+            {t('matrixBlockEditorModal.arrayMapping.ancillaryStainsHeading')}
           </div>
           {matrixBlock.slides.filter(s => s.stainName !== 'H&E').length === 0 ? (
-            <div style={{ fontSize: 12, color: '#64748b' }}>No ancillary stains ordered on this Biopsy Array yet.</div>
+            <div className="ps-matrixblock-stain-empty">{t('matrixBlockEditorModal.arrayMapping.noAncillaryStains')}</div>
           ) : (
             matrixBlock.slides.filter(s => s.stainName !== 'H&E').map(s => {
               const targetLabels = (s.targetSpecimenIds ?? [])
                 .map(id => specimens.find(sp => sp.id === id)?.label ?? id)
                 .join(', ');
               return (
-                <div key={s.id} style={{ fontSize: 12, color: '#cbd5e1', padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                  <span style={{ fontWeight: 700 }}>{s.stainName}</span>
+                <div key={s.id} className="ps-matrixblock-slide-row">
+                  <span className="ps-matrixblock-slide-name">{s.stainName}</span>
                   {' — '}
                   {targetLabels ? (
-                    <span style={{ color: '#94a3b8' }}>targeted: {targetLabels}</span>
+                    <span className="ps-matrixblock-slide-target">{t('matrixBlockEditorModal.arrayMapping.targeted', { targets: targetLabels })}</span>
                   ) : (
-                    <span style={{ color: '#f59e0b' }}>no core targeted yet</span>
+                    <span className="ps-matrixblock-slide-target--missing">{t('matrixBlockEditorModal.arrayMapping.noCoreTargeted')}</span>
                   )}
                 </div>
               );
@@ -405,12 +400,12 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
         </div>
         )}
 
-        <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(148,163,184,0.15)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="ps-matrixblock-footer">
           <button
             onClick={onClose}
-            style={{ padding: '8px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#0891B2', border: 'none', color: 'white', cursor: 'pointer' }}
+            className="ps-matrixblock-done-btn"
           >
-            Done
+            {t('matrixBlockEditorModal.doneButton')}
           </button>
         </div>
       </div>

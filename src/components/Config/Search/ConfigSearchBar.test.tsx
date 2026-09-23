@@ -11,8 +11,16 @@
 // still falls back cleanly to tab-only navigation for entries that
 // genuinely don't have a confirmed section (see configSearchIndex.ts's
 // own notes on 'sys-jurisdiction'/'sys-info').
+//
+// Real update alongside the component's i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and every assertion below would see the raw
+// key string instead of its English text.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import ConfigSearchBar from './ConfigSearchBar';

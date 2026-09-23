@@ -15,21 +15,32 @@
 // real, actual case/specimen identity (never a fabricated one), but
 // the slide surface itself is an honest placeholder, not a real
 // rendered image.
+//
+// File-by-file cleanup sweep: the case→display derivation now lives in
+// resolveWsiViewerCaseSummary.ts (testable on its own, no `as any` casts);
+// layout/colors moved from inline style={{}} to pathscribe.css's
+// .ps-wsi-viewer-* classes; every visible string goes through
+// useTranslation()/t() (wsiViewer.* in all five locale files).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import {
+  resolveWsiViewerCaseSummary,
+  EMPTY_WSI_VIEWER_CASE_SUMMARY,
+  type WsiViewerCaseSummary,
+} from '@/services/cases/resolveWsiViewerCaseSummary';
 
 const MockWsiViewerPage: React.FC = () => {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const caseId = searchParams.get('caseId') ?? '';
 
   const [loading, setLoading] = useState(true);
-  const [accessionNumber, setAccessionNumber] = useState<string | null>(null);
-  const [patientName, setPatientName] = useState<string | null>(null);
-  const [specimenLabel, setSpecimenLabel] = useState<string | null>(null);
+  const [summary, setSummary] = useState<WsiViewerCaseSummary>(EMPTY_WSI_VIEWER_CASE_SUMMARY);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,37 +48,35 @@ const MockWsiViewerPage: React.FC = () => {
     setLoading(true);
     caseRouter.getCase(caseId).then(caseData => {
       if (cancelled) return;
-      if (caseData) {
-        setAccessionNumber((caseData as any).accession?.fullAccession ?? null);
-        setPatientName((caseData as any).patient ? `${(caseData as any).patient.lastName}, ${(caseData as any).patient.firstName}` : null);
-        setSpecimenLabel((caseData as any).specimens?.[0]?.label ?? null);
-      }
+      setSummary(resolveWsiViewerCaseSummary(caseData));
       setLoading(false);
     });
     return () => { cancelled = true; };
   }, [caseId]);
 
+  const { accessionNumber, patientName, specimenLabel } = summary;
+
   return (
-    <div className="ps-app-root" style={{ padding: 24, height: '100vh', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
-      <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: '#f59e0b18', border: '1px solid #f59e0b33', color: '#f59e0b', fontSize: 13, fontWeight: 600 }}>
-        ⚠ Mock WSI viewer — no real image server exists in this environment. This is a real, honest placeholder for
-        where a real digital pathology viewer would render this specimen's own real slide.
+    <div className="ps-app-root ps-wsi-viewer-root">
+      <div className="ps-wsi-viewer-notice">
+        {t('wsiViewer.mockNotice')}
       </div>
 
       {loading ? (
-        <div className="ps-conf-loading">Loading…</div>
+        <div className="ps-conf-loading">{t('common.loading')}</div>
       ) : !caseId ? (
-        <div style={{ color: '#ef4444' }}>No case specified.</div>
+        <div className="ps-wsi-viewer-error">{t('wsiViewer.noCaseSpecified')}</div>
       ) : !accessionNumber ? (
-        <div style={{ color: '#ef4444' }}>No case found for '{caseId}'.</div>
+        <div className="ps-wsi-viewer-error">{t('wsiViewer.noCaseFound', { caseId })}</div>
       ) : (
         <>
-          <div style={{ marginBottom: 16, color: '#e5e7eb', fontSize: 14 }}>
-            <strong data-phi="accession">{accessionNumber}</strong>{specimenLabel ? ` — Specimen ${specimenLabel}` : ''}
-            {patientName && <span style={{ marginLeft: 12, color: '#9ca3af' }} data-phi="name">{patientName}</span>}
+          <div className="ps-wsi-viewer-info">
+            <strong data-phi="accession">{accessionNumber}</strong>
+            {specimenLabel ? ` — ${t('wsiViewer.specimenLabel', { specimenLabel })}` : ''}
+            {patientName && <span className="ps-wsi-viewer-patient" data-phi="name">{patientName}</span>}
           </div>
-          <div style={{ flex: 1, borderRadius: 8, border: '1px dashed #374151', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: 13 }}>
-            [ Real WSI slide surface — pan/zoom would render here ]
+          <div className="ps-wsi-viewer-surface">
+            {t('wsiViewer.slideSurfacePlaceholder')}
           </div>
         </>
       )}

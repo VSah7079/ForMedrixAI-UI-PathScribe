@@ -10,8 +10,19 @@
 // mocked; this hook's own sequencing (especially the CoPilot
 // send-before-release ordering guarantee, and the resident/FPPE
 // countersign routing) is what's under test.
+//
+// Real update alongside this hook's own i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against and every showToast(...) assertion below would
+// see the raw key string instead of its English text. The two
+// `canFinalizeCase()`/`countersignService.reject()` OUT-OF-SCOPE
+// `.reason`/`.error` pass-throughs are unaffected either way — those
+// come straight from this file's own mocks, never through t().
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { renderHook as rtlRenderHook, act } from '@testing-library/react';

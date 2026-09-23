@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import PathScribeEditor from '../../../components/Editor/PathScribeEditor';
 import { CommentModalShell } from './CommentModalShell';
+import { OriginBadge } from './OriginBadge';
 import type { CaseComment } from '../../../types/case/CaseComment';
 
 interface ReportCommentModalProps {
@@ -21,29 +23,12 @@ const formatTimestamp = (iso: string) => {
   } catch { return iso; }
 };
 
-const SYNC_LABELS: Record<NonNullable<CaseComment['syncStatus']>, string> = {
-  pending: '⏳ Pending sync to LIS',
-  sent: '↗ Sent to LIS',
-  acknowledged: '✓ Acknowledged by LIS',
-  failed: '⚠ Sync failed',
-};
-
-const OriginBadge: React.FC<{ comment: CaseComment }> = ({ comment }) => {
-  if (comment.origin === 'lis') {
-    return <span className="ps-cmnt-origin-badge ps-cmnt-origin-badge--lis">From LIS</span>;
-  }
-  return (
-    <span className={`ps-cmnt-origin-badge ps-cmnt-origin-badge--pathscribe ps-cmnt-origin-badge--${comment.syncStatus ?? 'pending'}`}>
-      {SYNC_LABELS[comment.syncStatus ?? 'pending']}
-    </span>
-  );
-};
-
 const ReportCommentModal: React.FC<ReportCommentModalProps> = ({
   specimenName, specimenId, comments, isFinalized, currentUserId: _currentUserId, currentUserName, onAddComment, onClose,
   // _currentUserId: same as CaseCommentModal.tsx — genuine prop, no
   // authorship-permission consumer built yet.
 }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const isDraftEmpty = !draft.trim() || draft === '<p></p>';
   const parts = specimenName.split(' › ');
@@ -64,25 +49,25 @@ const ReportCommentModal: React.FC<ReportCommentModalProps> = ({
         <div className="ps-cmnt-subtitle-row">
           {parts.length > 1 && <span className="ps-cmnt-subtitle-context">{parts.slice(1).join(' › ')}</span>}
           {isFinalized
-            ? <span className="ps-cmnt-status-finalized">🔒 Finalized — read only</span>
-            : <span className="ps-cmnt-status-saved">{comments.length} comment{comments.length === 1 ? '' : 's'}</span>
+            ? <span className="ps-cmnt-status-finalized">🔒 {t('reportCommentModal.finalizedReadOnly')}</span>
+            : <span className="ps-cmnt-status-saved">{t('reportCommentModal.commentsCount', { count: comments.length })}</span>
           }
         </div>
       }
       onClose={onClose}
       editorMode
-      footerLeft="Sent to LIS on finalization. Protocol-defined fields are in the Tumor, Margins & Biomarkers tabs."
+      footerLeft={t('reportCommentModal.footerNote')}
     >
       {!isFinalized && (
         <div className="ps-cmnt-thread-composer">
           <div className="ps-cmnt-role-header">
             <span className="ps-cmnt-thread-author">{currentUserName}</span>
-            <span className="ps-cmnt-role-note">— new comment</span>
+            <span className="ps-cmnt-role-note">{t('synopticComments.newCommentNote')}</span>
           </div>
           <PathScribeEditor
             key={`modal-report-comment-composer-${specimenId}`}
             content={draft}
-            placeholder={`Add a comment for ${titleName}…`}
+            placeholder={t('reportCommentModal.composerPlaceholder', { titleName })}
             onChange={setDraft}
             minHeight="220px"
             theme="dark"
@@ -92,14 +77,14 @@ const ReportCommentModal: React.FC<ReportCommentModalProps> = ({
             approvedFonts={['Arial', 'Times New Roman', 'Calibri', 'Courier New']}
           />
           <button className="ps-cmnt-post-btn" onClick={handlePost} disabled={isDraftEmpty}>
-            Post Comment
+            {t('synopticComments.postComment')}
           </button>
         </div>
       )}
 
       <div className="ps-cmnt-thread-list">
         {sorted.length === 0 && (
-          <div className="ps-cmnt-thread-empty">No comments yet on this specimen.</div>
+          <div className="ps-cmnt-thread-empty">{t('reportCommentModal.emptyThread')}</div>
         )}
         {sorted.map(c => (
           <div key={c.id} className="ps-cmnt-thread-item">

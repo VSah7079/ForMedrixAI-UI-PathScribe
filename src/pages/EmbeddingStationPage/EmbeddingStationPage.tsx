@@ -33,7 +33,7 @@
 // controls) reaches real, physical foot pedals from the browser
 // today, no native agent required. PS-285's own named "hands-free
 // triggers for piece-count confirmation" is now wired below via that
-// same hook — Pedal 1 (see FOOT_PEDAL_ACTION_LABELS's own doc
+// same hook — Pedal 1 (see FootPedalConfig.ts's own doc
 // comment). Its sibling, "advancing to next queued cassette," is
 // deliberately NOT wired — this page is a real, scan-to-open, single-
 // cassette workspace with no real queue/next-item navigation to

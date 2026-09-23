@@ -1,17 +1,21 @@
-# components/ClientDictionary/
+# components/FacilityDictionary/
 
 User-facing screen title is **Facility Configuration** (renamed from
-"Client Dictionary" this session — the underlying type is `Facility`,
-not `Client`; see `services/facilities/README.md`). Folder and file
-names were deliberately **not** renamed to match — only user-visible
-text was — so `ClientDictionary/`, `ClientTable.tsx`, and
-`ClientEditorModal.tsx` are what you'll still find on disk. Don't be
-thrown by that mismatch; it's intentional scope discipline, not an
-oversight (see the "Facility rename" section below for why).
+"Client Dictionary" — the underlying type is `Facility`, not `Client`;
+see `services/facilities/README.md`). This folder is itself the
+result of that rename being carried all the way through — folder and
+file names were updated to match (`FacilityDictionary/`,
+`FacilityTable.tsx`, `FacilityEditorModal.tsx`), superseding an earlier
+`components/ClientDictionary/` fork that kept the old `Client*` names.
+That original fork was found to still exist, fully orphaned (zero real
+imports anywhere), and was deleted in the i18n sweep's batch 178 —
+see `pages/system/README.md` for that removal's own account. If you
+see a reference to `Client*` file names anywhere else in the docs
+tree, it predates that cleanup.
 
 ## Files
 
-- **`ClientTable.tsx`** — Facility list, inline search + status filter
+- **`FacilityTable.tsx`** — Facility list, inline search + status filter
   + **role filter** (replaces the old internal/external type filter —
   see "Facility rename" below). Each row shows every role a facility
   holds as separate badges (a facility can hold several at once), not
@@ -28,12 +32,12 @@ oversight (see the "Facility rename" section below for why).
   out directly in its own comment), LIS-preset filtering, and a
   jurisdiction/locale info card (now resolved from the facility being
   edited, not a global default). Kept as its own file rather than
-  inlined into `ClientEditorModal.tsx` — a real, substantial screen,
+  inlined into `FacilityEditorModal.tsx` — a real, substantial screen,
   and that file is already large. See
   `services/facilities/README.md`'s own `Facility.identifierFormats`
   doc comment for the full architectural account.
 
-- **`ClientEditorModal.tsx`** — Full facility editor. Seven tabs now,
+- **`FacilityEditorModal.tsx`** — Full facility editor. Seven tabs now,
   most gated by which roles are checked on the facility (not a fixed
   internal/external branch):
   - **General** — always shown. Core identity + the role checkboxes
@@ -67,20 +71,20 @@ oversight (see the "Facility rename" section below for why).
   - **Identifier Formats** (**NEW**, `IdentifierFormatsTab.tsx` above)
     — never role-gated, same real pattern as LIS Integration.
   - **Reporting** / **TAT & Escalation** — **not** role-gated (a real
-    fix this session — see below). Always shown.
+    fix — see below). Always shown.
   - **AI & Performance** — gated to `performing_lab`.
     `internalAiOrchestratorEnabled` / `internalAiModelId` /
     `idleTimeoutMinutesOverride` live here, directly on `Facility`.
     Resolved via `resolvePerformingLabFacilityId()`
     (`services/facilities/IFacilityService.ts`) — same lab-scoped
     resolution as every other setting on this tab.
-  - **Locations** — edit-mode only, **not** role-gated (a real fix
-    this session — see below). Lists/adds/verifies/deactivates
+  - **Locations** — edit-mode only, **not** role-gated (a real fix —
+    see below). Lists/adds/verifies/deactivates
     `Location` records (`services/locations/`) for this facility —
     the ward/room/bed dictionary an inbound PV1 (HL7 ADT/ORM) resolves
     against. See `services/locations/README.md`.
 
-## Facility rename (this session)
+## Facility rename
 
 `Client`/`clientType: 'internal' | 'external'` was replaced entirely
 by `Facility`/`roles: FacilityRole[]` — see
@@ -113,8 +117,8 @@ The footer's own Save/Add button — background switches between `#10b981` (save
 
 ## Sole consumer
 
-`pages/system/ClientDictionaryPage.tsx` — page title also reads
-"Facility Configuration" now, same rename.
+`pages/system/FacilityDictionaryPage.tsx` — page title also reads
+"Facility Configuration", same rename.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

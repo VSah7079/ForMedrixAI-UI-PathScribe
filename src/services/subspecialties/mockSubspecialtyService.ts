@@ -58,8 +58,18 @@ const SEED_SUBSPECIALTIES: Subspecialty[] = [
     isWorkgroupEnabled: false, active: true, status: 'Active',
   },
   {
-    id: 'gyn', name: 'Gynecological',
-    description: 'Female reproductive tract pathology.',
+    // Real, per direct request (Sep 2026): renamed from 'Gynecological'
+    // to 'Surgical GYN' — confirmed this was genuinely confusing
+    // (including to Pete himself, mid-review of PS-306): "Gynecological"
+    // reads as the cytology-screening service line at a glance, when
+    // this subspecialty/pool is actually the GYN *surgical* triage
+    // queue — a real, separate pool from "Cytology" (poolId '1'), where
+    // actual Pap smears/FNAs live. `id: 'gyn'` is unchanged (stable
+    // identifier, nothing keys off the display name except the
+    // poolName match below, updated to stay in sync — see that
+    // comment for why both must change together).
+    id: 'gyn', name: 'Surgical GYN',
+    description: 'Female reproductive tract surgical pathology.',
     userIds: ['1'], specimenIds: ['sp8'], clientIds: [],
     // Real fix — same reasoning as 'gi' above: a real, hardcoded pool
     // case (MPA26-1006-POOL) exists for this pool. Its own poolName

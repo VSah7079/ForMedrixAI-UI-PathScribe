@@ -2,6 +2,7 @@
 // Two-panel layout: category groups left, permissions/facilities/cheat-sheet right
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   ACTION_GROUPS, DEFAULT_ROLE_PERMISSIONS,
@@ -11,6 +12,27 @@ import { mockActionRegistryService } from '../../../services/actionRegistry/mock
 import { mockParticipationTypeService } from '../../../services/participationTypes/mockParticipationTypeService';
 import type { ParticipationTypeRecord } from '../../../services/participationTypes/IParticipationTypeService';
 import { roleService, auditService, facilityService } from '../../../services';
+
+// i18n note (batch 118): DEFAULT_ROLES' own name/description strings
+// are persisted seed data (written to roleService on first load, same
+// as protocolShared.tsx's PROTOCOL_REGISTRY), and ACTION_GROUPS'
+// title/label/description fields (and everything sourced from
+// mockActionRegistryService — action label/description/shortcut/
+// voiceTriggers/internalKey/id/requiredRole) are configured/catalog
+// data imported from outside this file, not chrome authored here —
+// both stay untranslated, same posture as VOICE_PROFILES in batch 117.
+// Audit log `event`/`detail` strings passed to auditService.logEvent
+// are persisted audit-trail text and stay English by established
+// convention. Role/participation-type names, descriptions, colors and
+// facility names are all likewise persisted/configured data.
+// `action.groupTitle` (Worklist / Synoptic Report) is kept as an
+// English internal string for the cheat-sheet's own search matching,
+// same as protocolGroup()'s comparison-key precedent — translation
+// happens only at the display site via CHEAT_GROUP_LABEL_KEY below.
+const CHEAT_GROUP_LABEL_KEY: Record<'WORKLIST' | 'SYNOPTIC', string> = {
+  WORKLIST: 'roleDictionary.cheatsheet.groupWorklist',
+  SYNOPTIC: 'roleDictionary.cheatsheet.groupSynoptic',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +116,7 @@ const RoleModal: React.FC<{
   onSave: (draft: Omit<Role, 'id'>) => void;
   onClose: () => void;
 }> = ({ mode, role, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Omit<Role, 'id'>>({
     name:                 role?.name ?? '',
     description:          role?.description ?? '',
@@ -181,7 +204,7 @@ const RoleModal: React.FC<{
       a.groupTitle.toLowerCase().includes(q) ||
       a.id.toLowerCase().includes(q) ||
       a.shortcut.toLowerCase().includes(q) ||
-      a.voiceTriggers.some(t => t.toLowerCase().includes(q))
+      a.voiceTriggers.some(vt => vt.toLowerCase().includes(q))
     );
   }, [cheatSearch]);
 
@@ -205,25 +228,25 @@ const RoleModal: React.FC<{
   };
 
   const TABS = [
-    { id: 'permissions',   label: `Permissions (${permCount})` },
-    { id: 'facilities',    label: `Facility Access (${allFacilities ? 'All' : (draft.facilityIds?.length ?? 0)})` },
-    { id: 'participation', label: `Case Participation (${draft.participationTypeIds?.length ?? 0})` },
-    { id: 'cheatsheet',    label: 'Action Reference' },
+    { id: 'permissions',   label: t('roleDictionary.tabs.permissions', { count: permCount }) },
+    { id: 'facilities',    label: t('roleDictionary.tabs.facilityAccess', { value: allFacilities ? t('roleDictionary.tabs.allFacilitiesValue') : (draft.facilityIds?.length ?? 0) }) },
+    { id: 'participation', label: t('roleDictionary.tabs.caseParticipation', { count: draft.participationTypeIds?.length ?? 0 }) },
+    { id: 'cheatsheet',    label: t('roleDictionary.tabs.actionReference') },
   ] as const;
 
   return (
     <div data-capture-hide="true" className="ps-conf-backdrop" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="fm-modal fm-modal--config" style={{ width: 'min(1080px, 96vw)', minHeight: 600, maxHeight: '90vh' }}>
+      <div onClick={e => e.stopPropagation()} className="fm-modal fm-modal--config ps-rd-modal-size">
 
         {/* Header */}
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · Role Dictionary</div>
+            <div className="fm-eyebrow">{t('roleDictionary.modal.eyebrow')}</div>
             <div className="ps-rd-modal-name-row">
               <input
                 value={draft.name}
                 onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-                placeholder="Role name"
+                placeholder={t('roleDictionary.modal.roleNamePlaceholder')}
                 className="ps-conf-input ps-rd-modal-name-input"
               />
               <input
@@ -231,12 +254,12 @@ const RoleModal: React.FC<{
                 value={draft.color}
                 onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
                 className="ps-rd-color-picker"
-                title="Badge colour"
+                title={t('roleDictionary.modal.badgeColorTitle')}
               />
               <span className="ps-rd-role-badge" style={{ background: draft.color + '22', color: draft.color, border: `1px solid ${draft.color}44` }}>
-                {draft.name || 'Preview'}
+                {draft.name || t('roleDictionary.modal.previewFallback')}
               </span>
-              <span className="ps-rd-perm-badge">{permCount} / {totalActions} actions granted</span>
+              <span className="ps-rd-perm-badge">{t('roleDictionary.modal.actionsGranted', { granted: permCount, total: totalActions })}</span>
             </div>
           </div>
           <button onClick={onClose} className="ps-rd-close-btn">×</button>
@@ -247,27 +270,26 @@ const RoleModal: React.FC<{
           <input
             value={draft.description}
             onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-            placeholder="Role description"
-            className="ps-conf-input"
-            style={{ flex: 1, minWidth: 200 }}
+            placeholder={t('roleDictionary.modal.roleDescriptionPlaceholder')}
+            className="ps-conf-input ps-rd-desc-input"
           />
           <label className="ps-rd-access-label">
             <input type="checkbox" checked={draft.caseAccess}
               onChange={e => setDraft(d => ({ ...d, caseAccess: e.target.checked }))}
               className="ps-rd-checkbox" />
-            <span>Case Access</span>
+            <span>{t('roleDictionary.modal.caseAccess')}</span>
           </label>
           <label className="ps-rd-access-label">
             <input type="checkbox" checked={draft.configAccess}
               onChange={e => setDraft(d => ({ ...d, configAccess: e.target.checked }))}
               className="ps-rd-checkbox" />
-            <span>Config Access</span>
+            <span>{t('roleDictionary.modal.configAccess')}</span>
           </label>
           <label className="ps-rd-access-label">
             <input type="checkbox" checked={(draft as any).canViewPediatric ?? false}
               onChange={e => setDraft(d => ({ ...d, canViewPediatric: e.target.checked } as any))}
               className="ps-rd-checkbox ps-rd-checkbox--peds" />
-            <span>Pediatric Access</span>
+            <span>{t('roleDictionary.modal.pediatricAccess')}</span>
           </label>
         </div>
 
@@ -318,10 +340,10 @@ const RoleModal: React.FC<{
                   <TriCheckbox state={groupState} onClick={toggleGroupAll} size={18} />
                   <span className="ps-rd-action-group-title">{selectedGroup.title}</span>
                   <span className="ps-rd-action-granted-count">
-                    {groupIds.filter(id => draft.permissions[id]).length} / {groupIds.length} granted
+                    {t('roleDictionary.permissions.grantedCount', { granted: groupIds.filter(id => draft.permissions[id]).length, total: groupIds.length })}
                   </span>
                   <input value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Filter actions…"
+                    placeholder={t('roleDictionary.permissions.filterPlaceholder')}
                     className="ps-conf-input ps-rd-action-search" />
                 </div>
                 <div className="ps-rd-action-list">
@@ -331,13 +353,13 @@ const RoleModal: React.FC<{
                       <div key={action.id} onClick={() => toggleAction(action.id)}
                         className={`ps-rd-action-item ${granted ? 'ps-rd-action-item--granted' : 'ps-rd-action-item--default'}`}>
                         <DivCheckbox checked={granted} size={18} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="ps-rd-flex-1-minw0">
                           <div className="ps-rd-action-label-row">
                             <span className={`ps-rd-action-label ${granted ? 'ps-rd-action-label--granted' : 'ps-rd-action-label--default'}`}>
                               {action.label}
                             </span>
-                            {action.prebuilt    && <span className="ps-rd-tag-future">future</span>}
-                            {action.shortcutable && <span className="ps-rd-tag-shortcut">shortcutable</span>}
+                            {action.prebuilt    && <span className="ps-rd-tag-future">{t('roleDictionary.permissions.futureTag')}</span>}
+                            {action.shortcutable && <span className="ps-rd-tag-shortcut">{t('roleDictionary.permissions.shortcutableTag')}</span>}
                           </div>
                           {action.description && <div className="ps-rd-action-desc">{action.description}</div>}
                         </div>
@@ -345,7 +367,7 @@ const RoleModal: React.FC<{
                     );
                   })}
                   {filteredActions.length === 0 && (
-                    <div className="ps-rd-no-match">No actions match "{search}"</div>
+                    <div className="ps-rd-no-match">{t('roleDictionary.permissions.noActionsMatch', { search })}</div>
                   )}
                 </div>
               </div>
@@ -356,19 +378,19 @@ const RoleModal: React.FC<{
           {activeTab === 'facilities' && (
             <div className="ps-rd-clients-tab">
               <p className="ps-rd-clients-intro">
-                Control which hospital facilities this role can access. Set to <strong>All Facilities</strong> for enterprise-wide access, or restrict to specific hospitals for multi-site deployments.
+                <Trans i18nKey="roleDictionary.facilities.intro" components={{ strong: <strong /> }} />
               </p>
               <div onClick={() => setDraft(d => ({ ...d, facilityIds: allFacilities ? (facilities[0] ? [facilities[0].id] : []) : [] }))}
                 className={`ps-rd-all-clients-row ${allFacilities ? 'ps-rd-all-clients-row--on' : 'ps-rd-all-clients-row--off'}`}>
                 <DivCheckbox checked={allFacilities} size={20} variant="green" />
                 <div>
-                  <div className={`ps-rd-all-clients-label ${allFacilities ? 'ps-rd-all-clients-label--on' : 'ps-rd-all-clients-label--off'}`}>All Facilities</div>
-                  <div className="ps-rd-all-clients-sub">This role has access to cases and data from all hospital facilities</div>
+                  <div className={`ps-rd-all-clients-label ${allFacilities ? 'ps-rd-all-clients-label--on' : 'ps-rd-all-clients-label--off'}`}>{t('roleDictionary.facilities.allFacilities')}</div>
+                  <div className="ps-rd-all-clients-sub">{t('roleDictionary.facilities.allFacilitiesSub')}</div>
                 </div>
               </div>
               {!allFacilities && (
                 <div>
-                  <div className="ps-rd-clients-section-label">Select Specific Facilities</div>
+                  <div className="ps-rd-clients-section-label">{t('roleDictionary.facilities.selectSpecific')}</div>
                   {facilities.map(facility => {
                     const selected = (draft.facilityIds ?? []).includes(facility.id);
                     return (
@@ -386,7 +408,7 @@ const RoleModal: React.FC<{
               )}
               {!allFacilities && (draft.facilityIds ?? []).length === 0 && (
                 <div className="ps-rd-no-clients-warn">
-                  ⚠ No facilities selected — this role will have no data access. Select at least one facility or switch to All Facilities.
+                  ⚠ {t('roleDictionary.facilities.noneSelectedWarn')}
                 </div>
               )}
             </div>
@@ -405,42 +427,42 @@ const RoleModal: React.FC<{
             return (
               <div className="ps-rd-part-tab">
                 <p className="ps-rd-part-intro">
-                  Select which participation types staff with this role can serve as on a case.
-                  Participation types are defined in <strong>System → Participation Types</strong>.
+                  <Trans i18nKey="roleDictionary.participation.intro" components={{ strong: <strong /> }} />
                 </p>
                 {!draft.caseAccess && (
                   <div className="ps-rd-part-warn">
-                    ⚠ This role has no Case Access — participation types will have no effect until Case Access is enabled.
+                    ⚠ {t('roleDictionary.participation.noCaseAccessWarn')}
                   </div>
                 )}
                 {allTypes.length === 0 ? (
                   <div className="ps-rd-part-empty">
-                    No active participation types defined yet.<br />
-                    <span style={{ color: '#6b7280' }}>Go to System → Participation Types to add some.</span>
+                    {t('roleDictionary.participation.noneDefinedYet')}<br />
+                    <span className="ps-rd-part-empty-hint">{t('roleDictionary.participation.goToSystemHint')}</span>
                   </div>
                 ) : (
                   <div className="ps-rd-part-list">
-                    {allTypes.map(t => {
-                      const selected = selectedIds.includes(t.id);
+                    {allTypes.map(pt => {
+                      const selected = selectedIds.includes(pt.id);
+                      const attrs = [
+                        { label: t('roleDictionary.participation.attr.canFinalize'),       value: pt.canFinalize,           onColor: '#22c55e' },
+                        { label: t('roleDictionary.participation.attr.countersignReq'),     value: pt.requiresCountersign,   onColor: '#f59e0b' },
+                        { label: t('roleDictionary.participation.attr.templateAssign'),     value: pt.canBeAssignedTemplate, onColor: '#8AB4F8' },
+                        { label: t('roleDictionary.participation.attr.fullCaseView'),       value: pt.canViewWholeCase,      onColor: '#8AB4F8' },
+                      ];
                       return (
-                        <div key={t.id} onClick={() => toggle(t.id)}
+                        <div key={pt.id} onClick={() => toggle(pt.id)}
                           className={`ps-rd-part-item ${selected ? 'ps-rd-part-item--on' : 'ps-rd-part-item--off'}`}>
                           <DivCheckbox checked={selected} size={18} />
-                          <div style={{ paddingTop: 1 }}>
-                            <span className="ps-rd-role-badge" style={{ fontSize: 11, padding: '2px 10px', background: t.color + '22', color: t.color, border: `1px solid ${t.color}44`, whiteSpace: 'nowrap' }}>
-                              {t.abbreviation}
+                          <div className="ps-rd-part-abbr-pad">
+                            <span className="ps-rd-role-badge ps-rd-part-abbr-badge" style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}>
+                              {pt.abbreviation}
                             </span>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className={`ps-rd-part-name ${selected ? 'ps-rd-part-name--on' : 'ps-rd-part-name--off'}`}>{t.label}</div>
-                            {t.description && <div className="ps-rd-part-desc">{t.description}</div>}
+                          <div className="ps-rd-flex-1-minw0">
+                            <div className={`ps-rd-part-name ${selected ? 'ps-rd-part-name--on' : 'ps-rd-part-name--off'}`}>{pt.label}</div>
+                            {pt.description && <div className="ps-rd-part-desc">{pt.description}</div>}
                             <div className="ps-rd-part-attrs">
-                              {[
-                                { label: 'Can Finalise',       value: t.canFinalize,           onColor: '#22c55e' },
-                                { label: 'Countersign Req.',   value: t.requiresCountersign,   onColor: '#f59e0b' },
-                                { label: 'Template Assign.',   value: t.canBeAssignedTemplate, onColor: '#8AB4F8' },
-                                { label: 'Full Case View',     value: t.canViewWholeCase,      onColor: '#8AB4F8' },
-                              ].map(attr => (
+                              {attrs.map(attr => (
                                 <span key={attr.label} className="ps-rd-part-attr" style={{
                                   background: attr.value ? attr.onColor + '18' : 'rgba(255,255,255,0.04)',
                                   color:      attr.value ? attr.onColor : '#4b5563',
@@ -457,7 +479,7 @@ const RoleModal: React.FC<{
                   </div>
                 )}
                 <div className="ps-rd-part-count">
-                  {selectedIds.length} of {allTypes.length} participation types selected for this role
+                  {t('roleDictionary.participation.selectedCount', { selected: selectedIds.length, total: allTypes.length })}
                 </div>
               </div>
             );
@@ -468,10 +490,10 @@ const RoleModal: React.FC<{
             <div className="ps-rd-cheat-tab">
               <div className="ps-rd-cheat-header">
                 <input autoFocus value={cheatSearch} onChange={e => setCheatSearch(e.target.value)}
-                  placeholder="Search by name, ID, shortcut, or voice phrase…"
+                  placeholder={t('roleDictionary.cheatsheet.searchPlaceholder')}
                   className="ps-conf-input" />
                 <div className="ps-rd-cheat-count">
-                  {cheatActions.length} of {mockActionRegistryService.getActions().filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC').length} worklist/synoptic actions shown
+                  {t('roleDictionary.cheatsheet.shownCount', { shown: cheatActions.length, total: mockActionRegistryService.getActions().filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC').length })}
                 </div>
               </div>
               <div className="ps-rd-cheat-list">
@@ -486,34 +508,34 @@ const RoleModal: React.FC<{
                   return (
                     <div key={action.id} className={`ps-rd-cheat-item ${granted ? 'ps-rd-cheat-item--granted' : 'ps-rd-cheat-item--default'}`}>
                       <div className="ps-rd-cheat-label-row">
-                        <span className="ps-rd-cheat-group-tag">{action.groupTitle}</span>
+                        <span className="ps-rd-cheat-group-tag">{t(CHEAT_GROUP_LABEL_KEY[action.category as 'WORKLIST' | 'SYNOPTIC'])}</span>
                         <span className={`ps-rd-cheat-label ${granted ? 'ps-rd-cheat-label--granted' : 'ps-rd-cheat-label--default'}`}>
                           {action.label}
                         </span>
-                        {granted === true  && <span className="ps-rd-tag-granted">✓ Granted</span>}
+                        {granted === true  && <span className="ps-rd-tag-granted">✓ {t('roleDictionary.cheatsheet.grantedTag')}</span>}
                         {granted === undefined && (
                           <span
-                            title="No matching permission entry exists for this action — this role dictionary's permission grid doesn't track it."
-                            style={{ fontSize: '9px', fontWeight: 'bold', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.35)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                            title={t('roleDictionary.cheatsheet.noMappingTitle')}
+                            className="ps-rd-cheat-tag--nomap"
                           >
-                            No permission mapping
+                            {t('roleDictionary.cheatsheet.noMappingTag')}
                           </span>
                         )}
                         {!action.isActive && (
                           <span
-                            title="Registered but deliberately not voice/keyboard-eligible — see this action's own comment in mockActionRegistryService.ts."
-                            style={{ fontSize: '9px', fontWeight: 'bold', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '4px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                            title={t('roleDictionary.cheatsheet.disabledTitle')}
+                            className="ps-rd-cheat-tag--disabled"
                           >
-                            Disabled
+                            {t('roleDictionary.cheatsheet.disabledTag')}
                           </span>
                         )}
                         <span className="ps-rd-tag-shortcut">{action.requiredRole}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                        <code style={{ background: 'var(--ps-conf-surface)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', color: '#38bdf8' }}>{action.shortcut || '—'}</code>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {action.voiceTriggers.map(t => (
-                            <span key={t} style={{ background: 'rgba(8, 145, 178, 0.15)', color: '#22d3ee', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', border: '1px solid rgba(34, 211, 238, 0.2)' }}>{t}</span>
+                      <div className="ps-rd-cheat-shortcut-row">
+                        <code className="ps-rd-cheat-shortcut-code">{action.shortcut || '—'}</code>
+                        <div className="ps-rd-cheat-voice-wrap">
+                          {action.voiceTriggers.map(vt => (
+                            <span key={vt} className="ps-rd-cheat-voice-chip">{vt}</span>
                           ))}
                         </div>
                       </div>
@@ -529,12 +551,12 @@ const RoleModal: React.FC<{
         {/* Footer */}
         <div className="fm-footer">
           <span className="ps-rd-footer-meta">
-            {permCount} permissions · {allFacilities ? 'All facilities' : `${(draft.facilityIds ?? []).length} facility(s)`}
+            {t('roleDictionary.footer.permissionsSummary', { count: permCount, facilities: allFacilities ? t('roleDictionary.footer.allFacilitiesShort') : t('roleDictionary.footer.facilityCount', { count: (draft.facilityIds ?? []).length }) })}
           </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
-            <button className="fm-btn-apply" style={{ opacity: !draft.name.trim() ? 0.5 : 1 }} onClick={() => { if (!draft.name.trim()) return; onSave(draft); }}>
-              {mode === 'add' ? 'Add Role' : 'Save Changes'}
+          <div className="ps-flex-row-gap-8">
+            <button className="fm-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
+            <button className={`fm-btn-apply ${!draft.name.trim() ? 'ps-rd-btn-apply--invalid' : ''}`} onClick={() => { if (!draft.name.trim()) return; onSave(draft); }}>
+              {mode === 'add' ? t('roleDictionary.modal.addRole') : t('roleDictionary.modal.saveChanges')}
             </button>
           </div>
         </div>
@@ -546,6 +568,7 @@ const RoleModal: React.FC<{
 // ─── Main RoleDictionary ──────────────────────────────────────────────────────
 
 const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({ onRolesChange }) => {
+  const { t } = useTranslation();
   const [roles,   setRoles]   = useState<Role[]>(DEFAULT_ROLES);
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState('');
@@ -619,27 +642,38 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
     setModal({ mode: 'add', role: { ...role, name: `${role.name} (Copy)`, builtIn: false } });
   };
 
-  if (loading) return <div className="ps-rd-loading">Loading roles…</div>;
+  if (loading) return <div className="ps-rd-loading">{t('roleDictionary.list.loading')}</div>;
+
+  const TABLE_HEADERS = [
+    t('roleDictionary.list.headers.role'),
+    t('roleDictionary.list.headers.description'),
+    t('roleDictionary.list.headers.caseAccess'),
+    t('roleDictionary.list.headers.configAccess'),
+    t('roleDictionary.list.headers.pediatricAccess'),
+    t('roleDictionary.list.headers.facilities'),
+    t('roleDictionary.list.headers.permissions'),
+    '',
+  ];
 
   return (
     <div className="ps-rd-root">
       <div className="ps-rd-header">
         <div>
-          <h2 className="ps-rd-title">Role Dictionary</h2>
-          <p className="ps-rd-subtitle">Define roles, permissions, and facility access scopes.</p>
+          <h2 className="ps-rd-title">{t('roleDictionary.list.pageTitle')}</h2>
+          <p className="ps-rd-subtitle">{t('roleDictionary.list.pageSubtitle')}</p>
         </div>
-        <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>+ Add Role</button>
+        <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>{t('roleDictionary.list.addRoleButton')}</button>
       </div>
 
-      <input type="text" placeholder="Search roles…" value={search}
+      <input type="text" placeholder={t('roleDictionary.list.searchPlaceholder')} value={search}
         onChange={e => setSearch(e.target.value)} className="ps-rd-search" />
 
       <div className="ps-rd-table-wrap">
         <table className="ps-rd-table">
           <thead className="ps-rd-thead">
             <tr>
-              {['Role', 'Description', 'Case Access', 'Config Access', 'Pediatric Access', 'Facilities', 'Permissions', ''].map(h => (
-                <th key={h} className="ps-rd-th">{h}</th>
+              {TABLE_HEADERS.map((h, i) => (
+                <th key={i} className="ps-rd-th">{h}</th>
               ))}
             </tr>
           </thead>
@@ -654,7 +688,7 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                       <span className="ps-rd-role-badge" style={{ background: role.color + '22', color: role.color, border: '1px solid ' + role.color + '44' }}>
                         {role.name}
                       </span>
-                      {role.builtIn && <span className="ps-rd-builtin">built-in</span>}
+                      {role.builtIn && <span className="ps-rd-builtin">{t('roleDictionary.list.builtIn')}</span>}
                     </div>
                   </td>
                   <td className="ps-rd-td ps-rd-td--desc">
@@ -662,22 +696,22 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                   </td>
                   <td className="ps-rd-td">
                     <span className={`ps-rd-access ${role.caseAccess ? 'ps-rd-access--yes' : 'ps-rd-access--no'}`}>
-                      {role.caseAccess ? '✓ Yes' : '— No'}
+                      {role.caseAccess ? `✓ ${t('common.yes')}` : `— ${t('common.no')}`}
                     </span>
                   </td>
                   <td className="ps-rd-td">
                     <span className={`ps-rd-access ${role.configAccess ? 'ps-rd-access--yes' : 'ps-rd-access--no'}`}>
-                      {role.configAccess ? '✓ Yes' : '— No'}
+                      {role.configAccess ? `✓ ${t('common.yes')}` : `— ${t('common.no')}`}
                     </span>
                   </td>
                   <td className="ps-rd-td">
                     <span className={`ps-rd-access ${(role as any).canViewPediatric ? 'ps-rd-access--peds-yes' : 'ps-rd-access--no'}`}>
-                      {(role as any).canViewPediatric ? '✓ Yes' : '— No'}
+                      {(role as any).canViewPediatric ? `✓ ${t('common.yes')}` : `— ${t('common.no')}`}
                     </span>
                   </td>
                   <td className="ps-rd-td">
                     <span className={`ps-rd-clients ${allFacilities ? 'ps-rd-clients--all' : 'ps-rd-clients--some'}`}>
-                      {allFacilities ? '🌐 All' : `${role.facilityIds?.length} facility${(role.facilityIds?.length ?? 0) !== 1 ? '(s)' : ''}`}
+                      {allFacilities ? `🌐 ${t('roleDictionary.list.allFacilitiesShort')}` : t('roleDictionary.list.facilityCount', { count: role.facilityIds?.length ?? 0 })}
                     </span>
                   </td>
                   <td className="ps-rd-td">
@@ -689,9 +723,9 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                     </div>
                   </td>
                   <td className="ps-rd-td">
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>Edit</button>
-                      <button className="ps-rd-edit-btn" onClick={() => handleDuplicate(role)}>Duplicate</button>
+                    <div className="ps-rd-row-actions">
+                      <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>{t('common.edit')}</button>
+                      <button className="ps-rd-edit-btn" onClick={() => handleDuplicate(role)}>{t('roleDictionary.list.duplicate')}</button>
                     </div>
                   </td>
                 </tr>

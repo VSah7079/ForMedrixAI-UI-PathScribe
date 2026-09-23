@@ -3,9 +3,14 @@
  * Data retention policy — editable by administrators.
  * Persists to localStorage via 'pathscribe_retention_policy' key.
  * When SystemConfigContext adds retention fields, replace localStorage with context.
+ *
+ * i18n sweep (batch 51): every on-screen string converted to the new
+ * `retentionSection` namespace. No real/persisted data in this file —
+ * every string is UI chrome (labels, hints, units, buttons).
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,50 +37,37 @@ function load(): RetentionPolicy {
   } catch { return { ...DEFAULTS }; }
 }
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
-const fieldStyle: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-  padding: '16px 18px', border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '10px', background: 'rgba(255,255,255,0.03)',
-  marginBottom: '10px', gap: 16,
-};
-const labelStyle: React.CSSProperties  = { fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 2 };
-const noteStyle: React.CSSProperties   = { fontSize: 12, color: '#64748b', lineHeight: 1.4 };
-const inputStyle: React.CSSProperties  = {
-  width: 80, padding: '6px 10px', background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, color: '#f1f5f9',
-  fontSize: 14, fontWeight: 700, textAlign: 'center' as const, outline: 'none',
-  fontFamily: 'inherit',
-};
-const unitStyle: React.CSSProperties   = { fontSize: 12, color: '#64748b', marginLeft: 6, whiteSpace: 'nowrap' as const };
-
 // ─── Editable row ─────────────────────────────────────────────────────────────
 const Row: React.FC<{
   label: string; note: string; value: number; unit: string;
   min: number; max: number; onChange: (v: number) => void; dirty: boolean;
-}> = ({ label, note, value, unit, min, max, onChange, dirty }) => (
-  <div style={{ ...fieldStyle, borderColor: dirty ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)' }}>
-    <div style={{ flex: 1 }}>
-      <div style={labelStyle}>{label}</div>
-      <div style={noteStyle}>{note}</div>
+}> = ({ label, note, value, unit, min, max, onChange, dirty }) => {
+  const { t } = useTranslation();
+  return (
+    <div className={`ps-retention__row${dirty ? ' ps-retention__row--dirty' : ''}`}>
+      <div className="ps-retention__row-info">
+        <div className="ps-retention__row-label">{label}</div>
+        <div className="ps-retention__row-note">{note}</div>
+      </div>
+      <div className="ps-retention__row-input-wrap">
+        <input
+          type="number" min={min} max={max} value={value}
+          aria-label={t('retentionSection.fieldAriaLabel', { label, unit })}
+          className="ps-retention__input"
+          onChange={e => {
+            const n = parseInt(e.target.value, 10);
+            if (!isNaN(n) && n >= min && n <= max) onChange(n);
+          }}
+        />
+        <span className="ps-retention__unit">{unit}</span>
+      </div>
     </div>
-    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-      <input
-        type="number" min={min} max={max} value={value}
-        aria-label={`${label}, ${unit}`}
-        style={inputStyle}
-        onChange={e => {
-          const n = parseInt(e.target.value, 10);
-          if (!isNaN(n) && n >= min && n <= max) onChange(n);
-        }}
-      />
-      <span style={unitStyle}>{unit}</span>
-    </div>
-  </div>
-);
+  );
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const RetentionSection: React.FC = () => {
+  const { t } = useTranslation();
   const [policy,  setPolicy]  = useState<RetentionPolicy>(load);
   const [saved,   setSaved]   = useState(false);
   const [dirty,   setDirty]   = useState(false);
@@ -102,77 +94,70 @@ const RetentionSection: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '4px 0', maxWidth: 680 }}>
+    <div className="ps-retention__wrap">
       {/* Header */}
-      <div style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          🗄️ Data Retention
+      <div className="ps-retention__header">
+        <h2 className="ps-retention__title">
+          🗄️ {t('retentionSection.title')}
         </h2>
-        <p style={{ fontSize: 13, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
-          How long PathScribe retains AI decisions, audit trails, and case data.
-          Changes take effect at the next scheduled purge cycle. Consult your institution's
-          data governance policy before reducing any retention period.
+        <p className="ps-retention__subtitle">
+          {t('retentionSection.subtitle')}
         </p>
       </div>
 
       {/* Editable fields */}
       <Row
-        label="AI Suggestions" unit="days" min={30} max={730}
-        note="AI-generated field suggestions and confidence scores retained per case"
+        label={t('retentionSection.fields.aiSuggestions.label')} unit={t('retentionSection.fields.aiSuggestions.unit')} min={30} max={730}
+        note={t('retentionSection.fields.aiSuggestions.note')}
         value={policy.aiSuggestionDays}
         onChange={v => set('aiSuggestionDays', v)}
         dirty={dirty && policy.aiSuggestionDays !== saved_policy.aiSuggestionDays}
       />
       <Row
-        label="Audit Logs" unit="days" min={90} max={3650}
-        note="All user actions, sign-outs, amendments, voice events, and system events"
+        label={t('retentionSection.fields.auditLogs.label')} unit={t('retentionSection.fields.auditLogs.unit')} min={90} max={3650}
+        note={t('retentionSection.fields.auditLogs.note')}
         value={policy.auditLogDays}
         onChange={v => set('auditLogDays', v)}
         dirty={dirty && policy.auditLogDays !== saved_policy.auditLogDays}
       />
       <Row
-        label="Case Snapshots" unit="years" min={1} max={30}
-        note="Full case data captured at each finalisation and sign-out event"
+        label={t('retentionSection.fields.caseSnapshots.label')} unit={t('retentionSection.fields.caseSnapshots.unit')} min={1} max={30}
+        note={t('retentionSection.fields.caseSnapshots.note')}
         value={policy.caseSnapshotYears}
         onChange={v => set('caseSnapshotYears', v)}
         dirty={dirty && policy.caseSnapshotYears !== saved_policy.caseSnapshotYears}
       />
       <Row
-        label="Report Archive" unit="years" min={1} max={30}
-        note="Signed-out reports retained for medicolegal and pathology review purposes"
+        label={t('retentionSection.fields.reportArchive.label')} unit={t('retentionSection.fields.reportArchive.unit')} min={1} max={30}
+        note={t('retentionSection.fields.reportArchive.note')}
         value={policy.reportArchiveYears}
         onChange={v => set('reportArchiveYears', v)}
         dirty={dirty && policy.reportArchiveYears !== saved_policy.reportArchiveYears}
       />
 
       {/* Governance note */}
-      <div style={{
-        margin: '16px 0', padding: '10px 14px', borderRadius: 8,
-        background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
-        fontSize: 12, color: '#a78bfa', lineHeight: 1.5,
-      }}>
-        🔒 Minimum audit log retention is 90 days. Reductions below regulatory minimums
-        require sign-off from your institution's compliance officer.
+      <div className="ps-retention__governance-note">
+        🔒 {t('retentionSection.governanceNote')}
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div className="ps-retention__actions">
         <button
           onClick={handleSave}
           disabled={!dirty}
           className="ps-conf-btn-primary"
         >
-          {saved ? '✓ Saved' : 'Save Changes'}
+          {saved ? t('retentionSection.savedBtn') : t('retentionSection.saveBtn')}
         </button>
         <button
           onClick={handleReset}
           className="ps-conf-btn-secondary"
         >
-          Reset to Defaults
+          {t('retentionSection.resetBtn')}
         </button>
         {saved && (
-          <span style={{ fontSize: 12, color: '#34d399' }}>
-            Retention policy updated — takes effect at next purge cycle.
+          <span className="ps-retention__saved-message">
+            {t('retentionSection.savedMessage')}
           </span>
         )}
       </div>

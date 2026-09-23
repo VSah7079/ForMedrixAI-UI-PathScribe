@@ -1,9 +1,10 @@
 // src/pages/SynopticReportPage/components/LeftReportPanel.tsx
 import React, { useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import InternalNotesDrawer from '@/components/InternalNotes/InternalNotesDrawer';
-import { internalNoteService, informalReviewService } from '@/services';
+import { internalNoteService, informalReviewService, intraoperativeService } from '@/services';
 import type { InformalReviewRequest } from '@/types/reports/InformalReviewRequest';
 import { getMarkersFromAnswers, type MarkerAnswer } from '@/orchestrator/contextBuilder';
 import { getTemplate } from '@/services/templates/templateService';
@@ -54,17 +55,7 @@ const HighlightedText: React.FC<{
   return (
     <>
       {text.slice(0, idx)}
-      <mark
-        ref={onMarkMount}
-        style={{
-          background: 'rgba(251,191,36,0.45)',
-          color: '#fde68a',
-          borderRadius: 3,
-          padding: '1px 4px',
-          boxShadow: '0 0 0 2px rgba(251,191,36,0.5)',
-          animation: 'ps-highlight-pop 0.5s ease',
-        }}
-      >
+      <mark ref={onMarkMount} className="ps-leftreport-highlight-mark">
         {text.slice(idx, idx + highlight.length)}
       </mark>
       {text.slice(idx + highlight.length)}
@@ -73,6 +64,7 @@ const HighlightedText: React.FC<{
 };
 
 const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightText, rawHighlightText, onMatchResolved, autoOpenNotes }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [notesOpen, setNotesOpen] = React.useState(!!autoOpenNotes);
   const [unreadNoteCount, setUnreadNoteCount] = React.useState(0);
@@ -143,7 +135,7 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
       setPendingReview(null);
     }
   }, [notesOpen, pendingReview]);
-  
+
 
   // Phase D of the biomarker display work. Resolves
   // markers across ALL of this case's synoptic report instances (a case can
@@ -166,11 +158,55 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
     return () => { cancelled = true; };
   }, [caseData?.synopticReports]);
 
+  // Real fix, per direct follow-up ("I never see Preliminary Diagnosis
+  // ... I expected to see it in the synoptic reporting tab under the
+  // full patient report"): this panel is the read-only, case-level
+  // summary — genuinely distinct from Report Draft's live orchestrator
+  // narrative. It already read every other case-level diagnostic field
+  // (grossDescription/microscopicDescription/ancillaryStudies) but
+  // never diagnostic.preliminaryImpression, even though that's the
+  // real, wired field (see Case.ts's own doc comment: added
+  // specifically because "no Preliminary Diagnosis Text Field
+  // exist[ed]" — bound to the real prelim_body_surgpath_impression
+  // report part, and read by buildOruR01Payload.ts for outbound HL7).
+  // Genuinely missing here, not a display choice.
+  //
+  // Direct follow-up added a second, related gap in the same summary:
+  // the Intraoperative/Frozen Section Diagnosis — real data too
+  // (IntraopSpecimen.frozenSectionDiagnosis), but it doesn't live on
+  // Case.diagnostic at all; it's set on the IntraoperativeEntry the
+  // case was merged from (services/intraop/mockIntraoperativeService.ts),
+  // linked via mergedIntoCaseId. Same lookup pattern already
+  // established in useSignOutWorkflow.ts's own Frozen-to-Permanent
+  // Reconciliation check, reused here rather than a second, divergent
+  // one: getAll(), find the merged session for this case, read each
+  // specimen's own frozenSectionDiagnosis (a case can have more than
+  // one specimen frozen, each with its own separate call).
+  const [intraopDiagnosisText, setIntraopDiagnosisText] = React.useState<string | null>(null);
+  useEffect(() => {
+    if (!caseData?.id) { setIntraopDiagnosisText(null); return; }
+    let cancelled = false;
+    intraoperativeService.getAll().then(res => {
+      if (cancelled || !res.ok) return;
+      const mergedSession = res.data.find(e => e.status === 'merged' && e.mergedIntoCaseId === caseData.id);
+      const withDx = (mergedSession?.specimens ?? []).filter(s => s.frozenSectionDiagnosis);
+      setIntraopDiagnosisText(
+        withDx.length > 0
+          ? withDx.map(s => `${s.specimenLabel}: ${s.frozenSectionDiagnosis}`).join('\n')
+          : null
+      );
+    }).catch(() => { if (!cancelled) setIntraopDiagnosisText(null); });
+    return () => { cancelled = true; };
+  }, [caseData?.id]);
+
+  const notRecorded = t('leftReportPanel.notRecorded');
   const sections = caseData ? [
-    { title: 'CLINICAL HISTORY',     text: caseData.order?.clinicalIndication ?? '(not recorded)' },
-    { title: 'GROSS DESCRIPTION',    text: caseData.diagnostic?.grossDescription ?? '(not recorded)' },
-    { title: 'MICROSCOPIC FINDINGS', text: caseData.diagnostic?.microscopicDescription ?? '(not recorded)' },
-    { title: 'ANCILLARY STUDIES',    text: caseData.diagnostic?.ancillaryStudies ?? '(not recorded)' },
+    { title: t('leftReportPanel.sections.clinicalHistory'),         text: caseData.order?.clinicalIndication ?? notRecorded },
+    { title: t('leftReportPanel.sections.intraopDiagnosis'),        text: intraopDiagnosisText ?? notRecorded },
+    { title: t('leftReportPanel.sections.grossDescription'),        text: caseData.diagnostic?.grossDescription ?? notRecorded },
+    { title: t('leftReportPanel.sections.microscopicFindings'),     text: caseData.diagnostic?.microscopicDescription ?? notRecorded },
+    { title: t('leftReportPanel.sections.preliminaryDiagnosis'),    text: caseData.diagnostic?.preliminaryImpression ?? notRecorded },
+    { title: t('leftReportPanel.sections.ancillaryStudies'),        text: caseData.diagnostic?.ancillaryStudies ?? notRecorded },
   ] : [];
 
   // Extract the quoted phrase from source strings like 'Gross: "2.3 × 1.8 × 1.5 cm"'
@@ -204,56 +240,31 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
   return (
     <div
       ref={scrollRef}
+      className="ps-leftreport-panel"
       style={{
-        width: '100%',
-        height: '100%',
-        background: '#111827',
         // Real fix: background-image + backgroundAttachment: 'local'
         // scrolls WITH this element's own content, tiling the real,
         // configured watermark text across the full scrollable height
         // — not just the initially-visible viewport. See
         // PendingReleaseWatermark.tsx's own header comment for the
-        // real bug this specifically avoids.
+        // real bug this specifically avoids. Genuinely dynamic — built
+        // from the org's own configured watermark text — so this stays
+        // inline rather than a fixed CSS rule.
         backgroundImage: isPendingRelease && watermarkText ? buildWatermarkBackgroundImage(watermarkText) : undefined,
         backgroundRepeat: isPendingRelease && watermarkText ? 'repeat' : undefined,
         backgroundAttachment: isPendingRelease && watermarkText ? 'local' : undefined,
-        borderRight: '1px solid rgba(8,145,178,0.3)',
-        overflowY: 'auto',
-        padding: '16px 32px 32px',
-        boxSizing: 'border-box',
-        position: 'relative',
       }}
     >
-      <style>{`
-        @keyframes ps-highlight-pop {
-          0%   { background: rgba(251,191,36,0.9); box-shadow: 0 0 0 4px rgba(251,191,36,0.7); }
-          100% { background: rgba(251,191,36,0.45); box-shadow: 0 0 0 2px rgba(251,191,36,0.5); }
-        }
-        @keyframes ps-review-waiting-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.55); }
-          50%      { box-shadow: 0 0 0 6px rgba(139,92,246,0); }
-        }
-      `}</style>
-
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid rgba(8,145,178,0.4)', paddingBottom: '8px' }}>
-        <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          📋 Full Patient Report
+      <div className="ps-leftreport-header-row">
+        <h3 className="ps-leftreport-header-title">
+          📋 {t('leftReportPanel.header.title')}
         </h3>
         {caseData && (
           <button
             onClick={() => setNotesOpen(true)}
-            title={pendingReview ? `${pendingReview.toUserName} published an informal review — click to view` : undefined}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 12px',
-              background: pendingReview ? 'rgba(139,92,246,0.16)' : 'rgba(8,145,178,0.12)',
-              border: pendingReview ? '1px solid rgba(139,92,246,0.55)' : '1px solid rgba(8,145,178,0.3)',
-              borderRadius: '6px', color: pendingReview ? '#a78bfa' : '#0891B2',
-              fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s', position: 'relative',
-              animation: pendingReview ? 'ps-review-waiting-pulse 1.8s ease-in-out infinite' : undefined,
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = pendingReview ? 'rgba(139,92,246,0.28)' : 'rgba(8,145,178,0.22)'}
-            onMouseLeave={e => e.currentTarget.style.background = pendingReview ? 'rgba(139,92,246,0.16)' : 'rgba(8,145,178,0.12)'}
+            title={pendingReview ? t('leftReportPanel.notesButton.reviewTooltip', { name: pendingReview.toUserName }) : undefined}
+            className={`ps-leftreport-notes-btn${pendingReview ? ' ps-leftreport-notes-btn--pending' : ''}`}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -261,14 +272,14 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
               <line x1="16" y1="13" x2="8" y2="13"/>
               <line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
-            Internal Notes
+            {t('leftReportPanel.notesButton.label')}
             {pendingReview && (
-              <span style={{ background: '#8B5CF6', color: '#fff', borderRadius: '10px', padding: '0 6px', height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                Review Ready
+              <span className="ps-leftreport-review-badge">
+                {t('leftReportPanel.notesButton.reviewReady')}
               </span>
             )}
             {!pendingReview && unreadNoteCount > 0 && (
-              <span style={{ background: '#F59E0B', color: '#000', borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span className="ps-leftreport-unread-badge">
                 {unreadNoteCount}
               </span>
             )}
@@ -286,12 +297,12 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
         />
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: '6px', marginBottom: '16px', fontSize: '11px', color: '#38bdf8' }}>
-        🔒 <span>Received from LIS — <strong>read-only</strong>.</span>
+      <div className="ps-leftreport-lis-notice">
+        🔒 <span><Trans i18nKey="leftReportPanel.lisNotice" components={{ strong: <strong /> }} /></span>
       </div>
 
       {!caseData ? (
-        <p style={{ color: '#94a3b8', fontSize: '14px' }}>No case loaded.</p>
+        <p className="ps-leftreport-empty-text">{t('leftReportPanel.noCaseLoaded')}</p>
       ) : (
         <>
           {/* Patient info row — compact single row, CAP two-identifier
@@ -304,10 +315,10 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
               panel to a specific specimen while scrolling a long report. */}
           <div className="ps-patient-info-row">
             {[
-              { label: 'Case',    value: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '—', mono: true },
-              { label: 'MRN',     value: caseData.patient?.mrn ?? '—' },
-              { label: 'Patient', value: caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '—' },
-              { label: 'DOB',     value: caseData.patient?.dateOfBirth ? new Date(caseData.patient.dateOfBirth).toLocaleDateString() : '—' },
+              { label: t('leftReportPanel.patientInfo.case'),    value: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '—', mono: true },
+              { label: t('leftReportPanel.patientInfo.mrn'),     value: caseData.patient?.mrn ?? '—' },
+              { label: t('leftReportPanel.patientInfo.patient'), value: caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '—' },
+              { label: t('leftReportPanel.patientInfo.dob'),     value: caseData.patient?.dateOfBirth ? new Date(caseData.patient.dateOfBirth).toLocaleDateString() : '—' },
             ].map(({ label, value, mono }, i) => (
               <React.Fragment key={label}>
                 {i > 0 && <span className="ps-patient-info-sep">·</span>}
@@ -321,15 +332,11 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
 
           {/* Report sections */}
           {sections.map(s => (
-            <div key={s.title} style={{ marginBottom: '28px', borderLeft: '3px solid rgba(8,145,178,0.4)', paddingLeft: '14px' }}>
-              <h4 style={{
-                fontSize: '11px', fontWeight: 800, color: '#0891B2',
-                marginBottom: '10px', letterSpacing: '1px',
-                textTransform: 'uppercase' as const,
-              }}>
+            <div key={s.title} className="ps-leftreport-section">
+              <h4 className="ps-leftreport-section-title">
                 {s.title}
               </h4>
-              <p style={{ color: '#cbd5e1', fontSize: '13.5px', lineHeight: 1.75, margin: 0 }}>
+              <p className="ps-leftreport-section-body">
                 <HighlightedText text={s.text} highlight={matchPhrase} onMarkMount={handleMarkMount} />
               </p>
             </div>

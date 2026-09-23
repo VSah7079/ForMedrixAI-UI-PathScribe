@@ -9,9 +9,18 @@
 // Real, per direct reminder ("reusing PathScribe CSS objects... no
 // inline CSS") — real, named CSS classes throughout, no style={{...}}
 // anywhere in this file.
+//
+// i18n note: `screeningStrategy` ('co_testing'/'primary_hpv_reflex'/
+// 'cytology_only') is a real, persisted enum value — the module-level
+// `STRATEGIES` array (outside the component, so it can't call
+// `useTranslation()` itself) carries a `labelKey` per entry, resolved
+// with `t()` at each render site. Same real two-tier cascade pattern
+// as the sibling `CytologyNomenclatureSettingsSection.tsx` (batch
+// 190) — reuses its exact-text keys throughout.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCytologyScreeningStrategyService } from '../../../services/cytology/mockCytologyScreeningStrategyService';
 import { mockFacilityCytologyScreeningStrategyOverrideService } from '../../../services/cytology/mockFacilityCytologyScreeningStrategyOverrideService';
@@ -20,13 +29,14 @@ import type { CytologyScreeningStrategy } from '../../../services/cytology/ICyto
 import type { FacilityCytologyScreeningStrategyOverride } from '../../../services/cytology/IFacilityCytologyScreeningStrategyOverrideService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 
-const STRATEGIES: { id: CytologyScreeningStrategy; label: string }[] = [
-  { id: 'co_testing', label: 'Co-Testing (Cytology + HPV together)' },
-  { id: 'primary_hpv_reflex', label: 'Primary HPV, Reflex to Cytology' },
-  { id: 'cytology_only', label: 'Cytology Only' },
+const STRATEGIES: { id: CytologyScreeningStrategy; labelKey: string }[] = [
+  { id: 'co_testing', labelKey: 'cytologyScreeningStrategySection.strategies.coTesting' },
+  { id: 'primary_hpv_reflex', labelKey: 'cytologyScreeningStrategySection.strategies.primaryHpvReflex' },
+  { id: 'cytology_only', labelKey: 'cytologyScreeningStrategySection.strategies.cytologyOnly' },
 ];
 
 const CytologyScreeningStrategySection: React.FC = () => {
+  const { t } = useTranslation();
   const [enterpriseDraft, setEnterpriseDraft] = useState<CytologyScreeningStrategy>('co_testing');
   const [savedEnterprise, setSavedEnterprise] = useState<CytologyScreeningStrategy>('co_testing');
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -55,33 +65,31 @@ const CytologyScreeningStrategySection: React.FC = () => {
   };
 
   const facilityName = (id: string) => facilities.find(f => f.id === id)?.name ?? id;
-  const strategyLabel = (id: CytologyScreeningStrategy) => STRATEGIES.find(s => s.id === id)?.label ?? id;
+  const strategyLabel = (id: CytologyScreeningStrategy) => t(STRATEGIES.find(s => s.id === id)?.labelKey ?? id);
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Cytology Screening Strategy</h2>
+      <h2 className="ps-conf-section-title">{t('cytologyScreeningStrategySection.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        The base cervical screening strategy a lab follows. Two-tier cascade — Enterprise default, with an
-        optional Facility override. Real, honest scope: covers the base strategy only — an age-stratified
-        rule (e.g. Germany's own real, age-banded protocol) is separate, later work.
+        {t('cytologyScreeningStrategySection.subtitle')}
       </p>
 
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Enterprise Default</div>
+        <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.enterprise.title')}</div>
         <div className="ps-conf-row-actions">
           <select className="ps-conf-select" value={enterpriseDraft} onChange={e => setEnterpriseDraft(e.target.value as CytologyScreeningStrategy)}>
-            {STRATEGIES.map(s => (<option key={s.id} value={s.id}>{s.label}</option>))}
+            {STRATEGIES.map(s => (<option key={s.id} value={s.id}>{t(s.labelKey)}</option>))}
           </select>
-          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>Save</button>
+          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>{t('common.save')}</button>
         </div>
-        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">Unsaved change</div>}
+        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">{t('cytologyQcSettingsSection.enterprise.unsavedChange')}</div>}
       </div>
 
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">Facility Overrides</div>
+          <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.facility.title')}</div>
           {!addingFacility && (
-            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', strategy: enterpriseDraft })}>+ Add Override</button>
+            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', strategy: enterpriseDraft })}>{t('cytologyQcSettingsSection.addOverrideBtn')}</button>
           )}
         </div>
 
@@ -90,12 +98,12 @@ const CytologyScreeningStrategySection: React.FC = () => {
             <span className="ps-conf-value">{facilityName(o.facilityId)}</span>
             <div className="ps-conf-row-actions">
               <span className="ps-conf-value">{o.overrides.screeningStrategy ? strategyLabel(o.overrides.screeningStrategy) : '—'}</span>
-              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyScreeningStrategyOverrideService.remove(o.facilityId); refresh(); }}>Remove</button>
+              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyScreeningStrategyOverrideService.remove(o.facilityId); refresh(); }}>{t('common.remove')}</button>
             </div>
           </div>
         ))}
         {facilityOverrides.length === 0 && !addingFacility && (
-          <div className="ps-conf-empty-row">No facility overrides — every facility uses the Enterprise default.</div>
+          <div className="ps-conf-empty-row">{t('cytologyQcSettingsSection.facility.emptyState')}</div>
         )}
 
         {addingFacility && (
@@ -105,13 +113,13 @@ const CytologyScreeningStrategySection: React.FC = () => {
             </select>
             <div className="ps-conf-row-actions">
               <select className="ps-conf-select" value={addingFacility.strategy} onChange={e => setAddingFacility({ ...addingFacility, strategy: e.target.value as CytologyScreeningStrategy })}>
-                {STRATEGIES.map(s => (<option key={s.id} value={s.id}>{s.label}</option>))}
+                {STRATEGIES.map(s => (<option key={s.id} value={s.id}>{t(s.labelKey)}</option>))}
               </select>
               <button className="ps-conf-btn-primary" onClick={async () => {
                 await mockFacilityCytologyScreeningStrategyOverrideService.create(addingFacility.facilityId, { screeningStrategy: addingFacility.strategy });
                 setAddingFacility(null); refresh();
-              }}>Save</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>Cancel</button>
+              }}>{t('common.save')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         )}

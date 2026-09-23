@@ -7,8 +7,9 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuditLog } from '../components/Audit/useAuditLog';
-import { useAuth } from '../contexts/AuthContext';
+import { useIsAdmin, useIsSuperAdmin } from '../contexts/AuthContext';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../constants/systemActions';
 import AITab         from '../components/Config/AI/index';
@@ -29,46 +30,35 @@ import { resetConfigScroll } from '../utils/resetConfigScroll';
 import '../pathscribe.css';
 
 // ── Admin permission check ────────────────────────────────────────────────────
-// Validation Studies tab is only visible to admin-tier roles (admin,
-// pathologist-admin, or superadmin) — a broader check than AuthContext's
-// own roleHas() helper, which deliberately doesn't fold superadmin into
-// its "admin" check (see roleHas's own doc comment). Was previously its
-// own independent localStorage.getItem('pathscribe-user') + JSON.parse,
-// duplicating exactly what AuthContext already does under the same
-// storage key — now reads useAuth()'s already-parsed user.role instead,
-// so there's one source of truth for the stored shape rather than two
-// that could drift out of sync.
-function useIsAdmin(): boolean {
-  const { user } = useAuth();
-  return !!user && ['admin', 'pathologist-admin', 'superadmin'].includes(user.role);
-}
-
-function useIsSuperAdmin(): boolean {
-  const { user } = useAuth();
-  return user?.role === 'superadmin';
-}
-
+// Validation Studies tab is only visible to admin-tier roles. useIsAdmin/
+// useIsSuperAdmin now come from AuthContext.tsx — file-by-file cleanup
+// sweep: this page used to carry its own local copy of both (already fixed,
+// per its own prior history, to read useAuth() rather than an independent
+// localStorage.getItem('pathscribe-user') + JSON.parse); Config/AI/index.tsx
+// carried a second, real-bug-prone copy of the same check. Both now share
+// one implementation.
 const VALID_TABS = ['ai', 'protocols', 'staff', 'voice', 'system', 'cytology', 'tat', 'actions', 'macros', 'templates', 'validation', 'demo'] as const;
 type TabId = typeof VALID_TABS[number];
 
-const TAB_LABELS: { id: TabId; label: string }[] = [
-  { id: 'actions',    label: 'Action Registry'    },
-  { id: 'ai',         label: 'AI Behavior'        },
-  { id: 'macros',     label: 'Macros'             },
-  { id: 'templates',  label: 'Report Templates'   },
-  { id: 'staff',      label: 'Staff'              },
-  { id: 'protocols',  label: 'Synoptic Library'   },
-  { id: 'system',     label: 'System'             },
-  { id: 'cytology',   label: 'Cytology'           },
-  { id: 'tat',        label: 'TAT Configuration'   },
-  { id: 'validation', label: 'Validation Studies' },
-  { id: 'voice',      label: 'Voice'              },
+const TAB_LABEL_KEYS: Record<TabId, string> = {
+  actions:    'configuration.tabs.actions',
+  ai:         'configuration.tabs.ai',
+  macros:     'configuration.tabs.macros',
+  templates:  'configuration.tabs.templates',
+  staff:      'configuration.tabs.staff',
+  protocols:  'configuration.tabs.protocols',
+  system:     'configuration.tabs.system',
+  cytology:   'configuration.tabs.cytology',
+  tat:        'configuration.tabs.tat',
+  validation: 'configuration.tabs.validation',
+  voice:      'configuration.tabs.voice',
   // Pinned last deliberately, not alphabetized — a reset/destructive
   // action, same convention as keeping "Delete Account" separate from
   // an alphabetized settings list rather than letting it land wherever
   // "D" happens to sort.
-  { id: 'demo',       label: '⟳ Demo Reset'       },
-];
+  demo:       'configuration.tabs.demo',
+};
+const TAB_ORDER: TabId[] = ['actions', 'ai', 'macros', 'templates', 'staff', 'protocols', 'system', 'cytology', 'tat', 'validation', 'voice', 'demo'];
 
 function getTabFromSearch(search: string): TabId {
   const t = new URLSearchParams(search).get('tab') as TabId | null;
@@ -87,13 +77,13 @@ function getTabFromSearch(search: string): TabId {
 }
 
 const ConfigurationPage: React.FC = () => {
+  const { t }      = useTranslation();
   const navigate   = useNavigate();
   const location   = useLocation();
   const { log }    = useAuditLog();
 
   const [activeTab,   setActiveTab]   = useState<TabId>(() => getTabFromSearch(location.search));
   const [isLoaded,    setIsLoaded]    = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
   const isAdmin      = useIsAdmin();
   const isSuperAdmin = useIsSuperAdmin();
 
@@ -165,15 +155,15 @@ const ConfigurationPage: React.FC = () => {
         ? <ValidationStudiesSection isSuperAdmin={isSuperAdmin} />
         : <div className="ps-cfgpage-locked">
             <div className="ps-cfgpage-locked-icon">🔒</div>
-            <div className="ps-cfgpage-locked-title">Admin access required</div>
-            <div className="ps-cfgpage-locked-sub">Validation Studies is available to administrators only.</div>
+            <div className="ps-cfgpage-locked-title">{t('configuration.adminRequiredTitle')}</div>
+            <div className="ps-cfgpage-locked-sub">{t('configuration.adminRequiredSub')}</div>
           </div>;
       case 'demo':      return <DemoResetTab />;
       default:          return null;
     }
   };
 
-  if (!isLoaded) return <div className="ps-cfgpage-loading">Loading configuration…</div>;
+  if (!isLoaded) return <div className="ps-cfgpage-loading">{t('configuration.loading')}</div>;
 
   return (
     <div className="ps-cfgpage-shell">
@@ -181,8 +171,8 @@ const ConfigurationPage: React.FC = () => {
       {/* ── Header + Tab bar — full width, never scrolls ── */}
       <div className="ps-cfgpage-header">
         <div className="ps-cfgpage-title-block">
-          <h1 className="ps-cfgpage-title">Configuration</h1>
-          <p className="ps-cfgpage-subtitle">Control AI behavior, templates, users, and system settings</p>
+          <h1 className="ps-cfgpage-title">{t('configuration.title')}</h1>
+          <p className="ps-cfgpage-subtitle">{t('configuration.subtitle')}</p>
           <ConfigSearchBar onNavigate={(tabId, section) => {
             handleTabChange(tabId);
             // Real, per direct report ("the top level search in config
@@ -202,16 +192,16 @@ const ConfigurationPage: React.FC = () => {
         </div>
 
         <div className="ps-cfgpage-tabbar">
-          {TAB_LABELS.filter(tab => {
-            if (tab.id === 'validation') return isAdmin; // admin, pathologist-admin, superadmin
+          {TAB_ORDER.filter(tabId => {
+            if (tabId === 'validation') return isAdmin; // admin, pathologist-admin, superadmin
             return true;
-          }).map(tab => (
+          }).map(tabId => (
             <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`ps-cfgpage-tab-btn${activeTab === tab.id ? ' ps-cfgpage-tab-btn--active' : ''}`}
+              key={tabId}
+              onClick={() => handleTabChange(tabId)}
+              className={`ps-cfgpage-tab-btn${activeTab === tabId ? ' ps-cfgpage-tab-btn--active' : ''}`}
             >
-              {tab.label}
+              {t(TAB_LABEL_KEYS[tabId])}
             </button>
           ))}
         </div>
@@ -224,20 +214,6 @@ const ConfigurationPage: React.FC = () => {
           {renderActiveTab()}
         </div>
       </div>
-
-      {/* Unsaved Changes Modal */}
-      {showWarning && (
-        <div className="ps-overlay" onClick={() => setShowWarning(false)}>
-          <div className="ps-modal-dark ps-cfgpage-modal--w420" onClick={e => e.stopPropagation()}>
-            <span className="ps-modal-dark-title">Unsaved Changes</span>
-            <p className="ps-modal-dark-body">You have unsaved changes. Are you sure you want to leave?</p>
-            <div className="ps-modal-dark-footer">
-              <button className="ps-btn-ghost-dark" onClick={() => setShowWarning(false)}>Stay</button>
-              <button className="ps-btn-red" onClick={() => navigate('/')}>Leave</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

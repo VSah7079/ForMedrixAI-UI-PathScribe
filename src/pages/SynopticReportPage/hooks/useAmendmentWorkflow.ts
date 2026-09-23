@@ -52,6 +52,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockAuditService } from '@/services/auditlog/mockAuditService';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
 import { userService } from '@/services';
@@ -98,6 +99,8 @@ export function useAmendmentWorkflow({
   amendmentMode, amendmentText, setAmendmentText, setAmendmentMode,
   setShowAmendmentModal, log,
 }: UseAmendmentWorkflowParams) {
+  const { t } = useTranslation();
+
   const releasePendingAmendmentOrAddendum = useCallback(async (): Promise<string | undefined> => {
     if (!caseData?.id || !activeReportInstanceId) return undefined;
     const activeInstance = (caseData.synopticReports ?? []).find((r: SynopticReportInstance) => r.instanceId === activeReportInstanceId);
@@ -274,7 +277,7 @@ export function useAmendmentWorkflow({
     // first-time finalize.
     if (caseData?.reportingMode === 'assist' && activeInstance) {
       const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-      if (generationError) showToast(`Version saved, but PDF snapshot failed to generate: ${generationError}`);
+      if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
       await reportVersionService.create({
         caseId: caseData.id,
         mode: 'assist',
@@ -288,7 +291,7 @@ export function useAmendmentWorkflow({
     }
 
     return releasedAmendmentId;
-  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict, log]);
+  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict, log, t]);
 
   const alertAdminsOfUnresolvedDrift = useCallback(async (caseId: string, count: number, outcome: string) => {
     try {
@@ -790,7 +793,7 @@ export function useAmendmentWorkflow({
         originalReportSnapshot,
         reasonId: fields.reasonId,
       });
-      if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not proceed — check required fields.'); return; }
+      if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : t('useAmendmentWorkflow.errors.couldNotProceedCheckFields')); return; }
 
       const unlockedReports = (caseData.synopticReports ?? []).map((r: SynopticReportInstance) =>
         r.instanceId === activeReportInstanceId
@@ -809,7 +812,9 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
         console.error(e);
       }
-      showToast(`Report unlocked for ${amendmentMode === 'correction' ? 'correction' : 'amendment'} — edit the synoptic fields, then re-finalize and sign out to transmit.`);
+      showToast(t('useAmendmentWorkflow.toast.reportUnlockedForMode', {
+        mode: t(amendmentMode === 'correction' ? 'useAmendmentWorkflow.labels.correction' : 'useAmendmentWorkflow.labels.amendment'),
+      }));
 
       setAmendmentSubmitError(null);
       setShowAmendmentModal(false);
@@ -827,7 +832,7 @@ export function useAmendmentWorkflow({
       body: amendmentText,
       reasonId: fields.reasonId,
     });
-    if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not release — check required fields.'); return; }
+    if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : t('useAmendmentWorkflow.errors.couldNotReleaseCheckFields')); return; }
 
     // Real, per direct guidance's own follow-up on provenance &
     // auditability - same real gap, same fix, as
@@ -845,9 +850,9 @@ export function useAmendmentWorkflow({
     setAmendmentSubmitError(null);
     setShowAmendmentModal(false);
     setAmendmentDraftId(null);
-    showToast(`${amendmentMode === 'addendum' ? 'Addendum' : 'Amendment'} released`);
+    showToast(t(amendmentMode === 'addendum' ? 'useAmendmentWorkflow.toast.addendumReleased' : 'useAmendmentWorkflow.toast.amendmentReleased'));
     setAmendmentText('');
-  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict, log]);
+  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict, log, t]);
 
   return {
     releasePendingAmendmentOrAddendum,

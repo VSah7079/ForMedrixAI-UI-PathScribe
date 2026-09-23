@@ -18,6 +18,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
+// Initializes the real i18next instance so t() resolves to actual English
+// text at test time — this hook's "Draft saved" toast is now i18n-driven,
+// and several assertions below require exact-text equality.
+import '@/i18n/config';
 import { useOrchestratorDraft, writeCaseDraft } from '../useOrchestratorDraft';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';

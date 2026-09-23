@@ -1,8 +1,13 @@
 /**
  * AiReviewModal — AI Triage / Spell-checker Flow
  * Keyboard: Space/→ = Confirm, O = Override, S = Skip, Esc = Cancel
+ *
+ * i18n note: `current.fieldLabel`/`.sectionTitle`/`.source`/`.aiValue`
+ * (and the derived `displayValue`) are all real, AI-extracted report
+ * data — never translated.
  */
 import React, { useEffect, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 export interface ReviewField {
@@ -33,12 +38,13 @@ interface AiReviewModalProps {
 }
 
 // Dynamic — changes at runtime, must stay inline
-const confColor = (c: number) =>
-  c >= 85 ? '#34d399' : c >= 60 ? '#fbbf24' : '#f87171';
+const confTier = (c: number): 'high' | 'medium' | 'low' =>
+  c >= 85 ? 'high' : c >= 60 ? 'medium' : 'low';
 
 export const AiReviewModal: React.FC<AiReviewModalProps> = ({
   fields, finalizeAndNext, onConfirm, onOverride, onSkip, onComplete, onCancel,
 }) => {
+  const { t } = useTranslation();
   const [index,      setIndex]     = useState(0);
   const [skipped,    setSkipped]   = useState<string[]>([]);
   const [confirmed,  setConfirmed] = useState<string[]>([]);
@@ -89,16 +95,18 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
 
   const progress     = Math.round((index / total) * 100);
   const displayValue = Array.isArray(current.aiValue) ? current.aiValue.join(', ') : current.aiValue;
-  const cc           = confColor(current.confidence);
+  const tier         = confTier(current.confidence);
 
   return (
-    <div className="ps-overlay" style={{ zIndex: 9500 }}>
+    <div className="ps-overlay ps-overlay--ai-review">
       <div className="ps-modal-dark ps-ai-review-modal">
 
         <div className="ps-ai-review-header">
           <div>
-            <div className="ps-ai-review-eyebrow">✦ AI Review Mode · {finalizeAndNext ? 'Finalise & Next' : 'Finalise'}</div>
-            <div className="ps-ai-review-title">Review uncertain AI findings before sign-out</div>
+            <div className="ps-ai-review-eyebrow">
+              ✦ {t('aiReviewModal.eyebrowLabel')} · {finalizeAndNext ? t('preFinalisationModal.signing.finaliseAndNext') : t('headerBar.stage.finalise')}
+            </div>
+            <div className="ps-ai-review-title">{t('aiReviewModal.title')}</div>
           </div>
           <button onClick={onCancel} className="ps-modal-close">×</button>
         </div>
@@ -109,16 +117,23 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
 
         <div className="ps-ai-review-counter">
           <span className="ps-ai-review-counter-text">
-            Field <strong>{index + 1}</strong> of <strong>{total}</strong>
-            {skipped.length > 0 && <span className="ps-ai-review-skipped-count"> · {skipped.length} skipped</span>}
+            {t('aiReviewModal.counter', { index: index + 1, total })}
+            {skipped.length > 0 && (
+              <span className="ps-ai-review-skipped-count">
+                {' '}· {t('aiReviewModal.skippedCount', { count: skipped.length })}
+              </span>
+            )}
           </span>
           <div className="ps-ai-review-dots">
             {fields.map((f, i) => (
-              <div key={i} className="ps-ai-review-dot" style={{
-                background: i < index
-                  ? (skipped.includes(f.fieldId) ? '#f59e0b' : '#10b981')
-                  : i === index ? '#38bdf8' : 'rgba(255,255,255,0.15)',
-              }} />
+              <div
+                key={i}
+                className={`ps-ai-review-dot${
+                  i < index
+                    ? (skipped.includes(f.fieldId) ? ' ps-ai-review-dot--skipped' : ' ps-ai-review-dot--done')
+                    : i === index ? ' ps-ai-review-dot--current' : ''
+                }`}
+              />
             ))}
           </div>
         </div>
@@ -129,43 +144,43 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
 
           <div className="ps-ai-review-card">
             <div className="ps-ai-review-card-header">
-              <span className="ps-ai-review-card-eyebrow">✦ AI Suggestion</span>
-              <span className="ps-ai-review-confidence" style={{ color: cc, background: cc + '22', borderColor: cc + '44' }}>
-                {current.confidence}% confidence
+              <span className="ps-ai-review-card-eyebrow">✦ {t('aiContributionTab.overrides.aiCol')}</span>
+              <span className={`ps-ai-review-confidence ps-ai-review-confidence--${tier}`}>
+                {t('aiReviewModal.confidencePercent', { percent: current.confidence })}
               </span>
             </div>
             <div className="ps-ai-review-card-value">{displayValue || '—'}</div>
             <div className="ps-ai-review-card-source">{current.source}</div>
             {current.sourceNotFound && (
               <div
-                style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}
-                title="The AI cited this source, but it couldn't be located verbatim anywhere in the Gross, Microscopic, or Ancillary text — confidence alone doesn't confirm this value is genuinely grounded in the report."
+                className="ps-ai-review-source-not-found"
+                title={t('aiReviewModal.sourceNotFoundTooltip')}
               >
-                <span aria-hidden="true">⚠</span> Source not found in report text — this is why it needs review despite the confidence score above
+                <span aria-hidden="true">⚠</span> {t('aiReviewModal.sourceNotFoundBanner')}
               </div>
             )}
           </div>
 
           <div className="ps-ai-review-hints">
             {([
-              { key: 'Space / →', label: 'Confirm', color: '#10b981', bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.2)' },
-              { key: 'O',         label: 'Override', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.2)' },
-              { key: 'S',         label: 'Skip',     color: '#cbd5e1', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.12)' },
-              { key: 'Esc',       label: 'Cancel',   color: '#8a9db5', bg: 'rgba(148,163,184,0.06)', border: 'rgba(148,163,184,0.15)' },
+              { key: 'Space / →', labelKey: 'common.confirm',                                 variant: 'confirm' },
+              { key: 'O',         labelKey: 'billingReviewPanel.overrideButton',               variant: 'override' },
+              { key: 'S',         labelKey: 'orchestratorSectionEditor.spellCheck.skipButton', variant: 'skip' },
+              { key: 'Esc',       labelKey: 'common.cancel',                                   variant: 'cancel' },
             ] as const).map(h => (
-              <div key={h.key} className="ps-ai-review-hint" style={{ background: h.bg, borderColor: h.border }}>
-                <kbd className="ps-ai-review-hint-key"   style={{ color: h.color }}>{h.key}</kbd>
-                <span className="ps-ai-review-hint-label" style={{ color: h.color }}>{h.label}</span>
+              <div key={h.key} className={`ps-ai-review-hint ps-ai-review-hint--${h.variant}`}>
+                <kbd className="ps-ai-review-hint-key">{h.key}</kbd>
+                <span className="ps-ai-review-hint-label">{t(h.labelKey)}</span>
               </div>
             ))}
           </div>
         </div>
 
         <div className="ps-modal-dark-footer ps-ai-review-footer">
-          <button onClick={handleSkip}     className="ps-btn-ghost-dark">S — Skip</button>
-          <button onClick={handleOverride} className="ps-btn-amber">O — Override</button>
+          <button onClick={handleSkip}     className="ps-btn-ghost-dark">{t('aiReviewModal.footerSkipButton')}</button>
+          <button onClick={handleOverride} className="ps-btn-amber">{t('aiReviewModal.footerOverrideButton')}</button>
           <button onClick={handleConfirm}  className="ps-btn-primary">
-            Space — Confirm {index + 1 < total ? '& Next →' : '& Finalise 🔒'}
+            {index + 1 < total ? t('aiReviewModal.footerConfirmNextButton') : t('aiReviewModal.footerConfirmFinaliseButton')}
           </button>
         </div>
 

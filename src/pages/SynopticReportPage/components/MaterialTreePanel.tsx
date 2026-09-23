@@ -13,6 +13,8 @@
 // them directly rather than re-flattening its own copy.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../../pathscribe.css';
 import MaterialTrackingHistoryModal from '../modals/MaterialTrackingHistoryModal';
 import GrossingReleasePanel from './GrossingReleasePanel';
 import { mockCassetteColorService } from '@/services/cassetteColors/mockCassetteColorService';
@@ -20,6 +22,7 @@ import type { CassetteColorDefinition } from '@/services/cassetteColors/ICassett
 import { classifyGrossingComplexity } from '@/utils/classifyGrossingComplexity';
 import { resolveSpecimenDisplayId, resolveBlockDisplayId, resolveSlideDisplayId, resolveDecantDisplayId, resolveDecantSlideDisplayId } from '@/utils/materialDisplayId';
 import type { Case } from '@/types/case/Case';
+import type { BlockStatus, StainOrderStatus } from '@/types/case/Specimen';
 import BiopsyArrayDiagram, { type BiopsyArrayPosition } from './BiopsyArrayDiagram';
 import { isExhausted, isLost, isDamaged, isEntirelySubmitted, entirelySubmittedBlockRangeText } from '@/utils/blockExceptionStates';
 import type { MaterialLocation } from '@/types/case/Material';
@@ -44,6 +47,32 @@ function mostRecentLocation(history: MaterialLocation[] | undefined): MaterialLo
   if (!history || history.length === 0) return undefined;
   return [...history].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
 }
+
+// Real, persisted enum values (BlockStatus/StainOrderStatus, see
+// types/case/Specimen.ts) shown in this file's own tooltips — the
+// same textKey indirection pattern used throughout this sweep for
+// persisted enum displays: only the displayed label is translated,
+// the underlying value (used elsewhere for comparisons like
+// status !== 'Coverslipped') never changes.
+const BLOCK_STATUS_LABEL_KEY: Record<BlockStatus, string> = {
+  Pending: 'materialTreePanel.blockStatus.pending',
+  Grossed: 'materialTreePanel.blockStatus.grossed',
+  Embedded: 'materialTreePanel.blockStatus.embedded',
+  Exhausted: 'materialTreePanel.blockStatus.exhausted',
+  Cancelled: 'materialTreePanel.blockStatus.cancelled',
+  Lost: 'materialTreePanel.blockStatus.lost',
+  Damaged: 'materialTreePanel.blockStatus.damaged',
+};
+const STAIN_STATUS_LABEL_KEY: Record<StainOrderStatus, string> = {
+  'Pending Cut': 'materialTreePanel.stainStatus.pendingCut',
+  'Cut & Placed': 'materialTreePanel.stainStatus.cutAndPlaced',
+  Staining: 'materialTreePanel.stainStatus.staining',
+  Coverslipped: 'materialTreePanel.stainStatus.coverslipped',
+  'Ready for Review': 'materialTreePanel.stainStatus.readyForReview',
+  'Recut Requested': 'materialTreePanel.stainStatus.recutRequested',
+  'QC Failed': 'materialTreePanel.stainStatus.qcFailed',
+  Cancelled: 'materialTreePanel.stainStatus.cancelled',
+};
 
 interface MaterialTreePanelProps {
   caseData: Case | null;
@@ -140,91 +169,70 @@ interface MaterialTreePanelProps {
 }
 
 const ContainerIcon: React.FC = () => (
-  <div style={{ position: 'relative', width: 40, flexShrink: 0 }}>
+  <div className="ps-material-tree-container-icon">
     {/* Screw-top lid — wider than the body, with ridge lines to read as
         threaded plastic rather than a flat box top. */}
-    <div style={{
-      width: 32, height: 8, margin: '0 auto', background: 'rgba(56,130,246,0.4)',
-      border: '0.5px solid rgba(148,163,184,0.35)', borderRadius: '3px 3px 0 0',
-      position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', alignItems: 'center',
-    }}>
-      <div style={{ width: 24, height: 0.5, background: 'rgba(148,163,184,0.4)' }} />
-      <div style={{ width: 24, height: 0.5, background: 'rgba(148,163,184,0.4)' }} />
+    <div className="ps-material-tree-container-icon__lid">
+      <div className="ps-material-tree-container-icon__lid-line" />
+      <div className="ps-material-tree-container-icon__lid-line" />
     </div>
     {/* Body — flat bottom, real specimen containers sit flat on a
         bench, not rounded like a cup. Blue, distinct from the block's
         warm amber, so the two tiers read apart at a glance. */}
-    <div style={{
-      background: 'rgba(56,130,246,0.15)', border: '0.5px solid rgba(148,163,184,0.3)',
-      borderTop: 'none', borderRadius: '0 0 2px 2px',
-      width: 28, height: 30, margin: '0 auto',
-    }} />
+    <div className="ps-material-tree-container-icon__body" />
   </div>
 );
 
 const BlockIcon: React.FC<{ label: string }> = ({ label }) => (
-  <div style={{ width: 44, flexShrink: 0 }}>
-    <div style={{
-      background: 'rgba(186,117,23,0.18)',
-      border: '0.5px solid rgba(148,163,184,0.3)',
-      borderRadius: 3, width: 42, height: 28, position: 'relative',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden',
-    }}>
+  <div className="ps-material-tree-block-icon">
+    <div className="ps-material-tree-block-icon__box">
       {/* Lid seam — a real cassette's hinged lid is flush with the
           body, not a separate protrusion. A thin line inside the same
           rectangle reads as a hinge; the earlier offset tab above the
           body read as a manila folder instead. */}
-      <div style={{ position: 'absolute', top: 5, left: 3, right: 3, height: 1, background: 'rgba(148,163,184,0.35)' }} />
+      <div className="ps-material-tree-block-icon__seam" />
       {/* Explicit slot rows, not a CSS gradient trick — the real
           cassette's perforated face is a stack of horizontal slots
           that let fixative through. Bright against the dark theme
           background, not a dark line that was blending into it. */}
-      <div style={{ position: 'absolute', inset: '9px 4px 3px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ height: 2, background: 'rgba(226,232,240,0.55)', borderRadius: 1 }} />
-          ))}
-        </div>
+      <div className="ps-material-tree-block-icon__slots">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="ps-material-tree-block-icon__slot" />
+        ))}
       </div>
-      <span style={{ position: 'relative', fontSize: 11, fontWeight: 700, color: '#e2e8f0', background: '#1e293b', padding: '0 3px', borderRadius: 2, marginTop: 4 }}>{label}</span>
+      <span className="ps-material-tree-block-icon__label">{label}</span>
     </div>
   </div>
 );
 
 const DecantIcon: React.FC<{ label: string }> = ({ label }) => (
-  <div style={{ width: 36, flexShrink: 0 }}>
-    <div style={{
-      background: 'rgba(15,110,86,0.15)', border: '0.5px solid rgba(148,163,184,0.3)',
-      borderRadius: '50%', width: 32, height: 32,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0' }}>{label}</span>
+  <div className="ps-material-tree-decant-icon">
+    <div className="ps-material-tree-decant-icon__circle">
+      <span className="ps-material-tree-decant-icon__label">{label}</span>
     </div>
   </div>
 );
 
 const SlideChip: React.FC<{ level: string; stainName: string; status: string; onClick: () => void; displayId?: string; locationHistory?: MaterialLocation[]; isHighlighted?: boolean }> = ({ level, stainName, status, onClick, displayId, locationHistory, isHighlighted }) => {
+  const { t } = useTranslation();
   // 'Pending Cut' / 'Cut & Placed' / 'Staining' — the stain is real and
   // known, it just hasn't produced a finished, reviewable slide yet.
   // The dashed visual reflects that in-progress state; it never hides
   // the stain name itself, which is always known once ordered.
   const notYetReady = status !== 'Coverslipped' && status !== 'Ready for Review';
   const loc = mostRecentLocation(locationHistory);
-  const baseTitle = displayId ? `${displayId} · ${stainName} · ${status}` : `${level} · ${stainName} · ${status}`;
+  const statusLabel = t(STAIN_STATUS_LABEL_KEY[status as StainOrderStatus] ?? status);
+  const baseTitle = displayId ? `${displayId} · ${stainName} · ${statusLabel}` : `${level} · ${stainName} · ${statusLabel}`;
+  const bodyClass = ['ps-material-tree-slide-chip__body'];
+  if (isHighlighted) bodyClass.push('ps-material-tree-slide-chip__body--highlighted');
+  else if (!notYetReady) bodyClass.push('ps-material-tree-slide-chip__body--ready');
   return (
     <div
+      className="ps-material-tree-slide-chip"
       onClick={onClick}
       title={loc ? `${baseTitle} · 📍 ${loc.location} (${new Date(loc.at).toLocaleString('en-US')})` : baseTitle}
-      style={{ cursor: 'pointer' }}
     >
-      <div style={{
-        background: isHighlighted ? 'rgba(34,211,238,0.18)' : notYetReady ? 'transparent' : 'rgba(212,83,126,0.15)',
-        border: isHighlighted ? '1.5px solid #22d3ee' : notYetReady ? '0.5px dashed rgba(148,163,184,0.5)' : '0.5px solid rgba(148,163,184,0.3)',
-        boxShadow: isHighlighted ? '0 0 0 2px rgba(34,211,238,0.25)' : undefined,
-        borderRadius: 3, width: 68, height: 28, position: 'relative',
-        display: 'flex', alignItems: 'stretch',
-      }}>
+      <div className={bodyClass.join(' ')}>
         {/* Real feature, per direct follow-up: "put a green dot in
             the upper right had of the slide image to signify ready?
             I think that will even work for color blind folks - not a
@@ -241,32 +249,19 @@ const SlideChip: React.FC<{ level: string; stainName: string; status: string; on
         {!notYetReady && (
           <span
             aria-hidden="true"
-            title="Ready for review"
-            style={{
-              position: 'absolute', top: 2, right: 2,
-              width: 6, height: 6, borderRadius: '50%',
-              background: '#34d399',
-              border: '1px solid rgba(13,24,41,0.6)',
-            }}
+            title={t('materialTreePanel.readyForReviewTooltip')}
+            className="ps-material-tree-slide-chip__ready-dot"
           />
         )}
         {/* Frosted end — real slides carry a matte strip at one end for
             a hand-written label; the vertical line is that strip's
             edge, and the ID sits centered inside it, same as where a
             real slide's ID would actually be written. */}
-        <div style={{
-          width: 20, flexShrink: 0, borderRight: '1px solid rgba(148,163,184,0.4)',
-          background: 'rgba(148,163,184,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#cbd5e1' }}>{level}</span>
+        <div className="ps-material-tree-slide-chip__frost">
+          <span className="ps-material-tree-slide-chip__frost-label">{level}</span>
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', minWidth: 0 }}>
-          <span style={{
-            fontSize: 10, fontWeight: 600, color: notYetReady ? '#94a3b8' : '#e2e8f0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', maxWidth: '100%',
-          }}>
+        <div className="ps-material-tree-slide-chip__name-wrap">
+          <span className={`ps-material-tree-slide-chip__name${notYetReady ? '' : ' ps-material-tree-slide-chip__name--ready'}`}>
             {stainName}
           </span>
         </div>
@@ -276,6 +271,7 @@ const SlideChip: React.FC<{ level: string; stainName: string; status: string; on
 };
 
 const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeSpecimenId, highlightedStainId, onOpenBlockEditor, onOpenMatrixBlockEditor, onAddSpecimen, onAddBlock, onUpdateBlock, onReleaseGrossingBlocks, onConfirmTriageChecklistItem, onOverrideTriage, onRemovePendingBlock, onAddDecant, onAssignBaseCode, onCreateBiopsyArray, onEditBiopsyArray, pendingCassetteVerification, isOrchestrationMode }) => {
+  const { t } = useTranslation();
   const [showTrackingHistory, setShowTrackingHistory] = useState(false);
   // Real fix, per direct follow-up: "the highlighting in the Material
   // tree isn't working - or its too subtle." Confirmed both were real:
@@ -344,14 +340,14 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
 
   if (specimens.length === 0) {
     return (
-      <div style={{ padding: 24, color: '#64748b', fontSize: 13 }}>
-        No specimens on this case yet.
+      <div className="ps-material-tree-empty">
+        {t('materialTreePanel.noSpecimens')}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '20px 24px', overflowY: 'auto', height: '100%' }}>
+    <div className="ps-material-tree-panel">
       {/* Real feature, per direct follow-up: "Move Manage Reprints...
           Bottom-Right Action Cluster... removes the visual orphaning
           of the current Manage Reports button." Moved to
@@ -361,7 +357,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
           to be open. See SynopticReportPage.tsx's own
           showReprintModal state and ManageReprintsModal rendering. */}
       {caseData && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div className="ps-material-tree-toolbar">
           {/* Real feature, per direct follow-up with a concrete,
               detailed hierarchy/scan-log mockup in hand: "I looked at
               the tracking log and it just doesn't work... I was
@@ -373,7 +369,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
               history. See MaterialTrackingHistoryModal.tsx's own
               header for the full reasoning. */}
           <button className="ps-btn-secondary" onClick={() => setShowTrackingHistory(true)}>
-            📍 View Tracking History
+            📍 {t('materialTreePanel.viewTrackingHistory')}
           </button>
         </div>
       )}
@@ -393,24 +389,22 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
         const resolvedSpecimenId = resolveSpecimenDisplayId(fullAccession, sp);
 
         return (
-          <div key={sp.id} ref={isActiveSpecimen ? activeSpecimenRef : undefined} style={{
-            marginBottom: 28, marginLeft: -12, marginRight: -12, padding: '8px 12px', borderRadius: 8,
-            background: isActiveSpecimen ? 'rgba(8,145,178,0.18)' : 'transparent',
-            borderLeft: isActiveSpecimen ? '3px solid #22d3ee' : '2px solid transparent',
-            boxShadow: isActiveSpecimen ? '0 0 0 1px rgba(34,211,238,0.25)' : 'none',
-            transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <div
+            key={sp.id}
+            ref={isActiveSpecimen ? activeSpecimenRef : undefined}
+            className={`ps-material-tree-specimen${isActiveSpecimen ? ' ps-material-tree-specimen--active' : ''}`}
+          >
+            <div className="ps-material-tree-specimen-header">
               <ContainerIcon />
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{sp.label}</span>
+              <div className="ps-material-tree-specimen-info">
+                <div className="ps-material-tree-specimen-title-row">
+                  <span className="ps-material-tree-specimen-name">{sp.label}</span>
                   {/* Real feature, per direct follow-up: "Specimen's
                       own read-side fallback doesn't appear to have
                       gotten the same treatment as Block/Slide/Decant."
                       Same real, visible treatment the block row
                       already got. */}
-                  <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'monospace' }}>
+                  <span className="ps-material-tree-specimen-id">
                     {resolvedSpecimenId}
                   </span>
                   {/* Real feature, per direct follow-up: "Lets add the
@@ -425,9 +419,9 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                   {isEntirelySubmitted(sp) && (
                     <span
                       className="ps-material-exception-badge ps-material-exception-badge--exhausted"
-                      title="Specimen entirely submitted — all tissue used during grossing, nothing remains."
+                      title={t('materialTreePanel.entirelySubmittedTooltip')}
                     >
-                      🚫 Entirely Submitted
+                      🚫 {t('materialTreePanel.entirelySubmittedBadge')}
                     </span>
                   )}
                   {/* Real fix, per direct follow-up with screenshot in
@@ -449,15 +443,15 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                     return loc && (
                       <span
                         className="ps-material-location-badge"
-                        title={`Reported by ${loc.source} on ${new Date(loc.at).toLocaleString('en-US')}`}
+                        title={t('materialTreePanel.locationBadgeTooltip', { source: loc.source, date: new Date(loc.at).toLocaleString('en-US') })}
                       >
                         📍 {loc.location}
                       </span>
                     );
                   })()}
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  {isEntirelySubmitted(sp) ? entirelySubmittedBlockRangeText(sp) : sp.description}
+                <div className="ps-material-tree-specimen-description">
+                  {isEntirelySubmitted(sp) ? entirelySubmittedBlockRangeText(sp, t) : sp.description}
                 </div>
               </div>
               {/* Real feature, per the Grossing spec's "Smart
@@ -479,17 +473,11 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                 return (
                   <span
                     title={isNarrative
-                      ? 'This specimen\u2019s CPT code suggests Narrative dictation as the likely starting point — Template fields remain fully available too.'
-                      : 'This specimen\u2019s CPT code suggests Template (structured fields) as the likely starting point — Narrative dictation remains fully available too.'}
-                    style={{
-                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
-                      background: isNarrative ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)',
-                      border: `1px solid ${isNarrative ? 'rgba(59,130,246,0.4)' : 'rgba(16,185,129,0.4)'}`,
-                      color: isNarrative ? '#60a5fa' : '#34d399',
-                      cursor: 'default', flexShrink: 0,
-                    }}
+                      ? t('materialTreePanel.narrativeSuggestionTooltip')
+                      : t('materialTreePanel.templateSuggestionTooltip')}
+                    className={`ps-material-tree-suggestion-badge ${isNarrative ? 'ps-material-tree-suggestion-badge--narrative' : 'ps-material-tree-suggestion-badge--template'}`}
                   >
-                    {isNarrative ? 'Suggested: Narrative' : 'Suggested: Template'}
+                    {isNarrative ? t('materialTreePanel.suggestedNarrative') : t('materialTreePanel.suggestedTemplate')}
                   </span>
                 );
               })()}
@@ -497,29 +485,37 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                   assignment, right on the specimen it applies to,
                   rather than a separate, unanchored global button. */}
               {!hasBaseCode && (
-                <span style={{
-                  fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-                  background: 'rgba(245,158,11,0.15)', color: '#f59e0b', whiteSpace: 'nowrap',
-                }} title="This specimen has no base surgical pathology CPT code assigned yet">
-                  Pending Base Code
+                <span className="ps-material-tree-pending-code-badge" title={t('materialTreePanel.pendingBaseCodeTooltip')}>
+                  {t('materialTreePanel.pendingBaseCodeBadge')}
                 </span>
               )}
+              {/* Real fix (PS-310 — "the '+code' control looks
+                  visually identical to the '#' codes shown at the
+                  bottom" [BottomActionBar.tsx's "# Codes" button,
+                  which opens the whole-case Code Manager]): both were
+                  the same small pill shape with a one-character sigil
+                  immediately before the word "Code(s)" — easy to
+                  mistake for each other despite doing genuinely
+                  different things (this one assigns ONE specimen's
+                  own base CPT code; that one opens every code on the
+                  whole case). Dropped the sigil-prefix pattern
+                  entirely (spelled-out label, tag icon instead of a
+                  bare "+") rather than just picking a different
+                  color, since the two controls can still land near
+                  each other on a tall case and a color alone is easy
+                  to miss at a glance. */}
               <button
                 onClick={() => onAssignBaseCode(sp.id, specimenIndex)}
-                style={{
-                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
-                  background: 'rgba(56,130,246,0.12)', border: '1px solid rgba(56,130,246,0.3)',
-                  color: '#60a5fa', cursor: 'pointer', whiteSpace: 'nowrap',
-                }}
-                title="Assign this specimen's base CPT code"
+                className="ps-material-tree-assign-code-btn"
+                title={t('materialTreePanel.assignCodeTooltip')}
               >
-                + Code
+                <span aria-hidden="true">🏷️</span> {t('materialTreePanel.assignCodeButton')}
               </button>
             </div>
 
             {!hasMaterial && (
-              <div style={{ marginLeft: 52, fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
-                No blocks or decants recorded yet.
+              <div className="ps-material-tree-empty-note">
+                {t('materialTreePanel.noMaterialYet')}
               </div>
             )}
 
@@ -532,8 +528,9 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
               // predates the field, computed identically either way —
               // never the internal id/label alone.
               const resolvedBlockId = resolveBlockDisplayId(fullAccession, sp.label, block);
+              const blockStatusLabel = t(BLOCK_STATUS_LABEL_KEY[block.status as BlockStatus] ?? block.status);
               return (
-                <div key={block.id} style={{ marginLeft: 40, marginBottom: 10, opacity: isCancelled ? 0.45 : 1 }}>
+                <div key={block.id} className={`ps-material-tree-block${isCancelled ? ' ps-material-tree-block--cancelled' : ''}`}>
                   {/* Real feature, per direct follow-up: "I want to
                       move the slides to their own row. So indent
                       slightly to the right and then the slides."
@@ -543,12 +540,16 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       down), indented past the icon so they read as
                       the block's own children, not crammed onto the
                       same line as its badges. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div onClick={() => onOpenBlockEditor(block.id)} style={{ cursor: 'pointer' }} title={`${resolvedBlockId} · ${block.status}${isCancelled && block.cancelReason ? ` — ${block.cancelReason}` : ''}`}>
+                  <div className="ps-material-tree-block-header">
+                    <div
+                      onClick={() => onOpenBlockEditor(block.id)}
+                      className="ps-material-tree-block-clickable"
+                      title={`${resolvedBlockId} · ${blockStatusLabel}${isCancelled && block.cancelReason ? ` — ${block.cancelReason}` : ''}`}
+                    >
                       <BlockIcon label={`${sp.label}${block.label}`} />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'monospace' }}>
+                    <div className="ps-material-tree-block-badges">
+                      <span className="ps-material-tree-block-id">
                         {resolvedBlockId}
                       </span>
                       {/* Real feature, per direct follow-up: "did I see
@@ -561,19 +562,18 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                           that specifically IS worth flagging). */}
                       {typeof block.pieceCount === 'number' && (
                         <span
-                          style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', background: 'rgba(148,163,184,0.12)', padding: '2px 6px', borderRadius: 4 }}
-                          title={block.pieceDescription || `${block.pieceCount} piece${block.pieceCount === 1 ? '' : 's'} grossed`}
+                          className="ps-material-tree-piece-badge"
+                          title={block.pieceDescription || t('materialTreePanel.pieceCountTooltip', { count: block.pieceCount })}
                         >
-                          {block.pieceCount} pc{block.pieceCount === 1 ? '' : 's'}
+                          {t('materialTreePanel.pieceCountBadge', { count: block.pieceCount })}
                         </span>
                       )}
                       {block.isEntirelySubmitted === false && (
                         <span
-                          className="ps-material-exception-badge"
-                          style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}
-                          title="Not all grossed tissue was submitted in this cassette — some remains in wet storage."
+                          className="ps-material-exception-badge ps-material-exception-badge--partial"
+                          title={t('materialTreePanel.partialSubmissionTooltip')}
                         >
-                          ⚠️ Partial submission
+                          ⚠️ {t('materialTreePanel.partialSubmissionBadge')}
                         </span>
                       )}
                       {/* Real feature, per direct follow-up: "an
@@ -586,16 +586,15 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                           real numbers actually say. */}
                       {typeof block.pieceCount === 'number' && typeof block.pieceCountAtEmbedding === 'number' && block.pieceCount !== block.pieceCountAtEmbedding && (
                         <span
-                          className="ps-material-exception-badge"
-                          style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171' }}
-                          title={`Tissue Discrepancy — ${block.pieceCount} piece${block.pieceCount === 1 ? '' : 's'} recorded at grossing, ${block.pieceCountAtEmbedding} observed at embedding.`}
+                          className="ps-material-exception-badge ps-material-exception-badge--discrepancy"
+                          title={t('materialTreePanel.tissueDiscrepancyTooltip', { count: block.pieceCount, embeddedCount: block.pieceCountAtEmbedding })}
                         >
-                          🚩 Tissue Discrepancy
+                          🚩 {t('materialTreePanel.tissueDiscrepancyBadge')}
                         </span>
                       )}
                       {isCancelled && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#f87171', textDecoration: 'line-through' }}>
-                          CANCELLED
+                        <span className="ps-material-tree-cancelled-text">
+                          {t('materialTreePanel.cancelledBadge')}
                         </span>
                       )}
                       {/* Real feature, per direct follow-up: "Lets add
@@ -608,25 +607,25 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       {isExhausted(block) && (
                         <span
                           className="ps-material-exception-badge ps-material-exception-badge--exhausted"
-                          title="Block exhausted during grossing/levels — no tissue remains to cut."
+                          title={t('materialTreePanel.exhaustedTooltip')}
                         >
-                          🚫 Exhausted
+                          🚫 {t('materialTreePanel.exhaustedBadge')}
                         </span>
                       )}
                       {isLost(block) && (
                         <span
                           className="ps-material-exception-badge ps-material-exception-badge--lost"
-                          title={`Block reported lost${block.exceptionReportedAt ? ` ${new Date(block.exceptionReportedAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}` : ''}${block.exceptionNote ? ` — ${block.exceptionNote}` : ''}. Not available for selection until located.`}
+                          title={`${t('materialTreePanel.lostTooltipPrefix')}${block.exceptionReportedAt ? ` ${new Date(block.exceptionReportedAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}` : ''}${block.exceptionNote ? ` — ${block.exceptionNote}` : ''}. ${t('materialTreePanel.notAvailableUntilLocated')}`}
                         >
-                          ⚠️ Lost
+                          ⚠️ {t('materialTreePanel.lostBadge')}
                         </span>
                       )}
                       {isDamaged(block) && (
                         <span
                           className="ps-material-exception-badge ps-material-exception-badge--damaged"
-                          title={`Block damaged${block.exceptionReportedAt ? ` ${new Date(block.exceptionReportedAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}` : ''}${block.exceptionNote ? ` — ${block.exceptionNote}` : ''}. Re-embedding required before any recut.`}
+                          title={`${t('materialTreePanel.damagedTooltipPrefix')}${block.exceptionReportedAt ? ` ${new Date(block.exceptionReportedAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}` : ''}${block.exceptionNote ? ` — ${block.exceptionNote}` : ''}. ${t('materialTreePanel.reEmbeddingRequired')}`}
                         >
-                          🛠️ Damaged
+                          🛠️ {t('materialTreePanel.damagedBadge')}
                         </span>
                       )}
                       {(() => {
@@ -634,7 +633,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                         return loc && (
                           <span
                             className="ps-material-location-badge"
-                            title={`Reported by ${loc.source} on ${new Date(loc.at).toLocaleString('en-US')}`}
+                            title={t('materialTreePanel.locationBadgeTooltip', { source: loc.source, date: new Date(loc.at).toLocaleString('en-US') })}
                           >
                             📍 {loc.location}
                           </span>
@@ -648,33 +647,33 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                           removed on rejection. */}
                       {block.lisRequestStatus === 'pending' && (
                         <span
-                          title="Sent to the LIS, awaiting confirmation"
-                          style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', whiteSpace: 'nowrap' }}
+                          title={t('materialTreePanel.pendingLisTooltip')}
+                          className="ps-material-tree-lis-badge ps-material-tree-lis-badge--pending"
                         >
-                          ⏳ Pending LIS
+                          ⏳ {t('materialTreePanel.pendingLisBadge')}
                         </span>
                       )}
                       {block.lisRequestStatus === 'rejected' && (
                         <span
-                          title="The LIS rejected this request — follow up with histology"
-                          style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,0.15)', color: '#f87171', whiteSpace: 'nowrap' }}
+                          title={t('materialTreePanel.lisRejectedTooltip')}
+                          className="ps-material-tree-lis-badge ps-material-tree-lis-badge--rejected"
                         >
-                          ⚠ LIS Rejected
+                          ⚠ {t('materialTreePanel.lisRejectedBadge')}
                         </span>
                       )}
                       {pendingCassetteVerification && pendingCassetteVerification.specimenLabel === sp.label && pendingCassetteVerification.blockLabel === block.label && (
                         <span
-                          style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', whiteSpace: 'nowrap' }}
-                          title={`Cassette ${pendingCassetteVerification.cassetteId} has not been scanned yet`}
+                          className="ps-material-tree-lis-badge ps-material-tree-lis-badge--pending"
+                          title={t('materialTreePanel.awaitingScanTooltip', { cassetteId: pendingCassetteVerification.cassetteId })}
                         >
-                          ⏳ Awaiting Scan
+                          ⏳ {t('materialTreePanel.awaitingScanBadge')}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: 58, marginTop: 6 }}>
+                  <div className="ps-material-tree-slides-row">
                     {(block.stains ?? []).length === 0 && (
-                      <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>no slides yet</div>
+                      <div className="ps-material-tree-no-slides">{t('materialTreePanel.noSlidesYet')}</div>
                     )}
                     {(block.stains ?? []).map((stain: any, i: number) => (
                       <SlideChip
@@ -709,9 +708,9 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                 <div
                   key={matrixBlockId}
                   onClick={() => onOpenMatrixBlockEditor(matrixBlockId)}
-                  style={{ marginLeft: 40, marginBottom: 10, fontSize: 12, color: '#7dd3fc', cursor: 'pointer' }}
+                  className="ps-material-tree-matrix-link"
                 >
-                  🧩 Part of Biopsy Array {mb.label} (position {participant?.positionInBlock}) — see Biopsy Array section below
+                  🧩 {t('materialTreePanel.partOfBiopsyArray', { label: mb.label, position: participant?.positionInBlock })}
                 </div>
               );
             })}
@@ -722,7 +721,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
               // UI." Same real treatment as the block row above.
               const resolvedDecantId = resolveDecantDisplayId(fullAccession, sp.label, decant);
               return (
-              <div key={decant.id} style={{ display: 'flex', alignItems: 'center', gap: 14, marginLeft: 40, marginBottom: 10 }}>
+              <div key={decant.id} className="ps-material-tree-decant">
                 {/* Real bug fix, per direct follow-up: "decant-level
                     linking UI." Previously, the ONLY click target on
                     a real decant row lived inside the .map() over its
@@ -734,22 +733,22 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                     themselves a real, clickable entry point, matching
                     the matrix block row's own "click to open" pattern
                     immediately above in this file. */}
-                <div title={`${resolvedDecantId} · ${decant.decantType}`} onClick={() => onOpenBlockEditor(decant.id)} style={{ cursor: 'pointer' }}>
+                <div title={`${resolvedDecantId} · ${decant.decantType}`} onClick={() => onOpenBlockEditor(decant.id)} className="ps-material-tree-decant-clickable">
                   <DecantIcon label={`${sp.label}${decant.label}`} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className="ps-material-tree-decant-info">
                   <span
                     onClick={() => onOpenBlockEditor(decant.id)}
-                    style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'monospace', cursor: 'pointer' }}
+                    className="ps-material-tree-decant-id"
                   >
                     {resolvedDecantId}
                   </span>
                   {decant.stains.length === 0 && (
                     <div
                       onClick={() => onOpenBlockEditor(decant.id)}
-                      style={{ fontSize: 11, color: '#7dd3fc', fontStyle: 'italic', cursor: 'pointer' }}
+                      className="ps-material-tree-decant-empty-link"
                     >
-                      no slides yet — click to edit
+                      {t('materialTreePanel.noSlidesYetClickToEdit')}
                     </div>
                   )}
                   {decant.stains.map((stain: any, i: number) => (
@@ -794,11 +793,9 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
             {decants.length === 0 && (
               <div
                 onClick={() => onAddBlock(sp.id)}
-                style={{ marginLeft: 40, marginTop: 4, fontSize: 12, color: '#64748b', cursor: 'pointer', display: 'inline-block' }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-                onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
+                className="ps-material-tree-add-block-link"
               >
-                + Request block/recut
+                + {t('materialTreePanel.requestBlockRecut')}
               </div>
             )}
             {/* Real feature, per direct follow-up: "Decant has no
@@ -809,14 +806,12 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                 grow a decant, matching the same established "either
                 blocks or decants, never both" rule. */}
             {blocks.length === 0 && (
-              <div style={{ marginLeft: 40, marginTop: 4, position: 'relative', display: 'inline-block' }}>
+              <div className="ps-material-tree-add-decant-wrap">
                 <div
                   onClick={() => setOpenDecantMenuFor(v => v === sp.id ? null : sp.id)}
-                  style={{ fontSize: 12, color: '#64748b', cursor: 'pointer' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
+                  className="ps-material-tree-add-decant-link"
                 >
-                  + Add decant/fluid {openDecantMenuFor === sp.id ? '▴' : '▾'}
+                  + {t('materialTreePanel.addDecantFluid')} {openDecantMenuFor === sp.id ? '▴' : '▾'}
                 </div>
                 {openDecantMenuFor === sp.id && (
                   <div className="ps-decant-add-menu">
@@ -824,13 +819,13 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       className="ps-decant-add-menu-item"
                       onClick={() => { onAddDecant(sp.id, 'residual_fluid'); setOpenDecantMenuFor(null); }}
                     >
-                      Residual Fluid
+                      {t('materialTreePanel.residualFluidOption')}
                     </button>
                     <button
                       className="ps-decant-add-menu-item"
                       onClick={() => { onAddDecant(sp.id, 'cell_block'); setOpenDecantMenuFor(null); }}
                     >
-                      Cell Block
+                      {t('materialTreePanel.cellBlockOption')}
                     </button>
                   </div>
                 )}
@@ -841,12 +836,12 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
       })}
 
       {biopsyArrayGroups.size > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 10, letterSpacing: 0.4 }}>
-            Biopsy Arrays
+        <div className="ps-material-tree-biopsy-section">
+          <div className="ps-material-tree-biopsy-heading">
+            {t('materialTreePanel.biopsyArraysHeading')}
           </div>
           {Array.from(biopsyArrayGroups.entries()).map(([matrixBlockId, positions]) => (
-            <div key={matrixBlockId} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
+            <div key={matrixBlockId} className="ps-material-tree-biopsy-row">
               <BiopsyArrayDiagram
                 cassetteLabel={matrixBlockLabelsById.get(matrixBlockId) ?? matrixBlockId}
                 positions={positions}
@@ -856,14 +851,10 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                   Biopsy Array feature — "allowing edits." */}
               <button
                 onClick={() => onEditBiopsyArray(matrixBlockId)}
-                style={{
-                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, marginTop: 8,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap',
-                }}
-                title={`Edit Biopsy Array ${matrixBlockLabelsById.get(matrixBlockId) ?? matrixBlockId}`}
+                className="ps-material-tree-biopsy-edit-btn"
+                title={t('materialTreePanel.editBiopsyArrayTooltip', { label: matrixBlockLabelsById.get(matrixBlockId) ?? matrixBlockId })}
               >
-                ✏️ Edit
+                ✏️ {t('common.edit')}
               </button>
             </div>
           ))}
@@ -873,18 +864,16 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
       {isOrchestrationMode ? (
         <div
           onClick={onAddSpecimen}
-          style={{ fontSize: 13, color: '#94a3b8', cursor: 'pointer', marginBottom: 12, display: 'inline-block', marginRight: 20 }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#e2e8f0')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+          className="ps-material-tree-add-specimen-link"
         >
-          + Add specimen
+          + {t('materialTreePanel.addSpecimen')}
         </div>
       ) : (
         <div
-          style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', marginBottom: 12 }}
-          title="New specimen accessioning belongs to the LIS in this mode — recuts and additional blocks on an existing specimen remain available above."
+          className="ps-material-tree-lis-locked-note"
+          title={t('materialTreePanel.lisLockedTooltip')}
         >
-          🔒 New specimens are accessioned in the LIS
+          🔒 {t('materialTreePanel.lisLockedNote')}
         </div>
       )}
 
@@ -894,17 +883,15 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
       {specimens.length >= 2 && (
         <div
           onClick={onCreateBiopsyArray}
-          style={{ fontSize: 13, color: '#94a3b8', cursor: 'pointer', marginBottom: 20, display: 'inline-block' }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#e2e8f0')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+          className="ps-material-tree-add-array-link"
         >
-          + Create Biopsy Array
+          + {t('materialTreePanel.createBiopsyArray')}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(148,163,184,0.15)', fontSize: 11, color: '#94a3b8' }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(212,83,126,0.3)', borderRadius: 2, verticalAlign: 'middle', marginRight: 4 }} />stained</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, border: '0.5px dashed #94a3b8', borderRadius: 2, verticalAlign: 'middle', marginRight: 4 }} />held, unstained</span>
+      <div className="ps-material-tree-legend">
+        <span><span className="ps-material-tree-legend-swatch ps-material-tree-legend-swatch--stained" />{t('materialTreePanel.legendStained')}</span>
+        <span><span className="ps-material-tree-legend-swatch ps-material-tree-legend-swatch--unstained" />{t('materialTreePanel.legendUnstained')}</span>
       </div>
     </div>
   );

@@ -7,8 +7,18 @@
 // tab's TAT (frozen-to-merge) and the Reconciliation tab's concordance
 // rate — this measures a third, genuinely different thing: how long a
 // resident's released case actually sits before an attending reviews it.
+//
+// i18n note: `r.residentName`/`r.attendingName` are real person names
+// (fallback display data, stay untranslated) and `r.attendingFeedback`
+// is real, persisted feedback text — kept in English like every other
+// persisted diagnostic/narrative string in this sweep. The tooltip's
+// "no countersigns" line reuses `.ps-defic-trend-tooltip-empty`
+// (ReconciliationTab/IntraopLinkageTab, batches 153/159) verbatim since
+// its color matches exactly; the pending tile's amber highlight reuses
+// the `.ps-qa-tile--warning`/`--value--warning` pair added in batch 161.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
@@ -22,6 +32,7 @@ import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaR
 const hoursBetween = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
 
 export const CountersignTurnaroundTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [scope, setScope] = useState<QaScope>({ level: 'enterprise' });
   const [records, setRecords] = useState<CountersignRecord[]>([]);
@@ -86,8 +97,8 @@ export const CountersignTurnaroundTab: React.FC = () => {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
       const inMonth = countersigned.filter(r => {
-        const t = new Date(r.countersignedAt!).getTime();
-        return t >= monthStart && t < monthEnd;
+        const ts = new Date(r.countersignedAt!).getTime();
+        return ts >= monthStart && ts < monthEnd;
       });
       const avgHours = inMonth.length > 0
         ? +(inMonth.reduce((s, r) => s + hoursBetween(r.releasedAt, r.countersignedAt!), 0) / inMonth.length).toFixed(1)
@@ -112,13 +123,13 @@ export const CountersignTurnaroundTab: React.FC = () => {
     exportQaReportRows(rows, `countersign-turnaround-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading countersign data…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('countersignTurnaroundTab.loading')}</div>;
 
   return (
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>Export</button>
+        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
       </div>
 
       <div className="ps-defic-trend-card">
@@ -134,8 +145,8 @@ export const CountersignTurnaroundTab: React.FC = () => {
                 <div className="ps-tat-trend__tooltip">
                   <div className="ps-tat-trend__tooltip-header">{label}</div>
                   {point?.avgHours !== null
-                    ? <div style={{ color: '#a78bfa' }}>Avg turnaround: {point.avgHours}h ({point.total} countersigned)</div>
-                    : <div style={{ color: '#64748b' }}>No countersigns this month</div>}
+                    ? <div className="ps-cstat-trend-tooltip-value">{t('countersignTurnaroundTab.tooltip.avgTurnaround', { hours: point.avgHours, count: point.total })}</div>
+                    : <div className="ps-defic-trend-tooltip-empty">{t('countersignTurnaroundTab.tooltip.noCountersignsThisMonth')}</div>}
                 </div>
               );
             }} />
@@ -147,30 +158,35 @@ export const CountersignTurnaroundTab: React.FC = () => {
       <div className="ps-qa-summary-tiles">
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{avgTurnaroundHours !== null ? `${avgTurnaroundHours.toFixed(1)}h` : '—'}</div>
-          <div className="ps-qa-tile-label">Avg Turnaround</div>
+          <div className="ps-qa-tile-label">{t('countersignTurnaroundTab.tile.avgTurnaround')}</div>
         </div>
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{avgChangedFields !== null ? avgChangedFields.toFixed(1) : '—'}</div>
-          <div className="ps-qa-tile-label">Avg Fields Changed</div>
+          <div className="ps-qa-tile-label">{t('countersignTurnaroundTab.tile.avgFieldsChanged')}</div>
         </div>
-        <div className="ps-qa-tile" style={pending.length > 0 ? { borderColor: '#f59e0b' } : undefined}>
-          <div className="ps-qa-tile-value" style={pending.length > 0 ? { color: '#f59e0b' } : undefined}>{pending.length}</div>
-          <div className="ps-qa-tile-label">Pending Countersign</div>
+        <div className={`ps-qa-tile${pending.length > 0 ? ' ps-qa-tile--warning' : ''}`}>
+          <div className={`ps-qa-tile-value${pending.length > 0 ? ' ps-qa-tile-value--warning' : ''}`}>{pending.length}</div>
+          <div className="ps-qa-tile-label">{t('countersignTurnaroundTab.tile.pendingCountersign')}</div>
         </div>
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{withFeedbackCount}</div>
-          <div className="ps-qa-tile-label">With Feedback</div>
+          <div className="ps-qa-tile-label">{t('countersignTurnaroundTab.tile.withFeedback')}</div>
         </div>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>Pending ({pending.length})</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-defic-review-banner-label">{t('countersignTurnaroundTab.pendingBanner', { count: pending.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
-          <thead><tr><th className="ps-conf-th">Case</th><th className="ps-conf-th">Resident</th><th className="ps-conf-th">Released At</th><th className="ps-conf-th">Waiting</th></tr></thead>
+          <thead><tr>
+            <th className="ps-conf-th">{t('qualityAssurance.common.case')}</th>
+            <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.resident')}</th>
+            <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.releasedAt')}</th>
+            <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.waiting')}</th>
+          </tr></thead>
           <tbody>
-            {pending.length === 0 && <tr><td className="ps-conf-td" colSpan={4}>Nothing pending — every released case has been countersigned.</td></tr>}
+            {pending.length === 0 && <tr><td className="ps-conf-td" colSpan={4}>{t('countersignTurnaroundTab.noPendingMessage')}</td></tr>}
             {pending.map(r => (
               <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
                 <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
@@ -183,19 +199,19 @@ export const CountersignTurnaroundTab: React.FC = () => {
         </table>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>Countersigned ({countersigned.length})</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-defic-review-banner-label">{t('countersignTurnaroundTab.countersignedBanner', { count: countersigned.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
           <thead>
             <tr>
-              <th className="ps-conf-th">Case</th><th className="ps-conf-th">Resident</th><th className="ps-conf-th">Attending</th>
-              <th className="ps-conf-th">Turnaround</th><th className="ps-conf-th">Fields Changed</th><th className="ps-conf-th">Feedback</th>
+              <th className="ps-conf-th">{t('qualityAssurance.common.case')}</th><th className="ps-conf-th">{t('countersignTurnaroundTab.headers.resident')}</th><th className="ps-conf-th">{t('countersignTurnaroundTab.headers.attending')}</th>
+              <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.turnaround')}</th><th className="ps-conf-th">{t('countersignTurnaroundTab.headers.fieldsChanged')}</th><th className="ps-conf-th">{t('countersignTurnaroundTab.headers.feedback')}</th>
             </tr>
           </thead>
           <tbody>
-            {countersigned.length === 0 && <tr><td className="ps-conf-td" colSpan={6}>No countersigned records in this scope yet.</td></tr>}
+            {countersigned.length === 0 && <tr><td className="ps-conf-td" colSpan={6}>{t('countersignTurnaroundTab.noCountersignedMessage')}</td></tr>}
             {countersigned.map(r => (
               <tr key={r.id} className="ps-conf-tr-clickable" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>
                 <td className="ps-conf-td" data-phi="accession">{r.caseId}</td>
@@ -203,7 +219,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
                 <td className="ps-conf-td">{r.attendingName}</td>
                 <td className="ps-conf-td">{hoursBetween(r.releasedAt, r.countersignedAt!).toFixed(1)}h</td>
                 <td className="ps-conf-td">{r.changedFieldCount ?? 0}</td>
-                <td className="ps-conf-td">{r.attendingFeedback ?? <span style={{ color: '#64748b', fontStyle: 'italic' }}>none</span>}</td>
+                <td className="ps-conf-td">{r.attendingFeedback ?? <span className="ps-conf-td--muted-italic">{t('countersignTurnaroundTab.noFeedbackPlaceholder')}</span>}</td>
               </tr>
             ))}
           </tbody>

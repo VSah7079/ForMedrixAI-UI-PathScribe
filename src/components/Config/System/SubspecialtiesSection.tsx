@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { subspecialtyService, Subspecialty } from "../../../services";
 import { useSpecimenDictionary } from "./useSpecimenDictionary";
@@ -35,19 +36,22 @@ const Avatar = ({ name }: { name: string }) => {
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
-const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
-  <div className="ps-sub-toggle-wrap">
-    <div
-      onClick={() => onChange(!value)}
-      className={`ps-sub-toggle-track${value ? ' ps-sub-toggle-track--on' : ' ps-sub-toggle-track--off'}`}
-    >
-      <div className={`ps-sub-toggle-thumb${value ? ' ps-sub-toggle-thumb--on' : ' ps-sub-toggle-thumb--off'}`} />
+const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-sub-toggle-wrap">
+      <div
+        onClick={() => onChange(!value)}
+        className={`ps-sub-toggle-track${value ? ' ps-sub-toggle-track--on' : ' ps-sub-toggle-track--off'}`}
+      >
+        <div className={`ps-sub-toggle-thumb${value ? ' ps-sub-toggle-thumb--on' : ' ps-sub-toggle-thumb--off'}`} />
+      </div>
+      <span className={value ? 'ps-sub-toggle-label--on' : 'ps-sub-toggle-label--off'}>
+        {value ? t('common.active') : t('common.inactive')}
+      </span>
     </div>
-    <span className={value ? 'ps-sub-toggle-label--on' : 'ps-sub-toggle-label--off'}>
-      {value ? 'Active' : 'Inactive'}
-    </span>
-  </div>
-);
+  );
+};
 
 // ── Search input ──────────────────────────────────────────────────────────────
 
@@ -131,6 +135,7 @@ type ReactivateConfirm = {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const SubspecialtiesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const { dictionary: specimens, updateEntries } = useSpecimenDictionary();
   const [users,   setUsers]   = useState<StaffUser[]>([]);
@@ -208,7 +213,7 @@ const SubspecialtiesSection: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!draft.name.trim()) { setNameError("Name is required"); return; }
+    if (!draft.name.trim()) { setNameError(t('subspecialtiesSection.modal.nameRequired')); return; }
     // PS-73: name uniqueness, compound-scoped by performing lab — same
     // standard pattern as every other lab-scoped dictionary
     // (ContainerTypesSection.tsx etc.). Previously enforced globally
@@ -223,7 +228,12 @@ const SubspecialtiesSection: React.FC = () => {
     // never shared with another lab's cases") that the global-only
     // rule had deliberately overridden until this fix landed.
     const nameCollision = findDuplicate(subspecialties, { performingLabFacilityId: draft.performingLabFacilityId || undefined, name: draft.name.trim() }, ['performingLabFacilityId', 'name'], editTarget?.id);
-    if (nameCollision) { setNameError(`A subspecialty named "${nameCollision.name}" already exists${draft.performingLabFacilityId ? ' for this performing lab' : ''}.`); return; }
+    if (nameCollision) {
+      setNameError(draft.performingLabFacilityId
+        ? t('subspecialtiesSection.modal.nameCollisionScoped', { name: nameCollision.name })
+        : t('subspecialtiesSection.modal.nameCollisionGlobal', { name: nameCollision.name }));
+      return;
+    }
     const wasActive = editTarget ? editTarget.active !== false : true;
 
     if (modalMode === "edit" && wasActive && !draft.active) {
@@ -343,28 +353,34 @@ const SubspecialtiesSection: React.FC = () => {
     .filter(c => c.status === 'Active')
     .filter(c => !facilitySearch || c.name.toLowerCase().includes(facilitySearch.toLowerCase()));
 
+  const tableColumns: { label: string; align: 'left' | 'right' }[] = [
+    { label: t('subspecialtiesSection.table.name'), align: 'left' },
+    { label: t('subspecialtiesSection.table.status'), align: 'left' },
+    { label: t('subspecialtiesSection.table.actions'), align: 'right' },
+  ];
+
   return (
     <div className="ps-sub-shell">
 
       {/* ── Header ── */}
       <div className="ps-sub-header">
         <div>
-          <h1 className="ps-sub-title">Subspecialties</h1>
-          <p className="ps-sub-subtitle">Manage pathology subspecialties, specimen groups, and physician assignments.</p>
+          <h1 className="ps-sub-title">{t('subspecialtiesSection.title')}</h1>
+          <p className="ps-sub-subtitle">{t('subspecialtiesSection.subtitle')}</p>
         </div>
-        <button className="ps-sub-add-btn" onClick={openAdd}>+ Add Subspecialty</button>
+        <button className="ps-sub-add-btn" onClick={openAdd}>{t('subspecialtiesSection.addBtn')}</button>
       </div>
 
       {/* ── Toolbar ── */}
       <div className="ps-sub-toolbar">
         <input
-          type="text" placeholder="Search subspecialties..." value={search}
+          type="text" placeholder={t('subspecialtiesSection.searchPlaceholder')} value={search}
           onChange={e => setSearch(e.target.value)} className="ps-sub-search"
         />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} aria-label="Filter by status" className="ps-sub-filter">
-          <option value="All">All</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} aria-label={t('subspecialtiesSection.filterByStatusAriaLabel')} className="ps-sub-filter">
+          <option value="All">{t('subspecialtiesSection.filterAll')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
         </select>
       </div>
 
@@ -373,16 +389,14 @@ const SubspecialtiesSection: React.FC = () => {
         <div className="ps-sub-table-scroll">
           <table className="ps-sub-table">
             <colgroup>
-              <col style={{ width: "50%" }} />
-              <col style={{ width: "25%" }} /><col style={{ width: "25%" }} />
+              <col className="ps-sub-col-name" />
+              <col className="ps-sub-col-half" /><col className="ps-sub-col-half" />
             </colgroup>
             <thead className="ps-sub-thead">
               <tr>
-                {[["Subspecialty Name","left"],["Status","left"],["Actions","right"]].map(
-                  ([label, align]) => (
-                    <th key={label} className="ps-sub-th" style={{ textAlign: align as any }}>{label}</th>
-                  )
-                )}
+                {tableColumns.map(({ label, align }) => (
+                  <th key={label} className={`ps-sub-th ${align === 'right' ? 'ps-sub-th--right' : 'ps-sub-th--left'}`}>{label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -402,13 +416,13 @@ const SubspecialtiesSection: React.FC = () => {
                         <div className="ps-sub-name-text-wrap">
                           <div className="ps-sub-name-row">
                             <span className="ps-sub-name">{sub.name}</span>
-                            {(sub as any).isWorkgroup && <span className="ps-sub-workgroup-dot" title="Workgroup / Pool" />}
+                            {(sub as any).isWorkgroup && <span className="ps-sub-workgroup-dot" title={t('subspecialtiesSection.workgroupPoolTooltip')} />}
                             {(sub as any).isSystemManaged && (
                               <span
                                 className="ps-sub-system-badge"
-                                title="Managed automatically by the system's own case-routing logic — not editable here"
+                                title={t('subspecialtiesSection.systemManagedTooltip')}
                               >
-                                SYSTEM
+                                {t('subspecialtiesSection.systemBadge')}
                               </span>
                             )}
                           </div>
@@ -428,20 +442,20 @@ const SubspecialtiesSection: React.FC = () => {
                       <div className="ps-sub-status-cell">
                         <span className={`ps-sub-status-dot${isActive ? ' ps-sub-status-dot--active' : ' ps-sub-status-dot--inactive'}`} />
                         <span className={isActive ? 'ps-sub-status-label--active' : 'ps-sub-status-label--inactive'}>
-                          {isActive ? "Active" : "Inactive"}
+                          {isActive ? t('common.active') : t('common.inactive')}
                         </span>
                       </div>
                     </td>
-                    <td className="ps-sub-td" style={{ textAlign: "right" }}>
+                    <td className="ps-sub-td ps-sub-td--right">
                       {(sub as any).isSystemManaged ? (
                         <span
                           className="ps-sub-readonly-label"
-                          title="This pool is created and maintained automatically — there's nothing here for an admin to configure"
+                          title={t('subspecialtiesSection.systemManagedReadonlyTooltip')}
                         >
-                          Read-only
+                          {t('subspecialtiesSection.readOnlyLabel')}
                         </span>
                       ) : (
-                        <button className="ps-sub-edit-btn" onClick={() => openEdit(sub)}>Edit</button>
+                        <button className="ps-sub-edit-btn" onClick={() => openEdit(sub)}>{t('common.edit')}</button>
                       )}
                     </td>
                   </tr>
@@ -449,8 +463,8 @@ const SubspecialtiesSection: React.FC = () => {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="ps-sub-tab-empty" style={{ padding: "32px 20px" }}>
-                    No subspecialties match the current filter.
+                  <td colSpan={4} className="ps-sub-tab-empty ps-sub-tab-empty--table">
+                    {t('subspecialtiesSection.noneMatchFilter')}
                   </td>
                 </tr>
               )}
@@ -461,22 +475,22 @@ const SubspecialtiesSection: React.FC = () => {
 
       <div className="ps-sub-footer">
         <div className="ps-sub-sync-indicator">
-          <span className="ps-sub-sync-dot">&#9679;</span> System Live Sync
+          <span className="ps-sub-sync-dot">&#9679;</span> {t('subspecialtiesSection.systemLiveSync')}
         </div>
-        <div>{subspecialties.length} subspecialties</div>
+        <div>{t('subspecialtiesSection.countFooter', { count: subspecialties.length })}</div>
       </div>
 
       {/* ── Add / Edit Modal — two-pane layout matching Flag Manager ── */}
       {showModal && (
         <div className="ps-conf-backdrop">
-          <div className="fm-modal" style={{ width: 'min(900px, 96vw)', height: 600 }} onClick={e => e.stopPropagation()}>
+          <div className="fm-modal ps-sub-modal--edit" onClick={e => e.stopPropagation()}>
 
             {/* Header */}
             <div className="fm-modal-header">
               <div>
-                <div className="fm-eyebrow">Configuration · Subspecialties</div>
-                <h2 className="fm-title" style={{ fontSize: 17 }}>
-                  {modalMode === "edit" ? `Edit \u2014 ${editTarget?.name}` : "Add Subspecialty"}
+                <div className="fm-eyebrow">{t('subspecialtiesSection.modal.eyebrow')}</div>
+                <h2 className="fm-title ps-sub-title--sm">
+                  {modalMode === "edit" ? t('subspecialtiesSection.modal.editTitle', { name: editTarget?.name }) : t('subspecialtiesSection.modal.addTitle')}
                 </h2>
               </div>
               <button className="fm-btn-cancel" onClick={() => setShowModal(false)}>&#10005;</button>
@@ -491,20 +505,20 @@ const SubspecialtiesSection: React.FC = () => {
                 {/* Name */}
                 <div className="ps-sub-field">
                   <label className="fm-section-label">
-                    Name <span className="ps-sub-label-req">*</span>
+                    {t('subspecialtiesSection.modal.nameLabel')} <span className="ps-sub-label-req">*</span>
                   </label>
                   <input
                     className={`ps-sub-input${nameError ? ' ps-sub-input--error' : ''}`}
                     value={draft.name}
                     onChange={e => { setDraft({ ...draft, name: e.target.value }); setNameError(""); }}
-                    placeholder="e.g. Breast, GI, Neuropathology..."
+                    placeholder={t('subspecialtiesSection.modal.namePlaceholder')}
                   />
                   {nameError && <span className="ps-sub-error">{nameError}</span>}
                 </div>
 
                 {/* Status */}
                 <div className="ps-sub-field">
-                  <label className="fm-section-label">Status</label>
+                  <label className="fm-section-label">{t('subspecialtiesSection.modal.statusLabel')}</label>
                   <Toggle value={draft.active} onChange={v => setDraft({ ...draft, active: v })} />
                   {modalMode === "edit" && editTarget?.active !== false && !draft.active && (() => {
                     const spCount   = specimens.filter(sp => specimenBelongsToSubspecialty(sp, editTarget!)).length;
@@ -512,10 +526,10 @@ const SubspecialtiesSection: React.FC = () => {
                     if (spCount === 0 && userCount === 0) return null;
                     return (
                       <div className="ps-sub-warn-box">
-                        &#9888;&nbsp; Saving will unlink&nbsp;
-                        {spCount > 0 && <strong>{spCount} specimen{spCount !== 1 ? "s" : ""}</strong>}
-                        {spCount > 0 && userCount > 0 && " and "}
-                        {userCount > 0 && <strong>{userCount} physician{userCount !== 1 ? "s" : ""}</strong>}.
+                        &#9888;&nbsp; {t('subspecialtiesSection.modal.unlinkWarningPrefix')}&nbsp;
+                        {spCount > 0 && <strong>{t('subspecialtiesSection.modal.specimenCount', { count: spCount })}</strong>}
+                        {spCount > 0 && userCount > 0 && ` ${t('subspecialtiesSection.modal.andJoiner')} `}
+                        {userCount > 0 && <strong>{t('subspecialtiesSection.modal.physicianCount', { count: userCount })}</strong>}.
                       </div>
                     );
                   })()}
@@ -523,7 +537,7 @@ const SubspecialtiesSection: React.FC = () => {
 
                 {/* Assignment mode */}
                 <div className="ps-sub-field">
-                  <label className="fm-section-label">Assignment Mode</label>
+                  <label className="fm-section-label">{t('subspecialtiesSection.modal.assignmentModeLabel')}</label>
                   <div
                     onClick={() => setDraft(prev => ({ ...prev, isWorkgroup: !prev.isWorkgroup }))}
                     className={`ps-sub-workgroup-toggle${draft.isWorkgroup ? ' ps-sub-workgroup-toggle--on' : ' ps-sub-workgroup-toggle--off'}`}
@@ -535,13 +549,13 @@ const SubspecialtiesSection: React.FC = () => {
                     </div>
                     <div>
                       <div className={draft.isWorkgroup ? 'ps-sub-workgroup-label--on' : 'ps-sub-workgroup-label--off'}>
-                        {draft.isWorkgroup ? "Pool / Workgroup" : "Create Workgroup"}
+                        {draft.isWorkgroup ? t('subspecialtiesSection.modal.poolWorkgroupLabel') : t('subspecialtiesSection.modal.createWorkgroupLabel')}
                       </div>
                       <div className="ps-sub-workgroup-hint">
-                        {draft.isWorkgroup ? "Cases go to a shared queue" : "Toggle on to enable shared pool mode"}
+                        {draft.isWorkgroup ? t('subspecialtiesSection.modal.sharedQueueHint') : t('subspecialtiesSection.modal.toggleOnHint')}
                       </div>
                     </div>
-                    {draft.isWorkgroup && <span className="ps-sub-workgroup-badge">WORKGROUP</span>}
+                    {draft.isWorkgroup && <span className="ps-sub-workgroup-badge">{t('subspecialtiesSection.modal.workgroupBadge')}</span>}
                   </div>
                 </div>
 
@@ -553,13 +567,13 @@ const SubspecialtiesSection: React.FC = () => {
                     with another lab's cases. */}
                 {draft.isWorkgroup && (
                   <div className="ps-sub-field">
-                    <label className="fm-section-label">Performing Lab</label>
+                    <label className="fm-section-label">{t('subspecialtiesSection.modal.performingLabLabel')}</label>
                     <select
                       className="ps-conf-select"
                       value={draft.performingLabFacilityId}
                       onChange={e => setDraft(prev => ({ ...prev, performingLabFacilityId: e.target.value }))}
                     >
-                      <option value="">— Global (every performing lab) —</option>
+                      <option value="">{t('subspecialtiesSection.modal.globalOption')}</option>
                       {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
@@ -570,10 +584,14 @@ const SubspecialtiesSection: React.FC = () => {
                     <label className="ps-conf-label">
                       <input type="checkbox" checked={draft.isCatchAll}
                         onChange={e => setDraft(prev => ({ ...prev, isCatchAll: e.target.checked }))} />
-                      {' '}Default / Catch-All Pool for {draft.performingLabFacilityId ? labs.find(l => l.id === draft.performingLabFacilityId)?.name ?? 'this lab' : 'every lab with no override'}
+                      {' '}{t('subspecialtiesSection.modal.catchAllLabel', {
+                        lab: draft.performingLabFacilityId
+                          ? (labs.find(l => l.id === draft.performingLabFacilityId)?.name ?? t('subspecialtiesSection.modal.thisLabFallback'))
+                          : t('subspecialtiesSection.modal.everyLabFallback'),
+                      })}
                     </label>
                     <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                      Unmapped specimens for this scope fall through here. Turning this on moves the flag off whichever pool currently holds it for the same scope.
+                      {t('subspecialtiesSection.modal.catchAllHint')}
                     </p>
                   </div>
                 )}
@@ -581,13 +599,13 @@ const SubspecialtiesSection: React.FC = () => {
                 {/* Description */}
                 <div className="ps-sub-field">
                   <label className="fm-section-label">
-                    Description <span className="ps-sub-label-opt">(optional)</span>
+                    {t('subspecialtiesSection.modal.descriptionLabel')} <span className="ps-sub-label-opt">{t('common.optional')}</span>
                   </label>
                   <input
                     className="ps-sub-input"
                     value={draft.description}
                     onChange={e => setDraft(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Administrative notes..."
+                    placeholder={t('subspecialtiesSection.modal.descriptionPlaceholder')}
                   />
                 </div>
 
@@ -598,7 +616,11 @@ const SubspecialtiesSection: React.FC = () => {
 
                 {/* Tab bar */}
                 <div className="ps-sub-tab-bar-underline fm-tab-bar--config">
-                  {([ ["specimens", "Specimens"], ["physicians", "Physicians"], ["facilities", "Facilities"] ] as const).map(([tab, label]) => {
+                  {([
+                    ["specimens", t('subspecialtiesSection.modal.tabSpecimens')],
+                    ["physicians", t('subspecialtiesSection.modal.tabPhysicians')],
+                    ["facilities", t('subspecialtiesSection.modal.tabFacilities')],
+                  ] as const).map(([tab, label]) => {
                     const count = tab === "specimens" ? specimenAssignments.length
                       : tab === "physicians" ? draft.userIds.length
                       : draft.clientIds.length;
@@ -623,14 +645,14 @@ const SubspecialtiesSection: React.FC = () => {
                     <SearchInput
                       value={activeTab === "specimens" ? specimenSearch : activeTab === "physicians" ? physicianSearch : facilitySearch}
                       onChange={activeTab === "specimens" ? setSpecimenSearch : activeTab === "physicians" ? setPhysicianSearch : setFacilitySearch}
-                      placeholder={activeTab === "specimens" ? "Search specimens..." : activeTab === "physicians" ? "Search physicians..." : "Search facilities..."}
+                      placeholder={activeTab === "specimens" ? t('subspecialtiesSection.modal.searchSpecimensPlaceholder') : activeTab === "physicians" ? t('subspecialtiesSection.modal.searchPhysiciansPlaceholder') : t('subspecialtiesSection.modal.searchFacilitiesPlaceholder')}
                     />
                   </div>
                   <div className="fm-tab-list--config">
 
                     {activeTab === "specimens" && (
                       filteredSpecimens.length === 0
-                        ? <div className="ps-sub-tab-empty">{specimenSearch ? "No specimens match." : "No specimens available."}</div>
+                        ? <div className="ps-sub-tab-empty">{specimenSearch ? t('subspecialtiesSection.modal.noSpecimensMatch') : t('subspecialtiesSection.modal.noSpecimensAvailable')}</div>
                         : filteredSpecimens.map(sp => {
                             // Id-aware, per direct ruling: a specimen already linked to
                             // THIS subspecialty (by id, or by legacy name for an
@@ -640,7 +662,7 @@ const SubspecialtiesSection: React.FC = () => {
                             return (
                               <CheckRow
                                 key={sp.id} label={sp.name}
-                                sub={takenBy ? `Currently in: ${takenBy}` : sp.description || undefined}
+                                sub={takenBy ? t('subspecialtiesSection.modal.currentlyIn', { name: takenBy }) : sp.description || undefined}
                                 checked={specimenAssignments.includes(sp.id)}
                                 onChange={() => setSpecimenAssignments(prev =>
                                   prev.includes(sp.id) ? prev.filter(x => x !== sp.id) : [...prev, sp.id]
@@ -652,7 +674,7 @@ const SubspecialtiesSection: React.FC = () => {
 
                     {activeTab === "physicians" && (
                       filteredPhysicians.length === 0
-                        ? <div className="ps-sub-tab-empty">{physicianSearch ? "No physicians match." : "No physicians available."}</div>
+                        ? <div className="ps-sub-tab-empty">{physicianSearch ? t('subspecialtiesSection.modal.noPhysiciansMatch') : t('subspecialtiesSection.modal.noPhysiciansAvailable')}</div>
                         : filteredPhysicians.map(u => (
                             <CheckRow
                               key={u.id}
@@ -671,7 +693,7 @@ const SubspecialtiesSection: React.FC = () => {
 
                     {activeTab === "facilities" && (
                       filteredFacilities.length === 0
-                        ? <div className="ps-sub-tab-empty">{facilitySearch ? "No facilities match." : "No facilities available."}</div>
+                        ? <div className="ps-sub-tab-empty">{facilitySearch ? t('subspecialtiesSection.modal.noFacilitiesMatch') : t('subspecialtiesSection.modal.noFacilitiesAvailable')}</div>
                         : filteredFacilities.map(c => (
                             <CheckRow
                               key={c.id} label={c.name} sub={c.assigningAuthority}
@@ -696,13 +718,13 @@ const SubspecialtiesSection: React.FC = () => {
             <div className="fm-footer">
               <span className="fm-footer-status">
                 {specimenAssignments.length > 0 || draft.userIds.length > 0
-                  ? `${specimenAssignments.length} specimens · ${draft.userIds.length} physicians · ${draft.clientIds.length} clients assigned`
-                  : 'No assignments yet'}
+                  ? t('subspecialtiesSection.modal.footerSummary', { specimens: specimenAssignments.length, physicians: draft.userIds.length, clients: draft.clientIds.length })
+                  : t('subspecialtiesSection.modal.noAssignmentsYet')}
               </span>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button className="fm-btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
+              <div className="ps-sub-footer-actions">
+                <button className="fm-btn-cancel" onClick={() => setShowModal(false)}>{t('common.cancel')}</button>
                 <button className="fm-btn-apply" onClick={handleSave}>
-                  {modalMode === "edit" ? "Save Changes" : "Save"}
+                  {modalMode === "edit" ? t('subspecialtiesSection.modal.saveChangesBtn') : t('common.save')}
                 </button>
               </div>
             </div>
@@ -714,22 +736,21 @@ const SubspecialtiesSection: React.FC = () => {
       {/* ── Inactivation confirmation ── */}
       {inactiveConfirm && (
         <div className="ps-conf-backdrop">
-          <div className="fm-modal" style={{ width: 'min(500px, 96vw)' }} onClick={e => e.stopPropagation()}>
+          <div className="fm-modal ps-sub-modal--confirm-sm" onClick={e => e.stopPropagation()}>
             <div className="fm-modal-header">
               <div>
-                <div className="fm-eyebrow">Confirm Action</div>
-                <h2 className="fm-title fm-title--warning" style={{ fontSize: 16 }}>&#9888;&nbsp; Confirm Inactivation</h2>
+                <div className="fm-eyebrow">{t('subspecialtiesSection.confirmActionEyebrow')}</div>
+                <h2 className="fm-title fm-title--warning ps-sub-title--xs">&#9888;&nbsp; {t('subspecialtiesSection.inactivateConfirm.title')}</h2>
               </div>
             </div>
             <div className="fm-confirm-body">
               <p className="fm-confirm-text">
-                Inactivating <strong style={{ color: "#f9fafb" }}>{inactiveConfirm.sub.name}</strong> will
-                unlink the following entries. They will need to be manually reassigned if reactivated.
+                {t('subspecialtiesSection.inactivateConfirm.intro', { name: inactiveConfirm.sub.name })}
               </p>
               {inactiveConfirm.affectedSpecimens.length > 0 && (
                 <div className="ps-sub-confirm-header">
                   <div className="ps-sub-confirm-header-label">
-                    Specimens to unlink
+                    {t('subspecialtiesSection.inactivateConfirm.specimensToUnlink')}
                     <span className="ps-sub-confirm-count">{inactiveConfirm.affectedSpecimens.length}</span>
                   </div>
                   <div className="ps-sub-confirm-list">
@@ -740,7 +761,7 @@ const SubspecialtiesSection: React.FC = () => {
               {inactiveConfirm.affectedUsers.length > 0 && (
                 <div className="ps-sub-confirm-header">
                   <div className="ps-sub-confirm-header-label">
-                    Physicians to unassign
+                    {t('subspecialtiesSection.inactivateConfirm.physiciansToUnassign')}
                     <span className="ps-sub-confirm-count">{inactiveConfirm.affectedUsers.length}</span>
                   </div>
                   <div className="ps-sub-confirm-list">
@@ -751,7 +772,7 @@ const SubspecialtiesSection: React.FC = () => {
               {inactiveConfirm.affectedTatCount > 0 && (
                 <div className="ps-sub-confirm-header">
                   <div className="ps-sub-confirm-header-label">
-                    TAT Configuration entries still scoped to this subspecialty
+                    {t('subspecialtiesSection.inactivateConfirm.tatEntriesScoped')}
                     <span className="ps-sub-confirm-count">{inactiveConfirm.affectedTatCount}</span>
                   </div>
                 </div>
@@ -759,7 +780,7 @@ const SubspecialtiesSection: React.FC = () => {
               {inactiveConfirm.affectedRoutingRuleCount > 0 && (
                 <div className="ps-sub-confirm-header">
                   <div className="ps-sub-confirm-header-label">
-                    Routing Rules still targeting this subspecialty's pool
+                    {t('subspecialtiesSection.inactivateConfirm.routingRulesTargeting')}
                     <span className="ps-sub-confirm-count">{inactiveConfirm.affectedRoutingRuleCount}</span>
                   </div>
                 </div>
@@ -767,10 +788,10 @@ const SubspecialtiesSection: React.FC = () => {
             </div>
             <div className="fm-footer">
               <span />
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button className="fm-btn-cancel" onClick={() => { setDraft(prev => ({ ...prev, active: true })); setInactiveConfirm(null); }}>Cancel</button>
+              <div className="ps-sub-footer-actions">
+                <button className="fm-btn-cancel" onClick={() => { setDraft(prev => ({ ...prev, active: true })); setInactiveConfirm(null); }}>{t('common.cancel')}</button>
                 <button className="ps-sub-btn-inactivate" onClick={() => commitSave(inactiveConfirm.draft, inactiveConfirm.specimenAssignments, inactiveConfirm.sub, true)}>
-                  Inactivate &amp; Unlink
+                  {t('subspecialtiesSection.inactivateConfirm.inactivateAndUnlinkBtn')}
                 </button>
               </div>
             </div>
@@ -781,32 +802,31 @@ const SubspecialtiesSection: React.FC = () => {
       {/* ── Reactivation notice ── */}
       {reactivateConfirm && (
         <div className="ps-conf-backdrop">
-          <div className="fm-modal" style={{ width: 'min(460px, 96vw)' }} onClick={e => e.stopPropagation()}>
+          <div className="fm-modal ps-sub-modal--confirm-xs" onClick={e => e.stopPropagation()}>
             <div className="fm-modal-header">
               <div>
-                <div className="fm-eyebrow">Confirm Action</div>
-                <h2 className="fm-title fm-title--info" style={{ fontSize: 16 }}>&#8635;&nbsp; Reactivating Subspecialty</h2>
+                <div className="fm-eyebrow">{t('subspecialtiesSection.confirmActionEyebrow')}</div>
+                <h2 className="fm-title fm-title--info ps-sub-title--xs">&#8635;&nbsp; {t('subspecialtiesSection.reactivateConfirm.title')}</h2>
               </div>
             </div>
             <div className="fm-confirm-body">
               <p className="fm-confirm-text">
-                <strong style={{ color: "#f9fafb" }}>{reactivateConfirm.sub.name}</strong> will be set
-                back to <strong style={{ color: "#22c55e" }}>Active</strong>.
+                <strong className="ps-sub-emphasis">{reactivateConfirm.sub.name}</strong> {t('subspecialtiesSection.reactivateConfirm.willBeSetBackTo')}{' '}
+                <strong className="ps-sub-emphasis--success">{t('common.active')}</strong>.
               </p>
               <p className="fm-confirm-text">
-                Specimens and physicians unlinked during inactivation will not be automatically restored.
-                Use the Edit modal after reactivation to reassign them.
+                {t('subspecialtiesSection.reactivateConfirm.notAutoRestoredNote')}
               </p>
               <div className="ps-sub-info-box">
-                &#9432;&nbsp; After clicking <em>Got it</em>, open Edit to reassign specimens and physicians.
+                &#9432;&nbsp; {t('subspecialtiesSection.reactivateConfirm.gotItHint')}
               </div>
             </div>
             <div className="fm-footer">
               <span />
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button className="fm-btn-cancel" onClick={() => setReactivateConfirm(null)}>Cancel</button>
+              <div className="ps-sub-footer-actions">
+                <button className="fm-btn-cancel" onClick={() => setReactivateConfirm(null)}>{t('common.cancel')}</button>
                 <button className="ps-sub-btn-reactivate" onClick={() => commitSave(reactivateConfirm.draft, reactivateConfirm.specimenAssignments, reactivateConfirm.sub, false)}>
-                  Got it &mdash; Reactivate
+                  {t('subspecialtiesSection.reactivateConfirm.gotItReactivateBtn')}
                 </button>
               </div>
             </div>

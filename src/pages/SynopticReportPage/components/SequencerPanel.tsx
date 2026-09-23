@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import type { Case } from '@/types/case/Case';
 
@@ -30,12 +31,25 @@ interface SynRow {
   fieldOrder:  string[];
 }
 
-const statusColor = (s: string) =>
-  s === 'finalized' ? '#10b981' : s === 'in-progress' ? '#0891B2' : '#64748b';
+// Real, persisted-ish report-instance status values (never actually
+// stored as their own enum type — SynRow.status is a loose `string`
+// straight off the case's own synopticReports — but still real, fixed
+// states) — only the displayed label translates, same LABEL_KEY
+// pattern used throughout this sweep for other status-like values. A
+// status this map doesn't recognize falls back to the raw value
+// rather than silently rendering nothing.
+const STATUS_LABEL_KEY: Record<string, string> = {
+  finalized:      'sequencerPanel.status.finalized',
+  'in-progress':  'sequencerPanel.status.inProgress',
+  draft:          'sequencerPanel.status.draft',
+};
+const statusClassSuffix = (s: string) =>
+  s === 'finalized' ? 'finalized' : s === 'in-progress' ? 'in-progress' : 'draft';
 
 const SequencerPanel: React.FC<SequencerPanelProps> = ({
   show, onClose, onSave, caseData, activeReportInstanceId, onSelectReport,
 }) => {
+  const { t } = useTranslation();
   const [specimenOrder,     setSpecimenOrder]     = useState<string[]>([]);
   const [synopticOrders,    setSynopticOrders]     = useState<Record<string, string[]>>({});
   const [expandedSpecimens, setExpandedSpecimens]  = useState<Set<string>>(new Set());
@@ -158,15 +172,15 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
         <div className="ps-seq-header">
           <div className="ps-seq-header-left">
             <div className="ps-seq-header-title-row">
-              <h2 className="fm-title ps-seq-title">Report Sequencer</h2>
+              <h2 className="fm-title ps-seq-title">{t('sequencerPanel.header.title')}</h2>
               {accession && <span className="ps-seq-case-badge" data-phi="accession">{accession}</span>}
             </div>
             <div className="ps-seq-subtitle">
-              Drag specimens or synoptics to set transmission order · Click a row to jump to it
+              {t('sequencerPanel.header.subtitle')}
             </div>
           </div>
           <div className="ps-seq-header-right">
-            <button className="ps-research-close" onClick={onClose} aria-label="Close sequencer">✕</button>
+            <button className="ps-research-close" onClick={onClose} aria-label={t('sequencerPanel.closeAriaLabel')}>✕</button>
           </div>
         </div>
 
@@ -176,7 +190,7 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
           {/* LEFT — reorder panel */}
           <div className="ps-seq-left">
             {orderedRows.length === 0 ? (
-              <div className="ps-seq-empty">No specimens on this case.</div>
+              <div className="ps-seq-empty">{t('sequencerPanel.noSpecimens')}</div>
             ) : orderedRows.map((row, ri) => {
               const isExpanded = expandedSpecimens.has(row.specimenId);
               const orderedSyns = (synopticOrders[row.specimenId] ?? [])
@@ -202,7 +216,7 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
                     <span className="ps-seq-specimen-num">{ri + 1}</span>
                     <span className="ps-seq-specimen-label">{row.label}:</span>
                     <span className="ps-seq-specimen-desc">{row.description}</span>
-                    <span className="ps-seq-specimen-count">{row.synoptics.length} synoptic{row.synoptics.length !== 1 ? 's' : ''}</span>
+                    <span className="ps-seq-specimen-count">{t('sequencerPanel.synopticCount', { count: row.synoptics.length })}</span>
                     <span className={`ps-seq-expand-arrow${isExpanded ? ' ps-seq-expand-arrow--open' : ''}`}>▶</span>
                   </div>
 
@@ -232,18 +246,20 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
                             <span className={`ps-seq-syn-name${isActive ? ' ps-seq-syn-name--active' : ' ps-seq-syn-name--default'}`}>
                               {syn.templateName}
                             </span>
-                            <span className="ps-seq-syn-status" style={{ color: statusColor(syn.status) }}>{syn.status}</span>
+                            <span className={`ps-seq-syn-status ps-seq-syn-status--${statusClassSuffix(syn.status)}`}>
+                              {STATUS_LABEL_KEY[syn.status] ? t(STATUS_LABEL_KEY[syn.status]) : syn.status}
+                            </span>
                             <span className="ps-seq-syn-progress">{syn.filledCount}/{syn.totalCount}</span>
-                            <div style={{ width: 36, height: 3, borderRadius: 99, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', flexShrink: 0 }}>
-                              <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#10b981' : '#0891B2', borderRadius: 99 }} />
+                            <div className="ps-seq-progress-track">
+                              <div className={`ps-seq-progress-fill${pct === 100 ? ' ps-seq-progress-fill--complete' : ''}`} style={{ width: `${pct}%` }} />
                             </div>
-                            {isActive && <span className="ps-seq-syn-active-badge">active</span>}
+                            {isActive && <span className="ps-seq-syn-active-badge">{t('sequencerPanel.activeBadge')}</span>}
                           </div>
                         );
                       })}
 
                       {orderedSyns.length === 0 && (
-                        <div className="ps-seq-syn-no-fields">No synoptics for this specimen</div>
+                        <div className="ps-seq-syn-no-fields">{t('sequencerPanel.noSynopticsForSpecimen')}</div>
                       )}
                     </div>
                   )}
@@ -252,7 +268,7 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
             })}
 
             <div className="ps-seq-hint">
-              <p>The order shown here determines how specimens appear in the generated report. Synoptic values remain unchanged — only their presentation sequence is affected. Click any synoptic row to jump to it in the editor.</p>
+              <p>{t('sequencerPanel.orderHint')}</p>
             </div>
           </div>
 
@@ -271,10 +287,10 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
 
         {/* Footer */}
         <div className="ps-seq-footer">
-          <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('common.cancel')}</button>
           {onSave && (
             <button className="ps-btn-primary" onClick={() => { onSave(specimenOrder, synopticOrders); onClose(); }} disabled={!isDirty}>
-              Save Sequence
+              {t('sequencerPanel.saveSequence')}
             </button>
           )}
         </div>
@@ -293,8 +309,9 @@ const PreviewPane: React.FC<{
   onSelectReport: (instanceId: string, specimenId: string, reportType?: 'grossing' | 'synoptic') => void;
   onClose: () => void;
 }> = ({ rows, synopticOrders, activeReportInstanceId, onSelectReport }) => {
+  const { t } = useTranslation();
   const [expandedSynoptics, setExpandedSynoptics] = useState<Set<string>>(new Set());
-  if (rows.length === 0) return <div className="ps-seq-empty">No report preview available.</div>;
+  if (rows.length === 0) return <div className="ps-seq-empty">{t('sequencerPanel.noPreviewAvailable')}</div>;
 
   const fmt = (v: unknown): string => {
     if (v === null || v === undefined || v === '') return '—';
@@ -310,9 +327,9 @@ const PreviewPane: React.FC<{
           .filter(Boolean) as SynRow[];
 
         return (
-          <div key={row.specimenId} style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-              Specimen {row.label} — {row.description}
+          <div key={row.specimenId} className="ps-seq-preview-specimen">
+            <div className="ps-seq-preview-sp-label">
+              {t('sequencerPanel.preview.specimenHeading', { label: row.label, description: row.description })}
             </div>
             {ordered.map(syn => {
               const isActive = syn.instanceId === activeReportInstanceId;
@@ -328,14 +345,14 @@ const PreviewPane: React.FC<{
                 <div
                   key={syn.instanceId}
                   onClick={() => onSelectReport(syn.instanceId, row.specimenId)}
-                  style={{ marginBottom: 12, padding: '12px 14px', background: isActive ? 'rgba(8,145,178,0.06)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isActive ? 'rgba(8,145,178,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, cursor: 'pointer' }}
+                  className={`ps-seq-preview-syn${isActive ? ' ps-seq-preview-syn--active' : ' ps-seq-preview-syn--default'}`}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="ps-seq-preview-syn-title">
                     {syn.templateName}
-                    {isActive && <span className="ps-seq-syn-active-badge">active</span>}
+                    {isActive && <span className="ps-seq-syn-active-badge">{t('sequencerPanel.activeBadge')}</span>}
                   </div>
                   {answeredFields.length === 0 ? (
-                    <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>No fields completed yet</div>
+                    <div className="ps-seq-preview-empty">{t('sequencerPanel.preview.noFieldsCompleted')}</div>
                   ) : (
                     visibleFields.map(({ label, value }) => (
                       <div key={label} className="ps-seq-field-row">
@@ -352,7 +369,7 @@ const PreviewPane: React.FC<{
                         setExpandedSynoptics(prev => new Set(prev).add(syn.instanceId));
                       }}
                     >
-                      +{overflow} more field{overflow !== 1 ? 's' : ''}
+                      {t('sequencerPanel.preview.moreFields', { count: overflow })}
                     </div>
                   )}
                   {isExpanded && answeredFields.length > 6 && (
@@ -363,7 +380,7 @@ const PreviewPane: React.FC<{
                         setExpandedSynoptics(prev => { const next = new Set(prev); next.delete(syn.instanceId); return next; });
                       }}
                     >
-                      Show less
+                      {t('sequencerPanel.preview.showLess')}
                     </div>
                   )}
                 </div>

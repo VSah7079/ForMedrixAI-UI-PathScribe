@@ -3,7 +3,7 @@
 // Blocks case sign-out when a specimen is missing its required
 // collection and/or laboratory-receipt date/time — real, per direct
 // guidance's own cross-jurisdiction compliance research (UKAS ISO
-// 15189 Clause 7.2, CAP/CLIA \u00a7 493.1241, RCPath, EU IVDR/ISO 15189,
+// 15189 Clause 7.2, CAP/CLIA § 493.1241, RCPath, EU IVDR/ISO 15189,
 // IANZ AS ISO 15189:2022, KAZA/KSP/KSLM, NATA/NPAAC — every real
 // jurisdiction PathScribe targets is a hard block here, never merely
 // advisory; see resolvePreAnalyticDateGateConfig.ts for the full,
@@ -22,9 +22,17 @@
 // Collection and receipt are independently required — a specimen can
 // be missing either one, both, or neither; only the genuinely missing
 // field(s) are shown per specimen.
+//
+// i18n note: `config.standardReference` and
+// `config.administrativeOverrideLabel` are real, resolved per-country
+// regulatory citation/label text (data, sourced from
+// resolvePreAnalyticDateGateConfig.ts) — interpolated into translated
+// sentences, never translated themselves. `s.label`/`s.description`
+// are likewise real specimen data.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { PreAnalyticDateGateConfig } from '@/services/billing/resolvePreAnalyticDateGateConfig';
 
@@ -73,6 +81,7 @@ interface RowState {
 const emptyRow = (): RowState => ({ collected: { mode: 'unset' }, received: { mode: 'unset' }, comment: '' });
 
 export const PreAnalyticDateGateModal: React.FC<Props> = ({ specimens, config, onContinue, onCancel }) => {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Record<string, RowState>>(
     Object.fromEntries(specimens.map(s => [s.specimenId, emptyRow()]))
   );
@@ -130,7 +139,7 @@ export const PreAnalyticDateGateModal: React.FC<Props> = ({ specimens, config, o
     const field = row[which];
     return (
       <div className="ps-fixgate-row-fields" key={which}>
-        <span className="ps-fixgate-row-title" style={{ minWidth: 90, display: 'inline-block' }}>{label}</span>
+        <span className="ps-fixgate-field-label">{label}</span>
         {field.mode !== 'override' ? (
           <>
             <input
@@ -143,13 +152,17 @@ export const PreAnalyticDateGateModal: React.FC<Props> = ({ specimens, config, o
               className="ps-btn-secondary ps-fixgate-unrecoverable-btn"
               onClick={() => patchRow(s.specimenId, { [which]: { mode: 'override' } } as Partial<RowState>)}
             >
-              Not recoverable — apply "{config.administrativeOverrideLabel}"
+              {t('preAnalyticDateGateModal.notRecoverableApply', { label: config.administrativeOverrideLabel })}
             </button>
           </>
         ) : (
           <>
-            <span className="ps-fixgate-unrecoverable-badge">Administrative override: "{config.administrativeOverrideLabel}"</span>
-            <button className="ps-btn-secondary" onClick={() => patchRow(s.specimenId, { [which]: { mode: 'unset' } } as Partial<RowState>)}>Undo</button>
+            <span className="ps-fixgate-unrecoverable-badge">
+              {t('preAnalyticDateGateModal.administrativeOverrideBadge', { label: config.administrativeOverrideLabel })}
+            </span>
+            <button className="ps-btn-secondary" onClick={() => patchRow(s.specimenId, { [which]: { mode: 'unset' } } as Partial<RowState>)}>
+              {t('caseTeamModal.dropZone.undoButton')}
+            </button>
           </>
         )}
       </div>
@@ -159,31 +172,29 @@ export const PreAnalyticDateGateModal: React.FC<Props> = ({ specimens, config, o
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal ps-ms-modal--wide">
-        <div className="ps-ms-header">⚠ Collection/Receipt Date Required Before Sign-Out</div>
+        <div className="ps-ms-header">⚠ {t('preAnalyticDateGateModal.header')}</div>
         <div className="ps-ms-body ps-fixgate-body">
           <p className="ps-fixgate-intro">
-            The specimen(s) below are missing a required pre-analytic date ({config.standardReference}).
-            Resolve each one to continue — either enter the real date/time, or confirm it truly isn't
-            recoverable, which applies this jurisdiction's designated administrative override and a
-            mandatory report disclaimer.
+            {t('preAnalyticDateGateModal.intro', { standardReference: config.standardReference })}
           </p>
 
           {specimens.map(s => {
             const row = rows[s.specimenId] ?? emptyRow();
             return (
               <div key={s.specimenId} className="ps-fixgate-row">
-                <div className="ps-fixgate-row-title">Specimen {s.label} — {s.description}</div>
-                {fieldRow(s, row, 'collected', 'Collected')}
-                {fieldRow(s, row, 'received', 'Received')}
+                <div className="ps-fixgate-row-title">
+                  {t('preAnalyticDateGateModal.specimenRowTitle', { label: s.label, description: s.description })}
+                </div>
+                {fieldRow(s, row, 'collected', t('preAnalyticDateGateModal.collectedLabel'))}
+                {fieldRow(s, row, 'received', t('preAnalyticDateGateModal.receivedLabel'))}
                 {usesOverride(row) && (
                   <div className="ps-fixgate-row-fields">
                     <input
                       type="text"
-                      className="ps-input-dark"
-                      placeholder="Required: why this date genuinely isn't recoverable"
+                      className="ps-input-dark ps-fixgate-comment-input"
+                      placeholder={t('preAnalyticDateGateModal.commentPlaceholder')}
                       value={row.comment}
                       onChange={e => patchRow(s.specimenId, { comment: e.target.value })}
-                      style={{ flex: 1 }}
                     />
                   </div>
                 )}
@@ -192,9 +203,9 @@ export const PreAnalyticDateGateModal: React.FC<Props> = ({ specimens, config, o
           })}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onCancel}>Cancel — don't sign out</button>
+          <button className="ps-ms-btn-cancel" onClick={onCancel}>{t('preAnalyticDateGateModal.cancelButton')}</button>
           <button className="ps-ms-btn-apply" onClick={handleContinue} disabled={!allResolved}>
-            Continue Sign-Out
+            {t('preAnalyticDateGateModal.continueButton')}
           </button>
         </div>
       </div>

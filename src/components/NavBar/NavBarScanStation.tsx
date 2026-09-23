@@ -31,6 +31,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
@@ -40,6 +41,7 @@ import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWo
 import { mockActionGroupService } from '@/services/actionGroups/mockActionGroupService';
 
 export function NavBarScanStation() {
+  const { t } = useTranslation();
   const { effectiveStationId, isDeviceLocked, isUserDefault, setStationId } = useEffectiveScanStation();
   const [stations, setStations] = useState<ScanStation[]>([]);
   const [open, setOpen] = useState(false);
@@ -131,7 +133,7 @@ export function NavBarScanStation() {
   };
 
   const current = stations.find(s => s.id === effectiveStationId);
-  const provenance = isDeviceLocked ? 'This terminal is fixed to this station' : isUserDefault ? 'Your own default station' : 'No scan station set';
+  const provenance = isDeviceLocked ? t('navBarScanStation.terminalFixed') : isUserDefault ? t('navBarScanStation.yourDefault') : t('navBarScanStation.noStationSet');
 
   return (
     <div className="ps-navbar-station-wrap">
@@ -140,18 +142,18 @@ export function NavBarScanStation() {
           type="button"
           className="ps-navbar-bench-btn"
           onClick={() => navigate(benchRoute)}
-          title={`Go to your bench for ${current?.name ?? 'this station'}`}
+          title={t('navBarScanStation.goToBenchFor', { station: current?.name ?? t('navBarScanStation.thisStation') })}
         >
-          🔬 Go to Bench
+          {t('navBarScanStation.goToBench')}
         </button>
       )}
       <button
         type="button"
         className="ps-navbar-station-btn"
         onClick={handleToggleOpen}
-        title={current ? `${provenance}: ${current.name} — click to change` : 'No scan station set — click to set one'}
+        title={current ? t('navBarScanStation.provenanceStationClickToChange', { provenance, station: current.name }) : t('navBarScanStation.noStationClickToSet')}
       >
-        📍 {current ? current.name : 'No station'}
+        📍 {current ? current.name : t('navBarScanStation.noStation')}
       </button>
       {open && (
         <div className="ps-navbar-station-menu">
@@ -167,7 +169,7 @@ export function NavBarScanStation() {
           ))}
           {isDeviceLocked && (
             <button className="ps-navbar-station-menu-item ps-navbar-station-menu-item--clear" onClick={() => { setStationId(null); setOpen(false); }}>
-              Clear this terminal's fixed station
+              {t('navBarScanStation.clearFixedStation')}
             </button>
           )}
         </div>

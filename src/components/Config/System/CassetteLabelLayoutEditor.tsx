@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 import { resolveCassetteLabelFitWarnings, CONSERVATIVE_DATAMATRIX_MODULE_COUNT } from '@/utils/labels/resolveCassetteLabelFitWarning';
@@ -31,9 +32,9 @@ import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileS
 // but doesn't want to look up or type exact mm values; both remain
 // fully editable afterward, since exact dimensions genuinely vary by
 // real vendor (Leica, Sakura, Primera) within each angle.
-const ANGLE_PRESETS: { id: string; label: string; widthMm: number; heightMm: number }[] = [
-  { id: '45deg', label: '45° cassette (~28.2 × 8.0mm)', widthMm: 28.2, heightMm: 8.0 },
-  { id: '35deg', label: '35° cassette (~28.5 × 7.0mm)', widthMm: 28.5, heightMm: 7.0 },
+const ANGLE_PRESETS: { id: string; labelKey: string; widthMm: number; heightMm: number }[] = [
+  { id: '45deg', labelKey: 'cassetteLabelLayoutEditor.presets.deg45', widthMm: 28.2, heightMm: 8.0 },
+  { id: '35deg', labelKey: 'cassetteLabelLayoutEditor.presets.deg35', widthMm: 28.5, heightMm: 7.0 },
 ];
 
 // Real sample content matching the reference layout discussed —
@@ -48,6 +49,7 @@ interface CassetteLabelLayoutEditorProps {
 }
 
 const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation();
   const [printers, setPrinters] = useState<PrinterProfile[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
   const [testGtin, setTestGtin] = useState<string>('');
@@ -93,17 +95,21 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
     );
     setSendingTest(false);
     setTestStatus(result.ok
-      ? { ok: true, message: `Test label sent to ${printer.model} (${printer.printerId}). Check the physical print against a real cassette before rolling this out.` }
+      ? { ok: true, message: t('cassetteLabelLayoutEditor.testPrint.successMessage', { model: printer.model, printerId: printer.printerId }) }
+      // The failure message comes from printCassetteLabel's own result
+      // (utils/labels/printCassetteSlideLabel.ts) — a shared utility
+      // with consumers well beyond this one screen (EmbeddingStationPage,
+      // SynopticReportPage), so its hardcoded English error text is
+      // intentionally left as-is here rather than converted as part of
+      // this file's own, narrower sweep.
       : { ok: false, message: (result as { ok: false; message: string }).message });
   };
 
   return (
     <div className="ps-conf-card ps-conf-card--spaced">
-      <div className="ps-conf-card-title">Cassette Label Layout</div>
+      <div className="ps-conf-card-title">{t('cassetteLabelLayoutEditor.title')}</div>
       <div className="ps-conf-card-description">
-        The real, physical dimensions of the cassette face this label prints onto — genuinely varies by cassette
-        vendor (Leica, Sakura, Primera) and by the cassette's own 35°/45° angle. Getting this wrong means content
-        prints past the real edge of the cassette, or a barcode too small to scan reliably.
+        {t('cassetteLabelLayoutEditor.description')}
       </div>
 
       <div className="ps-cassette-layout-preset-row">
@@ -115,14 +121,14 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
             disabled={readOnly}
             onClick={() => onChange({ faceWidthMm: preset.widthMm, faceHeightMm: preset.heightMm })}
           >
-            {preset.label}
+            {t(preset.labelKey)}
           </button>
         ))}
       </div>
 
       <div className="ps-cassette-layout-fields">
         <label className="ps-label">
-          Face width (mm)
+          {t('cassetteLabelLayoutEditor.fields.faceWidth')}
           <input
             className="ps-input-dark"
             type="number" step="0.1" min="1"
@@ -132,7 +138,7 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
           />
         </label>
         <label className="ps-label">
-          Face height (mm)
+          {t('cassetteLabelLayoutEditor.fields.faceHeight')}
           <input
             className="ps-input-dark"
             type="number" step="0.1" min="1"
@@ -142,7 +148,7 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
           />
         </label>
         <label className="ps-label">
-          Barcode module size (mm)
+          {t('cassetteLabelLayoutEditor.fields.moduleSize')}
           <input
             className="ps-input-dark"
             type="number" step="0.01" min="0.05"
@@ -152,7 +158,7 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
           />
         </label>
         <label className="ps-label">
-          Text line height (mm)
+          {t('cassetteLabelLayoutEditor.fields.fontHeight')}
           <input
             className="ps-input-dark"
             type="number" step="0.1" min="0.5"
@@ -170,14 +176,17 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
         <div className="ps-cassette-layout-warnings">
           {warnings.map((w, i) => (
             <div key={i} className="ps-conf-callout-banner ps-cassette-layout-warning">
-              <span className="ps-conf-callout-banner-text">⚠ {w.message}</span>
+              <span className="ps-conf-callout-banner-text">⚠ {t(
+                w.kind === 'height_overflow' ? 'cassetteLabelLayoutEditor.warnings.heightOverflow' : 'cassetteLabelLayoutEditor.warnings.widthOverflow',
+                { required: w.requiredMm, configured: w.configuredMm }
+              )}</span>
             </div>
           ))}
         </div>
       )}
       {warnings.length === 0 && (
         <div className="ps-cassette-layout-ok">
-          ✓ This configuration has room for a real, worst-case label at this module and font size.
+          ✓ {t('cassetteLabelLayoutEditor.okMessage')}
         </div>
       )}
 
@@ -188,7 +197,7 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
           then a real test print below. */}
       <div className="ps-cassette-layout-preview-wrap">
         <div className="ps-cassette-layout-preview-label">
-          Live preview (10× scale) — sample data, never sent anywhere
+          {t('cassetteLabelLayoutEditor.previewLabel')}
         </div>
         <svg
           className="ps-cassette-layout-preview-svg"
@@ -213,10 +222,9 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
       </div>
 
       <div className="ps-cassette-layout-testprint">
-        <div className="ps-conf-card-title ps-cassette-layout-testprint-title">Send a real test print</div>
+        <div className="ps-conf-card-title ps-cassette-layout-testprint-title">{t('cassetteLabelLayoutEditor.testPrint.title')}</div>
         <div className="ps-conf-card-description">
-          Prints the sample data above through a real, connected printer profile — hold the result against an
-          actual cassette before rolling this configuration out.
+          {t('cassetteLabelLayoutEditor.testPrint.description')}
         </div>
         <div className="ps-cassette-layout-testprint-row">
           <select
@@ -225,14 +233,14 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
             onChange={e => setSelectedPrinterId(e.target.value)}
             disabled={printers.length === 0}
           >
-            {printers.length === 0 && <option value="">No printer profiles configured</option>}
+            {printers.length === 0 && <option value="">{t('cassetteLabelLayoutEditor.testPrint.noPrinters')}</option>}
             {printers.map(p => (
               <option key={p.id} value={p.id}>{p.model} ({p.printerId})</option>
             ))}
           </select>
           <input
             className="ps-input-dark"
-            placeholder="Test GTIN (e.g. 00850000000000)"
+            placeholder={t('cassetteLabelLayoutEditor.testPrint.gtinPlaceholder')}
             value={testGtin}
             onChange={e => setTestGtin(e.target.value)}
             maxLength={14}
@@ -243,7 +251,7 @@ const CassetteLabelLayoutEditor: React.FC<CassetteLabelLayoutEditorProps> = ({ v
             disabled={sendingTest || !selectedPrinterId || !testGtin.trim()}
             onClick={handleSendTestPrint}
           >
-            {sendingTest ? 'Sending…' : 'Send Test Print'}
+            {sendingTest ? t('cassetteLabelLayoutEditor.testPrint.sending') : t('cassetteLabelLayoutEditor.testPrint.sendButton')}
           </button>
         </div>
         {testStatus && (

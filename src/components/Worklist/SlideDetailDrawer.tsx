@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { Case } from '@/types/case/Case';
 import type { WsiScanSlide } from '@/services/digitalPathology/IWsiScanBatchService';
@@ -33,13 +34,15 @@ interface SlideDetailDrawerProps {
   onRequestRescan?: () => void;
 }
 
-const SLIDE_STATUS_LABEL: Record<WsiScanSlide['scanStatus'], string> = {
-  pending: 'PENDING', scanning: 'SCANNING', completed: 'READY', failed: 'ERROR',
+const SLIDE_STATUS_LABEL_KEY: Record<WsiScanSlide['scanStatus'], string> = {
+  pending: 'slideDetailDrawer.status.pending', scanning: 'slideDetailDrawer.status.scanning',
+  completed: 'slideDetailDrawer.status.ready', failed: 'slideDetailDrawer.status.error',
 };
 
 export const SlideDetailDrawer: React.FC<SlideDetailDrawerProps> = ({
   caseData, slides, aiResult, onClose, onOpenCaseWorkspace, onRequestRescan,
 }) => {
+  const { t } = useTranslation();
   const readiness = resolveDigitalReadinessBadge(slides);
   const triage = resolveDpTriageBadge(aiResult);
   const accession = caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? caseData.id;
@@ -51,45 +54,57 @@ export const SlideDetailDrawer: React.FC<SlideDetailDrawerProps> = ({
       <div className="ps-slide-drawer" onClick={e => e.stopPropagation()}>
         <div className="ps-slide-drawer-header">
           <div>
-            <div className="ps-slide-drawer-title">Slide Details & AI Context</div>
-            <div className="ps-slide-drawer-subtitle">Accession: {accession} | Patient: {patientName} (MRN: {mrn})</div>
+            <div className="ps-slide-drawer-title">{t('slideDetailDrawer.title')}</div>
+            <div className="ps-slide-drawer-subtitle" data-phi="true">
+              {t('slideDetailDrawer.subtitle', { accession, patientName, mrn })}
+            </div>
           </div>
-          <button type="button" className="ps-slide-drawer-close" onClick={onClose} aria-label="Close">×</button>
+          <button type="button" className="ps-slide-drawer-close" onClick={onClose} aria-label={t('slideDetailDrawer.close')}>×</button>
         </div>
 
         <div className="ps-slide-drawer-section">
-          <div className="ps-slide-drawer-section-title">Case Readiness Summary</div>
+          <div className="ps-slide-drawer-section-title">{t('slideDetailDrawer.caseReadinessSummary')}</div>
           {readiness && (
-            <div className={`wl-dp-badge wl-dp-badge--${readiness.level}`} style={{ display: 'inline-block', marginBottom: 6 }}>
-              Status: {readiness.summaryText}
+            <div className={`wl-dp-badge wl-dp-badge--${readiness.level} sdd-readiness-badge`}>
+              {t('slideDetailDrawer.statusPrefix')} {readiness.summaryText}
             </div>
           )}
           {triage && (
-            <div className={`wl-dp-badge wl-dp-badge--${triage.level}`} style={{ display: 'block' }}>
-              AI Triage: {triage.primaryText}
+            <div className={`wl-dp-badge wl-dp-badge--${triage.level} sdd-triage-badge`}>
+              {t('slideDetailDrawer.aiTriagePrefix')} {triage.primaryText}
               {triage.biomarkerSummary && <div className="wl-dp-badge-sub">{triage.biomarkerSummary}</div>}
             </div>
           )}
-          {!readiness && !triage && <div className="ps-slide-drawer-empty">No real digital slide or AI data on file for this case yet.</div>}
+          {!readiness && !triage && <div className="ps-slide-drawer-empty">{t('slideDetailDrawer.noDigitalSlideData')}</div>}
         </div>
 
         <div className="ps-slide-drawer-section">
-          <div className="ps-slide-drawer-section-title">Slide Assets</div>
+          <div className="ps-slide-drawer-section-title">{t('slideDetailDrawer.slideAssets')}</div>
           {/* Real, honest limitation — see this file's own header
               comment: no real slide-to-block link exists yet, so each
               real slide is listed by its own slidePosition, the one
               real identifier the interface engine actually reports. */}
-          {slides.length === 0 && <div className="ps-slide-drawer-empty">No real WSI scan data on file for this case yet.</div>}
+          {slides.length === 0 && <div className="ps-slide-drawer-empty">{t('slideDetailDrawer.noWsiScanData')}</div>}
           {slides.map(s => (
               <div key={s.slidePosition} className="ps-slide-drawer-row">
-                <span className={`wl-dp-badge wl-dp-badge--${s.scanStatus === 'completed' && s.qcPassed !== false ? 'ready' : s.scanStatus === 'failed' || s.qcPassed === false ? 'error' : 'partial'}`}>
-                  {SLIDE_STATUS_LABEL[s.scanStatus]}
+                {/* Real bug fix (Jira sweep): wl-dp-badge's primary home is
+                    WorklistTable.tsx, where it's a full-width table-cell
+                    button (display: block; width: 100%). Reused here as a
+                    compact status pill sitting beside this row's own text —
+                    without this override it stretched to fill the flex row,
+                    squeezing ps-slide-drawer-row-body (flex: 1; min-width: 0)
+                    down to a sliver and wrapping "Slide position N" /
+                    accession text into unreadable fragments. */}
+                <span
+                  className={`wl-dp-badge wl-dp-badge--${s.scanStatus === 'completed' && s.qcPassed !== false ? 'ready' : s.scanStatus === 'failed' || s.qcPassed === false ? 'error' : 'partial'} sdd-status-pill`}
+                >
+                  {t(SLIDE_STATUS_LABEL_KEY[s.scanStatus])}
                 </span>
                 <div className="ps-slide-drawer-row-body">
-                  <div className="ps-slide-drawer-row-title">Slide position {s.slidePosition}</div>
+                  <div className="ps-slide-drawer-row-title">{t('slideDetailDrawer.slidePosition', { position: s.slidePosition })}</div>
                   <div className="ps-slide-drawer-row-meta">
-                    {s.acquisitionMode && <>Acquisition: {s.acquisitionMode}{s.focalPlaneCount ? ` (${s.focalPlaneCount} planes)` : ''} · </>}
-                    {s.failureReason && <>Note: {s.failureReason}</>}
+                    {s.acquisitionMode && <>{t('slideDetailDrawer.acquisitionLabel')} {s.acquisitionMode}{s.focalPlaneCount ? ` (${t('slideDetailDrawer.planesCount', { count: s.focalPlaneCount })})` : ''} · </>}
+                    {s.failureReason && <>{t('slideDetailDrawer.noteLabel')} {s.failureReason}</>}
                   </div>
                 </div>
               </div>
@@ -98,11 +113,11 @@ export const SlideDetailDrawer: React.FC<SlideDetailDrawerProps> = ({
 
         <div className="ps-slide-drawer-actions">
           <button type="button" className="ps-conf-btn-primary" onClick={onOpenCaseWorkspace}>
-            Open Case Workspace &amp; Synoptic Report
+            {t('slideDetailDrawer.openCaseWorkspace')}
           </button>
           {onRequestRescan && (
             <button type="button" className="ps-conf-btn-secondary" onClick={onRequestRescan}>
-              Request Re-scan / QC Overhaul
+              {t('slideDetailDrawer.requestRescan')}
             </button>
           )}
         </div>

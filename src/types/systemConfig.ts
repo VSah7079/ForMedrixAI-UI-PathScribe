@@ -255,19 +255,58 @@ export const JURISDICTION_LOCALE: Record<Jurisdiction, JurisdictionLocale> = {
 
 // ── Patient identifier standards ──────────────────────────────────────────────
 
+// i18n note: `label`/`format` used to be literal English strings.
+// Renamed to `labelKey`/`formatKey` — translation keys, resolved by
+// whichever caller has `t()` (IdentifierFormatsTab.tsx, AccessionPage.tsx
+// both already do; patientIdStatus.ts is a plain utility that passes
+// these through as `innerKeys` for PatientIdStatusDot.tsx to resolve,
+// same established pattern that file already uses for validation-reason
+// and NHS-status-code keys). This file itself never calls t() — it's a
+// plain data module, just storing key names now instead of text, same
+// shape as this app's existing `XXX_LABEL_KEY: Record<Enum, string>`
+// convention for other persisted/shared enum-like dictionaries.
+//
+// Content decision for `labelKey`, per jurisdiction: US ('MRN') and CA
+// ('Health Card Number') are genuinely translated per locale — generic
+// descriptive terms, not one single official proper name (matches this
+// app's own pre-existing precedent of translating "MRN" itself
+// elsewhere, e.g. headerBar.field.mrn: fr "IPP", de "Patienten-Nr.").
+// KR's label is likewise a descriptive English rendering of a Korean
+// concept (Resident Registration Number), not an English proper name,
+// so it's translated too. Every other jurisdiction's label (NHS Number,
+// CHI Number, H&C Number, PPS Number, IHI Number, NHI Number, and the
+// already-bilingual BE/NL/DE/FR national-ID names) is a real, official,
+// governing-body-assigned scheme name — standardized nomenclature that
+// stays the same literal text in every locale, same posture as this
+// app's "governing-body abbreviations stay literal" convention
+// elsewhere (STAT, CAPA). Every jurisdiction still gets a real
+// translation key for interface consistency; the literal ones simply
+// carry the same value across all 5 locale files by design, not
+// because they were missed.
+//
+// `formatKey` is translated for every jurisdiction — these are plain
+// descriptive text ("5–10 digits", "or", "total", "varies by
+// province"), not proper nouns. The placeholder-letter/digit pattern
+// segments themselves (e.g. "999 999 9999", "YYMMDD-XXX.XX") are
+// visual notation, not language content, and are kept as-is inside
+// each locale's translated string, same way a date-format token like
+// "MM/DD/YYYY" isn't itself translated.
+//
+// `example` stays a literal, untranslated real sample ID value in
+// every case — data, not UI copy.
 export interface PatientIdStandard {
-  label:     string;
+  labelKey:  string;
   pattern:   string;
-  format:    string;
+  formatKey: string;
   example:   string;
   luhnCheck: boolean;
 }
 
 export const PATIENT_ID_BY_JURISDICTION: Record<Jurisdiction, PatientIdStandard> = {
-  US:     { label: 'MRN',                pattern: '^\\d{5,10}$',                          format: '5–10 digits',                       example: '1234567',        luhnCheck: false },
-  CA:     { label: 'Health Card Number', pattern: '^[0-9A-Z]{9,12}$',                     format: '9–12 alphanumeric (varies by province)', example: '1234567890',  luhnCheck: false },
-  GB_EW:  { label: 'NHS Number',         pattern: '^\\d{3}[\\s-]?\\d{3}[\\s-]?\\d{4}$', format: '999 999 9999',                       example: '943 476 5919',   luhnCheck: true  },
-  GB_SCT: { label: 'CHI Number',         pattern: '^\\d{10}$',                            format: 'DDMMYY9999 (10 digits)',             example: '1401740054',     luhnCheck: false },
+  US:     { labelKey: 'headerBar.field.mrn',                        pattern: '^\\d{5,10}$',                          formatKey: 'systemConfig.patientIdStandard.US.format',     example: '1234567',        luhnCheck: false },
+  CA:     { labelKey: 'systemConfig.patientIdStandard.CA.label',    pattern: '^[0-9A-Z]{9,12}$',                     formatKey: 'systemConfig.patientIdStandard.CA.format',     example: '1234567890',     luhnCheck: false },
+  GB_EW:  { labelKey: 'systemConfig.patientIdStandard.GB_EW.label', pattern: '^\\d{3}[\\s-]?\\d{3}[\\s-]?\\d{4}$', formatKey: 'systemConfig.patientIdStandard.GB_EW.format', example: '943 476 5919',   luhnCheck: true  },
+  GB_SCT: { labelKey: 'systemConfig.patientIdStandard.GB_SCT.label',pattern: '^\\d{10}$',                            formatKey: 'systemConfig.patientIdStandard.GB_SCT.format', example: '1401740054',    luhnCheck: false },
   // Real fix, per direct, authoritative specification: this entry
   // previously described a letters-then-digits format ('AA99999'),
   // which was wrong — a real H&C Number is 10 all-numeric digits,
@@ -278,10 +317,10 @@ export const PATIENT_ID_BY_JURISDICTION: Record<Jurisdiction, PatientIdStandard>
   // '3201234567' is a genuinely valid example — computed, not
   // fabricated — its own check digit (7) was verified against this
   // same Modulus 11 algorithm before use here.
-  GB_NIR: { label: 'H&C Number',         pattern: '^3[2-9]\\d{8}$',                      format: '10 digits (3,200,000,001–3,999,999,999)', example: '3201234567',   luhnCheck: false },
-  IE:     { label: 'PPS Number',         pattern: '^\\d{7}[A-Z]{1,2}$',                  format: '9999999A or 9999999AA',              example: '1234567T',       luhnCheck: false },
-  AU:     { label: 'IHI Number',         pattern: '^800360\\d{10}$',                      format: '800360 + 10 digits (16 total)',      example: '8003601234567890',luhnCheck: true  },
-  NZ:     { label: 'NHI Number',         pattern: '^[A-Z]{3}\\d{4}$|^[A-Z]{3}\\d{2}[A-Z]{2}$', format: 'AAA9999 or AAA99AA',         example: 'ZZZ0016',        luhnCheck: true  },
+  GB_NIR: { labelKey: 'systemConfig.patientIdStandard.GB_NIR.label', pattern: '^3[2-9]\\d{8}$',                      formatKey: 'systemConfig.patientIdStandard.GB_NIR.format', example: '3201234567',    luhnCheck: false },
+  IE:     { labelKey: 'systemConfig.patientIdStandard.IE.label',     pattern: '^\\d{7}[A-Z]{1,2}$',                  formatKey: 'systemConfig.patientIdStandard.IE.format',     example: '1234567T',      luhnCheck: false },
+  AU:     { labelKey: 'systemConfig.patientIdStandard.AU.label',     pattern: '^800360\\d{10}$',                      formatKey: 'systemConfig.patientIdStandard.AU.format',     example: '8003601234567890',luhnCheck: true  },
+  NZ:     { labelKey: 'systemConfig.patientIdStandard.NZ.label',     pattern: '^[A-Z]{3}\\d{4}$|^[A-Z]{3}\\d{2}[A-Z]{2}$', formatKey: 'systemConfig.patientIdStandard.NZ.format', example: 'ZZZ0016',       luhnCheck: true  },
   // Real, cited structure — Resident Registration Number (RRN,
   // 주민등록번호): 13 digits total, birth date (YYMMDD) + hyphen +
   // gender/century digit + regional/serial digits + a real check
@@ -297,7 +336,7 @@ export const PATIENT_ID_BY_JURISDICTION: Record<Jurisdiction, PatientIdStandard>
   // H&C Number check digit was (see that entry's own comment) before
   // this was written; don't treat this pattern as validating,
   // wire-verified input.
-  KR:     { label: 'Resident Registration Number (RRN)', pattern: '^\\d{6}-[1-4]\\d{6}$', format: 'YYMMDD-GXXXXXX (13 digits)',      example: '900101-1234567', luhnCheck: false },
+  KR:     { labelKey: 'systemConfig.patientIdStandard.KR.label', pattern: '^\\d{6}-[1-4]\\d{6}$', formatKey: 'systemConfig.patientIdStandard.KR.format',      example: '900101-1234567', luhnCheck: false },
   // Real, cited structures — see this file's own Jurisdiction doc
   // comment above for the full research each of these four traces to.
   // BE/NL/FR share the same real sensitivity pattern as KR above (a
@@ -309,7 +348,7 @@ export const PATIENT_ID_BY_JURISDICTION: Record<Jurisdiction, PatientIdStandard>
   // via a real, published Rijksregisternummer validation library
   // before use here, not guessed), reformatted with this file's own
   // separator convention (YYMMDD-XXX.CC).
-  BE:     { label: 'Rijksregisternummer / Numéro de registre national', pattern: '^\\d{6}-\\d{3}\\.\\d{2}$', format: 'YYMMDD-XXX.XX (11 digits)', example: '660410-666.00', luhnCheck: true  },
+  BE:     { labelKey: 'systemConfig.patientIdStandard.BE.label', pattern: '^\\d{6}-\\d{3}\\.\\d{2}$', formatKey: 'systemConfig.patientIdStandard.BE.format', example: '660410-666.00', luhnCheck: true  },
   // Real, computable elfproef (eleven-test) checksum, weights
   // [9,8,7,6,5,4,3,2,-1] — confirmed with a real, valid worked
   // example (111222333, weighted sum 66, divisible by 11) before use
@@ -318,15 +357,15 @@ export const PATIENT_ID_BY_JURISDICTION: Record<Jurisdiction, PatientIdStandard>
   // established, loosely-named convention elsewhere in this file
   // (e.g. GB_EW's own NHS Number uses Modulus 11, not literal Luhn,
   // and is marked true for the same reason).
-  NL:     { label: 'BSN (Burgerservicenummer)',        pattern: '^\\d{8,9}$',            format: '8 or 9 digits',               example: '111222333',      luhnCheck: true  },
-  DE:     { label: 'KVNR (Krankenversichertennummer)', pattern: '^[A-Z]\\d{9}$',          format: '1 letter + 9 digits (10 total)', example: 'A123456789',   luhnCheck: false },
+  NL:     { labelKey: 'systemConfig.patientIdStandard.NL.label', pattern: '^\\d{8,9}$',            formatKey: 'systemConfig.patientIdStandard.NL.format',    example: '111222333',    luhnCheck: true  },
+  DE:     { labelKey: 'systemConfig.patientIdStandard.DE.label', pattern: '^[A-Z]\\d{9}$',          formatKey: 'systemConfig.patientIdStandard.DE.format',    example: 'A123456789',  luhnCheck: false },
   // Real, well-documented Modulus 97 check key (13-digit
   // identification: 1 sex + 2 year + 2 month + 5 place + 3 order,
   // followed by a 2-digit check = 15 total). Example genuinely
   // computed, not guessed: base 1831269123456, mod 97 = 40, check
   // key = 97-40 = 57, giving 183126912345657 — verified valid before
   // use here, the same discipline as NL's own BSN example above.
-  FR:     { label: 'INS (numéro de sécurité sociale / NIR)', pattern: '^[12]\\d{2}(0[1-9]|1[0-2])\\d{10}$', format: 'SYYMMDDDDDDDCC (15 digits)', example: '183126912345657', luhnCheck: true  },
+  FR:     { labelKey: 'systemConfig.patientIdStandard.FR.label', pattern: '^[12]\\d{2}(0[1-9]|1[0-2])\\d{10}$', formatKey: 'systemConfig.patientIdStandard.FR.format', example: '183126912345657', luhnCheck: true  },
 };
 
 

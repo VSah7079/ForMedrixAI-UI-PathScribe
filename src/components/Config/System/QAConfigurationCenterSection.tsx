@@ -35,10 +35,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import { qaActivityTypeService, qaSupervisionAssignmentTypeService, deficiencyTypeService } from '../../../services';
+import { qaActivityTypeService, qaSupervisionAssignmentTypeService, deficiencyTypeService, subspecialtyService } from '../../../services';
 import type { QaActivityType } from '@/types/quality/QaActivityType';
-import type { QaSupervisionAssignmentType } from '@/types/quality/QaSupervisionAssignmentType';
+import type { QaSupervisionAssignmentType, ExpectedCaseMixTarget } from '@/types/quality/QaSupervisionAssignmentType';
+import type { Subspecialty } from '@/services';
 import type { QaDiscordanceSeverity } from '@/types/quality/QaActivityRecord';
 import type { DeficiencyType } from '@/services/deficiencies/IDeficiencyService';
 import { getCurrentJurisdiction } from '@/services/retentionPolicy/RetentionPolicy';
@@ -54,11 +56,22 @@ type UnifiedEntry =
 
 const SEVERITY_OPTIONS: QaDiscordanceSeverity[] = ['low', 'medium', 'high'];
 
+// Data-key-stays-English, label-is-translated: QaDiscordanceSeverity
+// ('low'/'medium'/'high') is the real stored value on capaTriggerRule —
+// only the displayed checkbox text is translated.
+const SEVERITY_LABEL_KEY: Record<QaDiscordanceSeverity, string> = {
+  low: 'qaConfigurationCenterSection.modal.severity.low',
+  medium: 'qaConfigurationCenterSection.modal.severity.medium',
+  high: 'qaConfigurationCenterSection.modal.severity.high',
+};
+
 const QAConfigurationCenterSection: React.FC = () => {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<QaConfigTab>('standard');
   const [reviewTypes, setReviewTypes] = useState<QaActivityType[]>([]);
   const [supervisionTypes, setSupervisionTypes] = useState<QaSupervisionAssignmentType[]>([]);
   const [deficiencyTypes, setDeficiencyTypes] = useState<DeficiencyType[]>([]);
+  const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<{ mode: 'edit' | 'duplicate' | 'add'; unified: UnifiedEntry } | null>(null);
   const [addPicker, setAddPicker] = useState(false);
@@ -66,11 +79,12 @@ const QAConfigurationCenterSection: React.FC = () => {
   const currentJurisdiction = getCurrentJurisdiction();
 
   const load = () => {
-    Promise.all([qaActivityTypeService.getAll(), qaSupervisionAssignmentTypeService.getAll(), deficiencyTypeService.getAll()])
-      .then(([r, s, d]) => {
+    Promise.all([qaActivityTypeService.getAll(), qaSupervisionAssignmentTypeService.getAll(), deficiencyTypeService.getAll(), subspecialtyService.getAll()])
+      .then(([r, s, d, sub]) => {
         if (r.ok) setReviewTypes(r.data);
         if (s.ok) setSupervisionTypes(s.data);
         if (d.ok) setDeficiencyTypes(d.data.filter(dt => dt.status === 'Active'));
+        if (sub.ok) setSubspecialties(sub.data);
         setLoading(false);
       });
   };
@@ -91,7 +105,7 @@ const QAConfigurationCenterSection: React.FC = () => {
     return true;
   });
 
-  const archetypeLabel = (kind: ArchetypeKind) => kind === 'review' ? 'Review-with-Outcome' : 'Supervision / Assignment';
+  const archetypeLabel = (kind: ArchetypeKind) => kind === 'review' ? t('qaConfigurationCenterSection.archetypeLabel.review') : t('qaConfigurationCenterSection.archetypeLabel.supervision');
 
   const handleDuplicate = (u: UnifiedEntry) => {
     // Real fix, caught before this ever shipped: without a fresh id
@@ -111,53 +125,50 @@ const QAConfigurationCenterSection: React.FC = () => {
   const handleToggleActive = async (u: UnifiedEntry) => {
     if (u.kind === 'review') {
       const res = u.entry.active ? await qaActivityTypeService.deactivate(u.entry.id) : await qaActivityTypeService.reactivate(u.entry.id);
-      if (res.ok) setReviewTypes(prev => prev.map(t => t.id === res.data.id ? res.data : t));
+      if (res.ok) setReviewTypes(prev => prev.map(rt => rt.id === res.data.id ? res.data : rt));
     } else {
       const res = u.entry.active ? await qaSupervisionAssignmentTypeService.deactivate(u.entry.id) : await qaSupervisionAssignmentTypeService.reactivate(u.entry.id);
-      if (res.ok) setSupervisionTypes(prev => prev.map(t => t.id === res.data.id ? res.data : t));
+      if (res.ok) setSupervisionTypes(prev => prev.map(rt => rt.id === res.data.id ? res.data : rt));
     }
   };
 
   const handleSave = async (u: UnifiedEntry) => {
     if (u.kind === 'review') {
       const { id, createdAt, ...rest } = u.entry;
-      const exists = reviewTypes.some(t => t.id === id);
+      const exists = reviewTypes.some(rt => rt.id === id);
       const res = exists ? await qaActivityTypeService.update(id, rest) : await qaActivityTypeService.add(rest);
-      if (res.ok) setReviewTypes(prev => exists ? prev.map(t => t.id === res.data.id ? res.data : t) : [...prev, res.data]);
+      if (res.ok) setReviewTypes(prev => exists ? prev.map(rt => rt.id === res.data.id ? res.data : rt) : [...prev, res.data]);
     } else {
       const { id, createdAt, ...rest } = u.entry;
-      const exists = supervisionTypes.some(t => t.id === id);
+      const exists = supervisionTypes.some(rt => rt.id === id);
       const res = exists ? await qaSupervisionAssignmentTypeService.update(id, rest) : await qaSupervisionAssignmentTypeService.add(rest);
-      if (res.ok) setSupervisionTypes(prev => exists ? prev.map(t => t.id === res.data.id ? res.data : t) : [...prev, res.data]);
+      if (res.ok) setSupervisionTypes(prev => exists ? prev.map(rt => rt.id === res.data.id ? res.data : rt) : [...prev, res.data]);
     }
     setModal(null);
     setTab('custom'); // a duplicate/new-add always lands in Custom — follow it there
   };
 
-  if (loading) return <div className="ps-conf-section-subtitle">Loading QA activity configuration…</div>;
+  if (loading) return <div className="ps-conf-section-subtitle">{t('qaConfigurationCenterSection.loading')}</div>;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">QA Configuration Center</h3>
+          <h3 className="ps-conf-section-title">{t('qaConfigurationCenterSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Activities are built on one of two real archetypes — Review-with-Outcome (a case gets reviewed and
-            graded, e.g. Frozen vs Final Correlation) or Supervision/Assignment (a provider is supervised over a
-            case-count or duration period, e.g. FPPE). Standard activities are PathScribe-curated for your
-            jurisdiction ({currentJurisdiction}) and can't be disabled here — duplicate one to customize it.
+            {t('qaConfigurationCenterSection.subtitle', { jurisdiction: currentJurisdiction })}
           </p>
         </div>
       </div>
 
       <div className="ps-tab-bar">
-        <button className={`ps-tab-btn ${tab === 'standard' ? 'active' : ''}`} onClick={() => setTab('standard')}>Standard</button>
-        <button className={`ps-tab-btn ${tab === 'custom' ? 'active' : ''}`} onClick={() => setTab('custom')}>Custom</button>
+        <button className={`ps-tab-btn ${tab === 'standard' ? 'active' : ''}`} onClick={() => setTab('standard')}>{t('qaConfigurationCenterSection.tabs.standard')}</button>
+        <button className={`ps-tab-btn ${tab === 'custom' ? 'active' : ''}`} onClick={() => setTab('custom')}>{t('qaConfigurationCenterSection.tabs.custom')}</button>
       </div>
 
       {tab === 'custom' && (
         <div className="ps-conf-form-row">
-          <button className="ps-conf-btn-primary" onClick={() => setAddPicker(true)}>+ Add Custom Activity</button>
+          <button className="ps-conf-btn-primary" onClick={() => setAddPicker(true)}>{t('qaConfigurationCenterSection.addCustomActivityButton')}</button>
         </div>
       )}
 
@@ -165,13 +176,13 @@ const QAConfigurationCenterSection: React.FC = () => {
         <table className="ps-conf-table">
           <thead>
             <tr>
-              <th className="ps-conf-th">Name</th>
-              <th className="ps-conf-th">Archetype</th>
-              {tab === 'standard' && <th className="ps-conf-th">Jurisdictions</th>}
-              <th className="ps-conf-th">Sampling %</th>
-              <th className="ps-conf-th">CAPA Trigger</th>
-              <th className="ps-conf-th">Status</th>
-              <th className="ps-conf-th">Actions</th>
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.name')}</th>
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.archetype')}</th>
+              {tab === 'standard' && <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.jurisdictions')}</th>}
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.samplingPercent')}</th>
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.capaTrigger')}</th>
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.status')}</th>
+              <th className="ps-conf-th">{t('qaConfigurationCenterSection.table.headers.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -182,7 +193,7 @@ const QAConfigurationCenterSection: React.FC = () => {
                   {u.entry.description && <div className="ps-conf-identity-sub">{u.entry.description}</div>}
                 </td>
                 <td className="ps-conf-td">{archetypeLabel(u.kind)}</td>
-                {tab === 'standard' && <td className="ps-conf-td">{u.entry.jurisdictions?.join(', ') ?? 'All'}</td>}
+                {tab === 'standard' && <td className="ps-conf-td">{u.entry.jurisdictions?.join(', ') ?? t('qaConfigurationCenterSection.table.jurisdictionsAll')}</td>}
                 <td className="ps-conf-td">{u.kind === 'review' ? (u.entry.samplingPercentage ? `${u.entry.samplingPercentage}%` : '—') : '—'}</td>
                 <td className="ps-conf-td">
                   {u.kind === 'review' && u.entry.capaTriggerRule?.triggerSeverities?.length
@@ -192,21 +203,21 @@ const QAConfigurationCenterSection: React.FC = () => {
                 <td className="ps-conf-td">
                   <div className="ps-conf-status-cell">
                     <span className={`ps-conf-status-dot ${u.entry.active ? 'ps-conf-status-dot--active' : ''}`} />
-                    <span className={`ps-conf-status-text ${u.entry.active ? 'ps-conf-status-text--active' : ''}`}>{u.entry.active ? 'Active' : 'Inactive'}</span>
+                    <span className={`ps-conf-status-text ${u.entry.active ? 'ps-conf-status-text--active' : ''}`}>{u.entry.active ? t('common.active') : t('common.inactive')}</span>
                   </div>
                 </td>
                 <td className="ps-conf-td">
                   <div className="ps-conf-row-actions">
                     <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', unified: u })}>
-                      {tab === 'standard' ? 'Configure' : 'Edit'}
+                      {tab === 'standard' ? t('qaConfigurationCenterSection.table.configure') : t('common.edit')}
                     </button>
-                    <button className="ps-conf-btn-row" onClick={() => handleDuplicate(u)}>Duplicate</button>
+                    <button className="ps-conf-btn-row" onClick={() => handleDuplicate(u)}>{t('common.duplicate')}</button>
                     {/* Real, deliberate absence: no Deactivate/Reactivate button renders
                         at all for the Standard tab — not disabled, not hidden behind a
                         permission check, simply never rendered in this branch. */}
                     {tab === 'custom' && (
                       <button className="ps-conf-btn-row" onClick={() => handleToggleActive(u)}>
-                        {u.entry.active ? 'Deactivate' : 'Reactivate'}
+                        {u.entry.active ? t('common.deactivate') : t('common.reactivate')}
                       </button>
                     )}
                   </div>
@@ -215,7 +226,7 @@ const QAConfigurationCenterSection: React.FC = () => {
             ))}
             {filtered.length === 0 && (
               <tr><td className="ps-conf-empty-row" colSpan={tab === 'standard' ? 7 : 6}>
-                {tab === 'standard' ? `No Standard activities apply to ${currentJurisdiction}.` : 'No Custom activities yet — duplicate a Standard activity to get started.'}
+                {tab === 'standard' ? t('qaConfigurationCenterSection.table.emptyStandard', { jurisdiction: currentJurisdiction }) : t('qaConfigurationCenterSection.table.emptyCustom')}
               </td></tr>
             )}
           </tbody>
@@ -225,12 +236,10 @@ const QAConfigurationCenterSection: React.FC = () => {
       {addPicker && (
         <div className="ps-ms-overlay" onClick={() => setAddPicker(false)}>
           <div className="ps-ms-modal" onClick={e => e.stopPropagation()}>
-            <div className="ps-ms-header">Add Custom Activity</div>
+            <div className="ps-ms-header">{t('qaConfigurationCenterSection.addPicker.header')}</div>
             <div className="ps-ms-body">
               <p className="ps-conf-section-subtitle">
-                Most sites duplicate an existing Standard or Custom activity instead — it's the faster path since
-                the review fields (or supervision scope) come pre-built. Starting from scratch here still works,
-                with a minimal default.
+                {t('qaConfigurationCenterSection.addPicker.body')}
               </p>
               <button className="ps-conf-btn-primary" onClick={() => {
                 setAddPicker(false);
@@ -243,7 +252,7 @@ const QAConfigurationCenterSection: React.FC = () => {
                     },
                   },
                 });
-              }}>New Review-with-Outcome Activity</button>
+              }}>{t('qaConfigurationCenterSection.addPicker.newReviewButton')}</button>
               <button className="ps-conf-btn-secondary" onClick={() => {
                 setAddPicker(false);
                 setModal({
@@ -254,9 +263,9 @@ const QAConfigurationCenterSection: React.FC = () => {
                     },
                   },
                 });
-              }}>New Supervision/Assignment Activity</button>
+              }}>{t('qaConfigurationCenterSection.addPicker.newSupervisionButton')}</button>
               <div className="ps-ms-footer">
-                <button className="ps-ms-btn-cancel" onClick={() => setAddPicker(false)}>Cancel</button>
+                <button className="ps-ms-btn-cancel" onClick={() => setAddPicker(false)}>{t('common.cancel')}</button>
               </div>
             </div>
           </div>
@@ -268,6 +277,7 @@ const QAConfigurationCenterSection: React.FC = () => {
           unified={modal.unified}
           mode={modal.mode}
           deficiencyTypes={deficiencyTypes}
+          subspecialties={subspecialties}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />
@@ -282,15 +292,30 @@ const ActivityConfigModal: React.FC<{
   unified: UnifiedEntry;
   mode: 'edit' | 'duplicate' | 'add';
   deficiencyTypes: DeficiencyType[];
+  subspecialties: Subspecialty[];
   onSave: (u: UnifiedEntry) => void;
   onClose: () => void;
-}> = ({ unified, mode, deficiencyTypes, onSave, onClose }) => {
+}> = ({ unified, mode, deficiencyTypes, subspecialties, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<UnifiedEntry>(unified);
   const isStandard = unified.entry.tabScope === 'standard' && mode === 'edit';
 
   const setEntry = (patch: Partial<QaActivityType> | Partial<QaSupervisionAssignmentType>) => {
     setDraft(prev => ({ ...prev, entry: { ...prev.entry, ...patch } } as UnifiedEntry));
   };
+
+  // Real, per direct follow-up on the resident/mentor case-mix review —
+  // an org-wide default set once per supervision type (see
+  // ExpectedCaseMixTarget's own doc comment for why the type, not the
+  // individual assignment). Additive only: a type with an empty array
+  // behaves identically to one with the field left undefined.
+  const caseMixTargets: ExpectedCaseMixTarget[] =
+    draft.kind === 'supervision' ? (draft.entry.expectedCaseMix ?? []) : [];
+  const setCaseMixTargets = (targets: ExpectedCaseMixTarget[]) => {
+    if (draft.kind !== 'supervision') return;
+    setEntry({ expectedCaseMix: targets });
+  };
+  const unusedSubspecialties = subspecialties.filter(s => !caseMixTargets.some(cmt => cmt.subspecialtyId === s.id));
 
   const toggleSeverity = (sev: QaDiscordanceSeverity) => {
     if (draft.kind !== 'review') return;
@@ -303,7 +328,9 @@ const ActivityConfigModal: React.FC<{
     <div className="ps-ms-overlay" onClick={onClose}>
       <div className="ps-ms-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Custom Activity' : mode === 'duplicate' ? `Duplicate — ${unified.entry.name.replace(' (Copy)', '')}` : (isStandard ? `Configure — ${draft.entry.name}` : `Edit — ${draft.entry.name}`)}
+          {mode === 'add' ? t('qaConfigurationCenterSection.addPicker.header')
+            : mode === 'duplicate' ? t('qaConfigurationCenterSection.modal.headerDuplicate', { name: unified.entry.name.replace(' (Copy)', '') })
+            : (isStandard ? t('qaConfigurationCenterSection.modal.headerConfigure', { name: draft.entry.name }) : t('qaConfigurationCenterSection.modal.headerEdit', { name: draft.entry.name }))}
         </div>
         <div className="ps-ms-body">
           {/* Real, deliberate boundary: name/description are the curated
@@ -311,13 +338,13 @@ const ActivityConfigModal: React.FC<{
               this entry has no disable control either, matching "PathScribe-
               curated" in spirit. Fully editable for Custom/duplicate/add. */}
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Name</label>
+            <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.nameLabel')}</label>
             {isStandard
               ? <p className="ps-conf-identity-name">{draft.entry.name}</p>
               : <input className="ps-conf-input" value={draft.entry.name} onChange={e => setEntry({ name: e.target.value })} />}
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
+            <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.descriptionLabel')}</label>
             {isStandard
               ? <p className="ps-conf-section-subtitle">{draft.entry.description || '—'}</p>
               : <textarea className="ps-conf-input ps-conf-textarea" value={draft.entry.description ?? ''} onChange={e => setEntry({ description: e.target.value })} />}
@@ -326,63 +353,111 @@ const ActivityConfigModal: React.FC<{
           {draft.kind === 'review' && (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Review Fields (from Duplicate — read-only here)</label>
+                <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.reviewFieldsLabel')}</label>
                 <ul>
-                  {draft.entry.fields.map(f => <li key={f.id} className="ps-conf-section-subtitle">{f.label} ({f.type}{f.required ? ', required' : ''})</li>)}
+                  {/* f.label/f.type are the real, persisted field-schema definition
+                      (admin-authored when the field was created) - left as-is, same
+                      "real dictionary content admins type in" convention as every
+                      other real record's own name/label text in this app. */}
+                  {draft.entry.fields.map(f => <li key={f.id} className="ps-conf-section-subtitle">{f.label} ({f.type}{f.required ? `, ${t('qaConfigurationCenterSection.modal.requiredSuffix')}` : ''})</li>)}
                 </ul>
               </div>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label">
                   <input type="checkbox" checked={draft.entry.teachingOnboardingEnabled} disabled={isStandard}
                     onChange={e => setEntry({ teachingOnboardingEnabled: e.target.checked })} />
-                  {' '}Capture Teaching & Onboarding Feedback
+                  {' '}{t('qaConfigurationCenterSection.modal.teachingCheckboxLabel')}
                 </label>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">Sampling Percentage</label>
+                <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.samplingLabel')}</label>
                 <input className="ps-conf-input" type="number" min={0} max={100} value={draft.entry.samplingPercentage ?? ''}
                   onChange={e => setEntry({ samplingPercentage: e.target.value ? Number(e.target.value) : undefined })} />
                 <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                  Fraction of eligible cases randomly selected for this activity. Blank = no automatic sampling.
+                  {t('qaConfigurationCenterSection.modal.samplingHint')}
                 </p>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">CAPA Trigger — raise a deficiency automatically when</label>
+                <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.capaTriggerLabel')}</label>
                 <div className="ps-conf-form-row">
                   {SEVERITY_OPTIONS.map(sev => (
                     <label key={sev} className="ps-conf-label">
                       <input type="checkbox" checked={(draft.entry.capaTriggerRule?.triggerSeverities ?? []).includes(sev)}
                         onChange={() => toggleSeverity(sev)} />
-                      {' '}{sev}
+                      {' '}{t(SEVERITY_LABEL_KEY[sev])}
                     </label>
                   ))}
                 </div>
                 <select className="ps-conf-select" value={draft.entry.capaTriggerRule?.deficiencyTypeId ?? ''}
                   onChange={e => setEntry({ capaTriggerRule: { ...draft.entry.capaTriggerRule, deficiencyTypeId: e.target.value || undefined } })}>
-                  <option value="">— No deficiency type selected —</option>
+                  <option value="">{t('qaConfigurationCenterSection.modal.noDeficiencyOption')}</option>
                   {deficiencyTypes.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
                 <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
-                  Discordant severity is still always recorded either way — this only controls whether it also raises a real deficiency automatically.
+                  {t('qaConfigurationCenterSection.modal.capaTriggerHint')}
                 </p>
               </div>
             </>
           )}
 
+          {draft.kind === 'supervision' && (
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.expectedCaseMixLabel')}</label>
+              <p className="ps-conf-section-subtitle">
+                {t('qaConfigurationCenterSection.modal.expectedCaseMixHint')}
+              </p>
+              {caseMixTargets.map((cmt, i) => (
+                <div key={cmt.subspecialtyId} className="ps-conf-form-row--3">
+                  <span className="ps-conf-identity-name">{subspecialties.find(s => s.id === cmt.subspecialtyId)?.name ?? cmt.subspecialtyId}</span>
+                  <input
+                    className="ps-conf-input"
+                    type="number"
+                    min={1}
+                    value={cmt.minCount}
+                    onChange={e => {
+                      const next = [...caseMixTargets];
+                      next[i] = { ...cmt, minCount: e.target.value ? Number(e.target.value) : 1 };
+                      setCaseMixTargets(next);
+                    }}
+                  />
+                  <button
+                    className="ps-conf-btn-secondary"
+                    onClick={() => setCaseMixTargets(caseMixTargets.filter(x => x.subspecialtyId !== cmt.subspecialtyId))}
+                  >
+                    {t('qaConfigurationCenterSection.modal.removeButton')}
+                  </button>
+                </div>
+              ))}
+              {unusedSubspecialties.length > 0 && (
+                <select
+                  className="ps-conf-select"
+                  value=""
+                  onChange={e => {
+                    if (!e.target.value) return;
+                    setCaseMixTargets([...caseMixTargets, { subspecialtyId: e.target.value, minCount: 1 }]);
+                  }}
+                >
+                  <option value="">{t('qaConfigurationCenterSection.modal.addSubspecialtyOption')}</option>
+                  {unusedSubspecialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('qaConfigurationCenterSection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => setEntry({ active: !draft.entry.active })} className={`ps-conf-toggle-track ${draft.entry.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.entry.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.entry.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.entry.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.entry.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={() => onSave(draft)}>
-            {mode === 'add' ? 'Add' : mode === 'duplicate' ? 'Create Duplicate' : 'Save Changes'}
+            {mode === 'add' ? t('qaConfigurationCenterSection.modal.saveButtons.add') : mode === 'duplicate' ? t('qaConfigurationCenterSection.modal.saveButtons.createDuplicate') : t('qaConfigurationCenterSection.modal.saveButtons.saveChanges')}
           </button>
         </div>
       </div>

@@ -24,8 +24,32 @@
 //   7. role only (no institutional/anatomic scope, e.g. training-program-
 //      wide "Resident" targets)
 //   8. system default (no dimensions)
+//
+// i18n sweep (batch 59): every on-screen label, placeholder, button,
+// table/filter/simulator string, and validation message now goes through
+// a new `tatConfigSection` namespace. TAT_TYPE_LABELS/TAT_TYPE_DESC became
+// TAT_TYPE_LABEL_KEY/TAT_TYPE_DESC_KEY (the same "*_LABEL_KEY resolves to
+// an i18n key" pattern used elsewhere in this sweep), and the 4 fixed Role
+// values (Resident/Fellow/Pathologist/External) got their own ROLE_LABEL_KEY/
+// ROLE_GROUP_LABEL_KEY maps - the stored roleId/type values themselves are
+// unchanged. getTatTypeLabel/getTatTypeDescription/formatHours are plain
+// functions used outside component scope, so `t` is now threaded through
+// as an explicit parameter rather than called via a hook. Real data stays
+// untranslated: every resolved facility/lab/specimen/subspecialty NAME
+// (facilityName/labName/specimenName/subName), real QA Activity Type names
+// and admin-authored descriptions, and free-text admin notes are shown
+// exactly as stored. The live "Applies to ..." resolution-preview sentence
+// is built by joining several independently-translated fragments in a
+// fixed English clause order - fully localizing that word order would need
+// a larger content redesign and is out of scope for this pass; flagged in
+// the README as a known limitation. Loop variables that previously shadowed
+// the new `t` translation function (`TAT_TYPES.map(t => ...)`,
+// `qaActivityTypes.map(t => ...)`, etc.) were renamed.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { subspecialtyService, qaActivityTypeService } from '../../../services';
 import type { QaActivityType } from '@/types/quality/QaActivityType';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
@@ -93,27 +117,62 @@ const TAT_TYPES: TATType[] = [
   'CONSULTATION_RESPONSE', 'CONSULTATION_AWAITING',
 ];
 
-const TAT_TYPE_LABELS: Record<TATType, string> = {
-  FIRST_TOUCH:              'First Touch',
-  TOTAL_CASE:               'Total Case',
-  FROZEN_SECTION:           'Frozen Section',
-  COLD_ISCHEMIA:            'Cold Ischaemia',
-  GROSSING:                 'Grossing',
-  SIGN_OUT:                 'Sign-Out',
-  CONSULTATION_RESPONSE:    'Consultation — My Response',
-  CONSULTATION_AWAITING:    'Consultation — Awaiting Response',
+const TAT_TYPE_LABEL_KEY: Record<TATType, string> = {
+  FIRST_TOUCH:              'tatConfigSection.types.firstTouch.label',
+  TOTAL_CASE:               'tatConfigSection.types.totalCase.label',
+  FROZEN_SECTION:           'tatConfigSection.types.frozenSection.label',
+  COLD_ISCHEMIA:            'tatConfigSection.types.coldIschemia.label',
+  GROSSING:                 'tatConfigSection.types.grossing.label',
+  SIGN_OUT:                 'tatConfigSection.types.signOut.label',
+  CONSULTATION_RESPONSE:    'tatConfigSection.types.consultationResponse.label',
+  CONSULTATION_AWAITING:    'tatConfigSection.types.consultationAwaiting.label',
 };
 
-const TAT_TYPE_DESC: Record<TATType, string> = {
-  FIRST_TOUCH:              'Received → first opened by any pathologist',
-  TOTAL_CASE:               'Received → case finalised',
-  FROZEN_SECTION:           'Gross submitted → verbal report issued',
-  COLD_ISCHEMIA:            'Surgical excision → specimen in fixative',
-  GROSSING:                 'Received → gross description saved',
-  SIGN_OUT:                 'Microscopic saved → case finalised',
-  CONSULTATION_RESPONSE:    'Request received → reviewer responds (second opinion / formal consult)',
-  CONSULTATION_AWAITING:    'Request sent → response received from colleague or external reviewer',
+const TAT_TYPE_DESC_KEY: Record<TATType, string> = {
+  FIRST_TOUCH:              'tatConfigSection.types.firstTouch.desc',
+  TOTAL_CASE:               'tatConfigSection.types.totalCase.desc',
+  FROZEN_SECTION:           'tatConfigSection.types.frozenSection.desc',
+  COLD_ISCHEMIA:            'tatConfigSection.types.coldIschemia.desc',
+  GROSSING:                 'tatConfigSection.types.grossing.desc',
+  SIGN_OUT:                 'tatConfigSection.types.signOut.desc',
+  CONSULTATION_RESPONSE:    'tatConfigSection.types.consultationResponse.desc',
+  CONSULTATION_AWAITING:    'tatConfigSection.types.consultationAwaiting.desc',
 };
+
+// Fixed Role values offered by this screen's own Role filter/selector —
+// the stored roleId keeps these exact values; only the displayed label is
+// translated.
+const ROLE_LABEL_KEY: Record<string, string> = {
+  Resident:    'tatConfigSection.roles.resident',
+  Fellow:      'tatConfigSection.roles.fellow',
+  Pathologist: 'tatConfigSection.roles.pathologist',
+  External:    'tatConfigSection.roles.externalReviewer',
+};
+
+const ROLE_GROUP_LABEL_KEY: Record<string, string> = {
+  Resident:    'tatConfigSection.roleGroups.residents',
+  Fellow:      'tatConfigSection.roleGroups.fellows',
+  Pathologist: 'tatConfigSection.roleGroups.pathologists',
+  External:    'tatConfigSection.roleGroups.externalReviewers',
+};
+
+function roleLabel(roleId: string | null | undefined, t: TFunction): string | null {
+  if (!roleId) return null;
+  const key = ROLE_LABEL_KEY[roleId];
+  return key ? t(key) : roleId;
+}
+
+function roleGroupLabel(roleId: string | null | undefined, t: TFunction): string | null {
+  if (!roleId) return null;
+  const key = ROLE_GROUP_LABEL_KEY[roleId];
+  return key ? t(key) : roleId;
+}
+
+function urgencyLabel(urgency: TATUrgency | null | undefined, t: TFunction): string {
+  if (urgency === 'STAT') return t('tatConfigSection.urgencyStat');
+  if (urgency === 'ROUTINE') return t('tatConfigSection.urgencyRoutine');
+  return t('tatConfigSection.anyUrgency');
+}
 
 /** Real, per direct guidance (PS-116): whether a fixed clinical-
  *  workflow TATType value is what's actually stored — a type guard,
@@ -132,15 +191,15 @@ function isFixedTatType(type: string): type is TATType {
  *  if the QA activity itself was since deleted/deactivated and is no
  *  longer in the passed-in list — a real, honest "can't resolve this"
  *  case, not silently hidden. */
-function getTatTypeLabel(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>): string {
-  if (isFixedTatType(type)) return TAT_TYPE_LABELS[type];
+function getTatTypeLabel(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>, t: TFunction): string {
+  if (isFixedTatType(type)) return t(TAT_TYPE_LABEL_KEY[type]);
   return qaActivityTypesById.get(type)?.name ?? type;
 }
 
-function getTatTypeDescription(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>): string | undefined {
-  if (isFixedTatType(type)) return TAT_TYPE_DESC[type];
+function getTatTypeDescription(type: string, qaActivityTypesById: Map<string, { name: string; description?: string }>, t: TFunction): string | undefined {
+  if (isFixedTatType(type)) return t(TAT_TYPE_DESC_KEY[type]);
   const qaType = qaActivityTypesById.get(type);
-  return qaType?.description ? `QA Activity: ${qaType.description}` : undefined;
+  return qaType?.description ? t('tatConfigSection.qaActivityDescPrefix', { description: qaType.description }) : undefined;
 }
 
 // ── System defaults ───────────────────────────────────────────────────────────
@@ -204,10 +263,9 @@ function findConflict(
 
 // ── Hours formatter ───────────────────────────────────────────────────────────
 
-function formatHours(h: number): string {
-  if (h < 1) return `${Math.round(h * 60)} min`;
-  if (h === Math.floor(h)) return `${h}h`;
-  return `${h}h`;
+function formatHours(h: number, t: TFunction): string {
+  if (h < 1) return t('tatConfigSection.minutesShort', { m: Math.round(h * 60) });
+  return t('tatConfigSection.hoursShort', { h });
 }
 
 // ── Blank draft ───────────────────────────────────────────────────────────────
@@ -253,6 +311,7 @@ interface ModalProps {
 const TATModal: React.FC<ModalProps> = ({
   entry, entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById, onSave, onClose
 }) => {
+  const { t } = useTranslation();
   const isEdit = !!entry;
   const [draft, setDraft] = useState<Partial<TATEntry>>(
     entry ? { ...entry } : blankDraft()
@@ -263,18 +322,18 @@ const TATModal: React.FC<ModalProps> = ({
     setDraft(d => ({ ...d, [k]: v }));
 
   const handleSave = () => {
-    if (!draft.type) { setError('TAT type is required'); return; }
+    if (!draft.type) { setError(t('tatConfigSection.modal.errorTypeRequired')); return; }
     if (!draft.targetHours || draft.targetHours <= 0) {
-      setError('Target hours must be greater than 0');
+      setError(t('tatConfigSection.modal.errorHoursRequired'));
       return;
     }
     const conflict = findConflict(entries, draft, entry?.id);
     if (conflict) {
       setError(
-        'An active rule already exists for this combination (' +
-        getTatTypeLabel(conflict.type, qaActivityTypesById) + ' · ' +
-        (conflict.urgency ?? 'Any urgency') + '). ' +
-        'Deactivate the existing rule first.'
+        t('tatConfigSection.modal.conflictError', {
+          type: getTatTypeLabel(conflict.type, qaActivityTypesById, t),
+          urgency: urgencyLabel(conflict.urgency, t),
+        })
       );
       return;
     }
@@ -305,18 +364,17 @@ const TATModal: React.FC<ModalProps> = ({
   return (
     <div className="ps-conf-backdrop">
       <div
-        className="fm-modal fm-modal--config"
-        style={{ width: 'min(640px, 96vw)' }}
+        className="fm-modal fm-modal--config ps-tatconfig__modal"
         onClick={e => e.stopPropagation()}
       >
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · TAT Configuration</div>
-            <h2 className="fm-title" style={{ fontSize: 16 }}>
-              {isEdit ? 'Edit TAT Rule' : 'Add TAT Rule'}
+            <div className="fm-eyebrow">{t('tatConfigSection.modal.eyebrow')}</div>
+            <h2 className="fm-title ps-participationtypes__modal-title">
+              {isEdit ? t('tatConfigSection.modal.titleEdit') : t('tatConfigSection.modal.titleAdd')}
               {isSystem && (
-                <span className="ps-idf-tier-badge ps-idf-tier-badge--2" style={{ marginLeft: 8 }}>
-                  system default
+                <span className="ps-idf-tier-badge ps-idf-tier-badge--2 ps-participationtypes__builtin-badge">
+                  {t('tatConfigSection.modal.systemBadge')}
                 </span>
               )}
             </h2>
@@ -327,36 +385,35 @@ const TATModal: React.FC<ModalProps> = ({
 
           {isSystem && (
             <div className="ps-sub-info-box">
-              System defaults can be edited but not deleted. Deactivating a system default
-              removes it from the resolution hierarchy — make sure a custom rule covers the gap.
+              {t('tatConfigSection.modal.systemInfo')}
             </div>
           )}
 
           {/* TAT Type */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label" htmlFor="tat-rule-type">TAT Type <span className="ps-sub-label-req">*</span></label>
+            <label className="ps-sub-label" htmlFor="tat-rule-type">{t('tatConfigSection.modal.typeLabel')} <span className="ps-sub-label-req">*</span></label>
             <select
               id="tat-rule-type"
               className="ps-conf-select"
               value={draft.type ?? ''}
               onChange={e => set('type', e.target.value)}
             >
-              <optgroup label="Clinical Workflow">
-                {TAT_TYPES.map(t => (
-                  <option key={t} value={t}>{TAT_TYPE_LABELS[t]}</option>
+              <optgroup label={t('tatConfigSection.modal.clinicalWorkflowGroup')}>
+                {TAT_TYPES.map(tt => (
+                  <option key={tt} value={tt}>{t(TAT_TYPE_LABEL_KEY[tt])}</option>
                 ))}
               </optgroup>
               {qaActivityTypes.length > 0 && (
-                <optgroup label="QA Activities">
-                  {qaActivityTypes.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                <optgroup label={t('tatConfigSection.modal.qaActivitiesGroup')}>
+                  {qaActivityTypes.map(qt => (
+                    <option key={qt.id} value={qt.id}>{qt.name}</option>
                   ))}
                 </optgroup>
               )}
             </select>
             {draft.type && (
               <div className="ps-tat-hint-text ps-tat-hint-text--mt4">
-                {getTatTypeDescription(draft.type, qaActivityTypesById)}
+                {getTatTypeDescription(draft.type, qaActivityTypesById, t)}
               </div>
             )}
           </div>
@@ -364,7 +421,7 @@ const TATModal: React.FC<ModalProps> = ({
           {/* Target Hours + Urgency row */}
           <div className="ps-tat-two-col-row">
             <div className="ps-sub-field">
-              <label className="ps-sub-label" htmlFor="tat-rule-target-hours">Target Hours <span className="ps-sub-label-req">*</span></label>
+              <label className="ps-sub-label" htmlFor="tat-rule-target-hours">{t('tatConfigSection.modal.targetHoursLabel')} <span className="ps-sub-label-req">*</span></label>
               <input
                 id="tat-rule-target-hours"
                 type="number"
@@ -376,90 +433,84 @@ const TATModal: React.FC<ModalProps> = ({
               />
               {draft.targetHours && draft.targetHours > 0 && (
                 <div className="ps-tat-hint-text ps-tat-hint-text--mt4">
-                  = {formatHours(draft.targetHours)}
+                  {t('tatConfigSection.modal.targetHoursEquals', { formatted: formatHours(draft.targetHours, t) })}
                 </div>
               )}
             </div>
 
             <div className="ps-sub-field">
-              <label className="ps-sub-label" htmlFor="tat-rule-urgency">Urgency</label>
+              <label className="ps-sub-label" htmlFor="tat-rule-urgency">{t('tatConfigSection.modal.urgencyLabel')}</label>
               <select
                 id="tat-rule-urgency"
                 className="ps-conf-select"
                 value={draft.urgency ?? ''}
                 onChange={e => set('urgency', (e.target.value || null) as TATUrgency | null)}
               >
-                <option value="">Any (Routine + STAT)</option>
-                <option value="ROUTINE">Routine only</option>
-                <option value="STAT">STAT only</option>
+                <option value="">{t('tatConfigSection.modal.urgencyAnyOption')}</option>
+                <option value="ROUTINE">{t('tatConfigSection.modal.urgencyRoutineOption')}</option>
+                <option value="STAT">{t('tatConfigSection.modal.urgencyStatOption')}</option>
               </select>
             </div>
           </div>
 
           {/* Applies To — structured matching filters */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Applies To</label>
+            <label className="ps-sub-label">{t('tatConfigSection.modal.appliesToLabel')}</label>
             <div className="ps-tat-scope-hint">
-              These filters determine <strong>which cases this rule matches</strong>.
-              Leave a filter blank to match all values for that dimension.
-              The more filters set, the higher the resolution priority — a rule
-              with Performing Lab + Ordering Facility overrides one with either alone.
-              Performing Lab and Ordering Facility are genuinely separate — a lab's
-              own general TAT policy and a specific ordering facility's own contractual
-              TAT agreement can both apply independently.
+              <Trans i18nKey="tatConfigSection.modal.appliesToHint" components={{ strong: <strong /> }} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="ps-diff-list">
               <select
                 className="ps-conf-select"
-                aria-label="Performing Lab"
+                aria-label={t('tatConfigSection.modal.performingLabAria')}
                 value={draft.performingLabFacilityId ?? ''}
                 onChange={e => set('performingLabFacilityId', e.target.value || null)}
               >
-                <option value="">All performing labs</option>
+                <option value="">{t('tatConfigSection.modal.allPerformingLabsOption')}</option>
                 {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
 
               <select
                 className="ps-conf-select"
-                aria-label="Ordering Facility"
+                aria-label={t('tatConfigSection.modal.orderingFacilityAria')}
                 value={draft.facilityId ?? ''}
                 onChange={e => set('facilityId', e.target.value || null)}
               >
-                <option value="">All ordering facilities</option>
+                <option value="">{t('tatConfigSection.modal.allOrderingFacilitiesOption')}</option>
                 {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
 
               <select
                 className="ps-conf-select"
-                aria-label="Specimen type"
+                aria-label={t('tatConfigSection.modal.specimenAria')}
                 value={draft.specimenId ?? ''}
                 onChange={e => set('specimenId', e.target.value || null)}
               >
-                <option value="">All specimen types</option>
+                <option value="">{t('tatConfigSection.modal.allSpecimenTypesOption')}</option>
                 {specimens.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
 
               <select
                 className="ps-conf-select"
-                aria-label="Subspecialty"
+                aria-label={t('tatConfigSection.modal.subspecialtyAria')}
                 value={draft.subspecialtyId ?? ''}
                 onChange={e => set('subspecialtyId', e.target.value || null)}
               >
-                <option value="">All subspecialties</option>
+                <option value="">{t('tatConfigSection.modal.allSubspecialtiesOption')}</option>
                 {subspecialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
 
               <select
                 className="ps-conf-select"
-                aria-label="Role"
+                aria-label={t('tatConfigSection.modal.roleAria')}
                 value={draft.roleId ?? ''}
                 onChange={e => set('roleId', e.target.value || null)}
               >
-                <option value="">All roles</option>
-                <option value="Resident">Resident</option>
-                <option value="Fellow">Fellow</option>
-                <option value="Pathologist">Pathologist</option>
-                <option value="External">External reviewer</option>
+                <option value="">{t('tatConfigSection.modal.allRolesOption')}</option>
+                <option value="Resident">{t(ROLE_LABEL_KEY.Resident)}</option>
+                <option value="Fellow">{t(ROLE_LABEL_KEY.Fellow)}</option>
+                <option value="Pathologist">{t(ROLE_LABEL_KEY.Pathologist)}</option>
+                <option value="External">{t(ROLE_LABEL_KEY.External)}</option>
               </select>
             </div>
 
@@ -470,19 +521,19 @@ const TATModal: React.FC<ModalProps> = ({
               const facilityName  = facilities.find(cl => cl.id === draft.facilityId)?.name;
               const specimenName = specimens.find(s => s.id === draft.specimenId)?.name;
               const subName     = subspecialties.find(s => s.id === draft.subspecialtyId)?.name;
-              const roleName    = (draft as any).roleId;
+              const roleName    = roleGroupLabel((draft as any).roleId, t);
               const urgency     = draft.urgency;
 
-              if (urgency)      parts.push(urgency === 'STAT' ? 'STAT' : 'Routine');
-              if (roleName)     parts.push(roleName + 's');
-              if (specimenName) parts.push(specimenName + ' specimens');
-              if (subName)      parts.push(subName + ' subspecialty');
-              if (labName)      parts.push('performed at ' + labName);
-              if (facilityName)   parts.push('ordered by ' + facilityName);
+              if (urgency)      parts.push(urgency === 'STAT' ? t('tatConfigSection.urgencyStat') : t('tatConfigSection.urgencyRoutine'));
+              if (roleName)     parts.push(roleName);
+              if (specimenName) parts.push(t('tatConfigSection.modal.previewSpecimen', { name: specimenName }));
+              if (subName)      parts.push(t('tatConfigSection.modal.previewSubspecialty', { name: subName }));
+              if (labName)      parts.push(t('tatConfigSection.modal.previewPerformedAt', { name: labName }));
+              if (facilityName)   parts.push(t('tatConfigSection.modal.previewOrderedBy', { name: facilityName }));
 
               const preview = parts.length === 0
-                ? 'This is a system default — applies to all cases'
-                : 'Applies to ' + parts.join(', ');
+                ? t('tatConfigSection.modal.previewSystemDefault')
+                : t('tatConfigSection.modal.previewAppliesTo', { parts: parts.join(', ') });
 
               return (
                 <div className="ps-tat-scope-preview">
@@ -495,18 +546,18 @@ const TATModal: React.FC<ModalProps> = ({
 
           {/* Admin notes — free text, no effect on matching */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Admin Notes <span className="ps-sub-label-hint">(optional — no effect on matching)</span></label>
+            <label className="ps-sub-label">{t('tatConfigSection.modal.notesLabel')} <span className="ps-sub-label-hint">{t('tatConfigSection.modal.notesHint')}</span></label>
             <input
               className="ps-sub-input"
               value={draft.notes ?? ''}
-              placeholder="e.g. Added per MFT SLA negotiated Jan 2025, reviewed by Dr. Carter"
+              placeholder={t('tatConfigSection.modal.notesPlaceholder')}
               onChange={e => set('notes', e.target.value)}
             />
           </div>
 
           {/* Active toggle */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Status</label>
+            <label className="ps-sub-label">{t('tatConfigSection.modal.statusLabel')}</label>
             <div className="ps-sub-toggle-wrap">
               <div
                 onClick={() => set('active', !draft.active)}
@@ -515,21 +566,21 @@ const TATModal: React.FC<ModalProps> = ({
                 <div className={draft.active ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
               </div>
               <span className={draft.active ? 'ps-sub-toggle-label--on' : 'ps-sub-toggle-label--off'}>
-                {draft.active ? 'Active' : 'Inactive'}
+                {draft.active ? t('common.active') : t('common.inactive')}
               </span>
             </div>
           </div>
 
-          {error && <div className="ps-sub-error" style={{ marginTop: 4 }}>{error}</div>}
+          {error && <div className="ps-sub-error ps-tat-hint-text--mt4">{error}</div>}
 
         </div>
 
         <div className="fm-footer">
           <span className="fm-footer-status" />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onClose} className="fm-btn-cancel">Cancel</button>
+          <div className="ps-rulemodal__footer-actions">
+            <button onClick={onClose} className="fm-btn-cancel">{t('common.cancel')}</button>
             <button onClick={handleSave} className="fm-btn-apply">
-              {isEdit ? 'Save Changes' : 'Add Rule'}
+              {isEdit ? t('tatConfigSection.modal.saveChangesBtn') : t('tatConfigSection.modal.addRuleBtn')}
             </button>
           </div>
         </div>
@@ -553,6 +604,7 @@ interface SimulatorProps {
 const ResolutionSimulator: React.FC<SimulatorProps> = ({
   entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById
 }) => {
+  const { t } = useTranslation();
   const [simFacility,       setSimFacility]       = useState('');
   const [simLab,          setSimLab]          = useState('');
   const [simSpecimen,     setSimSpecimen]      = useState('');
@@ -566,7 +618,7 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
   // original 8. Same reasoning as the filter buttons/entries table:
   // a rule an admin can create but can't preview would be a real,
   // inconsistent half-feature.
-  const allSimTypes = useMemo(() => [...TAT_TYPES, ...qaActivityTypes.map(t => t.id)], [qaActivityTypes]);
+  const allSimTypes = useMemo(() => [...TAT_TYPES, ...qaActivityTypes.map(qt => qt.id)], [qaActivityTypes]);
 
   // Real, per direct guidance ("a TAT time could have two
   // components... the Performing lab and the other is the Ordering
@@ -597,51 +649,51 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
   return (
     <div className="ps-tat-sim-shell">
       <div className="ps-tat-sim-header">
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
-          Resolution Simulator
+        <span className="ps-tatconfig__sim-title">
+          {t('tatConfigSection.simulator.title')}
         </span>
         <span className="ps-tat-hint-text">
-          See which rule wins for a given case
+          {t('tatConfigSection.simulator.subtitle')}
         </span>
       </div>
 
       <div className="ps-tat-sim-controls">
-        <select className="ps-conf-select" aria-label="Performing Lab" value={simLab} onChange={e => setSimLab(e.target.value)}>
-          <option value="">No specific performing lab</option>
+        <select className="ps-conf-select" aria-label={t('tatConfigSection.modal.performingLabAria')} value={simLab} onChange={e => setSimLab(e.target.value)}>
+          <option value="">{t('tatConfigSection.simulator.noSpecificLab')}</option>
           {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
-        <select className="ps-conf-select" aria-label="Ordering Facility" value={simFacility} onChange={e => setSimFacility(e.target.value)}>
-          <option value="">No specific ordering facility</option>
+        <select className="ps-conf-select" aria-label={t('tatConfigSection.modal.orderingFacilityAria')} value={simFacility} onChange={e => setSimFacility(e.target.value)}>
+          <option value="">{t('tatConfigSection.simulator.noSpecificFacility')}</option>
           {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select className="ps-conf-select" aria-label="Specimen type" value={simSpecimen} onChange={e => setSimSpecimen(e.target.value)}>
-          <option value="">No specific specimen</option>
+        <select className="ps-conf-select" aria-label={t('tatConfigSection.modal.specimenAria')} value={simSpecimen} onChange={e => setSimSpecimen(e.target.value)}>
+          <option value="">{t('tatConfigSection.simulator.noSpecificSpecimen')}</option>
           {specimens.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select className="ps-conf-select" aria-label="Subspecialty" value={simSubspecialty} onChange={e => setSimSubspecialty(e.target.value)}>
-          <option value="">No specific subspecialty</option>
+        <select className="ps-conf-select" aria-label={t('tatConfigSection.modal.subspecialtyAria')} value={simSubspecialty} onChange={e => setSimSubspecialty(e.target.value)}>
+          <option value="">{t('tatConfigSection.simulator.noSpecificSubspecialty')}</option>
           {subspecialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select className="ps-conf-select" aria-label="Urgency" value={simUrgency} onChange={e => setSimUrgency(e.target.value as TATUrgency)}>
-          <option value="ROUTINE">Routine</option>
-          <option value="STAT">STAT</option>
+        <select className="ps-conf-select" aria-label={t('tatConfigSection.modal.urgencyLabel')} value={simUrgency} onChange={e => setSimUrgency(e.target.value as TATUrgency)}>
+          <option value="ROUTINE">{t('tatConfigSection.urgencyRoutine')}</option>
+          <option value="STAT">{t('tatConfigSection.urgencyStat')}</option>
         </select>
       </div>
 
       <div className="ps-tat-sim-results">
         {results.map(({ type, match }) => (
           <div key={type} className="ps-tat-sim-row">
-            <span className="ps-tat-type-badge">{getTatTypeLabel(type, qaActivityTypesById)}</span>
+            <span className="ps-tat-type-badge">{getTatTypeLabel(type, qaActivityTypesById, t)}</span>
             {match ? (
               <>
-                <span className="ps-tat-sim-target">{formatHours(match.targetHours)}</span>
+                <span className="ps-tat-sim-target">{formatHours(match.targetHours, t)}</span>
                 <span className="ps-tat-sim-source">
-                  {match.id.startsWith('sys-') ? 'system default' : 'custom rule'}
+                  {match.id.startsWith('sys-') ? t('tatConfigSection.simulator.sourceSystemDefault') : t('tatConfigSection.simulator.sourceCustomRule')}
                   {match.notes && ' · ' + match.notes}
                 </span>
               </>
             ) : (
-              <span className="ps-tat-sim-none">No matching rule</span>
+              <span className="ps-tat-sim-none">{t('tatConfigSection.simulator.noMatch')}</span>
             )}
           </div>
         ))}
@@ -653,6 +705,7 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
 // ── Main section ──────────────────────────────────────────────────────────────
 
 const TATConfigSection: React.FC = () => {
+  const { t } = useTranslation();
   const [entries,   setEntries]   = useState<TATEntry[]>(loadEntries);
   const { log } = useAuditLog();
   const [modal,     setModal]     = useState<{ mode: 'add' | 'edit'; entry?: TATEntry } | null>(null);
@@ -680,11 +733,11 @@ const TATConfigSection: React.FC = () => {
   const [qaActivityTypes, setQaActivityTypes] = useState<QaActivityType[]>([]);
   useEffect(() => {
     qaActivityTypeService.getAll().then(res => {
-      if (res.ok) setQaActivityTypes(res.data.filter(t => t.active));
+      if (res.ok) setQaActivityTypes(res.data.filter(qt => qt.active));
     });
   }, []);
   const qaActivityTypesById = useMemo(
-    () => new Map(qaActivityTypes.map(t => [t.id, { name: t.name, description: t.description }])),
+    () => new Map(qaActivityTypes.map(qt => [qt.id, { name: qt.name, description: qt.description }])),
     [qaActivityTypes]
   );
 
@@ -839,62 +892,62 @@ const TATConfigSection: React.FC = () => {
       facilityName(e.facilityId),
       specimenName(e.specimenId),
       subName(e.subspecialtyId),
-      (e as any).roleId ? `Role: ${(e as any).roleId}` : null,
+      (e as any).roleId ? t('tatConfigSection.roleScope', { role: roleLabel((e as any).roleId, t) }) : null,
     ].filter(Boolean);
 
     return (
-      <tr key={e.id} style={{ opacity: e.active ? 1 : 0.5 }}>
+      <tr key={e.id} className={e.active ? undefined : 'ps-tatconfig__row--inactive'}>
         <td className="ps-sub-td">
-          <span className="ps-tat-type-badge" style={{ marginRight: 8 }}>
-            {getTatTypeLabel(e.type, qaActivityTypesById)}
-            {(e as any).roleId && <span style={{ opacity: 0.75, fontWeight: 500 }}> · {(e as any).roleId}</span>}
+          <span className="ps-tat-type-badge ps-tatconfig__type-badge--mr8">
+            {getTatTypeLabel(e.type, qaActivityTypesById, t)}
+            {(e as any).roleId && <span className="ps-tatconfig__role-suffix"> · {roleLabel((e as any).roleId, t)}</span>}
           </span>
-          {isSystem && <span className="ps-del-tag" style={{ marginLeft: 6 }}>🔒</span>}
+          {isSystem && <span className="ps-del-tag ps-tatconfig__lock-icon">🔒</span>}
         </td>
         <td className="ps-sub-td">
-          <strong style={{ color: '#e2e8f0' }}>{formatHours(e.targetHours)}</strong>
+          <strong className="ps-tatconfig__target">{formatHours(e.targetHours, t)}</strong>
         </td>
         <td className="ps-sub-td">
-          <span style={{ fontSize: 12, color: e.urgency === 'STAT' ? '#f59e0b' : '#94a3b8' }}>
-            {e.urgency ?? 'Any'}
+          <span className={e.urgency === 'STAT' ? 'ps-tatconfig__urgency--stat' : 'ps-tatconfig__urgency--routine'}>
+            {e.urgency ? urgencyLabel(e.urgency, t) : t('tatConfigSection.anyUrgency')}
           </span>
         </td>
         <td className="ps-sub-td">
           {scopeParts.length === 0 ? (
-            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>System default</span>
+            <span className="ps-tatconfig__scope-default">{t('tatConfigSection.scopeDefault')}</span>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div className="ps-tatconfig__scope-list">
               {scopeParts.map((s, i) => (
-                <span key={i} style={{ fontSize: 12, color: '#94a3b8' }}>{s}</span>
+                <span key={i} className="ps-tatconfig__scope-item">{s}</span>
               ))}
             </div>
           )}
         </td>
         <td className="ps-sub-td">
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{e.notes || '—'}</span>
+          <span className="ps-tatconfig__scope-item">{e.notes || '—'}</span>
         </td>
         <td className="ps-sub-td">
           <div className="ps-sub-toggle-wrap">
             <div
               onClick={() => toggleActive(e.id)}
               className={e.active ? 'ps-sub-toggle-track ps-sub-toggle-track--on' : 'ps-sub-toggle-track ps-sub-toggle-track--off'}
-              style={{ cursor: 'pointer' }}
             >
               <div className={e.active ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
             </div>
           </div>
         </td>
-        <td className="ps-sub-td" style={{ textAlign: 'right' }}>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <td className="ps-sub-td ps-participationtypes__td--right">
+          <div className="ps-tatconfig__actions-row">
             <button
               className="ps-sub-edit-btn"
               onClick={() => setModal({ mode: 'edit', entry: e })}
             >
-              Edit
+              {t('common.edit')}
             </button>
             {!isSystem && (
               <button
                 className="ps-del-delete-btn"
+                aria-label={t('common.delete')}
                 onClick={() => deleteEntry(e.id)}
               >
                 ✕
@@ -906,49 +959,60 @@ const TATConfigSection: React.FC = () => {
     );
   };
 
+  const tableHeaders: Array<{ key: string; label: string; className?: string }> = [
+    { key: 'type',    label: t('tatConfigSection.table.type'),    className: 'ps-tatconfig__col-type' },
+    { key: 'target',  label: t('tatConfigSection.table.target'),  className: 'ps-tatconfig__col-target' },
+    { key: 'urgency', label: t('tatConfigSection.table.urgency'), className: 'ps-tatconfig__col-urgency' },
+    { key: 'scope',   label: t('tatConfigSection.table.scope'),   className: 'ps-tatconfig__col-scope' },
+    { key: 'notes',   label: t('tatConfigSection.table.notes'),   className: 'ps-tatconfig__col-notes' },
+    { key: 'status',  label: t('tatConfigSection.table.status'),  className: 'ps-tatconfig__col-status' },
+    { key: 'actions', label: t('tatConfigSection.table.actions'), className: 'ps-tatconfig__col-actions' },
+  ];
+
+  const hierarchyLevels = [
+    t('tatConfigSection.hierarchy.specimenUrgency'),
+    t('tatConfigSection.hierarchy.specimen'),
+    t('tatConfigSection.hierarchy.subspecialtyUrgency'),
+    t('tatConfigSection.hierarchy.subspecialty'),
+    t('tatConfigSection.hierarchy.facilityOnly'),
+    t('tatConfigSection.hierarchy.specimenOnly'),
+    t('tatConfigSection.hierarchy.systemDefault'),
+  ];
+
   return (
     <div className="ps-tat-shell">
 
       {/* Header */}
       <div className="ps-tat-header">
         <div>
-          <h2 className="ps-sub-title">TAT Configuration</h2>
+          <h2 className="ps-sub-title">{t('tatConfigSection.title')}</h2>
           <p className="ps-sub-subtitle">
-            Turnaround time targets per type, urgency, facility, specimen, and subspecialty.
-            The most specific matching rule wins at runtime.
+            {t('tatConfigSection.subtitle')}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="ps-rulemodal__footer-actions">
           <button
             className={showSim ? 'ps-tat-sim-btn ps-tat-sim-btn--active' : 'ps-tat-sim-btn'}
             onClick={() => setShowSim(v => !v)}
           >
-            ⚡ Simulator
+            {t('tatConfigSection.simulatorBtn')}
           </button>
           <button
             className="ps-section-add-btn"
             onClick={() => setModal({ mode: 'add' })}
           >
-            + Add Rule
+            {t('tatConfigSection.addRuleBtn')}
           </button>
         </div>
       </div>
 
       {/* Resolution hierarchy info */}
       <div className="ps-tat-hierarchy-box">
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8AB4F8', marginBottom: 6 }}>
-          Resolution Hierarchy (most specific wins)
+        <div className="ps-tatconfig__hierarchy-title">
+          {t('tatConfigSection.hierarchyTitle')}
         </div>
         <div className="ps-tat-hierarchy-list">
-          {[
-            'Facility + Specimen + Urgency',
-            'Facility + Specimen',
-            'Facility + Subspecialty + Urgency',
-            'Facility + Subspecialty',
-            'Facility only',
-            'Specimen only',
-            'System default (fallback)',
-          ].map((level, i) => (
+          {hierarchyLevels.map((level, i) => (
             <span key={i} className="ps-tat-hierarchy-item">
               <span className="ps-tat-hierarchy-num">{i + 1}</span>
               {level}
@@ -972,37 +1036,37 @@ const TATConfigSection: React.FC = () => {
 
       {/* Filters */}
       <div className="ps-tat-filters">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(['ALL', ...TAT_TYPES, ...qaActivityTypes.map(t => t.id)]).map(t => (
+        <div className="ps-tatconfig__filter-buttons">
+          {(['ALL', ...TAT_TYPES, ...qaActivityTypes.map(qt => qt.id)]).map(typeId => (
             <button
-              key={t}
-              onClick={() => setFilter(t)}
-              className={filter === t ? 'ps-tat-filter-btn ps-tat-filter-btn--active' : 'ps-tat-filter-btn'}
+              key={typeId}
+              onClick={() => setFilter(typeId)}
+              className={filter === typeId ? 'ps-tat-filter-btn ps-tat-filter-btn--active' : 'ps-tat-filter-btn'}
             >
-              {t === 'ALL' ? 'All Types' : getTatTypeLabel(t, qaActivityTypesById)}
+              {typeId === 'ALL' ? t('tatConfigSection.filterAllTypes') : getTatTypeLabel(typeId, qaActivityTypesById, t)}
             </button>
           ))}
         </div>
         {/* Real, per direct guidance: two genuinely independent
             facility filters, usable together or separately. */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select className="ps-conf-select" aria-label="Filter by Performing Lab" value={performingLabFilter} onChange={e => setPerformingLabFilter(e.target.value)}>
-            <option value="">All Performing Labs</option>
+        <div className="ps-tatconfig__facility-filters">
+          <select className="ps-conf-select" aria-label={t('tatConfigSection.filterByPerformingLabAria')} value={performingLabFilter} onChange={e => setPerformingLabFilter(e.target.value)}>
+            <option value="">{t('tatConfigSection.allPerformingLabs')}</option>
             {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
-          <select className="ps-conf-select" aria-label="Filter by Ordering Facility" value={orderingFacilityFilter} onChange={e => setOrderingFacilityFilter(e.target.value)}>
-            <option value="">All Ordering Facilities</option>
+          <select className="ps-conf-select" aria-label={t('tatConfigSection.filterByOrderingFacilityAria')} value={orderingFacilityFilter} onChange={e => setOrderingFacilityFilter(e.target.value)}>
+            <option value="">{t('tatConfigSection.allOrderingFacilities')}</option>
             {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <label className="ps-sub-toggle-wrap" style={{ cursor: 'pointer' }}>
+        <label className="ps-sub-toggle-wrap ps-tatconfig__toggle-label">
           <div
             onClick={() => setShowInactive(v => !v)}
             className={showInactive ? 'ps-sub-toggle-track ps-sub-toggle-track--on' : 'ps-sub-toggle-track ps-sub-toggle-track--off'}
           >
             <div className={showInactive ? 'ps-sub-toggle-thumb ps-sub-toggle-thumb--on' : 'ps-sub-toggle-thumb ps-sub-toggle-thumb--off'} />
           </div>
-          <span className="ps-tat-hint-text">Show inactive</span>
+          <span className="ps-tat-hint-text">{t('common.showInactive')}</span>
         </label>
       </div>
 
@@ -1010,33 +1074,27 @@ const TATConfigSection: React.FC = () => {
       <div className="ps-tat-table-wrap">
         <table className="ps-sub-table">
           <colgroup>
-            <col style={{ width: '16%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '10%' }} />
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '18%' }} />
-            <col style={{ width: '12%' }} />
-            <col style={{ width: '16%' }} />
+            {tableHeaders.map(h => <col key={h.key} className={h.className} />)}
           </colgroup>
           <thead>
             <tr>
-              {['Type','Target','Urgency','Scope','Notes','Status','Actions'].map(h => (
-                <th key={h} className="ps-sub-th" style={{ textAlign: h === 'Actions' ? 'right' : 'left' }}>{h}</th>
+              {tableHeaders.map(h => (
+                <th key={h.key} className={h.key === 'actions' ? 'ps-sub-th ps-participationtypes__td--right' : 'ps-sub-th'}>{h.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {enterpriseEntries.length === 0 && performingLabGroups.length === 0 && (
               <tr>
-                <td colSpan={7} className="ps-sub-td" style={{ textAlign: 'center', color: '#475569', padding: '20px 0' }}>
-                  No rules match the current filter.
+                <td colSpan={7} className="ps-sub-td ps-tatconfig__empty-row">
+                  {t('tatConfigSection.emptyRow')}
                 </td>
               </tr>
             )}
             {enterpriseEntries.length > 0 && (
               <>
                 <tr>
-                  <td colSpan={7} className="ps-tat-group-header">Enterprise ({enterpriseEntries.length})</td>
+                  <td colSpan={7} className="ps-tat-group-header">{t('tatConfigSection.enterpriseGroup', { count: enterpriseEntries.length })}</td>
                 </tr>
                 {enterpriseEntries.map(renderRow)}
               </>
@@ -1044,7 +1102,7 @@ const TATConfigSection: React.FC = () => {
             {performingLabGroups.map(({ lab, entries: labEntries }) => (
               <React.Fragment key={lab.id}>
                 <tr>
-                  <td colSpan={7} className="ps-tat-group-header">{lab.name} ({labEntries.length})</td>
+                  <td colSpan={7} className="ps-tat-group-header">{t('tatConfigSection.labGroup', { name: lab.name, count: labEntries.length })}</td>
                 </tr>
                 {labEntries.map(renderRow)}
               </React.Fragment>

@@ -15,8 +15,17 @@
 // (services/auth/caseAccessControl.ts's canViewCrossTenantQaData) — a
 // standard user reviews their own organisation's queue only; a
 // cross-tenant-permitted admin can pick any organisation.
+//
+// i18n sweep (batch 58): every on-screen label, placeholder, and status
+// message converted to a new `patientMatchReviewSection` namespace,
+// including the merge-confirmation dialog's message (translated phrasing,
+// with the real patient names/MRNs interpolated in — this is on-screen UI
+// text, not a persisted/audit record). Real patient data (lastName,
+// firstName, mrn, dateOfBirth, reviewReason) and resolved organisation
+// names stay exactly as stored — none of that is UI chrome.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
@@ -26,6 +35,7 @@ import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAc
 import ConfirmModal from '../../Common/ConfirmModal';
 
 const PatientMatchReviewSection: React.FC = () => {
+  const { t } = useTranslation();
   const session = getSessionUser();
   const crossTenant = canViewCrossTenantQaData(session);
 
@@ -82,28 +92,23 @@ const PatientMatchReviewSection: React.FC = () => {
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: 960 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Patient Match Review</h1>
-        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-          Cases where a new patient's MRN, name, or date of birth partially matched an
-          existing record — never auto-resolved, since a wrong guess here means
-          showing one patient's history against another's case. Each one needs a
-          real decision: confirm this is genuinely a new patient, or merge it into
-          the existing record it likely belongs to.
+    <div className="ps-patientmatch__page">
+      <div className="ps-patientmatch__header">
+        <h1 className="ps-routingrules__title">{t('patientMatchReviewSection.title')}</h1>
+        <p className="ps-routingrules__subtitle">
+          {t('patientMatchReviewSection.subtitle')}
         </p>
       </div>
 
       {crossTenant && (
-        <div style={{ marginBottom: 16 }}>
-          <label className="ps-conf-label" style={{ display: 'block', marginBottom: 6 }}>Organisation</label>
+        <div className="ps-patientmatch__org-wrap">
+          <label className="ps-conf-label ps-patientmatch__org-label">{t('patientMatchReviewSection.orgLabel')}</label>
           <select
             value={selectedOrgId}
             onChange={e => setSelectedOrgId(e.target.value)}
-            className="ps-conf-select"
-            style={{ width: 320 }}
+            className="ps-conf-select ps-patientmatch__org-select"
           >
-            <option value="">Select an organisation…</option>
+            <option value="">{t('patientMatchReviewSection.orgPlaceholder')}</option>
             {organisations.map(o => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
@@ -112,55 +117,55 @@ const PatientMatchReviewSection: React.FC = () => {
       )}
 
       {lastMergeCount !== null && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, fontSize: 13, color: '#4ade80' }}>
-          ✓ Merged — {lastMergeCount} case{lastMergeCount === 1 ? '' : 's'} repointed to the confirmed patient record.
+        <div className="ps-patientmatch__merge-banner">
+          {t('patientMatchReviewSection.mergedBanner', { count: lastMergeCount })}
         </div>
       )}
 
       {loading ? (
-        <div style={{ color: '#6b7280', fontSize: 13, padding: '24px 0' }}>Loading review queue…</div>
+        <div className="ps-patientmatch__placeholder">{t('patientMatchReviewSection.loadingQueue')}</div>
       ) : !selectedOrgId ? (
-        <div style={{ color: '#6b7280', fontSize: 13, padding: '24px 0' }}>Select an organisation to review its pending matches.</div>
+        <div className="ps-patientmatch__placeholder">{t('patientMatchReviewSection.selectOrgPrompt')}</div>
       ) : pending.length === 0 ? (
-        <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 24, color: '#6b7280', fontSize: 13 }}>
-          Nothing pending review for this organisation.
+        <div className="ps-patientmatch__empty-box">
+          {t('patientMatchReviewSection.emptyQueue')}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="ps-vs-studies">
           {pending.map(record => (
-            <div key={record.id} style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div key={record.id} className="ps-snomed-severity__add-card">
+              <div className="ps-patientmatch__record-header">
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
+                  <div className="ps-patientmatch__record-name">
                     {record.lastName}, {record.firstName}
                   </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                    MRN {record.mrn} · DOB {new Date(record.dateOfBirth).toLocaleDateString()}
+                  <div className="ps-patientmatch__record-meta">
+                    {t('patientMatchReviewSection.mrnDob', { mrn: record.mrn, dob: new Date(record.dateOfBirth).toLocaleDateString() })}
                   </div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 999, padding: '3px 10px' }}>
-                  Needs Review
+                <span className="ps-patientmatch__badge">
+                  {t('patientMatchReviewSection.needsReviewBadge')}
                 </span>
               </div>
 
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>
+              <div className="ps-patientmatch__reason">
                 {record.reviewReason}
               </div>
 
               {(record.reviewCandidateIds ?? []).length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                    Possible existing match{(record.reviewCandidateIds ?? []).length === 1 ? '' : 'es'}
+                <div className="ps-patientmatch__candidates">
+                  <div className="ps-patientmatch__candidates-label">
+                    {t('patientMatchReviewSection.possibleMatch', { count: (record.reviewCandidateIds ?? []).length })}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div className="ps-diff-list">
                     {(record.reviewCandidateIds ?? []).map(candId => {
                       const cand = candidateDetails[candId];
                       if (!cand) return null;
                       return (
-                        <div key={candId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '10px 14px' }}>
+                        <div key={candId} className="ps-patientmatch__candidate-row">
                           <div>
-                            <div style={{ fontSize: 13, color: '#e5e7eb' }}>{cand.lastName}, {cand.firstName}</div>
-                            <div style={{ fontSize: 11, color: '#6b7280' }}>MRN {cand.mrn} · DOB {new Date(cand.dateOfBirth).toLocaleDateString()}</div>
+                            <div className="ps-patientmatch__candidate-name">{cand.lastName}, {cand.firstName}</div>
+                            <div className="ps-patientmatch__candidate-meta">{t('patientMatchReviewSection.mrnDob', { mrn: cand.mrn, dob: new Date(cand.dateOfBirth).toLocaleDateString() })}</div>
                           </div>
                           <button
                             type="button"
@@ -168,7 +173,7 @@ const PatientMatchReviewSection: React.FC = () => {
                             disabled={actionInFlight === record.id}
                             onClick={() => setMergeTarget({ provisional: record, candidate: cand })}
                           >
-                            Merge into this patient
+                            {t('patientMatchReviewSection.mergeIntoBtn')}
                           </button>
                         </div>
                       );
@@ -177,14 +182,14 @@ const PatientMatchReviewSection: React.FC = () => {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div className="ps-patientmatch__actions-row">
                 <button
                   type="button"
                   className="ps-conf-btn-secondary"
                   disabled={actionInFlight === record.id}
                   onClick={() => handleConfirmNew(record)}
                 >
-                  {actionInFlight === record.id ? 'Confirming…' : 'Confirm as new patient'}
+                  {actionInFlight === record.id ? t('patientMatchReviewSection.confirmingBtn') : t('patientMatchReviewSection.confirmNewBtn')}
                 </button>
               </div>
             </div>
@@ -194,12 +199,17 @@ const PatientMatchReviewSection: React.FC = () => {
 
       <ConfirmModal
         show={!!mergeTarget}
-        title="Merge patient records"
+        title={t('patientMatchReviewSection.modal.title')}
         message={mergeTarget
-          ? `This will merge ${mergeTarget.provisional.lastName}, ${mergeTarget.provisional.firstName} (MRN ${mergeTarget.provisional.mrn}) into the existing record for ${mergeTarget.candidate.lastName}, ${mergeTarget.candidate.firstName} (MRN ${mergeTarget.candidate.mrn}). Every case currently on the provisional record will be repointed to the confirmed one. This cannot be undone from this screen.`
+          ? t('patientMatchReviewSection.modal.message', {
+              provisionalName: `${mergeTarget.provisional.lastName}, ${mergeTarget.provisional.firstName}`,
+              provisionalMrn: mergeTarget.provisional.mrn,
+              candidateName: `${mergeTarget.candidate.lastName}, ${mergeTarget.candidate.firstName}`,
+              candidateMrn: mergeTarget.candidate.mrn,
+            })
           : ''}
-        confirmLabel="Merge"
-        cancelLabel="Cancel"
+        confirmLabel={t('patientMatchReviewSection.modal.confirmLabel')}
+        cancelLabel={t('common.cancel')}
         onConfirm={handleMergeConfirmed}
         onCancel={() => setMergeTarget(null)}
       />

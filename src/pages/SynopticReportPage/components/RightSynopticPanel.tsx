@@ -2,6 +2,8 @@
 // Schema-driven synoptic field renderer — dark navy theme.
 
 import React, { useImperativeHandle, forwardRef, useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../../pathscribe.css';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
 import type {
@@ -43,13 +45,6 @@ export function isVisible(cond: VisCond | undefined, ans: Record<string, string 
 
 
 
-// ─── Input styles ─────────────────────────────────────────────────────────────
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', borderRadius: 6,
-  border: '1px solid #334155', background: '#0f172a',
-  color: '#e2e8f0', fontSize: 13,
-};
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface AiSuggestion {
   value: string | string[];
@@ -87,6 +82,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
   belowThreshold = false, belowThresholdConf, belowThresholdSource,
   isPulsing = false, fieldRef, onFieldFocus, sourceNotFound = false,
 }) => {
+  const { t } = useTranslation();
   const strVal = (value ?? '') as string;
   const arrVal = Array.isArray(value) ? value as string[] : [];
   const ai = aiSuggestion;
@@ -97,104 +93,77 @@ const FieldRow: React.FC<FieldRowProps> = ({
   const hasValue = Array.isArray(value) ? value.length > 0 : (value ?? '') !== '';
   const isManualEntry = !ai && !belowThreshold && aiAttempted && hasValue;
 
-  const confBadgeStyle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
-    background: vStatus === 'verified' ? 'rgba(16,185,129,0.2)'
-              : vStatus === 'disputed' ? 'rgba(251,191,36,0.15)'
-              : isHighConf             ? 'rgba(16,185,129,0.2)'
-              : isMedConf              ? 'rgba(251,191,36,0.15)'
-              :                          'rgba(148,163,184,0.12)',
-    color:      vStatus === 'verified' ? '#34d399'
-              : vStatus === 'disputed' ? '#fbbf24'
-              : isHighConf             ? '#34d399'
-              : isMedConf              ? '#fbbf24'
-              :                          '#94a3b8',
-  };
+  const confBadgeClass =
+    vStatus === 'verified' ? 'ps-syn-badge--confirmed'
+    : vStatus === 'disputed' ? 'ps-syn-badge--disputed'
+    : isHighConf ? 'ps-syn-badge--high-conf'
+    : isMedConf ? 'ps-syn-badge--med-conf'
+    : 'ps-syn-badge--low-conf';
 
   const handleActivate = () => {
     onLabelClick?.();
     onFieldFocus?.(field.id);
   };
 
+  const rowClassNames = [
+    'ps-syn-field-row',
+    (ai || aiAttempted || isPulsing) ? 'ps-syn-field-row--ai-padding' : '',
+    isPulsing
+      ? 'ps-syn-field-row--pulsing'
+      : [
+          isActive && ai ? 'ps-syn-field-row--active-ai'
+            : isManualEntry ? 'ps-syn-field-row--manual'
+            : aiAttempted && !ai && !hasValue ? 'ps-syn-field-row--attempted-empty'
+            : '',
+          isActive && hasValue ? 'ps-syn-field-row--active-value' : '',
+        ].filter(Boolean).join(' '),
+  ].filter(Boolean).join(' ');
+
   return (
     <div
       ref={fieldRef}
-      style={{
-        marginBottom: 18,
-        borderLeft: isPulsing              ? '3px solid #f59e0b'
-                  : isActive && ai         ? '3px solid rgba(8,145,178,0.6)'
-                  : isManualEntry          ? '3px solid rgba(168,85,247,0.5)'
-                  : aiAttempted && !ai && !hasValue ? '3px solid rgba(100,116,139,0.3)'
-                  : '3px solid transparent',
-        paddingLeft: (ai || aiAttempted || isPulsing) ? 10 : 0,
-        background: isPulsing ? 'rgba(245,158,11,0.06)'
-                  : isActive && hasValue ? 'rgba(8,145,178,0.05)'
-                  : 'transparent',
-        borderRadius: isPulsing ? 6 : 2,
-        outline: isPulsing ? '1px solid rgba(245,158,11,0.25)' : 'none',
-        outlineOffset: '3px',
-        transition: 'border-color 0.2s, background 0.4s ease, outline 0.4s ease',
-      }}
+      className={rowClassNames}
       onFocus={() => { handleActivate(); onFieldFocus?.(field.id); }}
     >
       {/* Field header */}
       <div
         onClick={handleActivate}
-        style={{ fontSize: 12, color: '#94a3b8', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', cursor: 'pointer' }}
+        className="ps-syn-field-header"
       >
         <span
-          style={{ color: isActive ? '#e2e8f0' : '#94a3b8', transition: 'color 0.15s' }}
-          title={ai ? 'Click to highlight source in report' : 'Click to focus field'}
+          className={`ps-syn-field-label${isActive ? ' ps-syn-field-label--active' : ''}`}
+          title={ai ? t('rightSynopticPanel.fieldRow.clickToHighlightTitle') : t('rightSynopticPanel.fieldRow.clickToFocusTitle')}
         >{field.label}</span>
-        {field.required && <span style={{ color: '#f87171', fontSize: 10 }}>*</span>}
+        {field.required && <span className="ps-syn-field-required">*</span>}
 
         {/* Below-threshold warning badge */}
         {belowThreshold && (
           <span
-            title={`AI confidence ${belowThresholdConf}% is below your threshold — review carefully.\nSource: ${belowThresholdSource ?? '—'}`}
-            style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
-              background: 'rgba(245,158,11,0.12)',
-              border: '1px solid rgba(245,158,11,0.4)',
-              color: '#fbbf24',
-              cursor: 'default',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
+            title={t('rightSynopticPanel.fieldRow.belowThresholdTitle', { conf: belowThresholdConf, source: belowThresholdSource ?? '—' })}
+            className="ps-syn-badge-outlined ps-syn-badge--warn"
           >
-            <span style={{ fontSize: 11 }}>⚠</span>
-            AI: low confidence ({belowThresholdConf}%)
+            <span className="ps-syn-badge-icon">⚠</span>
+            {t('rightSynopticPanel.fieldRow.lowConfidenceBadge', { conf: belowThresholdConf })}
           </span>
         )}
 
         {/* AI not found */}
         {!ai && !belowThreshold && aiAttempted && !hasValue && (
           <span
-            title="AI analysed the report text but could not find evidence for this field. Fill in manually."
-            style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
-              background: 'rgba(100,116,139,0.15)',
-              border: '1px dashed rgba(100,116,139,0.5)',
-              color: '#94a3b8', cursor: 'default',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
+            title={t('rightSynopticPanel.fieldRow.notFoundTitle')}
+            className="ps-syn-badge-outlined ps-syn-badge--muted"
           >
-            <span style={{ fontSize: 11 }}>◌</span> AI: not found
+            <span className="ps-syn-badge-icon">◌</span> {t('rightSynopticPanel.fieldRow.notFoundBadge')}
           </span>
         )}
 
         {/* Manual entry */}
         {isManualEntry && (
           <span
-            title="You filled this field manually — AI had no suggestion. This helps train the AI."
-            style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
-              background: 'rgba(168,85,247,0.15)',
-              border: '1px solid rgba(168,85,247,0.4)',
-              color: '#c084fc', cursor: 'default',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
+            title={t('rightSynopticPanel.fieldRow.manualEntryTitle')}
+            className="ps-syn-badge-outlined ps-syn-badge--manual"
           >
-            <span style={{ fontSize: 11 }}>✎</span> Manual — AI missed
+            <span className="ps-syn-badge-icon">✎</span> {t('rightSynopticPanel.fieldRow.manualEntryBadge')}
           </span>
         )}
 
@@ -206,33 +175,27 @@ const FieldRow: React.FC<FieldRowProps> = ({
                 below-threshold fields so the same number doesn't appear
                 twice in the row. */}
             {!(belowThreshold && vStatus === 'unverified') && (
-              <span style={{ ...confBadgeStyle, cursor: 'default' }}>
-                {vStatus === 'verified' ? '✓ AI Confirmed' : vStatus === 'disputed' ? '✎ Overridden' : `${conf}%`}
+              <span className={`ps-syn-badge ${confBadgeClass}`}>
+                {vStatus === 'verified' ? t('rightSynopticPanel.fieldRow.confirmedBadge') : vStatus === 'disputed' ? t('rightSynopticPanel.fieldRow.overriddenBadge') : `${conf}%`}
               </span>
             )}
             {vStatus === 'unverified' && (
               <>
                 <button
                   onClick={() => onVerify?.(field.id, 'verified')}
-                  style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, cursor: 'pointer', border: '1.5px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#34d399', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.2)'; e.currentTarget.style.borderColor = '#10B981'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.4)'; }}
-                >✓ Confirm</button>
+                  className="ps-syn-confirm-btn"
+                >{t('rightSynopticPanel.fieldRow.confirmButton')}</button>
                 <button
                   onClick={() => onVerify?.(field.id, 'disputed')}
-                  style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, cursor: 'pointer', border: '1.5px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(251,191,36,0.15)'; e.currentTarget.style.borderColor = '#f59e0b'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(251,191,36,0.08)'; e.currentTarget.style.borderColor = 'rgba(251,191,36,0.4)'; }}
-                >✎ Override</button>
+                  className="ps-syn-override-btn"
+                >{t('rightSynopticPanel.fieldRow.overrideButton')}</button>
               </>
             )}
             {vStatus !== 'unverified' && (
               <button
                 onClick={() => onVerify?.(field.id, vStatus === 'verified' ? 'disputed' : 'verified')}
-                style={{ fontSize: 10, fontWeight: 500, padding: '1px 6px', borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: '#64748b', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.6)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.3)'; }}
-              >undo</button>
+                className="ps-syn-undo-btn"
+              >{t('rightSynopticPanel.fieldRow.undoButton')}</button>
             )}
           </>
         )}
@@ -240,10 +203,10 @@ const FieldRow: React.FC<FieldRowProps> = ({
 
       {/* Input controls */}
       {field.type === 'text' && (
-        <input type="text" value={strVal} onChange={e => onChange(field.id, e.target.value)} style={inputStyle} />
+        <input type="text" value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input" />
       )}
       {field.type === 'longtext' && (
-        <textarea rows={3} value={strVal} onChange={e => onChange(field.id, e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
+        <textarea rows={3} value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input ps-syn-input--textarea" />
       )}
       {field.type === 'numeric' && (
         <input
@@ -257,31 +220,31 @@ const FieldRow: React.FC<FieldRowProps> = ({
           // that would just get silently overwritten the next time
           // weight or height changes.
           disabled={field.id === 'body_mass_index'}
-          style={{ ...inputStyle, width: '50%' }}
+          className="ps-syn-input ps-syn-input--numeric"
         />
       )}
       {field.type === 'dropdown' && (
-        <select value={strVal} onChange={e => onChange(field.id, e.target.value)} style={inputStyle} aria-label={field.label}>
-          <option value="">— Select —</option>
+        <select value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input" aria-label={field.label}>
+          <option value="">{t('rightSynopticPanel.fieldRow.selectPlaceholder')}</option>
           {field.options?.map((o: FieldOption) => (
             <option key={o.id} value={o.id}>{o.label}</option>
           ))}
         </select>
       )}
       {field.type === 'radio' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="ps-syn-options-list">
           {field.options?.map((o: FieldOption) => (
-            <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', cursor: 'pointer' }}>
-              <input type="radio" name={field.id} checked={strVal === o.id} onChange={() => onChange(field.id, o.id)} style={{ accentColor: '#0891B2' }} />
+            <label key={o.id} className="ps-syn-option-label">
+              <input type="radio" name={field.id} checked={strVal === o.id} onChange={() => onChange(field.id, o.id)} className="ps-syn-option-input" />
               {o.label}
             </label>
           ))}
         </div>
       )}
       {field.type === 'checkboxes' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="ps-syn-options-list">
           {field.options?.map((o: FieldOption) => (
-            <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', cursor: 'pointer' }}>
+            <label key={o.id} className="ps-syn-option-label">
               <input
                 type="checkbox"
                 checked={arrVal.includes(o.id)}
@@ -290,7 +253,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
                   e.target.checked ? next.add(o.id) : next.delete(o.id);
                   onChange(field.id, Array.from(next));
                 }}
-                style={{ accentColor: '#0891B2' }}
+                className="ps-syn-option-input"
               />
               {o.label}
             </label>
@@ -299,28 +262,28 @@ const FieldRow: React.FC<FieldRowProps> = ({
       )}
 
       {strVal && field.type === 'dropdown' && (
-        <div style={{ marginTop: 4, fontSize: 11, color: '#38bdf8' }}>
+        <div className="ps-syn-dropdown-confirm">
           ✓ {field.options?.find((o: FieldOption) => o.id === strVal)?.label ?? strVal}
         </div>
       )}
 
       {/* AI source + low-confidence source */}
       {ai && vStatus === 'unverified' && (
-        <div style={{ marginTop: 4, fontSize: 10, fontStyle: 'italic', color: '#64748b' }}>
-          AI source: {ai.source}
+        <div className="ps-syn-ai-source">
+          {t('rightSynopticPanel.fieldRow.aiSourceLabel', { source: ai.source })}
         </div>
       )}
       {belowThreshold && belowThresholdSource && (
-        <div style={{ marginTop: 4, fontSize: 10, fontStyle: 'italic', color: '#78350f' }}>
-          AI source: {belowThresholdSource}
+        <div className="ps-syn-ai-source ps-syn-ai-source--warn">
+          {t('rightSynopticPanel.fieldRow.aiSourceLabel', { source: belowThresholdSource })}
         </div>
       )}
       {isActive && sourceNotFound && (
         <div
-          style={{ marginTop: 4, fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}
-          title="The AI cited a source for this suggestion, but this app couldn't find that exact text anywhere in the Gross, Microscopic, or Ancillary sections."
+          className="ps-syn-source-notfound"
+          title={t('rightSynopticPanel.fieldRow.sourceNotFoundTitle')}
         >
-          <span aria-hidden="true">◐</span> Source not found in report text — verify this value manually
+          <span aria-hidden="true">◐</span> {t('rightSynopticPanel.fieldRow.sourceNotFoundText')}
         </div>
       )}
     </div>
@@ -330,7 +293,8 @@ const FieldRow: React.FC<FieldRowProps> = ({
 // ─── TemplatePicker ───────────────────────────────────────────────────────────
 interface TemplateOption { id: string; name: string; source: string; version: string; category: string; }
 
-const TemplatePicker: React.FC<{ templates: TemplateOption[]; specimenDescriptions: string[]; onSelect: (id: string) => void }> = ({ templates, specimenDescriptions, onSelect }) => {
+const TemplatePicker: React.FC<{ templates: TemplateOption[]; specimenDescriptions: string[]; activeSpecimenLabel?: string; onSelect: (id: string) => void }> = ({ templates, specimenDescriptions, activeSpecimenLabel, onSelect }) => {
+  const { t } = useTranslation();
   // Real fix, per direct report: this list was showing every published
   // template in the entire system, regardless of relevance (a thyroid
   // case listing Breast/Lung/Prostate/Kidney templates alongside
@@ -345,9 +309,9 @@ const TemplatePicker: React.FC<{ templates: TemplateOption[]; specimenDescriptio
   // match here must never prevent the pathologist from finding and
   // picking the template they actually need.
   const haystack = specimenDescriptions.join(' ').toLowerCase();
-  const suggested = templates.filter(t => t.category && haystack.includes(t.category.toLowerCase()));
-  const suggestedIds = new Set(suggested.map(t => t.id));
-  const rest = templates.filter(t => !suggestedIds.has(t.id));
+  const suggested = templates.filter(tpl => tpl.category && haystack.includes(tpl.category.toLowerCase()));
+  const suggestedIds = new Set(suggested.map(tpl => tpl.id));
+  const rest = templates.filter(tpl => !suggestedIds.has(tpl.id));
 
   // Real feature, per direct product decision: a pathologist shouldn't
   // have to click the one template already most likely correct just to
@@ -372,35 +336,52 @@ const TemplatePicker: React.FC<{ templates: TemplateOption[]; specimenDescriptio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggested.length > 0]);
 
-  const renderTemplateButton = (t: TemplateOption) => (
+  const renderTemplateButton = (tpl: TemplateOption) => (
     <button
-      key={t.id}
-      onClick={() => onSelect(t.id)}
-      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', marginBottom: 6, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.2)', color: '#e2e8f0', cursor: 'pointer' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = '#0891B2'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.2)'; }}
+      key={tpl.id}
+      onClick={() => onSelect(tpl.id)}
+      className="ps-syn-picker-btn"
     >
-      <div style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</div>
-      <div style={{ fontSize: 11, color: '#64748b' }}>{t.source} · v{t.version} · {t.category}</div>
+      <div className="ps-syn-picker-btn-title">{tpl.name}</div>
+      <div className="ps-syn-picker-btn-meta">{t('rightSynopticPanel.templatePicker.templateMeta', { source: tpl.source, version: tpl.version, category: tpl.category })}</div>
     </button>
   );
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 4, color: '#e2e8f0' }}>Synoptic Report</h2>
-      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>No synoptic template is attached to this case.</p>
+    <div className="ps-syn-picker">
+      <h2 className="ps-syn-picker-title">{t('rightSynopticPanel.templatePicker.title')}</h2>
+      {/* Real fix (PS-310 — "Selected FNA and saw no associated
+          Synoptic Reports — the empty state is confusing. It should
+          clearly say no synoptic reports are associated with this
+          specimen, and let the user add one from there."): this
+          screen already IS the "add one from here" UI (every button
+          below attaches a template) — what was actually confusing was
+          the wording, which said "this case" regardless of which
+          specimen was selected. On a real, multi-specimen case where
+          most specimens already have a report and only the one just
+          selected (an FNA, say) doesn't, "this case" reads as if
+          nothing on the whole case has a report yet, when it's really
+          just this one specimen. Names the active specimen by its
+          real label when the caller has one (every real caller does;
+          the fallback only matters for an isolated unit test that
+          doesn't wire activeSpecimenId through). */}
+      <p className="ps-syn-picker-subtitle">
+        {activeSpecimenLabel
+          ? t('rightSynopticPanel.templatePicker.subtitleWithLabel', { label: activeSpecimenLabel })
+          : t('rightSynopticPanel.templatePicker.subtitleGeneric')}
+      </p>
       {templates.length === 0 ? (
-        <p style={{ fontSize: 12, color: '#64748b' }}>No approved synoptic templates are available.</p>
+        <p className="ps-syn-picker-empty">{t('rightSynopticPanel.templatePicker.noTemplatesAvailable')}</p>
       ) : (
         <>
           {suggested.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#0891B2', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>
-                Suggested for this case
+              <div className="ps-syn-picker-group-label">
+                {t('rightSynopticPanel.templatePicker.suggestedForCase')}
               </div>
               {suggested.map(renderTemplateButton)}
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '16px 0 8px' }}>
-                All templates
+              <div className="ps-syn-picker-group-label--all">
+                {t('rightSynopticPanel.templatePicker.allTemplates')}
               </div>
             </>
           )}
@@ -524,6 +505,7 @@ interface RightSynopticPanelProps {
 // ─── Main component ───────────────────────────────────────────────────────────
 const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPanelProps>(
   ({ caseData: initialCaseData, activeReportInstanceId, activeReportType = 'synoptic', activeSpecimenId, onReportInstanceChange, onCaseUpdate, scrollToField, onScrollComplete, onHighlight, highlightNotFound, computationalResults, onAiSuggestionsUpdate }, ref) => {
+  const { t } = useTranslation();
 
   // Real fix, found via a direct audit: same as HeaderBar.tsx — this
   // used to call the old, superseded getOrchestratorMode() instead of
@@ -802,9 +784,9 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       const inst = getActiveReports(caseData).find(r => r.instanceId === activeReportInstanceId) as any;
       if (inst?.assignedTo && inst.assignedTo !== user?.id) {
         return [{
-          sectionId: '__assignment__', sectionTitle: 'Assignment',
+          sectionId: '__assignment__', sectionTitle: t('rightSynopticPanel.assignment.sectionTitle'),
           fieldId: '__assigned__',
-          fieldLabel: `This synoptic is assigned to ${inst.assignedToName ?? inst.assignedTo} — they must finalise it`,
+          fieldLabel: t('rightSynopticPanel.assignment.fieldLabel', { name: inst.assignedToName ?? inst.assignedTo }),
         }];
       }
       const missing: MissingRequiredField[] = [];
@@ -1016,7 +998,7 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
           setTemplateDetail(null);
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? 'Failed to load template');
+        if (!cancelled) setError(e?.message ?? t('rightSynopticPanel.loadFailedFallback'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1203,16 +1185,17 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
 
   // ── Early returns ─────────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#94a3b8', fontSize: 14 }}>
-      Loading synoptic report…
+    <div className="ps-syn-loading">
+      {t('rightSynopticPanel.loading')}
     </div>
   );
-  if (error) return <div style={{ padding: 24, color: '#f87171', fontSize: 13 }}>{error}</div>;
-  if (!caseData) return <div style={{ padding: 24, color: '#64748b' }}>No case loaded.</div>;
+  if (error) return <div className="ps-syn-error">{error}</div>;
+  if (!caseData) return <div className="ps-syn-empty-case">{t('rightSynopticPanel.noCaseLoaded')}</div>;
   if (!templateDetail) return (
     <TemplatePicker
       templates={availableTemplates}
       specimenDescriptions={(caseData?.specimens ?? []).map(s => s.description ?? '')}
+      activeSpecimenLabel={caseData?.specimens?.find(s => s.id === activeSpecimenId)?.label}
       onSelect={async id => {
       const rawDetail = await getTemplateCached(id);
       // Real, same organ-driven section-visibility filter as the
@@ -1234,7 +1217,7 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       // already builds a real instance and appends it there. This is
       // that same shape, so a case loaded fresh finds it the same way
       // regardless of which path created it.
-      const selectedOption = availableTemplates.find(t => t.id === id);
+      const selectedOption = availableTemplates.find(opt => opt.id === id);
       const newInstanceId = `${activeSpecimenId ?? caseData.id}_${id}_${Date.now().toString(36)}`;
       const newInstance = {
         instanceId: newInstanceId,
@@ -1296,17 +1279,9 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
     if (aiSuggestions[f.id] && aiSuggestions[f.id].verification === 'unverified') unverifiedCount++;
   }));
 
-  const progressBadgeStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 10,
-    background: reqAnswered === reqTotal ? 'rgba(16,185,129,0.15)' : 'rgba(251,191,36,0.15)',
-    color: reqAnswered === reqTotal ? '#10b981' : '#fbbf24',
-    border: `1px solid ${reqAnswered === reqTotal ? 'rgba(16,185,129,0.3)' : 'rgba(251,191,36,0.3)'}`,
-    display: 'flex', alignItems: 'center', gap: 8,
-  };
-
   // ── Section fields renderer ───────────────────────────────────────────────
   const SectionFields = (sec: EditorSection) => (
-    <div style={{ padding: '0 0 32px' }}>
+    <div className="ps-syn-section-fields">
       {sec.fields
         .filter((f: EditorField) => isVisible(f.visibleWhen, answers))
         .map((f: EditorField) => {
@@ -1364,29 +1339,24 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 24px 0', flexShrink: 0 }}>
+    <div className="ps-syn-panel">
+      <div className="ps-syn-panel-head">
 
         {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, borderBottom: '2px solid #0891B2', paddingBottom: 6 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>
+        <div className="ps-syn-header-row">
+          <h3 className="ps-syn-template-name">
             📝 {template.name}
           </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="ps-syn-header-actions">
             {/* Assignment badge */}
             {(() => {
               const inst = getActiveReports(caseData).find(r => r.instanceId === activeReportInstanceId) as any;
               if (!inst?.assignedTo) return null;
               const isAssignee = inst.assignedTo === user?.id;
               return (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                  background: isAssignee ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.15)',
-                  color: isAssignee ? '#22d3ee' : '#94a3b8',
-                  border: `1px solid ${isAssignee ? 'rgba(6,182,212,0.3)' : 'rgba(100,116,139,0.3)'}`,
-                }}>
-                  {isAssignee ? '✎ Assigned to you' : `👤 ${inst.assignedToName ?? inst.assignedTo}`}
-                  {inst.requiresCountersign && !isAssignee ? ' · countersign required' : ''}
+                <span className={`ps-syn-assign-badge${isAssignee ? ' ps-syn-assign-badge--assignee' : ' ps-syn-assign-badge--other'}`}>
+                  {isAssignee ? t('rightSynopticPanel.header.assignedToYou') : t('rightSynopticPanel.header.assignedToOther', { name: inst.assignedToName ?? inst.assignedTo })}
+                  {inst.requiresCountersign && !isAssignee ? ` · ${t('rightSynopticPanel.header.countersignRequiredSuffix')}` : ''}
                 </span>
               );
             })()}
@@ -1396,47 +1366,37 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
                 disabled={isRegenerating || !templateDetail}
                 title={
                   !templateDetail
-                    ? 'No synoptic template assigned to this specimen yet — nothing to regenerate against'
-                    : "Regenerate AI suggestions for this synoptic from the current Gross description — never overwrites a field you've already answered"
+                    ? t('rightSynopticPanel.header.orchestratorTitleDisabled')
+                    : t('rightSynopticPanel.header.orchestratorTitleEnabled')
                 }
-                style={{
-                  fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-                  background: 'rgba(8,145,178,0.15)', color: '#38bdf8',
-                  border: '1px solid rgba(8,145,178,0.3)',
-                  cursor: isRegenerating || !templateDetail ? 'default' : 'pointer',
-                  opacity: isRegenerating || !templateDetail ? 0.5 : 1,
-                }}
+                className={`ps-syn-orch-btn${isRegenerating || !templateDetail ? ' ps-syn-orch-btn--disabled' : ''}`}
               >
-                {isRegenerating ? '⚡ Generating…' : '⚡ Orchestrator'}
+                {isRegenerating ? t('rightSynopticPanel.header.orchestratorGenerating') : t('rightSynopticPanel.header.orchestratorButton')}
               </button>
             )}
             {/* Progress badge */}
-            <span style={progressBadgeStyle}>
-              <span>{reqAnswered}/{reqTotal} req · {answered}/{total} total</span>
-              <span style={{ display: 'inline-block', width: 48, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', verticalAlign: 'middle' }}>
-                <span style={{ display: 'block', height: '100%', width: `${reqTotal > 0 ? (reqAnswered / reqTotal) * 100 : 0}%`, borderRadius: 2, background: reqAnswered === reqTotal ? '#10b981' : '#fbbf24', transition: 'width 0.4s ease' }} />
+            <span className={`ps-syn-progress-badge${reqAnswered === reqTotal ? ' ps-syn-progress-badge--complete' : ' ps-syn-progress-badge--incomplete'}`}>
+              <span>{t('rightSynopticPanel.header.progressBadge', { reqAnswered, reqTotal, answered, total })}</span>
+              <span className="ps-syn-progress-track">
+                <span
+                  className={`ps-syn-progress-fill${reqAnswered === reqTotal ? ' ps-syn-progress-fill--complete' : ' ps-syn-progress-fill--incomplete'}`}
+                  style={{ width: `${reqTotal > 0 ? (reqAnswered / reqTotal) * 100 : 0}%` }}
+                />
               </span>
             </span>
           </div>
         </div>
 
         {/* Jump-to bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, padding: '5px 10px', background: 'rgba(8,145,178,0.06)', borderRadius: 8, border: '1px solid rgba(8,145,178,0.15)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, whiteSpace: 'nowrap' }}>Jump to:</span>
+        <div className="ps-syn-jumpbar">
+          <span className="ps-syn-jumpbar-label">{t('rightSynopticPanel.jumpBar.label')}</span>
           <button
             onClick={jumpBack}
             disabled={jumpHistoryLength === 0}
-            style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${jumpHistoryLength > 0 ? '#64748b' : 'rgba(100,116,139,0.25)'}`,
-              background: 'transparent',
-              color: jumpHistoryLength > 0 ? '#cbd5e1' : '#475569',
-              cursor: jumpHistoryLength > 0 ? 'pointer' : 'not-allowed',
-              whiteSpace: 'nowrap',
-            }}
-            title={jumpHistoryLength > 0 ? 'Return to the field you were just on' : 'Nowhere to go back to yet'}
+            className={`ps-syn-jump-back-btn${jumpHistoryLength > 0 ? ' ps-syn-jump-back-btn--enabled' : ''}`}
+            title={jumpHistoryLength > 0 ? t('rightSynopticPanel.jumpBar.backTitleEnabled') : t('rightSynopticPanel.jumpBar.backTitleDisabled')}
           >
-            ← Back
+            {t('rightSynopticPanel.jumpBar.backButton')}
           </button>
           <button
             onClick={() => {
@@ -1450,9 +1410,9 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
               const next = all[cur >= 0 && cur < all.length - 1 ? cur + 1 : 0];
               jumpToField(next.fieldId, next.sectionId);
             }}
-            style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: '1.5px solid #0891B2', background: 'transparent', color: '#38bdf8', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            className="ps-syn-jump-next-btn"
           >
-            → Next Unanswered {total - answered > 0 ? `(${total - answered})` : '✓'}
+            {t('rightSynopticPanel.jumpBar.nextUnansweredLabel')} {total - answered > 0 ? `(${total - answered})` : '✓'}
           </button>
           <button
             onClick={() => {
@@ -1466,15 +1426,9 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
               const next = all[cur >= 0 && cur < all.length - 1 ? cur + 1 : 0];
               jumpToField(next.fieldId, next.sectionId);
             }}
-            style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${reqAnswered < reqTotal ? '#dc2626' : '#10b981'}`,
-              background: 'transparent',
-              color: reqAnswered < reqTotal ? '#f87171' : '#10b981',
-              cursor: 'pointer',
-            }}
+            className={`ps-syn-jump-required-btn${reqAnswered < reqTotal ? ' ps-syn-jump-required-btn--pending' : ' ps-syn-jump-required-btn--done'}`}
           >
-            → Next Required {reqTotal - reqAnswered > 0 ? `(${reqTotal - reqAnswered})` : '✓'}
+            {t('rightSynopticPanel.jumpBar.nextRequiredLabel')} {reqTotal - reqAnswered > 0 ? `(${reqTotal - reqAnswered})` : '✓'}
           </button>
           <button
             onClick={() => {
@@ -1488,53 +1442,36 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
               const next = all[cur >= 0 && cur < all.length - 1 ? cur + 1 : 0];
               jumpToField(next.fieldId, next.sectionId);
             }}
-            style={{
-              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${unverifiedCount > 0 ? '#a78bfa' : '#10b981'}`,
-              background: 'transparent',
-              color: unverifiedCount > 0 ? '#c4b5fd' : '#10b981',
-              cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-            title="AI-suggested values that haven't been explicitly confirmed or overridden yet"
+            className={`ps-syn-jump-unverified-btn${unverifiedCount > 0 ? ' ps-syn-jump-unverified-btn--pending' : ' ps-syn-jump-unverified-btn--done'}`}
+            title={t('rightSynopticPanel.jumpBar.unverifiedTitle')}
           >
-            → Next Unverified {unverifiedCount > 0 ? `(${unverifiedCount})` : '✓'}
+            {t('rightSynopticPanel.jumpBar.nextUnverifiedLabel')} {unverifiedCount > 0 ? `(${unverifiedCount})` : '✓'}
           </button>
         </div>
 
         {/* Section tabs + view mode toggle */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
+        <div className="ps-syn-tabsrow">
           {/* Toggle button */}
-          <div style={{ display: 'flex', borderRadius: 6, border: '1px solid rgba(148,163,184,0.2)', overflow: 'hidden', flexShrink: 0 }}>
+          <div className="ps-syn-viewtoggle">
             <button
               onClick={() => setViewMode('tabs')}
-              title="Tab view — one section at a time"
-              style={{
-                padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: viewMode === 'tabs' ? '#0e7490' : 'transparent',
-                color: viewMode === 'tabs' ? '#fff' : '#cbd5e1',
-                transition: 'all 0.15s',
-              }}
+              title={t('rightSynopticPanel.viewToggle.tabsTitle')}
+              className={`ps-syn-viewtoggle-btn${viewMode === 'tabs' ? ' ps-syn-viewtoggle-btn--active' : ''}`}
             >
-              ⊟ Tabs
+              {t('rightSynopticPanel.viewToggle.tabsButton')}
             </button>
             <button
               onClick={() => setViewMode('page')}
-              title="Page view — all sections scrollable"
-              style={{
-                padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-                borderLeft: '1px solid rgba(148,163,184,0.2)',
-                background: viewMode === 'page' ? '#0e7490' : 'transparent',
-                color: viewMode === 'page' ? '#fff' : '#cbd5e1',
-                transition: 'all 0.15s',
-              }}
+              title={t('rightSynopticPanel.viewToggle.pageTitle')}
+              className={`ps-syn-viewtoggle-btn ps-syn-viewtoggle-btn--right${viewMode === 'page' ? ' ps-syn-viewtoggle-btn--active' : ''}`}
             >
-              ☰ Page
+              {t('rightSynopticPanel.viewToggle.pageButton')}
             </button>
           </div>
 
           {/* Section tabs — tabs mode only */}
           {viewMode === 'tabs' && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            <div className="ps-syn-section-tabs">
               {visibleSections.map((sec: EditorSection) => {
                 const isActive = sec.id === (activeSectionId || visibleSections[0]?.id);
                 const secAnswered = sec.fields.filter((f: EditorField) => isVisible(f.visibleWhen, answers) && answers[f.id]).length;
@@ -1556,23 +1493,20 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
                   <button
                     key={sec.id}
                     onClick={() => setActiveSectionId(sec.id)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      background: isActive ? '#0e7490' : 'rgba(255,255,255,0.06)',
-                      border: `2px solid ${isActive ? '#0e7490' : secUnverified > 0 ? 'rgba(251,191,36,0.5)' : 'rgba(148,163,184,0.2)'}`,
-                      color: isActive ? 'white' : '#cbd5e1', transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(8,145,178,0.15)'; e.currentTarget.style.borderColor = 'rgba(8,145,178,0.5)'; e.currentTarget.style.color = '#7dd3fc'; }}}
-                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = secUnverified > 0 ? 'rgba(251,191,36,0.5)' : 'rgba(148,163,184,0.2)'; e.currentTarget.style.color = '#cbd5e1'; }}}
+                    className={[
+                      'ps-syn-section-tab',
+                      isActive ? 'ps-syn-section-tab--active' : '',
+                      !isActive && secUnverified > 0 ? 'ps-syn-section-tab--unverified' : '',
+                    ].filter(Boolean).join(' ')}
                   >
                     {sec.title}
-                    {secTotal > 0 && <span style={{ marginLeft: 6, fontSize: 10 }}>({secAnswered}/{secTotal})</span>}
+                    {secTotal > 0 && <span className="ps-syn-section-tab-count">({secAnswered}/{secTotal})</span>}
                     {secUnverified > 0 && (
                       <span
-                        style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: isActive ? '#fde68a' : '#fbbf24' }}
-                        title={`${secUnverified} AI suggestion${secUnverified === 1 ? '' : 's'} awaiting review on this tab`}
+                        className={`ps-syn-section-tab-unverified${isActive ? ' ps-syn-section-tab-unverified--active' : ''}`}
+                        title={t('rightSynopticPanel.sectionTabs.unverifiedTitle', { count: secUnverified })}
                       >
-                        · {secUnverified} unverified
+                        · {t('rightSynopticPanel.sectionTabs.unverifiedLabel', { count: secUnverified })}
                       </span>
                     )}
                   </button>
@@ -1584,12 +1518,12 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
+      <div className="ps-syn-body">
 
         {/* Tabs mode — single active section */}
         {viewMode === 'tabs' && activeSection && (
           <div>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: '#8a9db5', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+            <h4 className="ps-syn-section-heading">
               {activeSection.title}
             </h4>
             {SectionFields(activeSection)}
@@ -1597,16 +1531,13 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
         )}
 
         {/* Page mode — all sections stacked */}
-        {viewMode === 'page' && visibleSections.map((sec: EditorSection, idx: number) => (
-          <div key={sec.id} style={{ marginBottom: idx < visibleSections.length - 1 ? 32 : 0 }}>
+        {viewMode === 'page' && visibleSections.map((sec: EditorSection) => (
+          <div key={sec.id} className="ps-syn-page-section">
             <div
               ref={el => { sectionHeaderRefs.current[sec.id] = el; }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14,
-                paddingBottom: 8, borderBottom: '1px solid rgba(8,145,178,0.25)',
-              }}
+              className="ps-syn-page-section-header"
             >
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0, flex: 1 }}>
+              <h4 className="ps-syn-page-section-title">
                 {sec.title}
               </h4>
               {(() => {
@@ -1619,16 +1550,16 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
                 return (
                   <>
                     {secTotal > 0 && (
-                      <span style={{ fontSize: 10, color: secAnswered === secTotal ? '#10b981' : '#8a9db5', fontWeight: 600 }}>
+                      <span className={`ps-syn-page-section-count${secAnswered === secTotal ? ' ps-syn-page-section-count--complete' : ''}`}>
                         {secAnswered}/{secTotal}
                       </span>
                     )}
                     {secUnverified > 0 && (
                       <span
-                        style={{ fontSize: 10, fontWeight: 700, color: '#fbbf24' }}
-                        title={`${secUnverified} AI suggestion${secUnverified === 1 ? '' : 's'} awaiting review on this tab`}
+                        className="ps-syn-page-section-unverified"
+                        title={t('rightSynopticPanel.sectionTabs.unverifiedTitle', { count: secUnverified })}
                       >
-                        {secUnverified} unverified
+                        {t('rightSynopticPanel.sectionTabs.unverifiedLabel', { count: secUnverified })}
                       </span>
                     )}
                   </>

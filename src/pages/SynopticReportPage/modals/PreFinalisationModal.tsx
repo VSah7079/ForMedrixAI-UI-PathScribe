@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
   isBiometricAvailable,
@@ -21,6 +22,7 @@ import {
   getDeviceName,
   getBiometricPolicy,
 } from '@/services/biometric/mockBiometricService';
+import { formatOrdinal } from '@/utils/formatOrdinal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,12 +113,20 @@ function fmt(val: string | string[] | undefined): string {
   return String(val);
 }
 
-const ordinal = (i: number) =>
-  ['First','Second','Third','Fourth','Fifth','Sixth'][i] ?? `${i+1}th`;
+// Real, persisted case-level mode — 'pathscribe' means Orchestration
+// (PathScribe owns the report); "Orchestration" itself is treated as
+// the fixed PathScribe module name elsewhere in the app (e.g.
+// staffTab's own Orchestration Access strings) and stays literal in
+// every locale, while "mode" translates around it.
+const REPORTING_MODE_LABEL_KEY: Record<Props['reportingMode'], string> = {
+  assisted:   'preFinalisationModal.mode.assisted',
+  pathscribe: 'preFinalisationModal.mode.orchestration',
+};
 
 // ── Q&A Preview (right pane) ──────────────────────────────────────────────────
 
 const ReportPreview: React.FC<{ staged: StagedSpecimen[] }> = ({ staged }) => {
+  const { t } = useTranslation();
   const included = staged.flatMap(sp =>
     sp.synoptics.map(s => ({ ...s, sp }))
   );
@@ -124,7 +134,7 @@ const ReportPreview: React.FC<{ staged: StagedSpecimen[] }> = ({ staged }) => {
   if (included.length === 0) {
     return (
       <div className="ps-prefin-preview-empty">
-        No synoptic reports to transmit.
+        {t('preFinalisationModal.preview.noReports')}
       </div>
     );
   }
@@ -153,7 +163,7 @@ const ReportPreview: React.FC<{ staged: StagedSpecimen[] }> = ({ staged }) => {
               </div>
             </div>
             {!anyAnswered ? (
-              <div className="ps-prefin-preview-empty-fields">No fields completed</div>
+              <div className="ps-prefin-preview-empty-fields">{t('preFinalisationModal.preview.noFieldsCompleted')}</div>
             ) : groups.filter(g => g.fieldKeys.length > 0).map(group => (
               <div key={group.title ?? '_flat'} className="ps-prefin-preview-section">
                 {group.title && (
@@ -191,9 +201,10 @@ const SigningPanel: React.FC<{
   onSign:          () => void;
   onCancel:        () => void;
 }> = ({ userId, userDisplayName, userCredentials, totalCount, finalizeAndNext, onSign, onCancel }) => {
+  const { t } = useTranslation();
   const [showBio,    setShowBio]    = React.useState(false);
   const [bioStep,    setBioStep]    = React.useState<BioStep>('idle');
-  const [deviceName, setDeviceName] = React.useState('Biometric');
+  const [deviceName, setDeviceName] = React.useState(t('preFinalisationModal.signing.biometricDefault'));
   const [password,   setPassword]   = React.useState('');
   const [pwError,    setPwError]    = React.useState('');
   const [bioFailMsg, setBioFailMsg] = React.useState('');
@@ -215,13 +226,13 @@ const SigningPanel: React.FC<{
     setBioStep('pending'); setBioFailMsg('');
     const r = await verifyBiometric(userId);
     if (r.ok) { setBioStep('verified'); setTimeout(onSign, 400); }
-    else { setBioStep('failed'); setBioFailMsg('Biometric didn\'t recognise you — please use your password.'); setTimeout(() => pwRef.current?.focus(), 100); }
+    else { setBioStep('failed'); setBioFailMsg(t('preFinalisationModal.signing.bioNotRecognised')); setTimeout(() => pwRef.current?.focus(), 100); }
   };
 
   const handlePw = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) { setPwError('Password is required.'); return; }
-    if (password.length < 3) { setPwError('Incorrect password.'); return; }
+    if (!password.trim()) { setPwError(t('preFinalisationModal.signing.passwordRequired')); return; }
+    if (password.length < 3) { setPwError(t('preFinalisationModal.signing.passwordIncorrect')); return; }
     setPwError(''); onSign();
   };
 
@@ -231,11 +242,11 @@ const SigningPanel: React.FC<{
       <div className="ps-prefin-signing-row">
         <div className="ps-prefin-signing-identity">
           <p className="ps-prefin-signing-name">
-            Signing as {userDisplayName}{userCredentials ? ` · ${userCredentials}` : ''}
+            {t('preFinalisationModal.signing.signingAs', { name: userDisplayName })}{userCredentials ? ` · ${userCredentials}` : ''}
           </p>
           <p className="ps-prefin-signing-meta">
-            {totalCount} synoptic{totalCount !== 1 ? 's' : ''} transmitted
-            {finalizeAndNext && <span className="ps-prefin-signing-next"> · next case queued</span>}
+            {t('preFinalisationModal.signing.synopticsTransmitted', { count: totalCount })}
+            {finalizeAndNext && <span className="ps-prefin-signing-next"> · {t('preFinalisationModal.signing.nextCaseQueued')}</span>}
           </p>
         </div>
 
@@ -247,9 +258,9 @@ const SigningPanel: React.FC<{
               className={`ps-prefin-bio-btn${bioStep === 'verified' ? ' ps-prefin-bio-btn--verified' : ''}`}
             >
               <span>{bioStep === 'verified' ? '✓' : bioStep === 'pending' ? '⏳' : '👆'}</span>
-              {bioStep === 'verified' ? 'Verified' : bioStep === 'pending' ? 'Verifying…' : deviceName}
+              {bioStep === 'verified' ? t('preFinalisationModal.signing.verified') : bioStep === 'pending' ? t('preFinalisationModal.signing.verifying') : deviceName}
             </button>
-            <span className="ps-prefin-signing-or">or</span>
+            <span className="ps-prefin-signing-or">{t('preFinalisationModal.signing.or')}</span>
           </>
         )}
 
@@ -260,18 +271,18 @@ const SigningPanel: React.FC<{
               type="password"
               value={password}
               onChange={e => { setPassword(e.target.value); setPwError(''); }}
-              placeholder={showBio ? 'Password fallback' : 'Password'}
+              placeholder={showBio ? t('preFinalisationModal.signing.passwordFallback') : t('preFinalisationModal.signing.password')}
               autoComplete="current-password"
               className={`ps-prefin-pw-input${pwError ? ' ps-prefin-pw-input--error' : ''}`}
             />
             {pwError && <p className="ps-prefin-pw-error">{pwError}</p>}
           </div>
-          <button type="submit" className="ps-btn-primary" style={{ whiteSpace: 'nowrap' }}>
-            {finalizeAndNext ? 'Finalise & Next →' : 'Finalise now 🔒'}
+          <button type="submit" className="ps-btn-primary ps-prefin-nowrap">
+            {finalizeAndNext ? `${t('preFinalisationModal.signing.finaliseAndNext')} →` : `${t('preFinalisationModal.signing.finaliseNow')} 🔒`}
           </button>
         </form>
 
-        <button onClick={onCancel} className="ps-btn-ghost-dark">Cancel</button>
+        <button onClick={onCancel} className="ps-btn-ghost-dark">{t('common.cancel')}</button>
       </div>
     </div>
   );
@@ -292,6 +303,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
   synoptics, userId, userDisplayName, userCredentials,
   finalizeAndNext = false, onJumpToField, onConfirm, onCancel,
 }) => {
+  const { t, i18n } = useTranslation();
   const [staged, setStaged] = React.useState<StagedSpecimen[]>([]);
   const [dragSrc, setDragSrc] = React.useState<{ type: 'specimen' | 'synoptic'; si: number; syi: number } | null>(null);
   const [dragOver, setDragOver] = React.useState<{ si: number; syi: number } | null>(null);
@@ -341,16 +353,16 @@ export const PreFinalisationModal: React.FC<Props> = ({
         <div className="ps-prefin-header">
           <div className="ps-prefin-header-left">
             <div className="ps-prefin-header-row">
-              <h2 className="ps-prefin-title">Review before finalising</h2>
+              <h2 className="ps-prefin-title">{t('preFinalisationModal.header.title')}</h2>
               <span className={`ps-prefin-mode-badge${reportingMode === 'assisted' ? ' ps-prefin-mode-badge--copilot' : ' ps-prefin-mode-badge--pathscribe'}`}>
-                {reportingMode === 'assisted' ? 'Assist mode' : 'Orchestration mode'}
+                {t(REPORTING_MODE_LABEL_KEY[reportingMode])}
               </span>
             </div>
             <p className="ps-prefin-header-meta">{caseAccession} · {patientName}</p>
           </div>
           <div className="ps-prefin-header-hint">
-            <div>Drag specimens to set transmission order</div>
-            <div>Synoptics are locked to their specimen</div>
+            <div>{t('preFinalisationModal.header.dragHint')}</div>
+            <div>{t('preFinalisationModal.header.lockedHint')}</div>
           </div>
         </div>
 
@@ -369,16 +381,15 @@ export const PreFinalisationModal: React.FC<Props> = ({
                   onDragOver={e => onDragOver(e, si, -1)}
                   onDrop={e => onDrop(e, si, -1)}
                   onDragEnd={onDragEnd}
-                  className={`ps-prefin-specimen-card${spDragOver ? ' ps-prefin-specimen-card--dragover' : ''}`}
-                  style={{ opacity: dragSrc?.type === 'specimen' && dragSrc.si === si ? 0.4 : 1 }}
+                  className={`ps-prefin-specimen-card${spDragOver ? ' ps-prefin-specimen-card--dragover' : ''}${dragSrc?.type === 'specimen' && dragSrc.si === si ? ' ps-prefin-specimen-card--dragging' : ''}`}
                 >
                   {/* Specimen header */}
                   <div className="ps-prefin-specimen-header">
                     <DragHandle />
                     <div className="ps-prefin-specimen-avatar">{sp.specimenLabel}</div>
                     <div>
-                      <p className="ps-prefin-specimen-name">Specimen {sp.specimenLabel} — {sp.specimenDesc}</p>
-                      <p className="ps-prefin-specimen-order">Transmits {ordinal(si).toLowerCase()}</p>
+                      <p className="ps-prefin-specimen-name">{t('preFinalisationModal.specimen.nameLine', { label: sp.specimenLabel, desc: sp.specimenDesc })}</p>
+                      <p className="ps-prefin-specimen-order">{t('preFinalisationModal.specimen.transmitsOrder', { ordinal: formatOrdinal(si + 1, i18n.language) })}</p>
                     </div>
                   </div>
 
@@ -392,14 +403,13 @@ export const PreFinalisationModal: React.FC<Props> = ({
                         onDragStart={e => { e.stopPropagation(); onDragStart(e, 'synoptic', si, syi); }}
                         onDragOver={e => { e.stopPropagation(); onDragOver(e, si, syi); }}
                         onDrop={e => { e.stopPropagation(); onDrop(e, si, syi); }}
-                        className={`ps-prefin-synoptic-row${synDragOver ? ' ps-prefin-synoptic-row--dragover' : ''}`}
-                        style={{ opacity: dragSrc?.si === si && dragSrc?.syi === syi && dragSrc?.type === 'synoptic' ? 0.3 : 1 }}
+                        className={`ps-prefin-synoptic-row${synDragOver ? ' ps-prefin-synoptic-row--dragover' : ''}${dragSrc?.si === si && dragSrc?.syi === syi && dragSrc?.type === 'synoptic' ? ' ps-prefin-synoptic-row--dragging' : ''}`}
                       >
                         <div className="ps-prefin-synoptic-header">
                           <div className="ps-prefin-synoptic-info">
                             <p className="ps-prefin-synoptic-name">{syn.templateName}</p>
                             <p className="ps-prefin-synoptic-meta">
-                              {syn.answeredCount}/{syn.totalCount} fields
+                              {t('preFinalisationModal.synoptic.fieldsCount', { answered: syn.answeredCount, total: syn.totalCount })}
                             </p>
                             {(() => {
                               const emptyRequired = (syn.requiredFields ?? []).filter(k => {
@@ -415,7 +425,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
                                 <>
                                   {emptyRequired.length > 0 && (
                                     <div className="ps-prefin-fields-warn ps-prefin-fields-warn--required">
-                                      <span>🔴 {emptyRequired.length} required field{emptyRequired.length !== 1 ? 's' : ''} incomplete — sign-out blocked</span>
+                                      <span>🔴 {t('preFinalisationModal.fields.requiredIncomplete', { count: emptyRequired.length })}</span>
                                       {onJumpToField && (
                                         <div className="ps-prefin-field-list">
                                           {emptyRequired.map(k => (
@@ -430,9 +440,9 @@ export const PreFinalisationModal: React.FC<Props> = ({
                                   )}
                                   {emptyOptional.length > 0 && emptyRequired.length === 0 && (
                                     <p className="ps-prefin-fields-warn ps-prefin-fields-warn--optional">
-                                      ⚠ {emptyOptional.length} optional field{emptyOptional.length !== 1 ? 's' : ''} empty:&nbsp;
+                                      ⚠ {t('preFinalisationModal.fields.optionalEmpty', { count: emptyOptional.length })}&nbsp;
                                       {emptyOptional.slice(0, 3).map(k => syn.fieldLabels[k] || k).join(', ')}
-                                      {emptyOptional.length > 3 && ` +${emptyOptional.length - 3} more`}
+                                      {emptyOptional.length > 3 && ` ${t('preFinalisationModal.fields.moreCount', { count: emptyOptional.length - 3 })}`}
                                     </p>
                                   )}
                                 </>
@@ -451,7 +461,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
           {/* RIGHT — live report preview */}
           <div className="ps-prefin-right">
             <div className="ps-prefin-preview-header">
-              <span className="ps-prefin-preview-title">Preview — as transmitted to LIS</span>
+              <span className="ps-prefin-preview-title">{t('preFinalisationModal.preview.title')}</span>
             </div>
             <div className="ps-prefin-preview-scroll">
               <ReportPreview staged={staged} />

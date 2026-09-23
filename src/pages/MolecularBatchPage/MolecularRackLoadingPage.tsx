@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import '../../pathscribe.css';
 import { mockMolecularExtractionRackService } from '../../services/molecular/mockMolecularExtractionRackService';
@@ -25,6 +26,7 @@ import { getSessionUser } from '../../services/auth/caseAccessControl';
 import type { MolecularExtractionRack } from '../../services/molecular/IMolecularExtractionRackService';
 
 const MolecularRackLoadingPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { rackId } = useParams<{ rackId: string }>();
   const isNew = rackId === 'new';
@@ -90,7 +92,7 @@ const MolecularRackLoadingPage: React.FC = () => {
       { accessionNumber: matchedAccession, containerBarcode: raw },
       movement,
     );
-    if (!res.ok) { setLoadError('error' in res ? res.error : 'Unknown error loading specimen into rack.'); return; }
+    if (!res.ok) { setLoadError('error' in res ? res.error : t('molecularRackLoadingPage.genericLoadError')); return; }
     setRack(res.data);
 
     // Real, per the plate builder's own established pattern: auto-
@@ -131,19 +133,19 @@ const MolecularRackLoadingPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('molecularRackLoadingPage.loading')}</div>;
 
   return (
     <div className="ps-app-root ps-page-container ps-page-container--narrow">
-      <button className="ps-btn-small ps-back-btn" onClick={() => navigate('/molecular-rack')}>← Back to Racks</button>
+      <button className="ps-btn-small ps-back-btn" onClick={() => navigate('/molecular-rack')}>{t('molecularRackLoadingPage.backToRacks')}</button>
 
       {isNew && (
         <div className="ps-panel-box">
-          <h1 className="ps-section-title">New Extraction Rack</h1>
-          <label className="ps-label" htmlFor="rack-capacity">Capacity</label>
+          <h1 className="ps-section-title">{t('molecularRackLoadingPage.newRackTitle')}</h1>
+          <label className="ps-label" htmlFor="rack-capacity">{t('molecularRackLoadingPage.capacityLabel')}</label>
           <input id="rack-capacity" className="ps-input-dark" type="number" min={1} max={384} value={capacity} onChange={e => setCapacity(Number(e.target.value) || 1)} />
           <div className="ps-mt-16">
-            <button className="ps-conf-btn-secondary" disabled={creating} onClick={handleCreate}>{creating ? 'Creating…' : 'Create Rack'}</button>
+            <button className="ps-conf-btn-secondary" disabled={creating} onClick={handleCreate}>{creating ? t('molecularRackLoadingPage.creating') : t('molecularRackLoadingPage.createRack')}</button>
           </div>
         </div>
       )}
@@ -152,7 +154,7 @@ const MolecularRackLoadingPage: React.FC = () => {
         <>
           <h1 className="ps-section-title">{rack.rackBarcode}</h1>
           <p className="ps-helper-text">
-            Select an empty position, then scan a specimen vial to load it — per §5.1, this records the primary_vial → secondary_rack movement with the current user and station.
+            {t('molecularRackLoadingPage.helperText')}
           </p>
           {loadError && <div className="ps-error-text">{loadError}</div>}
           <div className="ps-rack-position-grid">
@@ -163,7 +165,7 @@ const MolecularRackLoadingPage: React.FC = () => {
                 <button
                   key={p.positionLabel}
                   onClick={() => !occupied && setSelectedPositionLabel(p.positionLabel)}
-                  title={occupied ? `${p.positionLabel}: ${p.containerBarcode}${p.accessionNumber ? ` — ${p.accessionNumber}` : ''}` : `Position ${p.positionLabel} — empty`}
+                  title={occupied ? `${p.positionLabel}: ${p.containerBarcode}${p.accessionNumber ? ` — ${p.accessionNumber}` : ''}` : t('molecularRackLoadingPage.positionEmpty', { position: p.positionLabel })}
                   className={`ps-rack-position${occupied ? ' ps-rack-position--occupied' : ''}${isSelected ? ' ps-rack-position--selected' : ''}`}>
                   {p.positionLabel}
                 </button>
@@ -173,24 +175,24 @@ const MolecularRackLoadingPage: React.FC = () => {
           {selectedPositionLabel && (
             <>
               <button className={`ps-btn-small ps-mt-16${armedForScan ? ' ps-btn-small--armed' : ''}`} onClick={() => setArmedForScan(a => !a)}>
-                {armedForScan ? `📡 Waiting for scan into position ${selectedPositionLabel}…` : `📷 Scan into position ${selectedPositionLabel}`}
+                {armedForScan ? t('molecularRackLoadingPage.waitingForScan', { position: selectedPositionLabel }) : t('molecularRackLoadingPage.scanIntoPosition', { position: selectedPositionLabel })}
               </button>
               {!manualEntryOpen ? (
                 <button className="ps-btn-small ps-mt-16" onClick={() => setManualEntryOpen(true)}>
-                  ⌨️ Scan not working? Enter specimen ID manually
+                  {t('molecularRackLoadingPage.manualEntryPrompt')}
                 </button>
               ) : (
-                <div className="ps-mt-16" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className="ps-mt-16 ps-flex-row-gap-8">
                   <input
                     className="ps-input"
                     autoFocus
-                    placeholder="Specimen / container barcode"
+                    placeholder={t('molecularRackLoadingPage.manualEntryPlaceholder')}
                     value={manualEntryValue}
                     onChange={e => setManualEntryValue(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleManualEntrySubmit(); }}
                   />
-                  <button className="ps-btn-small" onClick={handleManualEntrySubmit} disabled={!manualEntryValue.trim()}>Load</button>
-                  <button className="ps-btn-small" onClick={() => { setManualEntryOpen(false); setManualEntryValue(''); }}>Cancel</button>
+                  <button className="ps-btn-small" onClick={handleManualEntrySubmit} disabled={!manualEntryValue.trim()}>{t('molecularRackLoadingPage.load')}</button>
+                  <button className="ps-btn-small" onClick={() => { setManualEntryOpen(false); setManualEntryValue(''); }}>{t('molecularRackLoadingPage.cancel')}</button>
                 </div>
               )}
             </>

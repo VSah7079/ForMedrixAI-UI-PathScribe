@@ -1,4 +1,6 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 
 interface ResourcesModalProps {
   isOpen:   boolean;
@@ -11,31 +13,32 @@ interface ResourcesModalProps {
 }
 
 const LinkSection: React.FC<{ label: string; links: { title: string; url: string }[] }> = ({ label, links }) => (
-  <div style={{ marginBottom: 24 }}>
-    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>{label}</div>
+  <div className="ps-resources-section">
+    <div className="ps-resources-section-label">{label}</div>
     {links.map(link => (
-      <a key={link.url} href={link.url} target="_blank" rel="noreferrer"
-        style={{ display: 'block', padding: '10px 16px', marginBottom: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: '#cbd5e1', fontSize: 14, textDecoration: 'none' }}
-      >{link.title}</a>
+      <a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="ps-resources-link">
+        {link.title}
+      </a>
     ))}
   </div>
 );
 
 const ResourcesModal: React.FC<ResourcesModalProps> = ({ isOpen, onClose, quickLinks }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 400 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ color: '#0891B2', fontSize: 24, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>
-          Quick Links
+      <div className="ps-modal-dark ps-resources-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ps-resources-title">
+          {t('resourcesModal.quickLinks')}
         </div>
 
-        <LinkSection label="Protocols"  links={quickLinks.protocols} />
-        <LinkSection label="References" links={quickLinks.references} />
-        <LinkSection label="Systems"    links={quickLinks.systems} />
+        <LinkSection label={t('resourcesModal.protocols')}  links={quickLinks.protocols} />
+        <LinkSection label={t('resourcesModal.references')} links={quickLinks.references} />
+        <LinkSection label={t('resourcesModal.systems')}    links={quickLinks.systems} />
 
-        <button className="ps-btn-ghost-dark" onClick={onClose} style={{ width: '100%', marginTop: 24 }}>
-          Close
+        <button className="ps-btn-ghost-dark ps-resources-close-btn" onClick={onClose}>
+          {t('resourcesModal.close')}
         </button>
       </div>
     </div>

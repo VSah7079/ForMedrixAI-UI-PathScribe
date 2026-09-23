@@ -22,15 +22,23 @@
 // link — the whole point of routing here for that flow is to publish
 // a review, so landing on the drawer already open removes a real,
 // unnecessary extra click.
+//
+// File-by-file cleanup sweep: the access-control check sequence below
+// used to be its own copy of exactly what synopticLoader.ts does for
+// /synoptic/:caseId — both files' own comments already said these were
+// meant to be "the single, real enforcement point." Now both genuinely
+// call the one shared resolveCaseAccessGate(). Every visible string also
+// goes through useTranslation()/t() (fullReport.* in all five locale
+// files) — this page had none before this pass.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from "react";
 import '../pathscribe.css';
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { Case } from "@/types/case/Case";
 import { caseRouter } from "@/services/cases/CaseRouter";
-import { facilityService } from "@/services";
-import { resolvePediatricAccess, resolveOrchestrationAccess } from "@/services/auth/caseAccessControl";
+import { resolveCaseAccessGate } from "@/services/auth/resolveCaseAccessGate";
 import { useAuth } from "../contexts/AuthContext";
 import { useMessaging } from "../contexts/MessagingContext";
 import { PoolClaimModal } from "../components/Worklist/PoolClaimModal";
@@ -60,6 +68,7 @@ interface FullReportLocationState {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FullReportPage() {
+  const { t } = useTranslation();
   const { caseId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,29 +104,16 @@ export default function FullReportPage() {
 
         // Real, per direct investigation: this page previously loaded and
         // rendered any case unconditionally — same pre-existing gap
-        // synopticLoader.ts had. See caseAccessControl.ts's own header
-        // comment on resolvePediatricAccess/resolveOrchestrationAccess for
-        // the full reasoning; this is the second of the two real case-view
-        // entry points that needed the same real enforcement.
-        const orchDecision = resolveOrchestrationAccess(user as any, c as any);
-        if (!orchDecision.granted) {
-          console.warn(`Orchestration access denied for case ${cleanedCaseId}: ${orchDecision.reason}`);
+        // synopticLoader.ts had. See resolveCaseAccessGate.ts's own header
+        // for the full reasoning; this is the second of the two real
+        // case-view entry points that needed the same real enforcement,
+        // and now genuinely shares its implementation with the first.
+        const gate = await resolveCaseAccessGate(user as any, c as any);
+        if (!gate.granted) {
+          console.warn(`${gate.reason === 'orchestration' ? 'Orchestration' : 'Pediatric'} access denied for case ${cleanedCaseId}: ${gate.detail}`);
           setCaseData(null);
-          navigate(`/worklist?accessDenied=orchestration&caseId=${cleanedCaseId}`, { replace: true });
+          navigate(`/worklist?accessDenied=${gate.reason}&caseId=${cleanedCaseId}`, { replace: true });
           return;
-        }
-
-        const facilityId = (c as any)?.order?.facilityId;
-        if (facilityId) {
-          const facilityRes = await facilityService.getById(facilityId).catch(() => undefined);
-          const facility = facilityRes?.ok ? facilityRes.data : null;
-          const pedDecision = resolvePediatricAccess(user as any, c as any, facility);
-          if (!pedDecision.granted) {
-            console.warn(`Pediatric access denied for case ${cleanedCaseId}: ${pedDecision.reason}`);
-            setCaseData(null);
-            navigate(`/worklist?accessDenied=pediatric&caseId=${cleanedCaseId}`, { replace: true });
-            return;
-          }
         }
 
         setCaseData(c);
@@ -161,7 +157,7 @@ export default function FullReportPage() {
         <div className="ps-report-bg" />
         <div className="ps-report-bg-grad" />
         <div className="ps-report-content ps-report-notfound">
-          <div className="ps-report-notfound-title">Loading…</div>
+          <div className="ps-report-notfound-title">{t('fullReport.loading')}</div>
         </div>
       </div>
     );
@@ -175,13 +171,13 @@ export default function FullReportPage() {
         <div className="ps-report-content ps-report-notfound">
           <div className="ps-report-notfound-icon">🔍</div>
           <h1 className="ps-report-notfound-title">
-            Report Not Found
+            {t('fullReport.notFoundTitle')}
           </h1>
           <p className="ps-report-notfound-sub">
-            Case <code className="ps-report-notfound-code">{cleanedCaseId || "—"}</code> could not be found.
+            {t('fullReport.notFoundCasePrefix')} <code className="ps-report-notfound-code">{cleanedCaseId || "—"}</code> {t('fullReport.notFoundCaseSuffix')}
           </p>
           <button onClick={handleBack} className="ps-report-notfound-btn">
-            ← Go Back
+            {t('fullReport.goBackBtn')}
           </button>
         </div>
         <VoiceCommandOverlay showSuccess={import.meta.env.DEV} />
@@ -201,7 +197,7 @@ export default function FullReportPage() {
         {/* Back + actions */}
         <div className="ps-report-actions-row">
           <button onClick={handleBack} className="ps-report-back-btn">
-            ← Back
+            {t('fullReport.backBtn')}
           </button>
 
           {/* Claim button — only visible for pool cases. Internal
@@ -211,7 +207,7 @@ export default function FullReportPage() {
           {isPool && (
             <div className="ps-report-actions-right">
               <button onClick={() => setClaimOpen(true)} className="ps-report-claim-btn">
-                ✋ Claim This Case
+                {t('fullReport.claimBtn')}
               </button>
             </div>
           )}
@@ -223,14 +219,14 @@ export default function FullReportPage() {
           <div className="ps-report-header-row">
             <div>
               <div className="ps-report-eyebrow">
-                Pathology Report
+                {t('fullReport.eyebrow')}
               </div>
               <h1 className="ps-report-accession-title" data-phi="accession">
                 {caseData.accession?.fullAccession ?? cleanedCaseId}
               </h1>
             </div>
             <div className="ps-report-header-meta">
-              <div className="ps-report-label">Last Updated</div>
+              <div className="ps-report-label">{t('fullReport.lastUpdated')}</div>
               <div className="ps-report-header-meta-value">
                 {(caseData as any).updatedAt ?? '—'}
               </div>
@@ -250,7 +246,7 @@ export default function FullReportPage() {
         isOpen={claimOpen}
         caseId={cleanedCaseId}
         caseSummary={poolCaseSummary}
-        poolName={(caseData as any).poolName ?? 'MFT Pool'}
+        poolName={(caseData as any).poolName ?? t('fullReport.defaultPoolName')}
         currentUserId={user?.id ?? 'u1'}
         currentUserName={user?.name ?? 'Unknown'}
         continueToReport={true}

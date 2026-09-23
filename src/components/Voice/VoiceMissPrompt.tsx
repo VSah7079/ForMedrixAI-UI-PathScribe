@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
 import { SystemAction, PendingMiss } from '../../services/actionRegistry/IActionRegistryService';
 import { useVoice } from '../../contexts/VoiceProvider';
@@ -17,6 +19,7 @@ import { useVoice } from '../../contexts/VoiceProvider';
  * command misses and should never surface this prompt.
  */
 export const VoiceMissPrompt: React.FC = () => {
+  const { t } = useTranslation();
   const { phase } = useVoice();
 
   const [miss,       setMiss]       = useState<PendingMiss | null>(null);
@@ -37,8 +40,8 @@ export const VoiceMissPrompt: React.FC = () => {
   // Auto-dismiss after 6 seconds
   useEffect(() => {
     if (!visible) return;
-    const t = setTimeout(() => setVisible(false), 6000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setVisible(false), 6000);
+    return () => clearTimeout(timer);
   }, [visible, miss]);
 
   const confirm = (actionId: string) => {
@@ -55,67 +58,40 @@ export const VoiceMissPrompt: React.FC = () => {
   if (!visible || !miss) return null;
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '104px', left: '50%', transform: 'translateX(-50%)',
-      background: '#0f172a',
-      border: '1px solid rgba(245,158,11,0.4)',
-      borderRadius: '12px', padding: '14px 18px',
-      zIndex: 10000, color: '#fff', minWidth: '300px', maxWidth: '420px',
-      boxShadow: '0 0 24px rgba(245,158,11,0.15)',
-      animation: 'missIn 0.2s ease-out',
-    }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: '10px',
-      }}>
+    <div className="vmp-toast">
+      <div className="vmp-header">
         <div>
-          <div style={{
-            fontSize: '10px', color: '#f59e0b',
-            fontWeight: 700, letterSpacing: '0.06em',
-          }}>
-            NOT RECOGNISED
+          <div className="vmp-eyebrow">
+            {t('voiceMissPrompt.notRecognised')}
           </div>
-          <div style={{ fontSize: '13px', color: '#cbd5e1', marginTop: '2px' }}>
+          <div className="vmp-transcript">
             "{miss.transcript}"
           </div>
         </div>
-        <button onClick={dismiss} style={{
-          background: 'transparent', border: 'none', color: '#475569',
-          cursor: 'pointer', fontSize: '16px', padding: '0 0 0 12px', lineHeight: 1,
-        }}>x</button>
+        <button onClick={dismiss} className="vmp-dismiss-btn">x</button>
       </div>
 
       {candidates.length > 0 ? (
         <>
-          <div style={{
-            fontSize: '10px', color: '#64748b',
-            marginBottom: '8px', fontWeight: 600,
-          }}>
-            DID YOU MEAN?
+          <div className="vmp-candidates-label">
+            {t('voiceMissPrompt.didYouMean')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div className="vmp-candidates-list">
             {candidates.map(c => (
               <button
                 key={c.id}
                 onClick={() => confirm(c.id)}
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '6px', padding: '8px 12px',
-                  color: '#e2e8f0', fontSize: '13px', fontWeight: 500,
-                  cursor: 'pointer', textAlign: 'left',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}
+                className="vmp-candidate-btn"
               >
                 <span>{c.label}</span>
-                <span style={{ fontSize: '10px', color: '#475569' }}>tap to learn</span>
+                <span className="vmp-candidate-hint">{t('voiceMissPrompt.tapToLearn')}</span>
               </button>
             ))}
           </div>
         </>
       ) : (
-        <div style={{ fontSize: '12px', color: '#475569' }}>
-          No similar commands found. Try rephrasing or use the keyboard shortcut — it will be learned automatically.
+        <div className="vmp-no-candidates">
+          {t('voiceMissPrompt.noSimilarCommands')}
         </div>
       )}
 

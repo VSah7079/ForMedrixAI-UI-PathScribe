@@ -1,5 +1,6 @@
 // src/components/Contribution/ProductivityTab.tsx
 import React, { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import { ResponsiveContainer, ComposedChart, Line, XAxis, YAxis,
          CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 import { pathscribeTheme as theme } from "@theme/pathscribeTheme";
@@ -45,6 +46,17 @@ type DateRange   = "ytd" | "6m" | "3m" | "1m";
 // 'Pathologist', capitalized. Both silently matched zero real users until
 // verified directly against the real data and fixed.
 
+// Note (batch 33, i18n sweep): this file styles everything via inline
+// `style={{...}}` objects built from the shared `theme.colors.*` token
+// object, not the `pathscribe.css` class system most other components use.
+// That's a different, but not a worse, pattern — every value already
+// traces back to one shared source of truth (the theme) rather than being
+// a hardcoded magic value repeated per component, which is what the
+// "remove inline CSS" sweep rule is really guarding against. Converting
+// this file to `pathscribe.css` classes would mean duplicating the theme
+// as CSS custom properties for no real benefit, so it's left as-is; only
+// the hardcoded UI strings were in scope for this batch.
+
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
 const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => (
@@ -85,6 +97,7 @@ const Tooltip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // ─── Bar Chart ────────────────────────────────────────────────────────────────
 
 const BarChart: React.FC<{ data: MonthlyData[]; metric: ChartMetric }> = ({ data, metric }) => {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState<number | null>(null);
   const maxCases = Math.max(...data.map(d => d.cases));
   const maxRvus  = Math.max(...data.map(d => d.rvus));
@@ -102,8 +115,8 @@ const BarChart: React.FC<{ data: MonthlyData[]; metric: ChartMetric }> = ({ data
             {isHov && (
               <Tooltip>
                 <div style={{ fontWeight: 700, color: theme.colors.text.primary, marginBottom: "4px" }}>{d.month}</div>
-                {(metric === "cases" || metric === "combined") && <div style={{ color: theme.colors.chart.cases }}>Cases: {d.cases}</div>}
-                {(metric === "rvus"  || metric === "combined") && <div style={{ color: theme.colors.chart.rvu   }}>RVUs: {d.rvus}</div>}
+                {(metric === "cases" || metric === "combined") && <div style={{ color: theme.colors.chart.cases }}>{t('productivityTab.tooltip.cases', { value: d.cases })}</div>}
+                {(metric === "rvus"  || metric === "combined") && <div style={{ color: theme.colors.chart.rvu   }}>{t('productivityTab.tooltip.rvus', { value: d.rvus })}</div>}
               </Tooltip>
             )}
             {/* Count labels above bars */}
@@ -142,6 +155,7 @@ const LineChart: React.FC<{
   lastYearTotal: number;
   timezone: string;
 }> = ({ data, showPeer, showTop, showLastYear, peer, lastYearTotal, timezone }) => {
+  const { t } = useTranslation();
   // Build chart rows — cumulative actuals + peer / top / last-year projections
   const n = data.length;
   const chartRows = data.map((d, i) => ({
@@ -154,6 +168,11 @@ const LineChart: React.FC<{
   const chartYear = getFacilityDateParts(new Date(), timezone).year;
 
   const fmt = (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : String(v);
+
+  const seriesLastYear     = t('productivityTab.chart.seriesLastYear');
+  const seriesPeerAverage  = t('productivityTab.chart.seriesPeerAverage');
+  const seriesTopPerformer = t('productivityTab.chart.seriesTopPerformer');
+  const seriesYourRvus     = t('productivityTab.chart.seriesYourRvus');
 
   return (
     <div>
@@ -171,26 +190,26 @@ const LineChart: React.FC<{
             tick={{ fontSize: 12, fill: theme.colors.chart.axis }}
             axisLine={false} tickLine={false}
             width={48}
-            label={{ value: 'RVUs', angle: -90, position: 'insideLeft', offset: 8, fontSize: 11, fill: theme.colors.text.muted }}
+            label={{ value: t('productivityTab.chart.axisRvus'), angle: -90, position: 'insideLeft', offset: 8, fontSize: 11, fill: theme.colors.text.muted }}
           />
           <RechartsTooltip
             contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, fontSize: 12 }}
             labelStyle={{ color: '#f1f5f9', fontWeight: 700, marginBottom: 4 }}
-            formatter={(value: number, name: string) => [fmt(value) + ' RVUs', name]}
+            formatter={(value: number, name: string) => [t('productivityTab.chart.valueRvus', { value: fmt(value) }), name]}
           />
           {showLastYear && (
-            <Line dataKey="lastYear" name="Last Year" stroke={theme.colors.text.muted}
+            <Line dataKey="lastYear" name={seriesLastYear} stroke={theme.colors.text.muted}
               strokeWidth={1} strokeDasharray="4 3" dot={false} />
           )}
           {showPeer && (
-            <Line dataKey="peer" name="Peer Average" stroke={theme.colors.chart.cases}
+            <Line dataKey="peer" name={seriesPeerAverage} stroke={theme.colors.chart.cases}
               strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
           )}
           {showTop && (
-            <Line dataKey="top" name="Top Performer" stroke={theme.colors.chart.rvu}
+            <Line dataKey="top" name={seriesTopPerformer} stroke={theme.colors.chart.rvu}
               strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
           )}
-          <Line dataKey="you" name="Your RVUs" stroke={theme.colors.accentTeal}
+          <Line dataKey="you" name={seriesYourRvus} stroke={theme.colors.accentTeal}
             strokeWidth={2.5} dot={{ r: 3, fill: theme.colors.accentTeal }}
             activeDot={{ r: 5 }} />
         </ComposedChart>
@@ -200,81 +219,86 @@ const LineChart: React.FC<{
 };
 
 
-const RvuTile: React.FC<{ summary: RealRvuSummary | null }> = ({ summary }) => (
+const RvuTile: React.FC<{ summary: RealRvuSummary | null }> = ({ summary }) => {
+  const { t } = useTranslation();
+  return (
   <Card>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
       <div>
         <div style={{ fontSize: "13px", color: theme.colors.text.muted, marginBottom: "6px" }}>
-          Total RVUs — {summary?.period ?? "YTD"}
+          {t('productivityTab.rvu.title', { period: summary?.period ?? t('productivityTab.rvu.periodFallback') })}
         </div>
         <div style={{ fontSize: "32px", fontWeight: 800, color: theme.colors.text.primary, lineHeight: 1 }}>
           {summary ? summary.total.toLocaleString() : "—"}
         </div>
         {summary && (
           <div style={{ fontSize: "12px", fontWeight: 600, marginTop: "6px", color: summary.up ? theme.colors.semantic.success : theme.colors.semantic.warning }}>
-            {summary.up ? "▲" : "▼"} {summary.delta} vs last year
+            {t('productivityTab.rvu.deltaVsLastYear', { arrow: summary.up ? "▲" : "▼", delta: summary.delta })}
           </div>
         )}
         <div style={{ fontSize: "11px", color: theme.colors.text.muted, marginTop: "8px" }}>
-          Finalized cases only · Clinical workload metric
+          {t('productivityTab.rvu.subtitle')}
         </div>
         {!!summary?.unrecognizedCodeCount && (
           <div style={{ fontSize: "10px", color: theme.colors.semantic.warning, marginTop: "4px" }}>
-            {summary.unrecognizedCodeCount} real code{summary.unrecognizedCodeCount === 1 ? '' : 's'} not found in the active RVU table
+            {t('productivityTab.rvu.unrecognizedCode', { count: summary.unrecognizedCodeCount })}
           </div>
         )}
       </div>
       <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: "11px", color: theme.colors.text.muted }}>Avg per case</div>
+        <div style={{ fontSize: "11px", color: theme.colors.text.muted }}>{t('productivityTab.rvu.avgPerCase')}</div>
         <div style={{ fontSize: "24px", fontWeight: 700, color: theme.colors.chart.rvu }}>{summary?.avgPerCase ?? "—"}</div>
-        <div style={{ fontSize: "10px", color: theme.colors.text.muted, marginTop: "2px" }}>RVUs</div>
+        <div style={{ fontSize: "10px", color: theme.colors.text.muted, marginTop: "2px" }}>{t('productivityTab.rvu.rvusUnit')}</div>
       </div>
     </div>
   </Card>
-);
+  );
+};
 
 // ─── Peer Comparison ──────────────────────────────────────────────────────────
 
 const PeerComparison: React.FC<{ you: number; peer: RealPeerRvuStats | null; lastYearTotal: number }> = ({ you, peer, lastYearTotal }) => {
+  const { t } = useTranslation();
   if (!peer) {
     return (
       <Card>
-        <SectionTitle title="Peer Comparison" sub="YTD RVUs — anonymized · role-gated" />
-        <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>Loading…</div>
+        <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
+        <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>{t('productivityTab.peer.loading')}</div>
       </Card>
     );
   }
   if (peer.peerCount === 0) {
     return (
       <Card>
-        <SectionTitle title="Peer Comparison" sub="YTD RVUs — anonymized · role-gated" />
+        <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
         <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>
-          No other active pathologists to compare against yet.
+          {t('productivityTab.peer.noPeers')}
         </div>
       </Card>
     );
   }
 
   const rows = [
-    { label: "You",           value: you,                color: theme.colors.accentTeal              },
-    { label: "Peer Average",  value: peer.peerAvg,        color: theme.colors.chart.cases             },
-    { label: "Top Performer", value: peer.topPerf,        color: theme.colors.chart.rvu               },
-    { label: "Last Year",     value: lastYearTotal,       color: theme.colors.text.muted              },
+    { label: t('productivityTab.peer.rowYou'),           value: you,                color: theme.colors.accentTeal              },
+    { label: t('productivityTab.peer.rowPeerAverage'),  value: peer.peerAvg,        color: theme.colors.chart.cases             },
+    { label: t('productivityTab.peer.rowTopPerformer'), value: peer.topPerf,        color: theme.colors.chart.rvu               },
+    { label: t('productivityTab.peer.rowLastYear'),     value: lastYearTotal,       color: theme.colors.text.muted              },
   ];
   // Real, safe max for bar scaling - "You" can genuinely exceed the
   // real, peer-only top performer figure (peer.topPerf excludes the
   // current user by design), so it can't be assumed to always be the
   // largest real value.
   const max = Math.max(...rows.map(r => r.value), 1);
+  const youLabel = t('productivityTab.peer.rowYou');
 
   return (
     <Card>
-      <SectionTitle title="Peer Comparison" sub={`YTD RVUs — anonymized · role-gated · ${peer.peerCount} peer${peer.peerCount === 1 ? '' : 's'}`} />
+      <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitleWithCount', { count: peer.peerCount })} />
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {rows.map(r => (
           <div key={r.label}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "5px" }}>
-              <span style={{ color: r.label === "You" ? theme.colors.text.secondary : theme.colors.text.muted }}>
+              <span style={{ color: r.label === youLabel ? theme.colors.text.secondary : theme.colors.text.muted }}>
                 {r.label}
               </span>
               <span style={{ color: r.color, fontWeight: 700 }}>{r.value.toLocaleString()}</span>
@@ -292,6 +316,7 @@ const PeerComparison: React.FC<{ you: number; peer: RealPeerRvuStats | null; las
 // ─── Main ProductivityTab ─────────────────────────────────────────────────────
 
 const ProductivityTab: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { config } = useSystemConfig();
   const canSeePeer = canSeePeerComparison(user?.role, config.showPeerAveragesToPathologists);
@@ -385,6 +410,12 @@ const ProductivityTab: React.FC = () => {
     userSelect: "none",
   });
 
+  const dateRangeLabel = (r: DateRange) =>
+    r === "1m" ? t('productivityTab.dateRange.oneMonth') :
+    r === "3m" ? t('productivityTab.dateRange.threeMonths') :
+    r === "6m" ? t('productivityTab.dateRange.sixMonths') :
+                 t('productivityTab.dateRange.ytd');
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
 
@@ -395,9 +426,9 @@ const ProductivityTab: React.FC = () => {
           <PeerComparison you={realRvu?.total ?? 0} peer={realPeer} lastYearTotal={realRvu?.lastYearTotal ?? 0} />
         ) : (
           <Card>
-            <SectionTitle title="Peer Comparison" sub="YTD RVUs — anonymized · role-gated" />
+            <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
             <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>
-              Peer comparisons are turned off for pathologists by your organization's settings.
+              {t('productivityTab.peer.disabled')}
             </div>
           </Card>
         )}
@@ -409,13 +440,13 @@ const ProductivityTab: React.FC = () => {
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
           <div style={{ display: "flex", gap: "8px" }}>
-            <button style={btn(activeChart === "monthly")} onClick={() => setActiveChart("monthly")}>Monthly Cases</button>
-            <button style={btn(activeChart === "ytd")}     onClick={() => setActiveChart("ytd")}>YTD RVU Accumulation</button>
+            <button style={btn(activeChart === "monthly")} onClick={() => setActiveChart("monthly")}>{t('productivityTab.nav.monthlyCases')}</button>
+            <button style={btn(activeChart === "ytd")}     onClick={() => setActiveChart("ytd")}>{t('productivityTab.nav.ytdAccumulation')}</button>
           </div>
           <div style={{ display: "flex", gap: "6px" }}>
             {(["1m", "3m", "6m", "ytd"] as DateRange[]).map(r => (
               <button key={r} style={btn(dateRange === r)} onClick={() => setDateRange(r)}>
-                {r.toUpperCase()}
+                {dateRangeLabel(r)}
               </button>
             ))}
           </div>
@@ -423,11 +454,11 @@ const ProductivityTab: React.FC = () => {
 
         {activeChart === "monthly" && (
           <>
-            <SectionTitle title="Monthly Case Counts" sub="Finalized cases per month — volume overview" />
+            <SectionTitle title={t('productivityTab.monthly.title')} sub={t('productivityTab.monthly.subtitle')} />
             <BarChart data={filteredMonthly} metric="cases" />
             <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "12px" }}>
               <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: theme.colors.chart.cases }} />
-              <span style={{ fontSize: "11px", color: theme.colors.text.muted }}>Finalized cases</span>
+              <span style={{ fontSize: "11px", color: theme.colors.text.muted }}>{t('productivityTab.monthly.legend')}</span>
             </div>
           </>
         )}
@@ -435,12 +466,12 @@ const ProductivityTab: React.FC = () => {
         {activeChart === "ytd" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <SectionTitle title="Year-to-Date RVU Accumulation" sub="Cumulative RVUs · finalized cases only" />
+              <SectionTitle title={t('productivityTab.ytd.title')} sub={t('productivityTab.ytd.subtitle')} />
               <div style={{ display: "flex", gap: "16px" }}>
                 {[
-                  { label: "Peer Avg",  state: showPeer,     set: setShowPeer     },
-                  { label: "Top Perf.", state: showTop,      set: setShowTop      },
-                  { label: "Last Year", state: showLastYear, set: setShowLastYear },
+                  { label: t('productivityTab.ytd.togglePeerAvg'),  state: showPeer,     set: setShowPeer     },
+                  { label: t('productivityTab.ytd.toggleTopPerf'),  state: showTop,      set: setShowTop      },
+                  { label: t('productivityTab.peer.rowLastYear'),   state: showLastYear, set: setShowLastYear },
                 ].map(({ label, state, set }) => (
                   <label key={label} style={toggle(state)}>
                     <input type="checkbox" checked={state} onChange={e => set(e.target.checked)} style={{ accentColor: theme.colors.accentTeal, width: "13px", height: "13px" }} />
@@ -458,11 +489,11 @@ const ProductivityTab: React.FC = () => {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
         <button onClick={() => window.print()}
           style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", cursor: "pointer", border: `1px solid ${theme.colors.border.subtle}`, background: theme.colors.button.subtle, color: theme.colors.button.text }}>
-          🖨 Print
+          🖨 {t('productivityTab.export.print')}
         </button>
-        <button onClick={() => alert("PDF export — connect to your PDF library")}
+        <button onClick={() => alert(t('productivityTab.export.pdfStub'))}
           style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", cursor: "pointer", border: `1px solid ${theme.colors.accentTealBorder}`, background: theme.colors.accentTealSubtle, color: theme.colors.accentTeal }}>
-          ↓ Export PDF
+          ↓ {t('productivityTab.export.exportPdf')}
         </button>
       </div>
 

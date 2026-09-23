@@ -10,6 +10,7 @@
 // full reasoning behind that split.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { reagentLotService } from '../../../services';
 import { mockStainTypeService } from '../../../services/stains/mockStainTypeService';
@@ -19,10 +20,20 @@ import type { StainType } from '../../../services/stains/IStainService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
-const ROUTINE_COMPONENT_LABEL: Record<RoutineStainComponentType, string> = {
-  HEMATOXYLIN: 'Hematoxylin', EOSIN: 'Eosin', BLUING_REAGENT: 'Bluing Reagent',
-  DIFFERENTIATOR: 'Differentiator', DEHYDRANT_ALCOHOL: 'Dehydrant (Alcohol)',
-  CLEARANT_XYLENE: 'Clearant (Xylene)', MOUNTING_MEDIUM: 'Mounting Medium',
+const ROUTINE_COMPONENT_LABEL_KEY: Record<RoutineStainComponentType, string> = {
+  HEMATOXYLIN: 'reagentLotsSection.routineComponentLabels.HEMATOXYLIN',
+  EOSIN: 'reagentLotsSection.routineComponentLabels.EOSIN',
+  BLUING_REAGENT: 'reagentLotsSection.routineComponentLabels.BLUING_REAGENT',
+  DIFFERENTIATOR: 'reagentLotsSection.routineComponentLabels.DIFFERENTIATOR',
+  DEHYDRANT_ALCOHOL: 'reagentLotsSection.routineComponentLabels.DEHYDRANT_ALCOHOL',
+  CLEARANT_XYLENE: 'reagentLotsSection.routineComponentLabels.CLEARANT_XYLENE',
+  MOUNTING_MEDIUM: 'reagentLotsSection.routineComponentLabels.MOUNTING_MEDIUM',
+};
+
+const QC_STATUS_LABEL_KEY: Record<ReagentLotQcStatus, string> = {
+  Pending: 'reagentLotsSection.qcStatusLabels.Pending',
+  Passed: 'reagentLotsSection.qcStatusLabels.Passed',
+  Failed: 'reagentLotsSection.qcStatusLabels.Failed',
 };
 
 const QC_STATUS_OPTIONS: ReagentLotQcStatus[] = ['Pending', 'Passed', 'Failed'];
@@ -47,6 +58,7 @@ interface ReagentLotModalProps {
 }
 
 const ReagentLotModal: React.FC<ReagentLotModalProps> = ({ mode, reagentLot, stainTypes, labs, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     reagentLot
       ? { ...reagentLot, active: reagentLot.status !== 'Inactive', referenceMode: reagentLot.routineComponentType ? 'routine_component' : 'stain_type' }
@@ -62,10 +74,10 @@ const ReagentLotModal: React.FC<ReagentLotModalProps> = ({ mode, reagentLot, sta
 
   const validate = () => {
     const e: typeof errors = {};
-    if (draft.referenceMode === 'stain_type' && !draft.stainTypeId) e.stainTypeId = 'Required';
-    if (draft.referenceMode === 'routine_component' && !draft.routineComponentType) e.routineComponentType = 'Required';
-    if (!draft.lotNumber.trim()) e.lotNumber = 'Required';
-    if (!draft.expirationDate) e.expirationDate = 'Required';
+    if (draft.referenceMode === 'stain_type' && !draft.stainTypeId) e.stainTypeId = t('common.required');
+    if (draft.referenceMode === 'routine_component' && !draft.routineComponentType) e.routineComponentType = t('common.required');
+    if (!draft.lotNumber.trim()) e.lotNumber = t('common.required');
+    if (!draft.expirationDate) e.expirationDate = t('common.required');
     return e;
   };
 
@@ -86,99 +98,99 @@ const ReagentLotModal: React.FC<ReagentLotModalProps> = ({ mode, reagentLot, sta
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'edit' ? `Edit \u2014 ${reagentLot?.lotNumber}` : 'Add Reagent Lot'}
+          {mode === 'edit' ? t('reagentLotsSection.modal.headerEdit', { lotNumber: reagentLot?.lotNumber }) : t('reagentLotsSection.modal.headerAdd')}
         </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">This lot is for</label>
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.referenceModeLabel')}</label>
             <div className="ps-qa-tab-toolbar">
               <button type="button" className={draft.referenceMode === 'stain_type' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setReferenceMode('stain_type')}>
-                Catalog Stain (IHC / Special Stain)
+                {t('reagentLotsSection.modal.catalogStainOption')}
               </button>
               <button type="button" className={draft.referenceMode === 'routine_component' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setReferenceMode('routine_component')}>
-                Routine H&E Line Reagent
+                {t('reagentLotsSection.modal.routineComponentOption')}
               </button>
             </div>
           </div>
 
           {draft.referenceMode === 'stain_type' ? (
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="lot-stain-type">Stain <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="lot-stain-type">{t('reagentLotsSection.modal.stainField')} <span className="ps-conf-required">*</span></label>
               <select id="lot-stain-type" className={`ps-conf-select ${errors.stainTypeId ? 'ps-conf-input--error' : ''}`}
                 value={draft.stainTypeId ?? ''} onChange={e => set('stainTypeId', e.target.value || undefined)}>
-                <option value="">Select a stain\u2026</option>
+                <option value="">{t('reagentLotsSection.modal.stainPlaceholder')}</option>
                 {eligibleStainTypes.map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
               </select>
               {errors.stainTypeId && <span className="ps-conf-error-text">{errors.stainTypeId}</span>}
             </div>
           ) : (
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="lot-routine-component">Line Reagent <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="lot-routine-component">{t('reagentLotsSection.modal.lineReagentField')} <span className="ps-conf-required">*</span></label>
               <select id="lot-routine-component" className={`ps-conf-select ${errors.routineComponentType ? 'ps-conf-input--error' : ''}`}
                 value={draft.routineComponentType ?? ''} onChange={e => set('routineComponentType', e.target.value || undefined)}>
-                <option value="">Select a line reagent\u2026</option>
-                {ROUTINE_STAIN_COMPONENT_TYPES.map(c => <option key={c} value={c}>{ROUTINE_COMPONENT_LABEL[c]}</option>)}
+                <option value="">{t('reagentLotsSection.modal.lineReagentPlaceholder')}</option>
+                {ROUTINE_STAIN_COMPONENT_TYPES.map(c => <option key={c} value={c}>{t(ROUTINE_COMPONENT_LABEL_KEY[c])}</option>)}
               </select>
               {errors.routineComponentType && <span className="ps-conf-error-text">{errors.routineComponentType}</span>}
             </div>
           )}
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Lot Number <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.lotNumberField')} <span className="ps-conf-required">*</span></label>
             <input className={`ps-conf-input ${errors.lotNumber ? 'ps-conf-input--error' : ''}`}
-              value={draft.lotNumber} onChange={e => set('lotNumber', e.target.value)} placeholder="e.g. KI67-24601A" />
+              value={draft.lotNumber} onChange={e => set('lotNumber', e.target.value)} placeholder={t('reagentLotsSection.modal.lotNumberPlaceholder')} />
             {errors.lotNumber && <span className="ps-conf-error-text">{errors.lotNumber}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Expiration Date <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.expirationDateField')} <span className="ps-conf-required">*</span></label>
             <input type="date" className={`ps-conf-input ${errors.expirationDate ? 'ps-conf-input--error' : ''}`}
               value={draft.expirationDate} onChange={e => set('expirationDate', e.target.value)} />
             {errors.expirationDate && <span className="ps-conf-error-text">{errors.expirationDate}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Received Date</label>
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.receivedDateField')}</label>
             <input type="date" className="ps-conf-input" value={draft.receivedDate ?? ''} onChange={e => set('receivedDate', e.target.value)} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Vendor</label>
-            <input className="ps-conf-input" value={draft.vendor ?? ''} onChange={e => set('vendor', e.target.value)} placeholder="e.g. Ventana" />
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.vendorField')}</label>
+            <input className="ps-conf-input" value={draft.vendor ?? ''} onChange={e => set('vendor', e.target.value)} placeholder={t('reagentLotsSection.modal.vendorPlaceholder')} />
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="lot-qc-status">QC Status</label>
+            <label className="ps-conf-label" htmlFor="lot-qc-status">{t('reagentLotsSection.modal.qcStatusField')}</label>
             <select id="lot-qc-status" className="ps-conf-select" value={draft.qcStatus} onChange={e => set('qcStatus', e.target.value)}>
-              {QC_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              {QC_STATUS_OPTIONS.map(s => <option key={s} value={s}>{t(QC_STATUS_LABEL_KEY[s])}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="lot-performing-lab">Performing Lab</label>
+            <label className="ps-conf-label" htmlFor="lot-performing-lab">{t('reagentLotsSection.modal.performingLabField')}</label>
             <select id="lot-performing-lab" className="ps-conf-select"
               value={draft.performingLabFacilityId ?? ''} onChange={e => set('performingLabFacilityId', e.target.value || undefined)}>
-              <option value="">\u2014 All Labs (shared stock) \u2014</option>
+              <option value="">{t('reagentLotsSection.modal.allLabsOption')}</option>
               {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Active</label>
+            <label className="ps-conf-label">{t('reagentLotsSection.modal.activeField')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Reagent Lot' : 'Save Changes'}
+            {mode === 'add' ? t('reagentLotsSection.modal.addButton') : t('reagentLotsSection.modal.saveButton')}
           </button>
         </div>
       </div>
@@ -188,6 +200,7 @@ const ReagentLotModal: React.FC<ReagentLotModalProps> = ({ mode, reagentLot, sta
 
 // ─── Main ReagentLotsSection ────────────────────────────────────────────────────
 const ReagentLotsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [lots,         setLots]         = useState<ReagentLot[]>([]);
   const [stainTypes,   setStainTypes]   = useState<StainType[]>([]);
   const [labs,         setLabs]         = useState<Facility[]>([]);
@@ -206,11 +219,11 @@ const ReagentLotsSection: React.FC = () => {
     getActivePerformingLabs().then(setLabs);
   }, []);
 
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'All Labs';
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('reagentLotsSection.allLabsLabel');
   const referenceLabel = (lot: ReagentLot) => {
     if (lot.stainTypeId) return stainTypes.find(s => s.id === lot.stainTypeId)?.name ?? lot.stainTypeId;
-    if (lot.routineComponentType) return ROUTINE_COMPONENT_LABEL[lot.routineComponentType];
-    return '\u2014';
+    if (lot.routineComponentType) return t(ROUTINE_COMPONENT_LABEL_KEY[lot.routineComponentType]);
+    return t('reagentLotsSection.noReference');
   };
 
   const filtered = lots.filter(l => {
@@ -238,31 +251,31 @@ const ReagentLotsSection: React.FC = () => {
     if (res.ok) setLots(prev => prev.map(x => x.id === l.id ? res.data : x));
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading reagent lots...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('reagentLotsSection.loading')}</div>;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Reagent & Solution Lot Registry</h3>
+          <h3 className="ps-conf-section-title">{t('reagentLotsSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Real lot tracking for IHC antibodies, special stain kits, and routine H&E line reagents \u2014 lot number, expiration, and QC status.
+            {t('reagentLotsSection.subtitle')}
           </p>
         </div>
-        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Reagent Lot</button>
+        <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>{t('reagentLotsSection.addReagentLotButton')}</button>
       </div>
 
       <div className="ps-conf-form-row">
-        <input type="text" placeholder="Search by lot number or stain..." value={search} onChange={e => setSearch(e.target.value)}
+        <input type="text" placeholder={t('reagentLotsSection.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
           className="ps-conf-search" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
+          <option value="All">{t('reagentLotsSection.filters.allStatuses')}</option>
+          <option value="Active">{t('common.active')}</option>
+          <option value="Inactive">{t('common.inactive')}</option>
         </select>
         <select value={qcFilter} onChange={e => setQcFilter(e.target.value as any)} className="ps-conf-select">
-          <option value="All">All QC States</option>
-          {QC_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value="All">{t('reagentLotsSection.filters.allQcStates')}</option>
+          {QC_STATUS_OPTIONS.map(s => <option key={s} value={s}>{t(QC_STATUS_LABEL_KEY[s])}</option>)}
         </select>
       </div>
 
@@ -271,7 +284,15 @@ const ReagentLotsSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Reagent / Stain', 'Lot Number', 'Expiration', 'QC Status', 'Performing Lab', 'Status', 'Actions'].map(h => (
+                {[
+                  t('reagentLotsSection.headers.reagentStain'),
+                  t('reagentLotsSection.headers.lotNumber'),
+                  t('reagentLotsSection.headers.expiration'),
+                  t('reagentLotsSection.headers.qcStatus'),
+                  t('reagentLotsSection.headers.performingLab'),
+                  t('reagentLotsSection.headers.status'),
+                  t('reagentLotsSection.headers.actions'),
+                ].map(h => (
                   <th key={h} className="ps-conf-th">{h}</th>
                 ))}
               </tr>
@@ -285,26 +306,26 @@ const ReagentLotsSection: React.FC = () => {
                   </td>
                   <td className="ps-conf-td">{l.lotNumber}</td>
                   <td className="ps-conf-td">{l.expirationDate}</td>
-                  <td className="ps-conf-td">{l.qcStatus}</td>
+                  <td className="ps-conf-td">{t(QC_STATUS_LABEL_KEY[l.qcStatus])}</td>
                   <td className="ps-conf-td">{labName(l.performingLabFacilityId)}</td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${l.status === 'Active' ? 'ps-conf-status-dot--active' : ''}`} />
-                      <span className={`ps-conf-status-text ${l.status === 'Active' ? 'ps-conf-status-text--active' : ''}`}>{l.status}</span>
+                      <span className={`ps-conf-status-text ${l.status === 'Active' ? 'ps-conf-status-text--active' : ''}`}>{l.status === 'Active' ? t('common.active') : t('common.inactive')}</span>
                     </div>
                   </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
-                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', reagentLot: l })}>Edit</button>
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', reagentLot: l })}>{t('common.edit')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(l)}>
-                        {l.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+                        {l.status === 'Active' ? t('common.deactivate') : t('common.reactivate')}
                       </button>
                     </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={7}>No reagent lots match the current filter.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={7}>{t('reagentLotsSection.emptyState')}</td></tr>
               )}
             </tbody>
           </table>

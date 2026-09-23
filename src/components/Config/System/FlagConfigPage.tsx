@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
 import '../../../pathscribe.css';
 import { Flag } from '../../../services/flags/IFlagService';
@@ -10,14 +11,29 @@ import AutoCreatedBanner from '../../Flags/AutoCreatedBanner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SEVERITY_LABELS: Record<number, string> = {
-  1: 'Informational',
-  2: 'Low',
-  3: 'Medium',
-  4: 'High',
-  5: 'Critical',
+// Data-key-stays-English, label-is-translated: 1-5 remain the real,
+// stored Flag.severity values; this map only translates the
+// displayed severity name.
+const SEVERITY_LABEL_KEY: Record<number, string> = {
+  1: 'flagConfigPage.severity.informational',
+  2: 'flagConfigPage.severity.low',
+  3: 'flagConfigPage.severity.medium',
+  4: 'flagConfigPage.severity.high',
+  5: 'flagConfigPage.severity.critical',
 };
 
+// Data-key-stays-English, label-is-translated: 'Case'/'Specimen'
+// remain the real, stored Flag.level values, reused as the radio/
+// filter/table display text everywhere this value appears.
+const LEVEL_LABEL_KEY: Record<'Case' | 'Specimen', string> = {
+  Case: 'flagConfigPage.levels.case',
+  Specimen: 'flagConfigPage.levels.specimen',
+};
+
+// Real, internal icon-set identifiers (IconKey union) shown as-is —
+// these are technical keys the admin matches against the icon system,
+// not natural-language labels, so they're left untranslated per the
+// "internal schema/data-key identifiers stay English" convention.
 const ICON_KEY_OPTIONS: IconKey[] = [
   'ihc', 'fish', 'molecular', 'flow-cytometry',
   'cytogenetics', 'micro', 'coag', 'generic-lab',
@@ -25,31 +41,27 @@ const ICON_KEY_OPTIONS: IconKey[] = [
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
-const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-    <div
-      onClick={() => onChange(!value)}
-      style={{
-        width: 44, height: 24, borderRadius: 12, cursor: 'pointer',
-        position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-        background: value ? 'var(--ps-conf-green)' : 'var(--ps-conf-text-dim)',
-      }}
-    >
-      <div style={{
-        position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
-        background: '#fff', transition: 'left 0.2s',
-        left: value ? 23 : 3, boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-      }} />
+const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-flagcfg-toggle-row">
+      <div
+        onClick={() => onChange(!value)}
+        className={`ps-flagcfg-toggle-track ${value ? 'ps-flagcfg-toggle-track--on' : 'ps-flagcfg-toggle-track--off'}`}
+      >
+        <div className={`ps-flagcfg-toggle-knob ${value ? 'ps-flagcfg-toggle-knob--on' : 'ps-flagcfg-toggle-knob--off'}`} />
+      </div>
+      <span className={`ps-flagcfg-toggle-label ${value ? 'ps-flagcfg-toggle-label--on' : 'ps-flagcfg-toggle-label--off'}`}>
+        {value ? t('common.active') : t('common.inactive')}
+      </span>
     </div>
-    <span style={{ fontSize: 13, fontWeight: 600, color: value ? 'var(--ps-conf-green)' : 'var(--ps-conf-text-3)' }}>
-      {value ? 'Active' : 'Inactive'}
-    </span>
-  </div>
-);
+  );
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const FlagConfigPage: React.FC = () => {
+  const { t } = useTranslation();
   const { log } = useAuditLog();
   const modalRef = useRef<HTMLDivElement>(null);
   const [flags,         setFlags]         = useState<Flag[]>([]);
@@ -131,7 +143,7 @@ const FlagConfigPage: React.FC = () => {
 
   const requestSave = () => {
     const e: typeof errors = {};
-    if (!name.trim()) e.name = 'Name is required';
+    if (!name.trim()) e.name = t('flagConfigPage.modal.nameRequiredError');
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     setShowModal(false);
     setShowConfirm(true);
@@ -201,12 +213,12 @@ const FlagConfigPage: React.FC = () => {
       )}
 
       {reviewingAutoCreated && (
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--ps-conf-text-3)' }}>
-            Showing {autoCreatedFlags.length} auto-created flag{autoCreatedFlags.length !== 1 ? 's' : ''} pending review
+        <div className="ps-flagcfg-reviewbar">
+          <span className="ps-flagcfg-reviewbar-text">
+            {t('flagConfigPage.autoCreatedReviewBanner', { count: autoCreatedFlags.length })}
           </span>
           <button className="ps-conf-btn-secondary" onClick={() => setReviewingAutoCreated(false)}>
-            Clear filter
+            {t('flagConfigPage.clearFilterButton')}
           </button>
         </div>
       )}
@@ -214,46 +226,45 @@ const FlagConfigPage: React.FC = () => {
       {/* ── Header ── */}
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Case &amp; Specimen Flags</h3>
-          <p className="ps-conf-section-subtitle">Manage administrative and computational flags used in case workflows</p>
+          <h3 className="ps-conf-section-title">{t('flagConfigPage.title')}</h3>
+          <p className="ps-conf-section-subtitle">{t('flagConfigPage.subtitle')}</p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={openAddModal}>+ Add Flag</button>
+        <button className="ps-conf-btn-primary" onClick={openAddModal}>{t('flagConfigPage.addFlagButton')}</button>
       </div>
 
       {/* ── Filters ── */}
       {!reviewingAutoCreated && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div className="ps-flagcfg-filters-row">
           <input
             type="text"
-            placeholder="Search flags..."
+            placeholder={t('flagConfigPage.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="ps-conf-search"
-            style={{ flex: 1, minWidth: 180 }}
+            className="ps-conf-search ps-flagcfg-search--flex"
           />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="ps-conf-select">
-            <option value="All">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
+            <option value="All">{t('flagConfigPage.statusFilter.all')}</option>
+            <option value="Active">{t('common.active')}</option>
+            <option value="Inactive">{t('common.inactive')}</option>
           </select>
           <select value={levelFilter} onChange={e => setLevelFilter(e.target.value as any)} className="ps-conf-select">
-            <option value="All">All Levels</option>
-            <option value="Case">Case</option>
-            <option value="Specimen">Specimen</option>
+            <option value="All">{t('flagConfigPage.levelFilter.all')}</option>
+            <option value="Case">{t(LEVEL_LABEL_KEY.Case)}</option>
+            <option value="Specimen">{t(LEVEL_LABEL_KEY.Specimen)}</option>
           </select>
         </div>
       )}
 
       {/* ── Table ── */}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="ps-flagcfg-table">
         <thead>
           <tr>
-            <th className="ps-conf-th">Name</th>
-            <th className="ps-conf-th">Level</th>
-            <th className="ps-conf-th">LIS Code</th>
-            <th className="ps-conf-th">Severity</th>
-            <th className="ps-conf-th">Status</th>
-            <th className="ps-conf-th">Actions</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.name')}</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.level')}</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.lisCode')}</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.severity')}</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.status')}</th>
+            <th className="ps-conf-th">{t('flagConfigPage.headers.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -262,41 +273,33 @@ const FlagConfigPage: React.FC = () => {
               <td className="ps-conf-td">
                 {flag.name}
                 {flag.autoCreated && (
-                  <span style={{
-                    marginLeft: 8, fontSize: 10, fontWeight: 600,
-                    background: 'var(--ps-conf-amber-bg, #fef9e7)',
-                    color: 'var(--ps-conf-amber, #b7791f)',
-                    padding: '1px 6px', borderRadius: 4,
-                  }}>
-                    LIS import
+                  <span className="ps-flagcfg-lis-badge">
+                    {t('flagConfigPage.lisImportBadge')}
                   </span>
                 )}
               </td>
-              <td className="ps-conf-td" style={{ color: 'var(--ps-conf-text-3)' }}>{flag.level}</td>
-              <td className="ps-conf-td" style={{ color: 'var(--ps-conf-text-3)' }}>{flag.lisCode}</td>
-              <td className="ps-conf-td" style={{ color: 'var(--ps-conf-text-3)' }}>
-                {SEVERITY_LABELS[flag.severity]} ({flag.severity})
+              <td className="ps-conf-td ps-flagcfg-td-muted">{t(LEVEL_LABEL_KEY[flag.level])}</td>
+              <td className="ps-conf-td ps-flagcfg-td-muted">{flag.lisCode}</td>
+              <td className="ps-conf-td ps-flagcfg-td-muted">
+                {t(SEVERITY_LABEL_KEY[flag.severity])} ({flag.severity})
               </td>
               <td className="ps-conf-td">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
-                    background: flag.status === 'Active' ? 'var(--ps-conf-green)' : 'var(--ps-conf-text-dim)',
-                  }} />
-                  <span style={{ fontSize: 13, color: flag.status === 'Active' ? 'var(--ps-conf-text)' : 'var(--ps-conf-text-3)' }}>
-                    {flag.status}
+                <div className="ps-flagcfg-status-wrap">
+                  <span className={`ps-flagcfg-status-dot ${flag.status === 'Active' ? 'ps-flagcfg-status-dot--active' : 'ps-flagcfg-status-dot--inactive'}`} />
+                  <span className={`ps-flagcfg-status-text ${flag.status === 'Active' ? 'ps-flagcfg-status-text--active' : 'ps-flagcfg-status-text--inactive'}`}>
+                    {flag.status === 'Active' ? t('common.active') : t('common.inactive')}
                   </span>
                 </div>
               </td>
               <td className="ps-conf-td">
-                <button className="ps-conf-btn-row" onClick={() => openEditModal(flag)}>Edit</button>
+                <button className="ps-conf-btn-row" onClick={() => openEditModal(flag)}>{t('common.edit')}</button>
               </td>
             </tr>
           ))}
           {!loading && filtered.length === 0 && (
             <tr>
-              <td className="ps-conf-td" style={{ color: 'var(--ps-conf-text-3)' }} colSpan={7}>
-                No flags found.
+              <td className="ps-conf-td ps-flagcfg-td-muted" colSpan={7}>
+                {t('flagConfigPage.emptyRow')}
               </td>
             </tr>
           )}
@@ -306,13 +309,12 @@ const FlagConfigPage: React.FC = () => {
       {/* ── Add / Edit Modal ── */}
       {showModal && (
         <div className="ps-conf-backdrop">
-          <div className="fm-modal fm-modal--config" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="flag-modal-title"
-            style={{ width: 'min(600px, 96vw)' }}
+          <div className="fm-modal fm-modal--config ps-flagcfg-modal--wide" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="flag-modal-title"
             onClick={e => e.stopPropagation()}>
             <div className="fm-modal-header">
               <div>
-                <div className="fm-eyebrow">Configuration · Flags</div>
-                <h2 id="flag-modal-title" className="fm-title" style={{ fontSize: 16 }}>{editingFlag ? 'Edit Flag' : 'Create Flag'}</h2>
+                <div className="fm-eyebrow">{t('flagConfigPage.modal.eyebrow')}</div>
+                <h2 id="flag-modal-title" className="fm-title fm-title--sm">{editingFlag ? t('flagConfigPage.modal.editTitle') : t('flagConfigPage.modal.createTitle')}</h2>
               </div>
             </div>
             <div className="ps-client-editor-body">
@@ -325,61 +327,58 @@ const FlagConfigPage: React.FC = () => {
                   the only place a flag could actually be applied.
                   Every flag is just a flag now — one form, one set of
                   fields, attachable to a case, a specimen, or both. */}
-              <label className="ps-conf-label">Name <span style={{ color: 'var(--ps-conf-red)' }}>*</span></label>
+              <label className="ps-conf-label">{t('flagConfigPage.modal.nameLabel')} <span className="ps-flagcfg-required-mark">*</span></label>
               <input value={name} onChange={e => { setName(e.target.value); setErrors(prev => ({ ...prev, name: '' })); }}
-                className="ps-conf-input" placeholder="Flag name"
-                style={{ marginBottom: errors.name ? 4 : 16, borderColor: errors.name ? 'var(--ps-conf-red)' : undefined }} />
-              {errors.name && <div style={{ fontSize: 11, color: 'var(--ps-conf-red)', marginBottom: 12 }}>{errors.name}</div>}
+                className={`ps-conf-input ps-flagcfg-name-input ${errors.name ? 'ps-flagcfg-name-input--error' : ''}`} placeholder={t('flagConfigPage.modal.namePlaceholder')} />
+              {errors.name && <div className="ps-flagcfg-error-text">{errors.name}</div>}
 
-              <label className="ps-conf-label">Description</label>
+              <label className="ps-conf-label">{t('flagConfigPage.modal.descriptionLabel')}</label>
               <textarea value={description} onChange={e => setDescription(e.target.value)}
-                className="ps-conf-input" placeholder="Brief description of this flag"
-                style={{ height: 70, resize: 'vertical', marginBottom: 16 }} />
+                className="ps-conf-input ps-flagcfg-description-textarea" placeholder={t('flagConfigPage.modal.descriptionPlaceholder')} />
 
-              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <label className="ps-conf-label">Level</label>
-                  <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
+              <div className="ps-flagcfg-field-row">
+                <div className="ps-flagcfg-field-flex1">
+                  <label className="ps-conf-label">{t('flagConfigPage.modal.levelLabel')}</label>
+                  <div className="ps-flagcfg-level-radios">
                     {(['Case', 'Specimen'] as const).map(l => (
-                      <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                      <label key={l} className="ps-flagcfg-level-radio-label">
                         <input type="radio" checked={level === l} onChange={() => setLevel(l)} />
-                        {l}
+                        {t(LEVEL_LABEL_KEY[l])}
                       </label>
                     ))}
                   </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label className="ps-conf-label">Severity</label>
-                  <select value={severity} onChange={e => setSeverity(Number(e.target.value) as 1|2|3|4|5)} className="ps-conf-input" style={{ marginBottom: 0 }}>
-                    {Object.entries(SEVERITY_LABELS).map(([v, l]) => <option key={v} value={v}>{v} — {l}</option>)}
+                <div className="ps-flagcfg-field-flex1">
+                  <label className="ps-conf-label">{t('flagConfigPage.modal.severityLabel')}</label>
+                  <select value={severity} onChange={e => setSeverity(Number(e.target.value) as 1|2|3|4|5)} className="ps-conf-input ps-flagcfg-input--nomb">
+                    {Object.entries(SEVERITY_LABEL_KEY).map(([v, key]) => <option key={v} value={v}>{v} — {t(key)}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <label className="ps-conf-label">LIS Code</label>
+              <div className="ps-flagcfg-field-row">
+                <div className="ps-flagcfg-field-flex1">
+                  <label className="ps-conf-label">{t('flagConfigPage.modal.lisCodeLabel')}</label>
                   <input value={lisCode} onChange={e => setLisCode(e.target.value)}
-                    className="ps-conf-input" placeholder="e.g. STAT, MAL, IHC"
-                    style={{ marginBottom: 0 }} />
+                    className="ps-conf-input ps-flagcfg-input--nomb" placeholder={t('flagConfigPage.modal.lisCodePlaceholder')} />
                 </div>
-                <div style={{ flex: '0 0 140px' }}>
-                  <label className="ps-conf-label">Icon</label>
-                  <select className="ps-conf-input" style={{ marginBottom: 0 }} value={iconKey} onChange={e => setIconKey(e.target.value as IconKey)}>
+                <div className="ps-flagcfg-icon-field">
+                  <label className="ps-conf-label">{t('flagConfigPage.modal.iconLabel')}</label>
+                  <select className="ps-conf-input ps-flagcfg-input--nomb" value={iconKey} onChange={e => setIconKey(e.target.value as IconKey)}>
                     {ICON_KEY_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
                 </div>
               </div>
 
-            <label className="ps-conf-label" style={{ marginTop: 16 }}>Status</label>
+            <label className="ps-conf-label ps-flagcfg-status-label">{t('flagConfigPage.modal.statusLabel')}</label>
             <Toggle value={active} onChange={setActive} />
 
             </div>{/* /body */}
             <div className="fm-footer">
               <span className="fm-footer-status" />
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setShowModal(false)} className="fm-btn-cancel">Cancel</button>
-                <button onClick={requestSave} className="fm-btn-apply">Save</button>
+              <div className="ps-flagcfg-footer-actions">
+                <button onClick={() => setShowModal(false)} className="fm-btn-cancel">{t('common.cancel')}</button>
+                <button onClick={requestSave} className="fm-btn-apply">{t('common.save')}</button>
               </div>
             </div>
           </div>
@@ -389,23 +388,23 @@ const FlagConfigPage: React.FC = () => {
       {/* ── Confirm Modal ── */}
       {showConfirm && (
         <div className="ps-conf-backdrop">
-          <div className="fm-modal fm-modal--config" style={{ width: 'min(440px, 96vw)' }} onClick={e => e.stopPropagation()}>
+          <div className="fm-modal fm-modal--config ps-flagcfg-modal--narrow" onClick={e => e.stopPropagation()}>
             <div className="fm-modal-header">
               <div>
-                <div className="fm-eyebrow">Configuration · Flags</div>
-                <h2 className="fm-title" style={{ fontSize: 16 }}>{editingFlag ? 'Save Changes' : 'Create Flag'}</h2>
+                <div className="fm-eyebrow">{t('flagConfigPage.modal.eyebrow')}</div>
+                <h2 className="fm-title fm-title--sm">{editingFlag ? t('flagConfigPage.modal.saveChangesTitle') : t('flagConfigPage.modal.createTitle')}</h2>
               </div>
             </div>
             <div className="ps-client-editor-body">
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: 14 }}>
-                Are you sure you want to apply these changes?
+              <p className="ps-flagcfg-confirm-text">
+                {t('flagConfigPage.modal.confirmText')}
               </p>
             </div>
             <div className="fm-footer">
               <span className="fm-footer-status" />
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setShowConfirm(false)} className="fm-btn-cancel">Cancel</button>
-                <button onClick={confirmSave} className="fm-btn-apply">Confirm</button>
+              <div className="ps-flagcfg-footer-actions">
+                <button onClick={() => setShowConfirm(false)} className="fm-btn-cancel">{t('common.cancel')}</button>
+                <button onClick={confirmSave} className="fm-btn-apply">{t('common.confirm')}</button>
               </div>
             </div>
           </div>

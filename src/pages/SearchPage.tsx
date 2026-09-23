@@ -1,6 +1,7 @@
 type CodeModalSystem = 'snomed' | 'icd' | 'SNOMED' | 'ICD-10' | 'ICD-11' | 'ICD-O-topography' | 'ICD-O-morphology';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -179,34 +180,66 @@ const CASE_STATUS_OPTIONS = [
 // mapping stays legible as statuses are added. Colors match getStatusStyle in
 // WorklistTable.tsx where the same status appears, for visual consistency
 // between Worklist and Search.
+// Label-key map — the CaseStatus values above remain the real, underlying
+// values used for filtering/matching and sent to the backend as literal
+// data; only the on-screen label is translated, via t(STATUS_PILL_META[s].label).
 const STATUS_PILL_META: Record<typeof CASE_STATUS_OPTIONS[number], { label: string; color: string }> = {
-  'draft':                    { label: 'Draft',             color: '#94a3b8' },
-  'accessioned':              { label: 'Awaiting Grossing', color: '#38BDF8' },
-  'gross-complete':           { label: 'Gross Complete',    color: '#14B8A6' },
-  'in-progress':              { label: 'In Progress',       color: '#0891B2' },
-  'intraoperative-complete':  { label: 'Intraop Complete',  color: '#A855F7' },
-  'pending-review':           { label: 'Needs Review',      color: '#F59E0B' },
-  'pathologist-review':       { label: 'Awaiting Sign-off',  color: '#FB7185' },
-  'finalizing':                { label: 'Finalizing',        color: '#EC4899' },
-  'finalized':                 { label: 'Completed',         color: '#10B981' },
-  'pool':                      { label: 'Pool',              color: '#F97316' },
+  'draft':                    { label: 'searchPage.statusLabelKey.draft',             color: '#94a3b8' },
+  'accessioned':              { label: 'searchPage.statusLabelKey.accessioned',       color: '#38BDF8' },
+  'gross-complete':           { label: 'searchPage.statusLabelKey.grossComplete',     color: '#14B8A6' },
+  'in-progress':              { label: 'searchPage.statusLabelKey.inProgress',        color: '#0891B2' },
+  'intraoperative-complete':  { label: 'searchPage.statusLabelKey.intraopComplete',   color: '#A855F7' },
+  'pending-review':           { label: 'searchPage.statusLabelKey.pendingReview',     color: '#F59E0B' },
+  'pathologist-review':       { label: 'searchPage.statusLabelKey.pathologistReview', color: '#FB7185' },
+  'finalizing':                { label: 'searchPage.statusLabelKey.finalizing',       color: '#EC4899' },
+  'finalized':                 { label: 'searchPage.statusLabelKey.finalized',        color: '#10B981' },
+  'pool':                      { label: 'searchPage.statusLabelKey.pool',             color: '#F97316' },
   // Real fix: was missing entirely - confirmed a real, live, currently-
   // reachable CaseStatus (WorklistPage.tsx's own "Awaiting My
   // Countersign" filter tile checks this exact status, fixed earlier
   // in this same audit). Color matches that tile's own existing violet.
-  'pending-countersign':       { label: 'Awaiting Countersign', color: '#a78bfa' },
+  'pending-countersign':       { label: 'searchPage.statusLabelKey.pendingCountersign', color: '#a78bfa' },
   // Real feature, per direct specification: Post-Sign-Out Release
   // Buffer. Color matches HeaderBar.tsx's own dedicated teal for this
   // exact status, for the same cross-page visual-consistency reasoning
   // as the comment above.
-  'pending-release':           { label: 'Pending Release',   color: '#1C8DE3' },
+  'pending-release':           { label: 'searchPage.statusLabelKey.pendingRelease',   color: '#1C8DE3' },
   // Real, per direct guidance ("Yes we should scope 'Return to
   // Trainee'/'Reject with Notes'"): color matches WorklistPage.tsx's
   // own dedicated amber/gold for the "Needs Revision" tile, for the
   // same cross-page visual-consistency reasoning as the comment above.
-  'returned':                  { label: 'Needs Revision',    color: '#78350F' },
+  'returned':                  { label: 'searchPage.statusLabelKey.returned',         color: '#78350F' },
 };
 const PRIORITY_OPTIONS    = ['Routine','Rush','STAT'] as const;
+// Same label-key pattern as STATUS_PILL_META above — PRIORITY_OPTIONS itself
+// stays the real value used for filtering/matching; only the displayed
+// label is translated.
+const PRIORITY_LABEL_KEY: Record<typeof PRIORITY_OPTIONS[number], string> = {
+  'Routine': 'searchPage.priorityLabelKey.routine',
+  'Rush':    'searchPage.priorityLabelKey.rush',
+  'STAT':    'searchPage.priorityLabelKey.stat',
+};
+// Same label-key pattern — the gender option values below stay the real
+// values sent as CaseFilterParams.genderList; only the displayed label is
+// translated. Locale key names (NonBinary) differ from the display value
+// itself (Non-binary) only in punctuation, so the map is keyed explicitly
+// rather than derived.
+const GENDER_OPTIONS = ['Male','Female','Non-binary','Other','Unknown'] as const;
+const GENDER_LABEL_KEY: Record<typeof GENDER_OPTIONS[number], string> = {
+  'Male':       'searchPage.genderLabelKey.Male',
+  'Female':     'searchPage.genderLabelKey.Female',
+  'Non-binary': 'searchPage.genderLabelKey.NonBinary',
+  'Other':      'searchPage.genderLabelKey.Other',
+  'Unknown':    'searchPage.genderLabelKey.Unknown',
+};
+// quickLinks' own object keys (Protocols/References/Systems) are data —
+// they drive the JSX .map()/key lookups below — so they stay as-is; this
+// parallel map translates only the on-screen section heading.
+const RESOURCE_SECTION_LABEL_KEY: Record<string, string> = {
+  'Protocols':  'searchPage.resourceSection.protocols',
+  'References': 'searchPage.resourceSection.references',
+  'Systems':    'searchPage.resourceSection.systems',
+};
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -226,27 +259,32 @@ interface SavedSearch { id: string; name: string; filters: FilterState; createdA
 
 // â”€â”€â”€ English summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const buildSummary = (f: FilterState, pathologists: UserStub[], attendings: UserStub[]): string => {
+const buildSummary = (
+  f: FilterState,
+  pathologists: UserStub[],
+  attendings: UserStub[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string => {
   const parts: string[] = [];
-  if (f.dateFrom || f.dateTo) parts.push(`accession ${fmtDate(f.dateFrom)||'…'} — ${fmtDate(f.dateTo)||'today'}`);
-  if (f.patientName)           parts.push(`patient "${f.patientName}"`);
-  if (f.accessionNo)           parts.push(`accession "${f.accessionNo}"`);
-  if (f.hospitalId)            parts.push(`MRN "${f.hospitalId}"`);
-  if (f.patientId)             parts.push(`MPI "${f.patientId}"`);
-  if (f.specimenList.length)   parts.push(`specimen: ${f.specimenList.join(', ')}`);
-  if (f.diagnosisList.length)  parts.push(`diagnosis: ${f.diagnosisList.join(', ')}`);
-  if (f.snomedList.length)   parts.push(`SNOMED: ${f.snomedList.map(s=>s.code).join(', ')}`);
-  if (f.icdCodes.length)     parts.push(`ICD: ${f.icdCodes.map(s=>`${s.system}:${s.code}`).join(', ')}`);
-  if (f.statusList.length)     parts.push(`status: ${f.statusList.join(', ')}`);
-  if (f.genderList?.length)    parts.push(`gender: ${f.genderList.join(', ')}`);
-  if (f.dobFrom || f.dobTo)    parts.push(`DOB: ${f.dobFrom||'…'} → ${f.dobTo||'…'}`);
-  if (f.ageMin !== undefined || f.ageMax !== undefined) parts.push(`age: ${f.ageMin??'0'}—${f.ageMax??'∞'}yrs`);
-  if (f.priorityList.length)   parts.push(`priority: ${f.priorityList.join(', ')}`);
-  if (f.flagsList.length)      parts.push(`flags: ${f.flagsList.join(', ')}`);
-  if (f.synopticIds.length)    parts.push(`synoptic: ${f.synopticIds.map(id=>ALL_SYNOPTICS.find(t=>t.id===id)?.organ??id).join(', ')}`);
-  if (f.pathologistIds.length) parts.push(`pathologist: ${f.pathologistIds.map(id=>pathologists.find(u=>u.id===id)?.name??id).join(', ')}`);
-  if (f.attendingIds.length)   parts.push(`attending: ${f.attendingIds.map(id=>attendings.find(u=>u.id===id)?.name??id).join(', ')}`);
-  return parts.length===0 ? 'Showing all cases' : 'Showing cases with '+parts.join(' · ');
+  if (f.dateFrom || f.dateTo) parts.push(t('searchPage.summaryParts.accessionRange', { from: fmtDate(f.dateFrom) || '…', to: fmtDate(f.dateTo) || t('searchPage.summaryParts.todayFallback') }));
+  if (f.patientName)           parts.push(t('searchPage.summaryParts.patientName', { name: f.patientName }));
+  if (f.accessionNo)           parts.push(t('searchPage.summaryParts.accessionNo', { no: f.accessionNo }));
+  if (f.hospitalId)            parts.push(t('searchPage.summaryParts.mrn', { id: f.hospitalId }));
+  if (f.patientId)             parts.push(t('searchPage.summaryParts.mpi', { id: f.patientId }));
+  if (f.specimenList.length)   parts.push(t('searchPage.summaryParts.specimen', { list: f.specimenList.join(', ') }));
+  if (f.diagnosisList.length)  parts.push(t('searchPage.summaryParts.diagnosis', { list: f.diagnosisList.join(', ') }));
+  if (f.snomedList.length)   parts.push(t('searchPage.summaryParts.snomed', { list: f.snomedList.map(s=>s.code).join(', ') }));
+  if (f.icdCodes.length)     parts.push(t('searchPage.summaryParts.icd', { list: f.icdCodes.map(s=>`${s.system}:${s.code}`).join(', ') }));
+  if (f.statusList.length)     parts.push(t('searchPage.summaryParts.status', { list: f.statusList.join(', ') }));
+  if (f.genderList?.length)    parts.push(t('searchPage.summaryParts.gender', { list: f.genderList.join(', ') }));
+  if (f.dobFrom || f.dobTo)    parts.push(t('searchPage.summaryParts.dob', { from: f.dobFrom||'…', to: f.dobTo||'…' }));
+  if (f.ageMin !== undefined || f.ageMax !== undefined) parts.push(t('searchPage.summaryParts.age', { min: f.ageMin??'0', max: f.ageMax??'∞' }));
+  if (f.priorityList.length)   parts.push(t('searchPage.summaryParts.priority', { list: f.priorityList.join(', ') }));
+  if (f.flagsList.length)      parts.push(t('searchPage.summaryParts.flags', { list: f.flagsList.join(', ') }));
+  if (f.synopticIds.length)    parts.push(t('searchPage.summaryParts.synoptic', { list: f.synopticIds.map(id=>ALL_SYNOPTICS.find(syn=>syn.id===id)?.organ??id).join(', ') }));
+  if (f.pathologistIds.length) parts.push(t('searchPage.summaryParts.pathologist', { list: f.pathologistIds.map(id=>pathologists.find(u=>u.id===id)?.name??id).join(', ') }));
+  if (f.attendingIds.length)   parts.push(t('searchPage.summaryParts.attending', { list: f.attendingIds.map(id=>attendings.find(u=>u.id===id)?.name??id).join(', ') }));
+  return parts.length===0 ? t('searchPage.summary.allCases') : t('searchPage.summary.prefix')+parts.join(' · ');
 };
 
 // â”€â”€â”€ Virtual scroll wrapper removed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -278,11 +316,14 @@ const SectionLabel: React.FC<{ title: string; active?: boolean }> = ({ title, ac
 );
 
 // Browse button ”” opens lookup modal, sits inline with input
-const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick, count }) => (
-  <button type="button" onClick={onClick} className="ps-searchpage-browse-btn">
-    {count ? `Browse (${count})` : 'Browse'}
-  </button>
-);
+const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick, count }) => {
+  const { t } = useTranslation();
+  return (
+    <button type="button" onClick={onClick} className="ps-searchpage-browse-btn">
+      {count ? t('searchPage.browse.labelWithCount', { count }) : t('searchPage.browse.label')}
+    </button>
+  );
+};
 
 const DROPDOWN_CLASS = 'ps-searchpage-dropdown';
 const DROP_BTN_CLASS = 'ps-searchpage-dropdown-btn';
@@ -293,6 +334,7 @@ const DROP_BTN_CLASS = 'ps-searchpage-dropdown-btn';
 // â”€â”€â”€ Synoptic lookup content (local ”” synoptics are search-page-specific) â”€â”€â”€â”€â”€
 
 const SynopticLookupContent: React.FC<{ selected: string[]; onToggle: (id: string) => void }> = ({ selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const categories = Array.from(new Set(ALL_SYNOPTICS.map(s => s.category)));
   const filtered = q.length < 1 ? ALL_SYNOPTICS : ALL_SYNOPTICS.filter(s =>
@@ -300,7 +342,7 @@ const SynopticLookupContent: React.FC<{ selected: string[]; onToggle: (id: strin
   );
   return (
     <>
-      <LookupSearch value={q} onChange={setQ} placeholder="Search protocols…" />
+      <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.synopticLookup.searchProtocols')} />
       {q.length < 1
         ? categories.map(cat => {
             const items = ALL_SYNOPTICS.filter(s => s.category === cat);
@@ -337,6 +379,7 @@ const SynopticLookupContent: React.FC<{ selected: string[]; onToggle: (id: strin
 // â”€â”€â”€ User lookup content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onToggle: (id: string) => void; accent?: string }> = ({ users, selected, onToggle, accent='#0891B2' }) => {
+  const { t } = useTranslation();
   const [nameQ,   setNameQ]   = useState('');
   const [secondaryQ, setSecondaryQ] = useState('');
 
@@ -353,12 +396,12 @@ const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onTog
       <div className="ps-searchpage-user-search-row">
         <input
           value={nameQ} onChange={e => setNameQ(e.target.value)}
-          placeholder="Search by name…"
+          placeholder={t('searchPage.userLookup.searchByName')}
           className="ps-searchpage-user-search-input"
         />
         <input
           value={secondaryQ} onChange={e => setSecondaryQ(e.target.value)}
-          placeholder="Search by hospital…"
+          placeholder={t('searchPage.userLookup.searchByHospital')}
           className="ps-searchpage-user-search-input"
         />
       </div>
@@ -383,11 +426,12 @@ const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onTog
 // â”€â”€â”€ Flags lookup content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const FlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; onToggle: (f: string) => void }> = ({ flags, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const filtered = q.length < 1 ? flags : flags.filter(f => f.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
-      <LookupSearch value={q} onChange={setQ} placeholder="Search flags…" />
+      <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.flagsLookup.searchFlags')} />
       <div className="ps-searchpage-flag-grid">
         {filtered.length === 0
           ? <LookupEmpty query={q} />
@@ -425,14 +469,31 @@ const SPECIMEN_TYPE_COLOURS: Record<string, string> = {
   'Other':      '#94a3b8',
 };
 
+// Label-key map — SPECIMEN_TYPES itself stays the real, underlying value used
+// for matching (s.type ===) and sent as literal data; only the on-screen
+// label rendered from it is translated, via this parallel lookup.
+const SPECIMEN_TYPE_LABEL_KEY: Record<string, string> = {
+  'Biopsy':     'searchPage.specimenTypeLabelKey.Biopsy',
+  'Resection':  'searchPage.specimenTypeLabelKey.Resection',
+  'Excision':   'searchPage.specimenTypeLabelKey.Excision',
+  'Cytology':   'searchPage.specimenTypeLabelKey.Cytology',
+  'FNA':        'searchPage.specimenTypeLabelKey.FNA',
+  'Molecular':  'searchPage.specimenTypeLabelKey.Molecular',
+  'Gross Only': 'searchPage.specimenTypeLabelKey.Gross Only',
+  'Consult':    'searchPage.specimenTypeLabelKey.Consult',
+  'Autopsy':    'searchPage.specimenTypeLabelKey.Autopsy',
+  'Other':      'searchPage.specimenTypeLabelKey.Other',
+};
+
 const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; onToggle: (f: string) => void }> = ({ flags, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const filtered = flags.filter(f => q.length < 1 || f.toLowerCase().includes(q.toLowerCase()));
   const abbr = (name: string) => name.replace(/[^A-Z0-9]/g,'').slice(0,3) || name.slice(0,2).toUpperCase();
   return (
     <>
       <div className="ps-searchpage-client-search-wrap">
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by test name…"
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('searchPage.compFlagsLookup.searchByTestName')}
           className="ps-searchpage-client-search-input" />
       </div>
       {filtered.length === 0
@@ -442,7 +503,7 @@ const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; on
             return (
               <LookupItem key={f} selected={sel} onToggle={() => onToggle(f)}
                 primary={f}
-                secondary="Computational / LIS flag"
+                secondary={t('searchPage.compFlagsLookup.computationalLisFlag')}
                 badge={abbr(f)}
                 badgeColor="#0891b2"
               />
@@ -454,6 +515,7 @@ const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; on
 };
 
 const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ facilities, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [nameQ, setNameQ] = useState('');
   const filtered = facilities.filter(c =>
     nameQ.length < 1 || c.name.toLowerCase().includes(nameQ.toLowerCase())
@@ -462,7 +524,7 @@ const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string
   return (
     <>
       <div className="ps-searchpage-client-search-wrap">
-        <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder="Search by facility name…"
+        <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder={t('searchPage.facilityLookup.searchByFacilityName')}
           className="ps-searchpage-client-search-input" />
       </div>
       {filtered.length === 0
@@ -488,11 +550,12 @@ const SpecimenLookupContent: React.FC<{
   selected:  string[];
   onToggle:  (name: string) => void;
 }> = ({ specimens, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q,          setQ]          = useState('');
   const [pinnedType, setPinnedType] = useState<string | null>(null);
 
   const active = specimens.filter(s => s.active);
-  const typesInUse = SPECIMEN_TYPES.filter(t => active.some(s => s.type === t));
+  const typesInUse = SPECIMEN_TYPES.filter(type => active.some(s => s.type === type));
 
   // Results driven by search query (no pill filter applied yet)
   const searched = (() => {
@@ -515,26 +578,26 @@ const SpecimenLookupContent: React.FC<{
 
   return (
     <>
-      <LookupSearch value={q} onChange={setQ} placeholder="Search by name, procedure, site, or synonym…" />
+      <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.specimenLookup.searchPlaceholder')} />
 
       {/* Pills ”” always single row, horizontal scroll, highlight = has results */}
       <div className="ps-searchpage-type-pills">
-        {(['All', ...typesInUse] as const).map(t => {
-          const isAll    = t === 'All';
-          const colour   = isAll ? '#0891B2' : SPECIMEN_TYPE_COLOURS[t] ?? '#94a3b8';
-          const isPinned = isAll ? pinnedType === null : pinnedType === t;
-          const hasMatch = isAll ? searched.length > 0 : matchedTypes.has(t);
+        {(['All', ...typesInUse] as const).map(type => {
+          const isAll    = type === 'All';
+          const colour   = isAll ? '#0891B2' : SPECIMEN_TYPE_COLOURS[type] ?? '#94a3b8';
+          const isPinned = isAll ? pinnedType === null : pinnedType === type;
+          const hasMatch = isAll ? searched.length > 0 : matchedTypes.has(type);
           const isLit    = hasMatch && (q.trim().length >= 1); // feedback mode when searching
           const accentActive = isPinned || isLit;
           const noMatchFade  = !accentActive && q.trim().length >= 1 && !hasMatch;
           const dimmed       = q.trim().length >= 1 && !hasMatch && !isAll;
           return (
-            <button key={t} type="button"
-              onClick={() => setPinnedType(isAll ? null : (pinnedType === t ? null : t))}
+            <button key={type} type="button"
+              onClick={() => setPinnedType(isAll ? null : (pinnedType === type ? null : type))}
               className={`ps-searchpage-type-pill${accentActive ? ' ps-searchpage-type-pill--lit' : ''}${noMatchFade ? ' ps-searchpage-type-pill--faded' : ''}${dimmed ? ' ps-searchpage-type-pill--dim' : ''}`}
               style={{ '--accent': colour } as React.CSSProperties}
             >
-              {t}
+              {isAll ? t('searchPage.specimenLookup.allPill') : t(SPECIMEN_TYPE_LABEL_KEY[type] ?? type)}
             </button>
           );
         })}
@@ -551,7 +614,7 @@ const SpecimenLookupContent: React.FC<{
                 onToggle={() => onToggle(s.name)}
                 primary={s.name}
                 secondary={s.subspecialty}
-                badge={s.type}
+                badge={t(SPECIMEN_TYPE_LABEL_KEY[s.type] ?? s.type)}
                 badgeColor={colour}
               />
             );
@@ -572,18 +635,19 @@ const IcdModalContent: React.FC<{
   icd11Active: boolean;
   icdoActive:  boolean;
 }> = ({ selected, onToggle, icd10Active, icd11Active, icdoActive }) => {
-  const allTabs: { id: IcdTab; label: string; active: boolean }[] = [
-    { id:'ICD-10',           label:'ICD-10',           active: icd10Active },
-    { id:'ICD-11',           label:'ICD-11',           active: icd11Active },
-    { id:'ICD-O-topography', label:'ICD-O  Site',      active: icdoActive  },
-    { id:'ICD-O-morphology', label:'ICD-O  Morphology',active: icdoActive  },
+  const { t } = useTranslation();
+  const allTabs: { id: IcdTab; labelKey: string; active: boolean }[] = [
+    { id:'ICD-10',           labelKey:'searchPage.icdModal.tabIcd10',          active: icd10Active },
+    { id:'ICD-11',           labelKey:'searchPage.icdModal.tabIcd11',          active: icd11Active },
+    { id:'ICD-O-topography', labelKey:'searchPage.icdModal.tabIcdOTopography', active: icdoActive  },
+    { id:'ICD-O-morphology', labelKey:'searchPage.icdModal.tabIcdOMorphology', active: icdoActive  },
   ];
-  const visibleTabs = allTabs.filter(t => t.active);
+  const visibleTabs = allTabs.filter(at => at.active);
   const [tab, setTab] = useState<IcdTab>(() => visibleTabs[0]?.id ?? 'ICD-10');
 
   // If active tabs change and current tab is gone, reset to first visible
   useEffect(() => {
-    if (!visibleTabs.some(t => t.id === tab)) {
+    if (!visibleTabs.some(at => at.id === tab)) {
       const first = visibleTabs[0];
       if (first) setTab(first.id);
     }
@@ -592,8 +656,8 @@ const IcdModalContent: React.FC<{
   if (visibleTabs.length === 0) {
     return (
       <div className="ps-searchpage-icd-empty">
-        No ICD systems are enabled.<br />
-        <span className="ps-searchpage-icd-empty-sub">Enable them in Configuration → System Settings.</span>
+        {t('searchPage.icdModal.noSystemsEnabled')}<br />
+        <span className="ps-searchpage-icd-empty-sub">{t('searchPage.icdModal.enableHint')}</span>
       </div>
     );
   }
@@ -602,11 +666,11 @@ const IcdModalContent: React.FC<{
     <>
       {/* Tab bar ”” only shows active systems */}
       <div className="ps-searchpage-icd-tabbar">
-        {visibleTabs.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            className={`ps-searchpage-icd-tab${tab === t.id ? ' ps-searchpage-icd-tab--active' : ''}`}
+        {visibleTabs.map(at => (
+          <button key={at.id} type="button" onClick={() => setTab(at.id)}
+            className={`ps-searchpage-icd-tab${tab === at.id ? ' ps-searchpage-icd-tab--active' : ''}`}
           >
-            {t.label}
+            {t(at.labelKey)}
           </button>
         ))}
       </div>
@@ -620,11 +684,11 @@ const IcdModalContent: React.FC<{
 
 type SnomedAxis = 'Morphology' | 'Body Structure' | 'Procedure' | 'Specimen';
 
-const SNOMED_AXIS_META: { id: SnomedAxis; label: string; accent: string; placeholder: string }[] = [
-  { id:'Morphology',     label:'Morphology',     accent:'#8B5CF6', placeholder:'Search pathological changes… e.g. adenocarcinoma' },
-  { id:'Body Structure', label:'Body Structure',  accent:'#0891B2', placeholder:'Search anatomical sites… e.g. breast, colon'     },
-  { id:'Procedure',      label:'Procedure',       accent:'#10B981', placeholder:'Search diagnostic acts… e.g. biopsy, resection'  },
-  { id:'Specimen',       label:'Specimen',        accent:'#F59E0B', placeholder:'Search specimen types… e.g. core needle, smear'  },
+const SNOMED_AXIS_META: { id: SnomedAxis; labelKey: string; accent: string; placeholderKey: string }[] = [
+  { id:'Morphology',     labelKey:'searchPage.snomedAxis.morphology',    accent:'#8B5CF6', placeholderKey:'searchPage.snomedAxis.morphologyPlaceholder' },
+  { id:'Body Structure', labelKey:'searchPage.snomedAxis.bodyStructure', accent:'#0891B2', placeholderKey:'searchPage.snomedAxis.bodyStructurePlaceholder' },
+  { id:'Procedure',      labelKey:'searchPage.snomedAxis.procedure',     accent:'#10B981', placeholderKey:'searchPage.snomedAxis.procedurePlaceholder' },
+  { id:'Specimen',       labelKey:'searchPage.snomedAxis.specimen',      accent:'#F59E0B', placeholderKey:'searchPage.snomedAxis.specimenPlaceholder' },
 ];
 
 const SnomedAxisContent: React.FC<{
@@ -632,6 +696,7 @@ const SnomedAxisContent: React.FC<{
   selected: ClinicalCode[];
   onToggle: (c: ClinicalCode) => void;
 }> = ({ axis, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q,        setQ]        = useState('');
   const [allCodes, setAllCodes] = useState<ClinicalCode[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -671,9 +736,9 @@ const SnomedAxisContent: React.FC<{
 
   return (
     <>
-      <LookupSearch value={q} onChange={setQ} placeholder={meta.placeholder} />
+      <LookupSearch value={q} onChange={setQ} placeholder={t(meta.placeholderKey)} />
       {loading
-        ? <div className="ps-searchpage-lookup-loading">Loading…</div>
+        ? <div className="ps-searchpage-lookup-loading">{t('common.loading')}</div>
         : <>
             {/* Subgroup filter pills ”” only shown while searching, clickable to narrow results */}
             {isSearching && subgroups.length > 1 && (
@@ -681,7 +746,7 @@ const SnomedAxisContent: React.FC<{
                 {subgroups.map(sg => {
                   const matched = matchedSubgroups.has(sg);
                   return (
-                    <button key={sg} type="button" title={`Filter to ${sg}`}
+                    <button key={sg} type="button" title={t('searchPage.snomedAxis.filterToTitle', { group: sg })}
                       className={`ps-searchpage-subgroup-pill${matched ? ' ps-searchpage-subgroup-pill--matched' : ''}`}
                       style={{ '--accent': meta.accent } as React.CSSProperties}
                     >
@@ -715,6 +780,7 @@ const SnomedModalContent: React.FC<{
   selected: ClinicalCode[];
   onToggle: (c: ClinicalCode) => void;
 }> = ({ selected, onToggle }) => {
+  const { t } = useTranslation();
   const [axis, setAxis] = useState<SnomedAxis>('Morphology');
 
   return (
@@ -726,7 +792,7 @@ const SnomedModalContent: React.FC<{
             className={`ps-searchpage-axis-tab${axis === m.id ? ' ps-searchpage-axis-tab--active' : ''}`}
             style={{ '--accent': m.accent } as React.CSSProperties}
           >
-            {m.label}
+            {t(m.labelKey)}
           </button>
         ))}
       </div>
@@ -742,6 +808,7 @@ const CodeLookupContent: React.FC<{
   selected: ClinicalCode[];
   onToggle: (c: ClinicalCode) => void;
 }> = ({ system, selected, onToggle }) => {
+  const { t } = useTranslation();
   const [q, setQ] = useState('');
   const [codes, setCodes] = useState<ClinicalCode[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -774,9 +841,9 @@ const CodeLookupContent: React.FC<{
 
   return (
     <>
-      <LookupSearch value={q} onChange={setQ} placeholder={`Search ${system} codes or descriptions…`} />
+      <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.codeLookup.searchPlaceholder', { system })} />
       {loading
-        ? <div className="ps-searchpage-lookup-loading">Loading…</div>
+        ? <div className="ps-searchpage-lookup-loading">{t('common.loading')}</div>
         : <>
             {/* Category filter pills ”” clickable, wrap, highlight active/matched */}
             {allCategories.length > 1 && (
@@ -817,6 +884,7 @@ const CodeLookupContent: React.FC<{
 
 
 const SearchPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate     = useNavigate();
   const { user }      = useAuth();
   const { pushCrumb } = useBreadcrumb();
@@ -885,9 +953,9 @@ const SearchPage: React.FC = () => {
       const available = window.innerHeight - top - 16; // 16px bottom breathing room
       setTableHeight(Math.max(200, available));
     };
-    const t = setTimeout(measure, 50);
+    const timer = setTimeout(measure, 50);
     window.addEventListener('resize', measure);
-    return () => { clearTimeout(t); window.removeEventListener('resize', measure); };
+    return () => { clearTimeout(timer); window.removeEventListener('resize', measure); };
   }, []);
 
   // Mirrors canViewPediatric's pattern (WorklistPage.tsx/WorklistTable.tsx) —
@@ -953,13 +1021,13 @@ const SearchPage: React.FC = () => {
   };
 
   const IDENTIFIER_BADGE: Record<NonNullable<IdentifierType>, { label: string; color: string }> = {
-    accession:   { label: 'Accession #',   color: '#8B5CF6' },
-    mrn:         { label: 'MRN',           color: '#0891B2' },
-    mpi:         { label: 'MPI ID',        color: '#6366F1' },
-    slide:       { label: 'Slide Barcode', color: '#10B981' },
-    requisition: { label: 'Requisition #', color: '#F59E0B' },
-    name:        { label: 'Patient Name',  color: '#10B981' },
-    ambiguous:   { label: 'All fields',    color: '#F59E0B' },
+    accession:   { label: t('searchPage.identifierBadge.accession'),   color: '#8B5CF6' },
+    mrn:         { label: t('searchPage.identifierBadge.mrn'),         color: '#0891B2' },
+    mpi:         { label: t('searchPage.identifierBadge.mpi'),         color: '#6366F1' },
+    slide:       { label: t('searchPage.identifierBadge.slide'),       color: '#10B981' },
+    requisition: { label: t('searchPage.identifierBadge.requisition'), color: '#F59E0B' },
+    name:        { label: t('searchPage.identifierBadge.name'),        color: '#10B981' },
+    ambiguous:   { label: t('searchPage.identifierBadge.ambiguous'),   color: '#F59E0B' },
   };
 
   const [dateFrom,     setDateFrom]     = useState(daysAgo(30, config.facilityTimezone));
@@ -1118,8 +1186,8 @@ const SearchPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { const t = setTimeout(()=>setIsLoaded(true), 80); return ()=>clearTimeout(t); }, []);
-  useEffect(() => { pushCrumb('Case Search', '/search'); }, [pushCrumb]);
+  useEffect(() => { const timer = setTimeout(()=>setIsLoaded(true), 80); return ()=>clearTimeout(timer); }, []);
+  useEffect(() => { pushCrumb(t('searchPage.page.title'), '/search'); }, [pushCrumb, t]);
   useEffect(() => { lsSave(savedSearches); }, [savedSearches]);
 
   // Real bug fix, same pattern already found in AuditLogPage.tsx: this
@@ -1268,7 +1336,7 @@ const SearchPage: React.FC = () => {
         pathologistIds:      pathologistIds.length ? pathologistIds : undefined,
         // Resolve p01 → 'breast_invasive' templateId before passing so service can match synopticReports
         synopticProtocolIds: synopticIds.length
-          ? synopticIds.map(id => ALL_SYNOPTICS.find(t => t.id === id)?.templateId ?? '').filter(Boolean)
+          ? synopticIds.map(id => ALL_SYNOPTICS.find(syn => syn.id === id)?.templateId ?? '').filter(Boolean)
           : undefined,
         // Pass full provider names (not att-1 IDs) — service matches c.order.requestingProvider
         ...(attendingIds.length && {
@@ -1513,7 +1581,7 @@ const SearchPage: React.FC = () => {
     ...statusList, ...priorityList, dateFrom?'df':'', dateTo?'dt':'',
   ].filter(Boolean).length;
 
-  const summary = hasSearched ? buildSummary(currentFilters(), pathologists, attendings) : null;
+  const summary = hasSearched ? buildSummary(currentFilters(), pathologists, attendings, t) : null;
 
   const quickLinks = {
     Protocols:  [{ title:'CAP Cancer Protocols', url:'https://www.cap.org/protocols-and-guidelines' }, { title:'WHO Classification', url:'https://www.who.int/publications' }],
@@ -1541,8 +1609,8 @@ const SearchPage: React.FC = () => {
         <div className="ps-search-header">
           <div className="ps-search-header-row">
             <div>
-              <div className="ps-search-title-block-title">Case Search</div>
-              <div className="ps-search-title-block-sub">Search across cases, specimens, diagnoses, and clinical codes</div>
+              <div className="ps-search-title-block-title">{t('searchPage.page.title')}</div>
+              <div className="ps-search-title-block-sub">{t('searchPage.page.subtitle')}</div>
             </div>
             <div className="ps-search-saved-chips">
               {savedSearches.map(s => (
@@ -1555,14 +1623,14 @@ const SearchPage: React.FC = () => {
                 <div className="ps-searchpage-save-row">
                   <input ref={saveInputRef} type="text" value={saveNameInput} onChange={e=>setSaveNameInput(e.target.value)}
                     onKeyDown={e=>{if(e.key==='Enter')handleSaveSearch();if(e.key==='Escape'){setShowSaveInput(false);setSaveNameInput('');}}}
-                    placeholder="Name this search…" className="ps-searchpage-save-input" />
-                  <button type="button" onClick={handleSaveSearch} className="ps-searchpage-save-btn">Save</button>
+                    placeholder={t('searchPage.savedSearch.namePlaceholder')} className="ps-searchpage-save-input" />
+                  <button type="button" onClick={handleSaveSearch} className="ps-searchpage-save-btn">{t('common.save')}</button>
                   <button type="button" onClick={()=>{setShowSaveInput(false);setSaveNameInput('');}} className="ps-searchpage-save-cancel-btn">✕</button>
                 </div>
               ) : (
-                <button type="button" onClick={()=>setShowSaveInput(true)} className="ps-searchpage-save-new-btn">+ Save Search</button>
+                <button type="button" onClick={()=>setShowSaveInput(true)} className="ps-searchpage-save-new-btn">{t('searchPage.savedSearch.saveNew')}</button>
               )}
-              {activeCount>0&&<span className="ps-searchpage-active-count-badge">{activeCount} filter{activeCount!==1?'s':''}</span>}
+              {activeCount>0&&<span className="ps-searchpage-active-count-badge">{t('searchPage.filterCount', { count: activeCount })}</span>}
             </div>
           </div>
         </div>
@@ -1575,14 +1643,14 @@ const SearchPage: React.FC = () => {
           <aside className={`ps-search-sidebar ${sidebarCollapsed ? 'collapsed' : 'expanded'}`}>
             {sidebarCollapsed ? (
               <div className="ps-search-rail">
-                <button type="button" className="ps-search-rail-toggle" onClick={() => setSidebarCollapsed(false)} title="Expand filters">
+                <button type="button" className="ps-search-rail-toggle" onClick={() => setSidebarCollapsed(false)} title={t('searchPage.sidebar.expandFilters')}>
                   &rsaquo;
                 </button>
-                <div className="ps-search-rail-badge">Filters</div>
+                <div className="ps-search-rail-badge">{t('searchPage.sidebar.filtersBadge')}</div>
               </div>
             ) : (
             <>
-            <button type="button" className="ps-search-sidebar-toggle" onClick={() => setSidebarCollapsed(true)} title="Collapse filters">
+            <button type="button" className="ps-search-sidebar-toggle" onClick={() => setSidebarCollapsed(true)} title={t('searchPage.sidebar.collapseFilters')}>
               &lsaquo;
             </button>
             <form onSubmit={handleSubmit} className="ps-search-form">
@@ -1590,7 +1658,7 @@ const SearchPage: React.FC = () => {
               {/* Accession Date */}
               <div className="ps-search-date-section">
                 <div className="ps-searchpage-date-header-row">
-                  <SectionLabel title="Accession Date" active={activeSection==="date"} />
+                  <SectionLabel title={t('searchPage.sections.accessionDate')} active={activeSection==="date"} />
                   <div className="ps-searchpage-date-shortcuts">
                     {([['7d',7],['30d',30],['90d',90],['1yr',365]] as [string,number][]).map(([label,days])=>{
                       const isActive = activeDateRange === label;
@@ -1614,19 +1682,19 @@ const SearchPage: React.FC = () => {
                         anything slow happening today. */}
                     <button type="button"
                       onClick={()=>{setDateFrom('');setDateTo('');setActiveDateRange('all');}}
-                      title="Searches all accession dates with no limit. Once connected to a production database with years of records, this could take noticeably longer to return results."
+                      title={t('searchPage.dateShortcuts.allTooltip')}
                       className={`ps-searchpage-date-shortcut-btn ps-searchpage-date-shortcut-btn--all${activeDateRange === 'all' ? ' ps-searchpage-date-shortcut-btn--all-active' : ''}`}
-                    >All</button>
+                    >{t('searchPage.dateShortcuts.all')}</button>
                   </div>
                 </div>
                 <div className="ps-searchpage-date-grid">
                   <div>
-                    <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>From</div>
-                    <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label="Accession date from" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                    <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>{t('searchPage.dateShortcuts.from')}</div>
+                    <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateFromAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                   </div>
                   <div>
-                    <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>To</div>
-                    <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label="Accession date to" className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                    <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>{t('searchPage.dateShortcuts.to')}</div>
+                    <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateToAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                   </div>
                 </div>
               </div>
@@ -1637,7 +1705,7 @@ const SearchPage: React.FC = () => {
                 {/* Identifiers */}
                 {/* Identifiers ”” smart single box */}
                 <div onMouseEnter={()=>setActiveSection('id')} onMouseLeave={()=>setActiveSection(s=>s==='id'?'':s)}>
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Identifier" active={activeSection==='id'} /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.identifier')} active={activeSection==='id'} /></div>
                   <div className="ps-searchpage-rel-wrap">
                     <input
                       data-capture-hide="true"
@@ -1646,15 +1714,15 @@ const SearchPage: React.FC = () => {
                       onChange={e => handleIdentifierChange(e.target.value)}
                       onFocus={onF} onBlur={onB} data-section="id"
                       className="ps-searchpage-filter-input"
-                      placeholder={`Accession #, patient name, or MRN…`}
+                      placeholder={t('searchPage.identifierField.placeholder')}
                     />
                     {identifierQuery && (
                       <button
                         type="button"
                         onClick={() => handleIdentifierChange('')}
                         className="ps-searchpage-identifier-clear"
-                        aria-label="Clear identifier search"
-                        title="Clear"
+                        aria-label={t('searchPage.identifierField.clearAria')}
+                        title={t('searchPage.identifierField.clearTitle')}
                       >
                         ×
                       </button>
@@ -1673,32 +1741,32 @@ const SearchPage: React.FC = () => {
                   onMouseEnter={()=>setActiveSection('demographics')}
                   onMouseLeave={()=>setActiveSection(s=>s==='demographics'?'':s)}
                 >
-                  <div className="ps-searchpage-section-mb6"><SectionLabel title="Patient Demographics" active={activeSection==='demographics'} /></div>
+                  <div className="ps-searchpage-section-mb6"><SectionLabel title={t('searchPage.sections.patientDemographics')} active={activeSection==='demographics'} /></div>
 
                   {/* Gender */}
                   <div className="ps-searchpage-section-mb8">
-                    <div className="ps-searchpage-mini-label">Gender</div>
+                    <div className="ps-searchpage-mini-label">{t('searchPage.sections.gender')}</div>
                     <div className="ps-searchpage-pill-row">
-                      {(['Male','Female','Non-binary','Other','Unknown'] as const).map(g => (
-                        <CheckPill key={g} label={g} checked={genderList.includes(g)} onChange={()=>toggle(g,genderList,setGenderList)} />
+                      {GENDER_OPTIONS.map(g => (
+                        <CheckPill key={g} label={t(GENDER_LABEL_KEY[g])} checked={genderList.includes(g)} onChange={()=>toggle(g,genderList,setGenderList)} />
                       ))}
                     </div>
                   </div>
 
                   {/* Date of Birth range */}
                   <div className="ps-searchpage-section-mb8">
-                    <div className="ps-searchpage-mini-label ps-searchpage-mini-label--soft">Date of Birth</div>
+                    <div className="ps-searchpage-mini-label ps-searchpage-mini-label--soft">{t('searchPage.sections.dateOfBirth')}</div>
                     <div className="ps-searchpage-mini-grid">
                       <div>
-                        <div className="ps-searchpage-mini-field-label">From</div>
+                        <div className="ps-searchpage-mini-field-label">{t('searchPage.dateShortcuts.from')}</div>
                         <input type="date" value={dobFrom} onChange={e=>setDobFrom(e.target.value)}
-                          aria-label="Date of birth from"
+                          aria-label={t('searchPage.demographics.dobFromAria')}
                           className="ps-searchpage-filter-input ps-searchpage-filter-input--date ps-searchpage-filter-input--sm" />
                       </div>
                       <div>
-                        <div className="ps-searchpage-mini-field-label">To</div>
+                        <div className="ps-searchpage-mini-field-label">{t('searchPage.dateShortcuts.to')}</div>
                         <input type="date" value={dobTo} onChange={e=>setDobTo(e.target.value)}
-                          aria-label="Date of birth to"
+                          aria-label={t('searchPage.demographics.dobToAria')}
                           className="ps-searchpage-filter-input ps-searchpage-filter-input--date ps-searchpage-filter-input--sm" />
                       </div>
                     </div>
@@ -1706,16 +1774,16 @@ const SearchPage: React.FC = () => {
 
                   {/* Age range */}
                   <div>
-                    <div className="ps-searchpage-mini-label">Age (years)</div>
+                    <div className="ps-searchpage-mini-label">{t('searchPage.sections.age')}</div>
                     <div className="ps-searchpage-mini-grid">
                       <div>
-                        <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">Min</div>
-                        <input type="number" min={0} max={130} placeholder="e.g. 40" value={ageMin} onChange={e=>setAgeMin(e.target.value)}
+                        <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">{t('searchPage.demographics.ageMinLabel')}</div>
+                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMinPlaceholder')} value={ageMin} onChange={e=>setAgeMin(e.target.value)}
                           className="ps-searchpage-filter-input" />
                       </div>
                       <div>
-                        <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">Max</div>
-                        <input type="number" min={0} max={130} placeholder="e.g. 65" value={ageMax} onChange={e=>setAgeMax(e.target.value)}
+                        <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">{t('searchPage.demographics.ageMaxLabel')}</div>
+                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMaxPlaceholder')} value={ageMax} onChange={e=>setAgeMax(e.target.value)}
                           className="ps-searchpage-filter-input" />
                       </div>
                     </div>
@@ -1725,18 +1793,18 @@ const SearchPage: React.FC = () => {
                 {/* Status + Priority ”” single row */}
                 <div className="ps-searchpage-status-priority-row">
                   <div className="ps-searchpage-label-pair-row">
-                    <SectionLabel title="Status" active={activeSection==='status'} />
+                    <SectionLabel title={t('searchPage.sections.status')} active={activeSection==='status'} />
                     <div className="ps-searchpage-vdivider" />
-                    <SectionLabel title="Priority" active={activeSection==='priority'} />
+                    <SectionLabel title={t('searchPage.sections.priority')} active={activeSection==='priority'} />
                   </div>
                   <div
                     onMouseEnter={()=>setActiveSection('status')}
                     onMouseLeave={()=>setActiveSection(s=>s==='status'||s==='priority'?'':s)}
                     className="ps-searchpage-pill-row"
                   >
-                    {CASE_STATUS_OPTIONS.map(s=><CheckPill key={s} label={STATUS_PILL_META[s].label} checked={statusList.includes(s)} onChange={()=>toggle(s,statusList,setStatusList)} accent={STATUS_PILL_META[s].color} />)}
+                    {CASE_STATUS_OPTIONS.map(s=><CheckPill key={s} label={t(STATUS_PILL_META[s].label)} checked={statusList.includes(s)} onChange={()=>toggle(s,statusList,setStatusList)} accent={STATUS_PILL_META[s].color} />)}
                     <div className="ps-searchpage-vdivider--stretch" />
-                    {PRIORITY_OPTIONS.map(p=><CheckPill key={p} label={p} checked={priorityList.includes(p)} onChange={()=>toggle(p,priorityList,setPriorityList)} accent={p==='STAT'?'#ef4444':p==='Rush'?'#f59e0b':'#0891B2'} />)}
+                    {PRIORITY_OPTIONS.map(p=><CheckPill key={p} label={t(PRIORITY_LABEL_KEY[p])} checked={priorityList.includes(p)} onChange={()=>toggle(p,priorityList,setPriorityList)} accent={p==='STAT'?'#ef4444':p==='Rush'?'#f59e0b':'#0891B2'} />)}
                   </div>
                 </div>
 
@@ -1746,7 +1814,7 @@ const SearchPage: React.FC = () => {
                 {/* Flags */}
                 <div onMouseEnter={()=>setActiveSection('flags')} onMouseLeave={()=>setActiveSection(s=>s==='flags'?'':s)}>
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Flags" active={activeSection==='flags'} />
+                    <SectionLabel title={t('searchPage.sections.flags')} active={activeSection==='flags'} />
                     <BrowseBtn onClick={()=>setFlagsModal(true)} count={realFlagNames.length} />
                   </div>
                   {flagsList.length>0&&<div className="ps-searchpage-pill-row">{flagsList.map(f=><Chip key={f} label={f} onRemove={()=>setFlagsList(p=>p.filter(x=>x!==f))} />)}</div>}
@@ -1755,7 +1823,7 @@ const SearchPage: React.FC = () => {
                 {/* Synoptic */}
                 <div onMouseEnter={()=>setActiveSection('synoptic')} onMouseLeave={()=>setActiveSection(s=>s==='synoptic'?'':s)}>
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Synoptic Protocol" active={activeSection==='synoptic'} />
+                    <SectionLabel title={t('searchPage.sections.synopticProtocol')} active={activeSection==='synoptic'} />
                     <BrowseBtn onClick={()=>setSynopticModal(true)} count={ALL_SYNOPTICS.length} />
                   </div>
                   {synopticIds.length>0&&<div className="ps-searchpage-pill-row">{synopticIds.map(id=>{const t=ALL_SYNOPTICS.find(s=>s.id===id);return t?<Chip key={id} label={t.organ} onRemove={()=>setSynopticIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
@@ -1764,7 +1832,7 @@ const SearchPage: React.FC = () => {
                 {/* Pathologist */}
                 <div onMouseEnter={()=>setActiveSection('path')} onMouseLeave={()=>setActiveSection(s=>s==='path'?'':s)}>
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Pathologist" active={activeSection==='path'} />
+                    <SectionLabel title={t('searchPage.sections.pathologist')} active={activeSection==='path'} />
                     <BrowseBtn onClick={()=>setPathModal(true)} count={pathologists.length} />
                   </div>
                   {pathologistIds.length>0&&<div className="ps-searchpage-pill-row">{pathologistIds.map(id=>{const u=pathologists.find(x=>x.id===id);return u?<Chip key={id} label={u.name.replace('Dr. ','')} onRemove={()=>setPathologistIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
@@ -1773,7 +1841,7 @@ const SearchPage: React.FC = () => {
                 {/* Attending Physician */}
                 <div onMouseEnter={()=>setActiveSection('attending')} onMouseLeave={()=>setActiveSection(s=>s==='attending'?'':s)}>
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Attending Physician" active={activeSection==='attending'} />
+                    <SectionLabel title={t('searchPage.sections.attendingPhysician')} active={activeSection==='attending'} />
                     <BrowseBtn onClick={()=>setAttendingModal(true)} count={attendings.length} />
                   </div>
                   {attendingIds.length>0&&<div className="ps-searchpage-pill-row">{attendingIds.map(id=>{const u=attendings.find(x=>x.id===id);return u?<Chip key={id} label={u.name.replace('Dr. ','')} onRemove={()=>setAttendingIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
@@ -1783,7 +1851,7 @@ const SearchPage: React.FC = () => {
                 {/* Computational Flags */}
                 <div className="ps-searchpage-section-mb4">
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Comp Flags" active={false} />
+                    <SectionLabel title={t('searchPage.sections.compFlags')} active={false} />
                     <BrowseBtn onClick={()=>setCompFlagsModal(true)} count={compFlagsList.length||undefined} />
                   </div>
                   {compFlagsList.length>0&&<div className="ps-searchpage-pill-row">
@@ -1794,7 +1862,7 @@ const SearchPage: React.FC = () => {
                 {/* Facility */}
                 <div className="ps-searchpage-section-mb4">
                   <div className="ps-searchpage-header-row">
-                    <SectionLabel title="Facility" active={false} />
+                    <SectionLabel title={t('searchPage.sections.facility')} active={false} />
                     <BrowseBtn onClick={()=>setFacilityModal(true)} count={facilityIds.length||undefined} />
                   </div>
                   {facilityIds.length>0&&<div className="ps-searchpage-pill-row">
@@ -1806,10 +1874,10 @@ const SearchPage: React.FC = () => {
 
                 {/* Specimen */}
                 <div onMouseEnter={()=>setActiveSection('specimen')} onMouseLeave={()=>setActiveSection(s=>s==='specimen'?'':s)}>
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Specimen" active={activeSection==='specimen'} /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.specimen')} active={activeSection==='specimen'} /></div>
                   <div className="ps-searchpage-input-row" ref={specimenRef}>
                     <div className="ps-searchpage-rel-wrap--flex1">
-                      <input type="text" value={specimenQuery} onChange={e=>setSpecimenQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="specimen" className="ps-searchpage-filter-input" placeholder="Search specimen dictionary…"
+                      <input type="text" value={specimenQuery} onChange={e=>setSpecimenQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="specimen" className="ps-searchpage-filter-input" placeholder={t('searchPage.specimenSection.placeholder')}
                         onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();if(specimenQuery.trim())addSpecimen(specimenQuery);}}} />
                       {showSpecimenDrop&&(
                         <div className={DROPDOWN_CLASS}>
@@ -1817,7 +1885,7 @@ const SearchPage: React.FC = () => {
                             <button key={s} type="button" onClick={()=>addSpecimen(s)} className={DROP_BTN_CLASS}>{s}</button>
                           ))}
                           {specimenQuery.trim()&&!SPECIMEN_DICTIONARY.some(s=>s.toLowerCase()===specimenQuery.toLowerCase())&&(
-                            <button type="button" onClick={()=>addSpecimen(specimenQuery)} className={`${DROP_BTN_CLASS} ps-searchpage-dropdown-btn--add`}>+ Add "{specimenQuery}"</button>
+                            <button type="button" onClick={()=>addSpecimen(specimenQuery)} className={`${DROP_BTN_CLASS} ps-searchpage-dropdown-btn--add`}>{t('searchPage.specimenSection.addOption', { query: specimenQuery })}</button>
                           )}
                         </div>
                       )}
@@ -1829,9 +1897,9 @@ const SearchPage: React.FC = () => {
 
                 {/* Diagnosis */}
                 <div onMouseEnter={()=>setActiveSection('diagnosis')} onMouseLeave={()=>setActiveSection(s=>s==='diagnosis'?'':s)}>
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="Diagnosis" active={activeSection==='diagnosis'} /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.diagnosis')} active={activeSection==='diagnosis'} /></div>
                   <div className="ps-searchpage-input-row">
-                    <input type="text" value={diagnosisText} onChange={e=>setDiagnosisText(e.target.value)} onFocus={onF} onBlur={onB} data-section="diagnosis" className="ps-searchpage-filter-input" placeholder="e.g. Carcinoma"
+                    <input type="text" value={diagnosisText} onChange={e=>setDiagnosisText(e.target.value)} onFocus={onF} onBlur={onB} data-section="diagnosis" className="ps-searchpage-filter-input" placeholder={t('searchPage.diagnosisSection.placeholder')}
                       onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addDiagnosis();}}} />
                     <button type="button" onClick={addDiagnosis} className="ps-searchpage-add-btn">+</button>
                   </div>
@@ -1840,10 +1908,10 @@ const SearchPage: React.FC = () => {
 
                 {/* SNOMED CT */}
                 <div onMouseEnter={()=>setActiveSection('snomed')} onMouseLeave={()=>setActiveSection(s=>s==='snomed'?'':s)}>
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="SNOMED CT" active={activeSection==='snomed'} /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.snomedCt')} active={activeSection==='snomed'} /></div>
                   <div className="ps-searchpage-input-row" ref={snomedRef}>
                     <div className="ps-searchpage-rel-wrap--flex1">
-                      <input type="text" value={snomedQuery} onChange={e=>setSnomedQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="snomed" className="ps-searchpage-filter-input" placeholder="Search concept or description…" />
+                      <input type="text" value={snomedQuery} onChange={e=>setSnomedQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="snomed" className="ps-searchpage-filter-input" placeholder={t('searchPage.snomedSection.placeholder')} />
                       {showSnomedDrop&&(
                         <div className={DROPDOWN_CLASS}>
                           {snomedSuggestions.map(s=>(
@@ -1866,10 +1934,10 @@ const SearchPage: React.FC = () => {
 
                 {/* ICD Codes ”” unified ICD-10 / ICD-11 / ICD-O */}
                 <div onMouseEnter={()=>setActiveSection('icd')} onMouseLeave={()=>setActiveSection(s=>s==='icd'?'':s)} className="ps-searchpage-icd-section-pb">
-                  <div className="ps-searchpage-section-mb4"><SectionLabel title="ICD Codes" active={activeSection==='icd'} /></div>
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.icdCodes')} active={activeSection==='icd'} /></div>
                   <div className="ps-searchpage-input-row" ref={icdRef}>
                     <div className="ps-searchpage-rel-wrap--flex1">
-                      <input type="text" value={icdQuery} onChange={e=>setIcdQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="icd" className="ps-searchpage-filter-input" placeholder="Search ICD-10 code or description…" />
+                      <input type="text" value={icdQuery} onChange={e=>setIcdQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="icd" className="ps-searchpage-filter-input" placeholder={t('searchPage.icdSection.placeholder')} />
                       {showIcdDrop&&(
                         <div className={`ps-scroll ${DROPDOWN_CLASS}`}>
                           {icdSuggestions.map(s=>(
@@ -1897,9 +1965,9 @@ const SearchPage: React.FC = () => {
 
               {/* Action buttons */}
               <div className="ps-search-actions">
-                <button type="button" onClick={handleClear} className="ps-search-btn-clear">Clear</button>
+                <button type="button" onClick={handleClear} className="ps-search-btn-clear">{t('searchPage.actions.clear')}</button>
                 <button type="submit" disabled={isSearching} className="ps-search-btn-submit">
-                  {isSearching?'Searching…':'Search Cases'}
+                  {isSearching?t('searchPage.actions.searching'):t('searchPage.actions.searchCases')}
                 </button>
               </div>
 
@@ -1924,16 +1992,16 @@ const SearchPage: React.FC = () => {
                   ))}
                 </p>
               ) : (
-                <p className="ps-searchpage-summary-empty">Set filters and press <strong className="ps-searchpage-summary-cta">Search Cases</strong> to begin</p>
+                <p className="ps-searchpage-summary-empty">{t('searchPage.summary.empty', { cta: t('searchPage.actions.searchCases') })}</p>
               )}
               <div className="ps-search-summary-actions">
-                {results!==null&&<span className="ps-searchpage-result-count">{results.length} case{results.length!==1?'s':''}</span>}
+                {results!==null&&<span className="ps-searchpage-result-count">{t('searchPage.summary.resultCount', { count: results.length })}</span>}
                 {results!==null&&results.length>0&&(
                   <button
                     type="button"
                     onClick={handleExportCSV}
                     className="ps-searchpage-export-btn"
-                  >Export CSV</button>
+                  >{t('searchPage.summary.exportCsv')}</button>
                 )}
                 {/* Real, per direct guidance (gap #6): only enabled when
                     a real result row is actually selected — reuses
@@ -1945,7 +2013,7 @@ const SearchPage: React.FC = () => {
                     type="button"
                     onClick={() => setReassignPanelOpen(true)}
                     className="ps-searchpage-export-btn"
-                  >🪪 Reassign Patient</button>
+                  >{t('searchPage.summary.reassignPatient')}</button>
                 )}
               </div>
             </div>
@@ -1970,7 +2038,7 @@ const SearchPage: React.FC = () => {
             <div ref={wrapperRef} className="ps-search-table-wrap">
               {hasSearched
                 ? <WorklistTable key={searchGeneration} cases={results??[]} activeFilter="all" selectedIndex={selectedResultIndex} onRowSelect={setSelectedResultIndex} onBeforeNavigate={(_caseId)=>sessionStorage.setItem('pathscribe:navFrom','search')} tableHeight={tableHeight} forceCardView flagDefinitions={flagDefinitions} />
-                : <div className="ps-searchpage-no-search">No search run yet</div>
+                : <div className="ps-searchpage-no-search">{t('searchPage.summary.noSearchYet')}</div>
               }
             </div>
             {hasSearched && hasMoreResults && (
@@ -1981,7 +2049,7 @@ const SearchPage: React.FC = () => {
                   disabled={isLoadingMore}
                   className={`ps-searchpage-loadmore-btn${isLoadingMore ? ' ps-searchpage-loadmore-btn--loading' : ''}`}
                 >
-                  {isLoadingMore ? 'Loading…' : `Load More (${SEARCH_PAGE_SIZE} more)`}
+                  {isLoadingMore ? t('common.loading') : t('searchPage.summary.loadMore', { count: SEARCH_PAGE_SIZE })}
                 </button>
               </div>
             )}
@@ -1994,8 +2062,8 @@ const SearchPage: React.FC = () => {
 
       {specimenModal&&(
         <LookupModal
-          title="Specimen Dictionary"
-          subtitle={`${specimenDictionary.filter(s=>s.active).length} specimens across ${[...new Set(specimenDictionary.map(s=>s.type))].length} types`}
+          title={t('searchPage.lookupModals.specimenTitle')}
+          subtitle={t('searchPage.lookupModals.specimenSubtitle', { count: specimenDictionary.filter(s=>s.active).length, types: [...new Set(specimenDictionary.map(s=>s.type))].length })}
           selectedCount={specimenList.length}
           onClose={()=>setSpecimenModal(false)}
         >
@@ -2009,8 +2077,8 @@ const SearchPage: React.FC = () => {
 
       {snomedModal&&(
         <LookupModal
-          title="SNOMED CT"
-          subtitle={`Search across ${SNOMED_AXIS_META.length} axes: ${SNOMED_AXIS_META.map(m=>m.label).join(", ")}`}
+          title={t('searchPage.lookupModals.snomedTitle')}
+          subtitle={t('searchPage.lookupModals.snomedSubtitle', { count: SNOMED_AXIS_META.length, axes: SNOMED_AXIS_META.map(m=>t(m.labelKey)).join(', ') })}
           selectedCount={snomedList.length}
           onClose={()=>setSnomedModal(false)}
         >
@@ -2023,8 +2091,8 @@ const SearchPage: React.FC = () => {
 
       {icdModal&&(
         <LookupModal
-          title="ICD Codes"
-          subtitle="Select codes across active ICD systems"
+          title={t('searchPage.lookupModals.icdTitle')}
+          subtitle={t('searchPage.lookupModals.icdSubtitle')}
           selectedCount={icdCodes.length}
           onClose={()=>setIcdModal(false)}
         >
@@ -2039,25 +2107,25 @@ const SearchPage: React.FC = () => {
       )}
 
       {synopticModal&&(
-        <LookupModal title="Synoptic Protocol" subtitle={`${ALL_SYNOPTICS.length} protocols across ${Array.from(new Set(ALL_SYNOPTICS.map(s=>s.category))).length} categories`} selectedCount={synopticIds.length} onClose={()=>setSynopticModal(false)}>
+        <LookupModal title={t('searchPage.lookupModals.synopticTitle')} subtitle={t('searchPage.lookupModals.synopticSubtitle', { count: ALL_SYNOPTICS.length, categories: Array.from(new Set(ALL_SYNOPTICS.map(s=>s.category))).length })} selectedCount={synopticIds.length} onClose={()=>setSynopticModal(false)}>
           <SynopticLookupContent selected={synopticIds} onToggle={id=>toggle(id,synopticIds,setSynopticIds)} />
         </LookupModal>
       )}
 
       {flagsModal&&(
-        <LookupModal title="Case Flags" subtitle={`${realFlagNames.length} available flags`} selectedCount={flagsList.length} onClose={()=>setFlagsModal(false)}>
+        <LookupModal title={t('searchPage.lookupModals.flagsTitle')} subtitle={t('searchPage.lookupModals.flagsSubtitle', { count: realFlagNames.length })} selectedCount={flagsList.length} onClose={()=>setFlagsModal(false)}>
           <FlagsLookupContent flags={realFlagNames} selected={flagsList} onToggle={f=>toggle(f,flagsList,setFlagsList)} />
         </LookupModal>
       )}
 
       {pathModal&&(
-        <LookupModal title="Pathologist" subtitle="Filter by assigned pathologist" selectedCount={pathologistIds.length} onClose={()=>setPathModal(false)}>
+        <LookupModal title={t('searchPage.lookupModals.pathologistTitle')} subtitle={t('searchPage.lookupModals.pathologistSubtitle')} selectedCount={pathologistIds.length} onClose={()=>setPathModal(false)}>
           <UserLookupContent users={pathologists} selected={pathologistIds} onToggle={id=>toggle(id,pathologistIds,setPathologistIds)} />
         </LookupModal>
       )}
 
       {attendingModal&&(
-        <LookupModal title="Attending Physician" subtitle="Filter by referring or attending physician" selectedCount={attendingIds.length} onClose={()=>setAttendingModal(false)}>
+        <LookupModal title={t('searchPage.lookupModals.attendingTitle')} subtitle={t('searchPage.lookupModals.attendingSubtitle')} selectedCount={attendingIds.length} onClose={()=>setAttendingModal(false)}>
           <UserLookupContent users={attendings} selected={attendingIds} onToggle={id=>toggle(id,attendingIds,setAttendingIds)} accent="#10B981" />
         </LookupModal>
       )}
@@ -2065,8 +2133,8 @@ const SearchPage: React.FC = () => {
       {/* Facility browse modal */}
       {facilityModal && (
         <LookupModalX
-          title="Submitting Facility"
-          subtitle="Filter cases by submitting facility"
+          title={t('searchPage.lookupModals.facilityTitle')}
+          subtitle={t('searchPage.lookupModals.facilitySubtitle')}
           selectedCount={facilityIds.length}
           onClose={() => setFacilityModal(false)}
           onClear={() => setFacilityIds([])}
@@ -2083,8 +2151,8 @@ const SearchPage: React.FC = () => {
       {/* Computational Flags browse modal */}
       {compFlagsModal && (
         <LookupModalX
-          title="Computational Flags"
-          subtitle="Filter by live LIS test result flags"
+          title={t('searchPage.lookupModals.compFlagsTitle')}
+          subtitle={t('searchPage.lookupModals.compFlagsSubtitle')}
           selectedCount={compFlagsList.length}
           onClose={() => setCompFlagsModal(false)}
           onClear={() => setCompFlagsList([])}
@@ -2102,17 +2170,17 @@ const SearchPage: React.FC = () => {
       {isResourcesOpen&&(
         <div className="ps-modal-overlay" onClick={()=>setIsResourcesOpen(false)}>
           <div className="ps-searchpage-resources-modal" onClick={e=>e.stopPropagation()}>
-            <div className="ps-searchpage-modal-title ps-searchpage-modal-title--resources">Quick Links</div>
+            <div className="ps-searchpage-modal-title ps-searchpage-modal-title--resources">{t('searchPage.resourcesModal.title')}</div>
             {Object.entries(quickLinks).map(([section,links])=>(
               <div key={section} className="ps-searchpage-resource-section">
-                <div className="ps-searchpage-resource-section-label">{section}</div>
+                <div className="ps-searchpage-resource-section-label">{t(RESOURCE_SECTION_LABEL_KEY[section] ?? section)}</div>
                 {links.map((link,i)=>(
                   <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" onClick={()=>setIsResourcesOpen(false)}
                     className="ps-searchpage-resource-link">→ {link.title}</a>
                 ))}
               </div>
             ))}
-            <button onClick={()=>setIsResourcesOpen(false)} className="ps-searchpage-modal-close-btn">Close</button>
+            <button onClick={()=>setIsResourcesOpen(false)} className="ps-searchpage-modal-close-btn">{t('common.close')}</button>
           </div>
         </div>
       )}

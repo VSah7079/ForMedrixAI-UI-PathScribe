@@ -2,6 +2,14 @@
  * LoginPage.tsx — src/pages/LoginPage.tsx
  * Public route — shown when the user is not authenticated.
  *
+ * File-by-file cleanup sweep: this page already had a handful of strings
+ * on t() from an earlier pass (email/password labels, sign-in button);
+ * this pass closed the gap on everything that was still hardcoded
+ * (descriptor, environment badge labels, forgot-password, SSO row,
+ * PHI notice, error strings, and the session-conflict modal's text) —
+ * see src/i18n/README.md. No inline CSS or extractable business logic
+ * found; the login/autofill handling below is UI-bound by nature.
+ *
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
 import React, { useState, useEffect, useRef } from 'react';
@@ -33,11 +41,11 @@ const APP_VERSION: string | null =
  * if it is unset or unrecognised no badge renders, so the page never makes
  * a claim about the environment it cannot substantiate.
  */
-const ENVIRONMENTS: Record<string, { label: string; tone: string }> = {
-  production:  { label: 'Production',  tone: 'prod' },
-  validation:  { label: 'Validation',  tone: 'validation' },
-  training:    { label: 'Training',    tone: 'training' },
-  development: { label: 'Development', tone: 'dev' },
+const ENVIRONMENTS: Record<string, { labelKey: string; tone: string }> = {
+  production:  { labelKey: 'login.environment.production',  tone: 'prod' },
+  validation:  { labelKey: 'login.environment.validation',  tone: 'validation' },
+  training:    { labelKey: 'login.environment.training',    tone: 'training' },
+  development: { labelKey: 'login.environment.development', tone: 'dev' },
 };
 
 const resolveEnvironment = () => {
@@ -142,7 +150,7 @@ const LoginPage: React.FC = () => {
     } else if (result === 'session_conflict') {
       setShowSessionConflict(true);
     } else {
-      setError('Incorrect email or password. Please try again.');
+      setError(t('login.invalidCredentials'));
     }
   };
 
@@ -159,7 +167,7 @@ const LoginPage: React.FC = () => {
     const realPassword = passwordRef.current?.value ?? password;
     if (realEmail !== email) setEmail(realEmail);
     if (realPassword !== password) setPassword(realPassword);
-    if (!realEmail || !realPassword) { setError('Please enter your email and password.'); return; }
+    if (!realEmail || !realPassword) { setError(t('login.missingFields')); return; }
     setError('');
     await attemptLogin(false, realEmail, realPassword);
   };
@@ -179,11 +187,11 @@ const LoginPage: React.FC = () => {
               alt="PathScribe"
               className="ps-login-hero"
             />
-            <div className="ps-login-descriptor">Clinical Pathology Reporting</div>
+            <div className="ps-login-descriptor">{t('login.descriptor')}</div>
 
             {environment && (
               <div className={`ps-login-env ps-login-env--${environment.tone}`}>
-                {environment.label}
+                {t(environment.labelKey)}
               </div>
             )}
           </div>
@@ -211,8 +219,8 @@ const LoginPage: React.FC = () => {
                   competing with the primary action below. */}
               <div className="ps-login-label-row">
                 <label className="ps-login-field-label" htmlFor="login-password">{t('login.password')}</label>
-                <a href="#" className="ps-login-forgot" onClick={e => { e.preventDefault(); setError('Password reset isn\u2019t available in this demo \u2014 contact your administrator.'); }}>
-                  Forgot password?
+                <a href="#" className="ps-login-forgot" onClick={e => { e.preventDefault(); setError(t('login.passwordResetUnavailable')); }}>
+                  {t('login.forgotPassword')}
                 </a>
               </div>
               <div className="ps-login-pw-wrap">
@@ -230,7 +238,7 @@ const LoginPage: React.FC = () => {
                   type="button"
                   className="ps-login-pw-toggle"
                   onClick={() => setShowPw(v => !v)}
-                  aria-label={showPw ? 'Hide password' : 'Show password'}
+                  aria-label={showPw ? t('login.hidePassword') : t('login.showPassword')}
                 >
                   <EyeIcon open={showPw} />
                 </button>
@@ -254,7 +262,7 @@ const LoginPage: React.FC = () => {
               simply being unreachable and unexplained. */}
           <div className="ps-login-divider">
             <div className="ps-login-divider-line" />
-            <span className="ps-login-divider-text">or continue with</span>
+            <span className="ps-login-divider-text">{t('login.continueWith')}</span>
             <div className="ps-login-divider-line" />
           </div>
 
@@ -264,28 +272,27 @@ const LoginPage: React.FC = () => {
               className="ps-login-social"
               disabled
               aria-disabled="true"
-              title="Single sign-on is not yet available"
+              title={t('login.ssoUnavailable')}
             >
-              <GoogleIcon /> Google
-              <span className="ps-login-social-badge">Soon</span>
+              <GoogleIcon /> {t('login.ssoGoogle')}
+              <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
             </button>
             <button
               type="button"
               className="ps-login-social"
               disabled
               aria-disabled="true"
-              title="Single sign-on is not yet available"
+              title={t('login.ssoUnavailable')}
             >
-              <MicrosoftIcon /> Microsoft
-              <span className="ps-login-social-badge">Soon</span>
+              <MicrosoftIcon /> {t('login.ssoMicrosoft')}
+              <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
             </button>
           </div>
 
           {/* Authorised-use notice. This describes how the system behaves; it
               makes no certification claim. */}
           <p className="ps-login-notice">
-            This system contains protected health information. Access is
-            restricted to authorized users and activity is recorded.
+            {t('login.phiNotice')}
           </p>
 
           <div className="ps-login-colophon">
@@ -309,10 +316,10 @@ const LoginPage: React.FC = () => {
 
       <ConfirmModal
         show={showSessionConflict}
-        title="Already signed in elsewhere"
-        message="This account is already signed in on another tab or window on this browser. Continuing here will sign that session out — any unsaved work there will be preserved and offered for review the next time it's opened. Continue?"
-        confirmLabel="Sign In Here"
-        cancelLabel="Cancel"
+        title={t('login.sessionConflictTitle')}
+        message={t('login.sessionConflictMessage')}
+        confirmLabel={t('login.signInHere')}
+        cancelLabel={t('common.cancel')}
         onConfirm={async () => {
           setShowSessionConflict(false);
           await attemptLogin(true);

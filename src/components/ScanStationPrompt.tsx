@@ -25,16 +25,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
+import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWorkstationGroupService';
 import type { ScanStation } from '@/services/scanStations/IScanStationService';
 
 export function ScanStationPrompt() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { effectiveStationId, setStationId, hasBeenPrompted, markPrompted } = useEffectiveScanStation();
   const [stations, setStations] = useState<ScanStation[]>([]);
   const [selected, setSelected] = useState<string>('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     mockScanStationService.getAll().then(res => {
@@ -52,9 +57,35 @@ export function ScanStationPrompt() {
   const shouldShow = !!user && !effectiveStationId && !hasBeenPrompted;
   if (!shouldShow) return null;
 
+  // Real fix, per direct follow-up: "The workstation selection will
+  // default the page now" — closes the one piece PS-289's own comment
+  // thread named and never delivered (see NavBarScanStation.tsx's own
+  // header): `dedicatedPageRoute` was captured on WorkstationGroup and
+  // already consumed for the manual "🔬 Go to Bench" NavBar button,
+  // but picking a station at this one-time login prompt still just
+  // left a tech sitting on Home, one extra click from their own bench.
+  // Same resolution chain NavBarScanStation.tsx already uses (station
+  // → its WorkstationGroup → that group's route), run once, right at
+  // confirmation, instead of waiting on the NavBar's own effect. Same
+  // honest guard as that button: only a real route on an Active group
+  // is ever navigated to — a station with no group, or an inactive
+  // one, just leaves the tech on Home exactly as before, no dead nav.
+  // Deliberately scoped to this one-time prompt only, not every future
+  // Home visit — a device/user with an already-resolved station never
+  // sees this prompt at all (shouldShow below), so this can't trap a
+  // returning tech who actually wants to be on Home.
   const handleConfirm = () => {
-    if (selected) setStationId(selected);
+    if (!selected) { markPrompted(); return; }
+    setStationId(selected);
     markPrompted();
+    mockScanStationService.getById(selected).then(stationRes => {
+      if (!stationRes.ok || !stationRes.data.workstationGroupId) return;
+      mockWorkstationGroupService.getById(stationRes.data.workstationGroupId).then(groupRes => {
+        if (groupRes.ok && groupRes.data.status === 'Active' && groupRes.data.dedicatedPageRoute) {
+          navigate(groupRes.data.dedicatedPageRoute);
+        }
+      });
+    });
   };
 
   const handleSkip = () => {
@@ -65,9 +96,9 @@ export function ScanStationPrompt() {
     <div className="ps-overlay ps-scan-prompt-overlay">
       <div className="ps-modal-dark ps-scan-prompt-modal">
         <div>
-          <div className="ps-scan-prompt-title">📍 Which bench is this?</div>
+          <div className="ps-scan-prompt-title">📍 {t('scanStationPrompt.title')}</div>
           <div className="ps-scan-prompt-subtitle">
-            Set the real, physical station this terminal represents — a real cassette/slide scan here will be tracked as happening at whatever you pick. This is remembered for this device going forward; you can change it any time from the icon next to your name.
+            {t('scanStationPrompt.subtitle')}
           </div>
         </div>
         <select
@@ -75,14 +106,14 @@ export function ScanStationPrompt() {
           onChange={e => setSelected(e.target.value)}
           className="ps-scan-prompt-select"
         >
-          <option value="">— Select a station —</option>
+          <option value="">{t('scanStationPrompt.selectPlaceholder')}</option>
           {stations.map(s => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
         <div className="ps-scan-prompt-actions">
-          <button className="ps-scan-prompt-skip" onClick={handleSkip}>Skip — I don't scan here</button>
-          <button className="ps-scan-prompt-confirm" onClick={handleConfirm} disabled={!selected}>Set station</button>
+          <button className="ps-scan-prompt-skip" onClick={handleSkip}>{t('scanStationPrompt.skipButton')}</button>
+          <button className="ps-scan-prompt-confirm" onClick={handleConfirm} disabled={!selected}>{t('scanStationPrompt.confirmButton')}</button>
         </div>
       </div>
     </div>

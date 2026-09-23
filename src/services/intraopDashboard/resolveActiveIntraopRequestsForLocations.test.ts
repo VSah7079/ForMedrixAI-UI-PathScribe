@@ -91,10 +91,10 @@ describe('resolveActiveIntraopRequestsForLocations — real, per the RFP\'s own 
       ['loc-or-04'], 20, 5, NOW,
     )[0].currentWorkflowStep;
 
-    expect(step([])).toBe('Grossing');
-    expect(step(['gross_logged'])).toBe('Touch Prep');
-    expect(step(['gross_logged', 'touch_prep_performed'])).toBe('Sectioning');
-    expect(step(['gross_logged', 'touch_prep_skipped'])).toBe('Sectioning');
-    expect(step(['gross_logged', 'touch_prep_performed', 'frozen_section_cut'])).toBe('Pathologist Review');
+    expect(step([])).toBe('grossing');
+    expect(step(['gross_logged'])).toBe('touch_prep');
+    expect(step(['gross_logged', 'touch_prep_performed'])).toBe('sectioning');
+    expect(step(['gross_logged', 'touch_prep_skipped'])).toBe('sectioning');
+    expect(step(['gross_logged', 'touch_prep_performed', 'frozen_section_cut'])).toBe('pathologist_review');
   });
 });

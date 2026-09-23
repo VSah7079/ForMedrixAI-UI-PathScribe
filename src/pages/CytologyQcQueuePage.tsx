@@ -23,17 +23,9 @@ import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockCytologyQcCaseAssignmentService } from '@/services/cytologyQc/mockCytologyQcCaseAssignmentService';
 import { resolveQcQueueTabFilter, type QcQueueTab } from '@/services/cytologyQc/resolveQcQueueTabFilter';
 import { resolveQcSlaStatus, type QcSlaStatus } from '@/services/cytologyQc/resolveQcSlaStatus';
-import { formatFullDisplayName, fromLegacyName } from '@/utils/personName';
+import { resolvePatientFullDisplayName } from '@/utils/personName';
 import type { CytologyQcCaseAssignment } from '@/types/cytologyQc/CytologyQcRule';
 import type { Case } from '@/types/case/Case';
-import type { Patient } from '@/types/case/Patient';
-
-function resolvePatientDisplayNameForRow(patient: Patient): string {
-  if (patient.givenNames && patient.familyNames) {
-    return formatFullDisplayName({ ...patient, givenNames: patient.givenNames, familyNames: patient.familyNames });
-  }
-  return formatFullDisplayName(fromLegacyName(patient.firstName, patient.lastName));
-}
 
 const SLA_STATUS_CLASS: Record<QcSlaStatus, string> = {
   on_time: 'ps-qcqueue-sla--ontime',
@@ -151,7 +143,7 @@ const CytologyQcQueuePage: React.FC = () => {
           return (
             <div key={assignment.id} className="ps-qcqueue-row">
               <div className="ps-qcqueue-row-patient">
-                {relatedCase ? resolvePatientDisplayNameForRow(relatedCase.patient) : assignment.caseId}
+                {(relatedCase && resolvePatientFullDisplayName(relatedCase.patient)) ?? assignment.caseId}
                 <span className="ps-qcqueue-row-accession" data-phi="accession">{relatedCase?.accession.accessionNumber}</span>
               </div>
               <div className="ps-qcqueue-row-badges">

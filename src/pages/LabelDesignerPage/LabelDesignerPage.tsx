@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../pathscribe.css';
 import { mockLabelLayoutService } from '../../services/labelDesigner/mockLabelLayoutService';
 import { mockFacilityService } from '../../services/facilities/mockFacilityService';
@@ -76,15 +77,16 @@ function newField(fieldKey: string, xMm: number, yMm: number): LabelLayoutField 
  *  not a test, so a genuinely invalid sample payload must never throw
  *  and break the whole render — falls back to an honest, visible
  *  placeholder message instead. */
-function safeBarcodeSvg(payload: string, symbology: 'code128' | 'datamatrix'): string {
+function safeBarcodeSvg(payload: string, symbology: 'code128' | 'datamatrix', errorText: string): string {
   try {
     return generateBarcodeSvg(payload, symbology);
   } catch {
-    return '<div style="font-size:10px;color:#ef4444;">barcode render failed</div>';
+    return `<div class="ps-designer-barcode-error">${errorText}</div>`;
   }
 }
 
 const LabelDesignerPage: React.FC = () => {
+  const { t } = useTranslation();
   const [labelType, setLabelType] = useState<LabelType>('requisition');
   // Real, per direct guidance: real Enterprise hierarchy and
   // inheritance — undefined/'' means editing the real Enterprise
@@ -185,7 +187,7 @@ const LabelDesignerPage: React.FC = () => {
     try {
       const effectiveFacilityId = allowsOverride ? (facilityId || undefined) : undefined;
       const res = await mockLabelLayoutService.save({ labelType, facilityId: effectiveFacilityId, widthMm, heightMm, fields });
-      setSaveMessage(res.ok ? (effectiveFacilityId ? 'Facility override saved.' : 'Enterprise default saved.') : 'error' in res ? res.error : 'Unknown error saving this layout.');
+      setSaveMessage(res.ok ? (effectiveFacilityId ? t('labelDesignerPage.saveMessages.facilityOverrideSaved') : t('labelDesignerPage.saveMessages.enterpriseDefaultSaved')) : 'error' in res ? res.error : t('labelDesignerPage.saveMessages.unknownError'));
     } finally {
       setSaving(false);
     }
@@ -198,7 +200,7 @@ const LabelDesignerPage: React.FC = () => {
     setHeightMm(LABEL_TYPE_DEFAULT_SIZE_MM[labelType].heightMm);
     setFields([]);
     setSelectedFieldId(null);
-    setSaveMessage('Layout reset to default.');
+    setSaveMessage(t('labelDesignerPage.saveMessages.resetToDefault'));
   };
 
   const handleExportZpl = () => {
@@ -210,40 +212,47 @@ const LabelDesignerPage: React.FC = () => {
     <div className="ps-app-root ps-page-container ps-page-container--wide">
       <div className="ps-page-header-row">
         <div>
-          <h1 className="ps-page-title">Label Designer</h1>
+          <h1 className="ps-page-title">{t('labelDesignerPage.title')}</h1>
           <p className="ps-page-subtitle">
-            Drag a field from the palette onto the canvas to place it. Drag a placed field to reposition it. Click a placed field to edit its exact position and size.
+            {t('labelDesignerPage.subtitle')}
           </p>
         </div>
         <div className="ps-flex-row-gap-8">
-          <label className="ps-label ps-label-inline" htmlFor="ld-label-type">Label Type</label>
+          <label className="ps-label ps-label-inline" htmlFor="ld-label-type">{t('labelDesignerPage.labelTypeLabel')}</label>
+          {/* LABEL_TYPE_DISPLAY_NAMES is a shared catalog defined in
+              services/labelDesigner/ILabelLayoutService.ts, out of this
+              batch's own scope — left as its own real English display
+              names, same carve-out as other out-of-scope sibling
+              constants elsewhere in this sweep. */}
           <select id="ld-label-type" className="ps-input-dark" value={labelType} onChange={e => { setLabelType(e.target.value as LabelType); setFacilityId(''); }}>
-            {LABEL_TYPES.map(t => <option key={t} value={t}>{LABEL_TYPE_DISPLAY_NAMES[t]}</option>)}
+            {LABEL_TYPES.map(lt => <option key={lt} value={lt}>{LABEL_TYPE_DISPLAY_NAMES[lt]}</option>)}
           </select>
           {allowsOverride ? (
             <>
-              <label className="ps-label ps-label-inline" htmlFor="ld-facility">Scope</label>
+              <label className="ps-label ps-label-inline" htmlFor="ld-facility">{t('labelDesignerPage.scopeLabel')}</label>
               <select id="ld-facility" className="ps-input-dark" value={facilityId} onChange={e => setFacilityId(e.target.value)}>
-                <option value="">Enterprise Default</option>
-                {facilities.map(f => <option key={f.id} value={f.id}>{f.name} (override)</option>)}
+                <option value="">{t('labelDesignerPage.enterpriseDefaultOption')}</option>
+                {facilities.map(f => <option key={f.id} value={f.id}>{t('labelDesignerPage.facilityOverrideOption', { name: f.name })}</option>)}
               </select>
             </>
           ) : (
-            <span className="ps-locked-badge" title="Per the given Enterprise standardization guidance, this label type is hardware/compatibility-critical and does not allow a real, per-facility override — only the Enterprise default can be edited.">
-              🔒 Enterprise Standard — Locked
+            <span className="ps-locked-badge" title={t('labelDesignerPage.lockedBadgeTooltip')}>
+              🔒 {t('labelDesignerPage.lockedBadgeText')}
             </span>
           )}
         </div>
       </div>
 
       {loading ? (
-        <div className="ps-conf-loading">Loading…</div>
+        <div className="ps-conf-loading">{t('common.loading')}</div>
       ) : (
         <div className="ps-designer-layout">
           {/* Palette */}
           <div className="ps-panel-box">
-            <h3 className="ps-panel-heading">Available Fields</h3>
-            {availableFields.length === 0 && <p className="ps-helper-text">All fields placed.</p>}
+            <h3 className="ps-panel-heading">{t('labelDesignerPage.availableFieldsHeading')}</h3>
+            {availableFields.length === 0 && <p className="ps-helper-text">{t('labelDesignerPage.allFieldsPlaced')}</p>}
+            {/* f.displayName is from the same out-of-scope
+                LABEL_FIELD_CATALOG shared constant noted above. */}
             {availableFields.map(f => (
               <div
                 key={f.key}
@@ -288,8 +297,8 @@ const LabelDesignerPage: React.FC = () => {
                       // person actually see whether a real barcode
                       // fits and looks right at this real size.
                       <div
-                        style={{ width: '100%', height: '100%' }}
-                        dangerouslySetInnerHTML={{ __html: safeBarcodeSvg(SAMPLE_VALUES.barcode, LABEL_TYPE_DEFAULT_SYMBOLOGY[labelType]) }}
+                        className="ps-designer-field-barcode-fill"
+                        dangerouslySetInnerHTML={{ __html: safeBarcodeSvg(SAMPLE_VALUES.barcode, LABEL_TYPE_DEFAULT_SYMBOLOGY[labelType], t('labelDesignerPage.barcodeRenderFailed')) }}
                       />
                     ) : (
                       SAMPLE_VALUES[f.fieldKey] ?? f.fieldKey
@@ -298,26 +307,26 @@ const LabelDesignerPage: React.FC = () => {
                 );
               })}
             </div>
-            <p className="ps-canvas-caption">{widthMm}mm × {heightMm}mm — live preview using sample data</p>
+            <p className="ps-canvas-caption">{t('labelDesignerPage.canvasCaption', { width: widthMm, height: heightMm })}</p>
           </div>
 
           {/* Inspector */}
           <div className="ps-panel-box">
-            <h3 className="ps-panel-heading">Inspector</h3>
-            {!selectedField && <p className="ps-helper-text">Select a placed field to edit it.</p>}
+            <h3 className="ps-panel-heading">{t('labelDesignerPage.inspectorHeading')}</h3>
+            {!selectedField && <p className="ps-helper-text">{t('labelDesignerPage.selectFieldPrompt')}</p>}
             {selectedField && (
               <>
-                <label className="ps-label">X (mm)</label>
+                <label className="ps-label">{t('labelDesignerPage.field.x')}</label>
                 <input className="ps-input-dark ps-w-full-mb-8" type="number" value={selectedField.xMm} onChange={e => updateSelectedField({ xMm: Number(e.target.value) })} />
-                <label className="ps-label">Y (mm)</label>
+                <label className="ps-label">{t('labelDesignerPage.field.y')}</label>
                 <input className="ps-input-dark ps-w-full-mb-8" type="number" value={selectedField.yMm} onChange={e => updateSelectedField({ yMm: Number(e.target.value) })} />
-                <label className="ps-label">Width (mm)</label>
+                <label className="ps-label">{t('labelDesignerPage.field.width')}</label>
                 <input className="ps-input-dark ps-w-full-mb-8" type="number" value={selectedField.widthMm} onChange={e => updateSelectedField({ widthMm: Number(e.target.value) })} />
-                <label className="ps-label">Height (mm)</label>
+                <label className="ps-label">{t('labelDesignerPage.field.height')}</label>
                 <input className="ps-input-dark ps-w-full-mb-8" type="number" value={selectedField.heightMm} onChange={e => updateSelectedField({ heightMm: Number(e.target.value) })} />
-                <label className="ps-label">Font Size (mm)</label>
+                <label className="ps-label">{t('labelDesignerPage.field.fontSize')}</label>
                 <input className="ps-input-dark ps-w-full ps-mb-14" type="number" step={0.1} value={selectedField.fontSizeMm} onChange={e => updateSelectedField({ fontSizeMm: Number(e.target.value) })} />
-                <button className="ps-btn-small" onClick={removeSelectedField}>Remove Field</button>
+                <button className="ps-btn-small" onClick={removeSelectedField}>{t('labelDesignerPage.removeFieldButton')}</button>
               </>
             )}
           </div>
@@ -325,24 +334,27 @@ const LabelDesignerPage: React.FC = () => {
       )}
 
       <div className="ps-designer-footer-row">
-        <button className="ps-conf-btn-secondary" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : 'Save Layout'}</button>
-        <button className="ps-btn-small" onClick={handleReset}>Reset to Default</button>
-        <button className="ps-btn-small" onClick={handleExportZpl}>📤 Export ZPL</button>
+        <button className="ps-conf-btn-secondary" disabled={saving} onClick={handleSave}>{saving ? t('common.saving') : t('labelDesignerPage.saveLayoutButton')}</button>
+        <button className="ps-btn-small" onClick={handleReset}>{t('labelDesignerPage.resetToDefaultButton')}</button>
+        <button className="ps-btn-small" onClick={handleExportZpl}>📤 {t('labelDesignerPage.exportZplButton')}</button>
         {saveMessage && <span className="ps-helper-text">{saveMessage}</span>}
       </div>
 
       {exportedZpl && (
         <div className="ps-panel-box ps-mt-16">
           <div className="ps-page-header-row">
-            <h3 className="ps-panel-heading">Real, Exported ZPL</h3>
-            <button className="ps-btn-small" onClick={() => setExportedZpl(null)}>✕ Close</button>
+            <h3 className="ps-panel-heading">{t('labelDesignerPage.exportedZplHeading')}</h3>
+            <button className="ps-btn-small" onClick={() => setExportedZpl(null)}>✕ {t('common.close')}</button>
           </div>
           <p className="ps-helper-text">
-            Paste this directly into <strong>labelary.com/viewer.html</strong> ({EXPORT_DPI} dpi → 8 dpmm, {widthMm}mm × {heightMm}mm) to verify real fit and scannability before trusting this format. The barcode payload here is this canvas's own illustrative sample value, not any one label type's real, production-specific encoding (e.g. block/slide's real GS1 structure) — this checks real physical fit and general scannability, not a byte-for-byte production replica.
+            <Trans
+              i18nKey="labelDesignerPage.exportInstructions"
+              values={{ dpi: EXPORT_DPI, width: widthMm, height: heightMm }}
+              components={{ viewer: <strong /> }}
+            />
           </p>
           <textarea
-            className="ps-input-dark ps-w-full"
-            style={{ minHeight: 220, fontFamily: 'monospace', fontSize: 12 }}
+            className="ps-input-dark ps-w-full ps-designer-zpl-textarea"
             readOnly
             value={exportedZpl}
             onClick={e => (e.target as HTMLTextAreaElement).select()}

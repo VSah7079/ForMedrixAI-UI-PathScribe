@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
 import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 import { simulateDispatchFailure } from '@/services/billing/simulateDispatchFailure';
@@ -33,14 +34,15 @@ import { listAllSites } from '@/services/organisation/organisationService';
 import type { Site } from '@/services/organisation/organisationService';
 import type { OutboundChargeQueueEntry } from '@/types/billing/OutboundChargeQueueEntry';
 
-const ERROR_LABEL: Record<NonNullable<OutboundChargeQueueEntry['errorCode']>, string> = {
-  MISSING_ICD10: 'Missing ICD-10 code',
-  MISSING_PROVIDER_NPI: 'Missing provider NPI',
-  DISPATCH_TIMEOUT: 'Dispatch timeout (simulated)',
-  DISPATCH_REJECTED: 'Dispatch rejected (simulated)',
+const ERROR_LABEL_KEY: Record<NonNullable<OutboundChargeQueueEntry['errorCode']>, string> = {
+  MISSING_ICD10: 'outboundDlq.errorLabel.missingIcd10',
+  MISSING_PROVIDER_NPI: 'outboundDlq.errorLabel.missingProviderNpi',
+  DISPATCH_TIMEOUT: 'outboundDlq.errorLabel.dispatchTimeout',
+  DISPATCH_REJECTED: 'outboundDlq.errorLabel.dispatchRejected',
 };
 
 const OutboundDlqSection: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [allEntries, setAllEntries] = useState<OutboundChargeQueueEntry[]>([]);
   const [entrySiteIds, setEntrySiteIds] = useState<Record<string, string | undefined>>({});
@@ -174,15 +176,11 @@ const OutboundDlqSection: React.FC = () => {
     <div className="ps-conf-section">
       <div className="ps-conf-section-header">
         <div>
-          <h2 className="ps-conf-section-title">Outbound Charge DLQ</h2>
-          <p className="ps-conf-section-subtitle">
-            Failed charge dispatches — missing ICD-10/provider NPI are real, detected gaps in the case itself.
-            Dispatch timeout/rejected only ever appear here via the Simulate action below, since real dispatch
-            isn't built yet.
-          </p>
+          <h2 className="ps-conf-section-title">{t('outboundDlq.title')}</h2>
+          <p className="ps-conf-section-subtitle">{t('outboundDlq.subtitle')}</p>
         </div>
         <select value={viewingSiteId} onChange={e => setViewingSiteId(e.target.value)} className="ps-conf-select">
-          <option value="">All Performing Labs</option>
+          <option value="">{t('outboundDlq.allPerformingLabs')}</option>
           {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
@@ -192,13 +190,13 @@ const OutboundDlqSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">Case</th>
-                <th className="ps-conf-th">Performing Lab</th>
-                <th className="ps-conf-th">Component</th>
-                <th className="ps-conf-th">Error</th>
-                <th className="ps-conf-th">Retries</th>
-                <th className="ps-conf-th">Fix &amp; Retry</th>
-                <th className="ps-conf-th">CAPA</th>
+                <th className="ps-conf-th">{t('outboundDlq.caseHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.performingLabHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.componentHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.errorHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.retriesHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.fixAndRetryHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.capaHeader')}</th>
               </tr>
             </thead>
             <tbody>
@@ -208,60 +206,63 @@ const OutboundDlqSection: React.FC = () => {
                   <td className="ps-conf-td">{siteLabelFor(e.caseId)}</td>
                   <td className="ps-conf-td">{e.billingType}</td>
                   <td className="ps-conf-td">
-                    {e.errorCode ? ERROR_LABEL[e.errorCode] : 'Unknown'}
+                    {e.errorCode ? t(ERROR_LABEL_KEY[e.errorCode]) : t('outboundDlq.unknownError')}
                     <div className="ps-specreq-meta">{e.errorMessage}</div>
                   </td>
-                  <td className="ps-conf-td">{e.retryCount}{e.maxRetriesExceeded ? ' (max exceeded)' : ''}</td>
+                  <td className="ps-conf-td">{e.retryCount}{e.maxRetriesExceeded ? ` ${t('outboundDlq.maxExceededSuffix')}` : ''}</td>
                   <td className="ps-conf-td">
                     {(e.errorCode === 'MISSING_ICD10' || e.errorCode === 'MISSING_PROVIDER_NPI') ? (
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div className="ps-dlq-inline-actions">
                         <input
                           className="ps-conf-input"
-                          placeholder={e.errorCode === 'MISSING_ICD10' ? 'ICD-10 code' : 'Provider NPI'}
+                          placeholder={e.errorCode === 'MISSING_ICD10' ? t('outboundDlq.icd10Placeholder') : t('outboundDlq.providerNpiPlaceholder')}
                           value={fixValue[e.id] ?? ''}
                           onChange={ev => setFixValue(prev => ({ ...prev, [e.id]: ev.target.value }))}
                         />
                         <button className="ps-conf-btn-primary" disabled={busyId === e.id || !fixValue[e.id]?.trim()} onClick={() => handleFixAndRetry(e)}>
-                          Save &amp; Re-queue
+                          {t('outboundDlq.saveAndRequeue')}
                         </button>
                       </div>
                     ) : (
                       <button className="ps-conf-btn-primary" disabled={busyId === e.id} onClick={() => handleRetryDispatch(e)}>
-                        Retry Dispatch
+                        {t('outboundDlq.retryDispatch')}
                       </button>
                     )}
                   </td>
                   <td className="ps-conf-td">
                     {capturedIds.has(e.id) ? (
-                      <span className="ps-conf-hint" style={{ color: '#10b981' }}>✓ Captured</span>
+                      <span className="ps-conf-hint ps-conf-hint--success">{t('outboundDlq.captured')}</span>
                     ) : (
                       <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => handleCaptureAsCapa(e)}>
-                        Capture as CAPA
+                        {t('outboundDlq.captureAsCapa')}
                       </button>
                     )}
                   </td>
                 </tr>
               ))}
               {failed.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={7}>No failed charge dispatches.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={7}>{t('outboundDlq.noFailedEntries')}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="ps-conf-section-header" style={{ marginTop: 24 }}>
-        <h2 className="ps-conf-section-title">Queued (for testing — Simulate Failure)</h2>
-        <p className="ps-conf-section-subtitle">
-          Real, queued charges awaiting dispatch. Simulate Failure honestly fabricates a network-style failure for
-          testing this dashboard — it never reflects a real dispatch attempt.
-        </p>
+      <div className="ps-conf-section-header ps-dlq-section-header--spaced">
+        <h2 className="ps-conf-section-title">{t('outboundDlq.queuedSectionTitle')}</h2>
+        <p className="ps-conf-section-subtitle">{t('outboundDlq.queuedSectionSubtitle')}</p>
       </div>
       <div className="ps-conf-table-wrap">
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
-              <tr><th className="ps-conf-th">Case</th><th className="ps-conf-th">Performing Lab</th><th className="ps-conf-th">Component</th><th className="ps-conf-th">Trigger</th><th className="ps-conf-th">Simulate</th></tr>
+              <tr>
+                <th className="ps-conf-th">{t('outboundDlq.caseHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.performingLabHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.componentHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.triggerHeader')}</th>
+                <th className="ps-conf-th">{t('outboundDlq.simulateHeader')}</th>
+              </tr>
             </thead>
             <tbody>
               {queued.map(e => (
@@ -271,15 +272,15 @@ const OutboundDlqSection: React.FC = () => {
                   <td className="ps-conf-td">{e.billingType}</td>
                   <td className="ps-conf-td">{e.triggerEvent}</td>
                   <td className="ps-conf-td">
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => handleSimulateFailure(e, 'timeout')}>Simulate Timeout</button>
-                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => handleSimulateFailure(e, 'rejected')}>Simulate Rejected</button>
+                    <div className="ps-dlq-inline-actions">
+                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => handleSimulateFailure(e, 'timeout')}>{t('outboundDlq.simulateTimeout')}</button>
+                      <button className="ps-conf-btn-secondary" disabled={busyId === e.id} onClick={() => handleSimulateFailure(e, 'rejected')}>{t('outboundDlq.simulateRejected')}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {queued.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={5}>No queued charges.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={5}>{t('outboundDlq.noQueuedEntries')}</td></tr>
               )}
             </tbody>
           </table>

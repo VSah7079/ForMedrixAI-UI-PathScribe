@@ -42,7 +42,7 @@ describe('evaluateMicroscopicFinalizeGate — the real, specified scenario table
       allRequiredSynopticFieldsComplete: false,
     }));
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/unsaved/i);
+    expect(result.reasonKey).toBe('evaluateMicroscopicFinalizeGate.unsavedDraft');
   });
 
   it('Row 4 — Mandatory Protocol Case: empty narrative, admin-required -> Blocked', () => {
@@ -52,7 +52,7 @@ describe('evaluateMicroscopicFinalizeGate — the real, specified scenario table
       requiresMicroscopicNarrative: true,
     }));
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/required for this procedure/i);
+    expect(result.reasonKey).toBe('evaluateMicroscopicFinalizeGate.requiredForProcedure');
   });
 });
 
@@ -116,7 +116,7 @@ describe('evaluateMicroscopicFinalizeGate — real edge cases beyond the table',
       requiresMicroscopicNarrative: false,
     }));
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/no synoptic template is assigned/i);
+    expect(result.reasonKey).toBe('evaluateMicroscopicFinalizeGate.noDocumentationAtAll');
   });
 
   it('admin-mandated requirement takes precedence over the "no synoptic template" reason — checked first', () => {
@@ -127,7 +127,7 @@ describe('evaluateMicroscopicFinalizeGate — real edge cases beyond the table',
       requiresMicroscopicNarrative: true,
     }));
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/required for this procedure/i);
+    expect(result.reasonKey).toBe('evaluateMicroscopicFinalizeGate.requiredForProcedure');
   });
 
   it('empty narrative + synoptic template present but incomplete blocks, distinct reason from the no-template case', () => {
@@ -138,7 +138,7 @@ describe('evaluateMicroscopicFinalizeGate — real edge cases beyond the table',
       allRequiredSynopticFieldsComplete: false,
     }));
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/incomplete required fields/i);
+    expect(result.reasonKey).toBe('evaluateMicroscopicFinalizeGate.incompleteSynopticFields');
   });
 
   it('a fully allowed case never returns a reason string', () => {
@@ -149,6 +149,6 @@ describe('evaluateMicroscopicFinalizeGate — real edge cases beyond the table',
       allRequiredSynopticFieldsComplete: true,
     }));
     expect(result.blocked).toBe(false);
-    expect(result.reason).toBeUndefined();
+    expect(result.reasonKey).toBeUndefined();
   });
 });

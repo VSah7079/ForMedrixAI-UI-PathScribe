@@ -7,9 +7,16 @@
 // Real, per direct reminder ("reusing PathScribe CSS objects... no
 // inline CSS") — real, named CSS classes throughout, no style={{...}}
 // anywhere in this file.
+//
+// i18n note: since this is the same real 3-tier cascade pattern as
+// CytologyQcSettingsSection.tsx, five of its exact-text keys are
+// reused outright here (enterprise/facility/staff titles, the
+// unsaved-change indicator, the empty states, and the "+ Add
+// Override" button) rather than duplicated.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCytologyWorkloadCapSettingsService } from '../../../services/cytology/mockCytologyWorkloadCapSettingsService';
 import { mockFacilityCytologyWorkloadCapOverrideService } from '../../../services/cytology/mockFacilityCytologyWorkloadCapOverrideService';
@@ -22,6 +29,7 @@ import type { Facility } from '../../../services/facilities/IFacilityService';
 import type { StaffUser } from '../../../services/users/IUserService';
 
 const CytologyWorkloadCapSettingsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [enterpriseDraft, setEnterpriseDraft] = useState<number>(100);
   const [savedEnterprise, setSavedEnterprise] = useState<number>(100);
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -62,30 +70,28 @@ const CytologyWorkloadCapSettingsSection: React.FC = () => {
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Cytology Daily Workload Cap</h2>
+      <h2 className="ps-conf-section-title">{t('cytologyWorkloadCapSettingsSection.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        The maximum real number of GYN cytology slides a cytotechnologist may screen in one day (CLIA
-        workload limit). Three-tier cascade — Enterprise default, with optional Facility and Staff Member
-        overrides. Staff overrides win over Facility overrides, which win over the Enterprise default.
+        {t('cytologyWorkloadCapSettingsSection.subtitle')}
       </p>
 
       {/* Tier 1 — Enterprise */}
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Enterprise Default</div>
+        <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.enterprise.title')}</div>
         <div className="ps-conf-row-actions">
           <input className="ps-conf-input" type="number" min={0} value={enterpriseDraft} onChange={e => setEnterpriseDraft(Number(e.target.value))} />
-          <span className="ps-conf-value">slides / day</span>
-          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>Save</button>
+          <span className="ps-conf-value">{t('cytologyWorkloadCapSettingsSection.unitLabel')}</span>
+          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>{t('common.save')}</button>
         </div>
-        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">Unsaved change</div>}
+        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">{t('cytologyQcSettingsSection.enterprise.unsavedChange')}</div>}
       </div>
 
       {/* Tier 2 — Facility overrides */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">Facility Overrides</div>
+          <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.facility.title')}</div>
           {!addingFacility && (
-            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', cap: enterpriseDraft })}>+ Add Override</button>
+            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', cap: enterpriseDraft })}>{t('cytologyQcSettingsSection.addOverrideBtn')}</button>
           )}
         </div>
 
@@ -93,13 +99,13 @@ const CytologyWorkloadCapSettingsSection: React.FC = () => {
           <div key={o.id} className="ps-conf-row">
             <span className="ps-conf-value">{facilityName(o.facilityId)}</span>
             <div className="ps-conf-row-actions">
-              <span className="ps-conf-value">{o.overrides.dailySlideCap ?? '—'} slides/day</span>
-              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyWorkloadCapOverrideService.remove(o.facilityId); refresh(); }}>Remove</button>
+              <span className="ps-conf-value">{o.overrides.dailySlideCap != null ? t('cytologyWorkloadCapSettingsSection.unitSuffix', { count: o.overrides.dailySlideCap }) : '—'}</span>
+              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyWorkloadCapOverrideService.remove(o.facilityId); refresh(); }}>{t('common.remove')}</button>
             </div>
           </div>
         ))}
         {facilityOverrides.length === 0 && !addingFacility && (
-          <div className="ps-conf-empty-row">No facility overrides — every facility uses the Enterprise default.</div>
+          <div className="ps-conf-empty-row">{t('cytologyQcSettingsSection.facility.emptyState')}</div>
         )}
 
         {addingFacility && (
@@ -112,8 +118,8 @@ const CytologyWorkloadCapSettingsSection: React.FC = () => {
               <button className="ps-conf-btn-primary" onClick={async () => {
                 await mockFacilityCytologyWorkloadCapOverrideService.create(addingFacility.facilityId, { dailySlideCap: addingFacility.cap });
                 setAddingFacility(null); refresh();
-              }}>Save</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>Cancel</button>
+              }}>{t('common.save')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         )}
@@ -122,24 +128,24 @@ const CytologyWorkloadCapSettingsSection: React.FC = () => {
       {/* Tier 3 — Staff overrides */}
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">Staff Member Overrides</div>
+          <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.staff.title')}</div>
           {!addingStaff && (
-            <button className="ps-conf-btn-secondary" onClick={() => setAddingStaff({ staffUserId: staff[0]?.id ?? '', cap: enterpriseDraft })}>+ Add Override</button>
+            <button className="ps-conf-btn-secondary" onClick={() => setAddingStaff({ staffUserId: staff[0]?.id ?? '', cap: enterpriseDraft })}>{t('cytologyQcSettingsSection.addOverrideBtn')}</button>
           )}
         </div>
-        <div className="ps-conf-card-description--tight">Assign a lower cap for a new employee or student — this wins over any Facility override.</div>
+        <div className="ps-conf-card-description--tight">{t('cytologyWorkloadCapSettingsSection.staffHint')}</div>
 
         {staffOverrides.map(o => (
           <div key={o.id} className="ps-conf-row">
             <span className="ps-conf-value">{staffName(o.staffUserId)}</span>
             <div className="ps-conf-row-actions">
-              <span className="ps-conf-value">{o.overrides.dailySlideCap ?? '—'} slides/day</span>
-              <button className="ps-conf-btn-secondary" onClick={async () => { await mockStaffCytologyWorkloadCapOverrideService.remove(o.staffUserId); refresh(); }}>Remove</button>
+              <span className="ps-conf-value">{o.overrides.dailySlideCap != null ? t('cytologyWorkloadCapSettingsSection.unitSuffix', { count: o.overrides.dailySlideCap }) : '—'}</span>
+              <button className="ps-conf-btn-secondary" onClick={async () => { await mockStaffCytologyWorkloadCapOverrideService.remove(o.staffUserId); refresh(); }}>{t('common.remove')}</button>
             </div>
           </div>
         ))}
         {staffOverrides.length === 0 && !addingStaff && (
-          <div className="ps-conf-empty-row">No staff overrides.</div>
+          <div className="ps-conf-empty-row">{t('cytologyQcSettingsSection.staff.emptyState')}</div>
         )}
 
         {addingStaff && (
@@ -152,8 +158,8 @@ const CytologyWorkloadCapSettingsSection: React.FC = () => {
               <button className="ps-conf-btn-primary" onClick={async () => {
                 await mockStaffCytologyWorkloadCapOverrideService.create(addingStaff.staffUserId, { dailySlideCap: addingStaff.cap });
                 setAddingStaff(null); refresh();
-              }}>Save</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setAddingStaff(null)}>Cancel</button>
+              }}>{t('common.save')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setAddingStaff(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         )}

@@ -13,7 +13,16 @@
 // every section here already belongs to the same one real group.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// i18n note: sidebar labels reuse existing exact-text keys where the
+// wording matches another on-screen use of the same phrase
+// (`cytologyCategoriesSection.title`, `configSearchIndex.entries
+// .sys-non-gyn-cytology-categories.label`, `cytologyCategoriesSection
+// .nomenclatureLabel`); the rest are shorter nav-only phrasings that
+// don't exactly match their destination section's own (longer) title,
+// so they got new keys under `cytologyTab.sections`.
+
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import '../../../pathscribe.css';
 import { resetConfigScroll } from '../../../utils/resetConfigScroll';
@@ -34,20 +43,21 @@ export type CytologyConfigSection =
   | 'cytology_screening_strategy' | 'cytology_workload_cap' | 'cytology_instrumentation'
   | 'non_gyn_cytology_categories';
 
-const SECTIONS: { id: CytologyConfigSection; emoji: string; label: string }[] = [
-  { id: 'cytology_categories', emoji: '🧫', label: 'Interpretation and Recommendations' },
-  { id: 'non_gyn_cytology_categories', emoji: '🧪', label: 'Non-GYN Classification (Milan/Paris)' },
-  { id: 'cytology_nomenclature', emoji: '🌐', label: 'Nomenclature System' },
-  { id: 'cytology_screening_strategy', emoji: '🔬', label: 'Screening Strategy' },
-  { id: 'cytology_routing', emoji: '↪️', label: 'Non-GYN Routing' },
-  { id: 'cytology_registry', emoji: '📋', label: 'Registry Reporting' },
-  { id: 'cytology_qc_settings', emoji: '🎯', label: 'QC Random Selection Rate' },
-  { id: 'cytology_workload_cap', emoji: '📊', label: 'Daily Workload Cap' },
-  { id: 'cytology_instrumentation', emoji: '🖥️', label: 'Assisted Instrumentation' },
-  { id: 'snomed_histology_severity_mapping', emoji: '🧬', label: 'Cyto-Histologic Correlation (SNOMED)' },
+const SECTIONS: { id: CytologyConfigSection; emoji: string; labelKey: string }[] = [
+  { id: 'cytology_categories', emoji: '🧫', labelKey: 'cytologyCategoriesSection.title' },
+  { id: 'non_gyn_cytology_categories', emoji: '🧪', labelKey: 'configSearchIndex.entries.sys-non-gyn-cytology-categories.label' },
+  { id: 'cytology_nomenclature', emoji: '🌐', labelKey: 'cytologyCategoriesSection.nomenclatureLabel' },
+  { id: 'cytology_screening_strategy', emoji: '🔬', labelKey: 'cytologyTab.sections.screeningStrategy' },
+  { id: 'cytology_routing', emoji: '↪️', labelKey: 'cytologyTab.sections.nonGynRouting' },
+  { id: 'cytology_registry', emoji: '📋', labelKey: 'cytologyTab.sections.registryReporting' },
+  { id: 'cytology_qc_settings', emoji: '🎯', labelKey: 'cytologyTab.sections.qcRandomSelectionRate' },
+  { id: 'cytology_workload_cap', emoji: '📊', labelKey: 'cytologyTab.sections.dailyWorkloadCap' },
+  { id: 'cytology_instrumentation', emoji: '🖥️', labelKey: 'cytologyTab.sections.assistedInstrumentation' },
+  { id: 'snomed_histology_severity_mapping', emoji: '🧬', labelKey: 'cytologyTab.sections.cytoHistologicCorrelation' },
 ];
 
 const CytologyTab: React.FC = () => {
+  const { t } = useTranslation();
   const location = useLocation();
   const [active, setActive] = useState<CytologyConfigSection>(() => {
     const section = new URLSearchParams(location.search).get('section') as CytologyConfigSection | null;
@@ -84,7 +94,7 @@ const CytologyTab: React.FC = () => {
             onClick={() => { setActive(s.id); resetConfigScroll(); }}
             className={`ps-confsys-nav-btn${active === s.id ? ' ps-confsys-nav-btn--active' : ''}`}
           >
-            {s.emoji} {s.label}
+            {s.emoji} {t(s.labelKey)}
           </button>
         ))}
       </div>

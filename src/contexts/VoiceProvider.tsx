@@ -1,6 +1,7 @@
 import React, {
   createContext, useContext, useState, useRef, useEffect, useCallback,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { useSystemConfig } from './SystemConfigContext';
 import { callAi } from '../services/aiIntegration/aiProviderService';
@@ -249,6 +250,7 @@ async function refineWithStructuredContent(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const { config } = useSystemConfig();
   const voiceEnabled = config.voiceEnabled ?? true;
 
@@ -310,7 +312,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recognitionRef.current = null;
     if (recognition) { try { recognition.stop(); } catch {} }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
   }, []);
@@ -409,7 +411,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // "literal" one-shot flag
     if (normed === 'literal') {
       setJustHeardLiteral(true);
-      setTranscript('\uD83D\uDD24 Literal\u2026');
+      setTranscript(t('voiceProvider.status.literal'));
       setTimeout(() => setTranscript(''), 1500);
       return;
     }
@@ -457,7 +459,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // ── AI PATH ────────────────────────────────────────────────────────────
       dictationTargetRef.current?.onText(localWithLearning, true); // interim
       setIsRefining(true);
-      setTranscript('\u2728 Refining\u2026');
+      setTranscript(t('voiceProvider.status.refining'));
 
       const context       = dictationTargetRef.current?.context ?? 'Pathology Report';
       const structuredContentPromise = refineWithStructuredContent(text, context, dictationCorrections);
@@ -478,7 +480,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dictationTargetRef.current?.onText(localWithLearning);
       setTranscript('');
     }
-  }, []);
+  }, [t]);
 
   // ── Speech recognition lifecycle ───────────────────────────────────────────
   useEffect(() => {
@@ -532,7 +534,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (action) {
           pendingMissRef.current = null;
           mockActionRegistryService.executeAction(action, text);
-          setTranscript(`\u2714\uFE0F ${action.label}`);
+          setTranscript(t('voiceProvider.status.actionExecuted', { label: action.label }));
           setTimeout(() => setTranscript(''), 1200);
         } else {
           const miss = mockActionRegistryService.recordMiss(text);
@@ -565,7 +567,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .catch(() => { recognitionRef.current = null; setPhase('standby'); });
 
     return () => killMic();
-  }, [phase, accent, killMic, handleDictationSegment]);
+  }, [phase, accent, killMic, handleDictationSegment, t]);
 
   // ── Public API ─────────────────────────────────────────────────────────────
 

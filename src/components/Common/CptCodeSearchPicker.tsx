@@ -14,8 +14,20 @@
 // dictionary match is picked, so the caller can also auto-fill
 // description/RVU from that same real match.
 // -----------------------------------------------------------------------------
+//
+// i18n note: `e.code`/`e.description` are real dictionary data, kept
+// as-is; "RVU" is a standardized billing abbreviation (Relative Value
+// Unit) and stays literal. The placeholder and the description+RVU
+// concatenation reuse `codeSearchModal.searchPlaceholder`/
+// `.resultDescriptionWithRvu` (exact-text matches from the sibling
+// Search Billing Codes modal this component was extracted alongside).
+// The empty-state message is worded differently from that modal's own
+// `codeSearchModal.noVerifiedMatch` (which echoes the typed value back;
+// this one doesn't), so it got its own new key rather than a
+// same-topic-different-wording reuse.
 
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /** Real, per direct guidance's own follow-up: generalized from a
  *  BillingDictionaryEntry-specific type to this minimal, structural
@@ -37,6 +49,7 @@ export function CptCodeSearchPicker<T extends SearchableCodeEntry>({ entries, va
   disabled?: boolean;
   hasError?: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +72,7 @@ export function CptCodeSearchPicker<T extends SearchableCodeEntry>({ entries, va
     <div className="ps-protocol-stainselect ps-protocol-stainselect--no-margin" ref={wrapRef}>
       <input
         className={`ps-conf-input ${hasError ? 'ps-conf-input--error' : ''}`}
-        placeholder="e.g. 88342 — search by code or description"
+        placeholder={t('codeSearchModal.searchPlaceholder')}
         value={value}
         onFocus={() => setOpen(true)}
         onChange={e => { onChange(e.target.value); setOpen(true); }}
@@ -72,7 +85,7 @@ export function CptCodeSearchPicker<T extends SearchableCodeEntry>({ entries, va
               onMouseDown={() => { onSelect(e); setOpen(false); }}>
               <span>{e.code}</span>
               <span className="ps-protocol-stainselect-option-cat">
-                {e.description}{e.workRvu !== undefined ? ` · RVU ${e.workRvu}` : ''}
+                {e.workRvu !== undefined ? t('codeSearchModal.resultDescriptionWithRvu', { description: e.description, rvu: e.workRvu }) : e.description}
               </span>
             </div>
           ))}
@@ -80,7 +93,7 @@ export function CptCodeSearchPicker<T extends SearchableCodeEntry>({ entries, va
       )}
       {open && value.trim() && matches.length === 0 && (
         <div className="ps-protocol-stainselect-dropdown">
-          <div className="ps-protocol-stainselect-empty">No matching verified codes — this will be saved as entered.</div>
+          <div className="ps-protocol-stainselect-empty">{t('cptCodeSearchPicker.noMatchingCodes')}</div>
         </div>
       )}
     </div>

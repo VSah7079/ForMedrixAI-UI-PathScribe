@@ -35,6 +35,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import '../pathscribe.css';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,6 +53,8 @@ import { IntraopLinkageTab } from '@/components/QualityAssurance/IntraopLinkageT
 import { EnterpriseRollupTab } from '@/components/QualityAssurance/EnterpriseRollupTab';
 import { ReconciliationTab } from '@/components/QualityAssurance/ReconciliationTab';
 import { CytologyQaTab } from '@/components/QualityAssurance/CytologyQaTab';
+import { QaDashboardTab } from '@/components/QualityAssurance/QaDashboardTab';
+import { InspectionModeTab } from '@/components/QualityAssurance/InspectionModeTab';
 import { CountersignTurnaroundTab } from '@/components/QualityAssurance/CountersignTurnaroundTab';
 import { AccessRequestResponseTab } from '@/components/QualityAssurance/AccessRequestResponseTab';
 import { FppeTrackingTab } from '@/components/QualityAssurance/FppeTrackingTab';
@@ -72,7 +75,14 @@ import { auditService } from '@/services';
 import type { BillingDeficiencyRecord, BillingDeficiencyType } from '@/types/billing/BillingDeficiencyRecord';
 import type { CodeReviewPoolEntry } from '@/types/billing/CodeReviewPoolEntry';
 
-type Pillar = 'operations' | 'financials' | 'capa' | 'cytology' | 'enterprise';
+// Real, per PS-108 (Anatomic Pathology QA Framework): 'qaDashboard' and
+// 'inspection' are the two real subsystems that ticket's own acceptance
+// criteria named ("dashboards show all QA activity types," "one-click
+// export of all QA evidence") that had no home until now — added as their
+// own top-level pillars, same real reasoning as 'cytology'/'enterprise'
+// above: genuinely cross-cutting, not naturally owned by Operations/
+// Financials/CAPA Engine, and each has only ever one real tab.
+type Pillar = 'operations' | 'financials' | 'capa' | 'cytology' | 'enterprise' | 'qaDashboard' | 'inspection';
 // Real, per direct guidance: "CAPA Engine only ever sees things once
 // they've been escalated or closed" - Operations owns the raw,
 // still-open deficiency list; CAPA Engine only sees items once a
@@ -83,7 +93,7 @@ type Pillar = 'operations' | 'financials' | 'capa' | 'cytology' | 'enterprise';
 // effectiveness check), just previously shown alongside 'open' items
 // in the same tab. This tab split is what changed, not the lifecycle
 // itself.
-type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'patient-management' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review' | 'cytology-qa' | 'enterprise-rollup';
+type Tab = 'case-specimen' | 'escalated' | 'closed' | 'reviews' | 'intraop-linkage' | 'discordance' | 'countersign' | 'fppe' | 'drift-correction' | 'patient-match-review' | 'patient-management' | 'access-requests' | 'financials-open' | 'financials-resolved' | 'financials-code-review' | 'cytology-qa' | 'enterprise-rollup' | 'qa-dashboard' | 'inspection';
 
 // Real, per direct guidance on the QA reorganization: which tabs
 // belong to which pillar. Operations = the raw deficiency list plus
@@ -112,6 +122,10 @@ const PILLAR_TABS: Record<Pillar, Tab[]> = {
   // cutting pillar (operational + financial + diagnostic + TAT),
   // not naturally owned by any single existing pillar above.
   enterprise: ['enterprise-rollup'],
+  // Real, per PS-108 — see Pillar's own comment above for the full
+  // reasoning. Only ever one real tab each, same as 'cytology'/'enterprise'.
+  qaDashboard: ['qa-dashboard'],
+  inspection: ['inspection'],
 };
 
 const formatTimestamp = (iso?: string) => {
@@ -134,6 +148,7 @@ const ResolveModal: React.FC<{
   onResolve: (resolutionTypeId: string, correctiveAction: string, rootCause: string, preventiveAction: string, verificationDueDate: string) => void;
   onClose: () => void;
 }> = ({ deficiency, resolutionTypes, onResolve, onClose }) => {
+  const { t } = useTranslation();
   const [resolutionTypeId, setResolutionTypeId] = useState(resolutionTypes[0]?.id ?? '');
   const [correctiveAction, setCorrectiveAction] = useState('');
   const [rootCause, setRootCause] = useState('');
@@ -144,47 +159,48 @@ const ResolveModal: React.FC<{
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Escalate to CAPA</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.resolve.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            {deficiency.specimenLabel ? `Specimen ${deficiency.specimenLabel}, ` : ''}case {deficiency.caseId} — {deficiency.comment || 'no additional detail recorded'}
+            {deficiency.specimenLabel
+              ? t('qualityAssurance.modals.shared.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })
+              : t('qualityAssurance.modals.shared.introNoSpecimen', { caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })}
           </p>
           <p className="ps-fixgate-intro">
-            This moves to <strong>Pending Verification</strong> in CAPA Engine, not Closed — someone still needs to
-            come back and confirm the corrective action actually worked.
+            {t('qualityAssurance.modals.resolve.movesNoticePrefix')} <strong>{t('qualityAssurance.modals.resolve.movesNoticeBold')}</strong> {t('qualityAssurance.modals.resolve.movesNoticeSuffix')}
           </p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-resolution-type">Resolution Type <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="resolve-resolution-type">{t('qualityAssurance.modals.resolve.resolutionType')} <span className="ps-conf-required">*</span></label>
             <select id="resolve-resolution-type" className="ps-conf-select" value={resolutionTypeId} onChange={e => setResolutionTypeId(e.target.value)}>
               {resolutionTypes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-corrective-action">Corrective Action <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="resolve-corrective-action">{t('qualityAssurance.modals.resolve.correctiveAction')} <span className="ps-conf-required">*</span></label>
             <textarea id="resolve-corrective-action" className="ps-conf-input ps-conf-textarea" value={correctiveAction} onChange={e => setCorrectiveAction(e.target.value)}
-              placeholder="What was actually done to fix this specific occurrence?" />
+              placeholder={t('qualityAssurance.modals.resolve.correctiveActionPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-root-cause">Root Cause <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="resolve-root-cause">{t('qualityAssurance.modals.resolve.rootCause')} <span className="ps-conf-required">*</span></label>
             <textarea id="resolve-root-cause" className="ps-conf-input ps-conf-textarea" value={rootCause} onChange={e => setRootCause(e.target.value)}
-              placeholder="Why did this actually happen — the real, underlying cause, not just what you did about it" />
+              placeholder={t('qualityAssurance.modals.resolve.rootCausePlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-preventive-action">Preventive Action (optional)</label>
+            <label className="ps-conf-label" htmlFor="resolve-preventive-action">{t('qualityAssurance.modals.resolve.preventiveAction')}</label>
             <textarea id="resolve-preventive-action" className="ps-conf-input ps-conf-textarea" value={preventiveAction} onChange={e => setPreventiveAction(e.target.value)}
-              placeholder="What stops this from recurring, beyond just fixing this one instance?" />
+              placeholder={t('qualityAssurance.modals.resolve.preventiveActionPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-verification-due">Effectiveness Check Due</label>
+            <label className="ps-conf-label" htmlFor="resolve-verification-due">{t('qualityAssurance.modals.resolve.effectivenessCheckDue')}</label>
             <input id="resolve-verification-due" className="ps-conf-input" type="date" value={verificationDueDate} onChange={e => setVerificationDueDate(e.target.value)} />
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary"
             onClick={() => onResolve(resolutionTypeId, correctiveAction, rootCause, preventiveAction, new Date(verificationDueDate).toISOString())}
             disabled={!resolutionTypeId || !correctiveAction.trim() || !rootCause.trim()}>
-            Escalate to CAPA
+            {t('qualityAssurance.operations.escalateToCapa')}
           </button>
         </div>
       </div>
@@ -201,39 +217,41 @@ const ContainModal: React.FC<{
   onContain: (resolutionTypeId: string, resolutionComment: string) => void;
   onClose: () => void;
 }> = ({ deficiency, resolutionTypes, onContain, onClose }) => {
+  const { t } = useTranslation();
   const [resolutionTypeId, setResolutionTypeId] = useState(resolutionTypes[0]?.id ?? '');
   const [resolutionComment, setResolutionComment] = useState('');
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Immediate Containment</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.contain.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            {deficiency.specimenLabel ? `Specimen ${deficiency.specimenLabel}, ` : ''}case {deficiency.caseId} — {deficiency.comment || 'no additional detail recorded'}
+            {deficiency.specimenLabel
+              ? t('qualityAssurance.modals.shared.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })
+              : t('qualityAssurance.modals.shared.introNoSpecimen', { caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })}
           </p>
           <p className="ps-fixgate-intro">
-            This moves straight to <strong>Closed</strong> — no root cause, no later verification. Use this for a
-            quick, contained fix; if this needs a real root-cause analysis, use <strong>Escalate to CAPA</strong> instead.
+            {t('qualityAssurance.modals.contain.movesNoticePrefix')} <strong>{t('qualityAssurance.modals.contain.movesNoticeBold')}</strong> {t('qualityAssurance.modals.contain.movesNoticeMid')} <strong>{t('qualityAssurance.operations.escalateToCapa')}</strong> {t('qualityAssurance.modals.contain.movesNoticeSuffix')}
           </p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="contain-resolution-type">Resolution Type <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="contain-resolution-type">{t('qualityAssurance.modals.resolve.resolutionType')} <span className="ps-conf-required">*</span></label>
             <select id="contain-resolution-type" className="ps-conf-select" value={resolutionTypeId} onChange={e => setResolutionTypeId(e.target.value)}>
               {resolutionTypes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="contain-comment">What was done <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="contain-comment">{t('qualityAssurance.modals.contain.whatWasDone')} <span className="ps-conf-required">*</span></label>
             <textarea id="contain-comment" className="ps-conf-input ps-conf-textarea" value={resolutionComment} onChange={e => setResolutionComment(e.target.value)}
-              placeholder="What was actually done to fix this specific occurrence?" />
+              placeholder={t('qualityAssurance.modals.resolve.correctiveActionPlaceholder')} />
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary"
             onClick={() => onContain(resolutionTypeId, resolutionComment)}
             disabled={!resolutionTypeId || !resolutionComment.trim()}>
-            Close — Contained
+            {t('qualityAssurance.modals.contain.closeContained')}
           </button>
         </div>
       </div>
@@ -253,6 +271,7 @@ const RaiseDeficiencyModal: React.FC<{
   onRaise: (input: { caseId: string; specimenId?: string; specimenLabel?: string; deficiencyTypeId: string; comment: string }) => void;
   onClose: () => void;
 }> = ({ deficiencyTypes, onRaise, onClose }) => {
+  const { t } = useTranslation();
   const [caseId, setCaseId] = useState('');
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'found' | 'not-found'>('idle');
   const [foundCase, setFoundCase] = useState<Case | null>(null);
@@ -271,61 +290,64 @@ const RaiseDeficiencyModal: React.FC<{
   };
 
   const selectedSpecimen = (foundCase?.specimens ?? []).find((sp: any) => sp.id === specimenId);
-  const activeTypes = deficiencyTypes.filter(t => t.status === 'Active');
+  // Real — renamed loop var from 't' to 'dt' (deficiency type) so it
+  // doesn't shadow this component's own useTranslation() 't', added
+  // above for this file's i18n pass.
+  const activeTypes = deficiencyTypes.filter(dt => dt.status === 'Active');
   // Real — a specimen-only type genuinely requires picking a real
   // specimen from the found case; a case-level type doesn't. 'both'
   // is offered either way, matching this app's own real, existing
   // "safe, permissive default" convention for an unclassified level.
-  const eligibleTypes = activeTypes.filter(t => t.level !== 'specimen' || !!specimenId);
+  const eligibleTypes = activeTypes.filter(dt => dt.level !== 'specimen' || !!specimenId);
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Raise Deficiency</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.raise.header')}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="raise-def-case-id">Case ID / Accession <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="raise-def-case-id">{t('qualityAssurance.modals.raise.caseIdLabel')} <span className="ps-conf-required">*</span></label>
             <div className="ps-qa-tab-toolbar">
               <input id="raise-def-case-id" className="ps-conf-input" value={caseId}
-                onChange={e => { setCaseId(e.target.value); setLookupState('idle'); }} placeholder="Case ID" />
-              <button className="ps-conf-btn-secondary" onClick={handleLookup} disabled={!caseId.trim()}>Look up</button>
+                onChange={e => { setCaseId(e.target.value); setLookupState('idle'); }} placeholder={t('qualityAssurance.modals.raise.caseIdPlaceholder')} />
+              <button className="ps-conf-btn-secondary" onClick={handleLookup} disabled={!caseId.trim()}>{t('qualityAssurance.modals.raise.lookup')}</button>
             </div>
-            {lookupState === 'not-found' && <span className="ps-conf-error-text">No case found with that ID.</span>}
+            {lookupState === 'not-found' && <span className="ps-conf-error-text">{t('qualityAssurance.modals.raise.noCaseFound')}</span>}
           </div>
 
           {foundCase && (
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="raise-def-specimen">Specimen (optional \u2014 leave blank for a case-level issue)</label>
+              <label className="ps-conf-label" htmlFor="raise-def-specimen">{t('qualityAssurance.modals.raise.specimenLabel')}</label>
               <select id="raise-def-specimen" className="ps-conf-select" value={specimenId} onChange={e => setSpecimenId(e.target.value)}>
-                <option value="">\u2014 Whole case \u2014</option>
+                <option value="">{t('qualityAssurance.modals.raise.wholeCaseOption')}</option>
                 {(foundCase.specimens ?? []).map((sp: any) => <option key={sp.id} value={sp.id}>{sp.label}{sp.description ? ` \u2014 ${sp.description}` : ''}</option>)}
               </select>
             </div>
           )}
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="raise-def-type">Deficiency Type <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="raise-def-type">{t('qualityAssurance.modals.raise.deficiencyTypeLabel')} <span className="ps-conf-required">*</span></label>
             <select id="raise-def-type" className="ps-conf-select" value={deficiencyTypeId} onChange={e => setDeficiencyTypeId(e.target.value)}>
-              <option value="">Select a type\u2026</option>
-              {eligibleTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">{t('qualityAssurance.modals.raise.selectTypePlaceholder')}</option>
+              {eligibleTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="raise-def-comment">What was observed <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="raise-def-comment">{t('qualityAssurance.modals.raise.whatObserved')} <span className="ps-conf-required">*</span></label>
             <textarea id="raise-def-comment" className="ps-conf-input ps-conf-textarea" value={comment} onChange={e => setComment(e.target.value)}
-              placeholder="Describe the specific issue observed" />
+              placeholder={t('qualityAssurance.modals.raise.whatObservedPlaceholder')} />
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary"
             onClick={() => onRaise({
               caseId: foundCase!.id, specimenId: specimenId || undefined,
               specimenLabel: selectedSpecimen?.label, deficiencyTypeId, comment: comment.trim(),
             })}
             disabled={!foundCase || !deficiencyTypeId || !comment.trim()}>
-            Raise Deficiency
+            {t('qualityAssurance.operations.raiseDeficiency')}
           </button>
         </div>
       </div>
@@ -340,35 +362,38 @@ const VerifyModal: React.FC<{
   onVerify: (outcome: 'effective' | 'recurred', comment: string) => void;
   onClose: () => void;
 }> = ({ deficiency, onVerify, onClose }) => {
+  const { t } = useTranslation();
   const [comment, setComment] = useState('');
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Effectiveness Check</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.verify.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            {deficiency.specimenLabel ? `Specimen ${deficiency.specimenLabel}, ` : ''}case {deficiency.caseId}
+            {deficiency.specimenLabel
+              ? t('qualityAssurance.modals.verify.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId })
+              : t('qualityAssurance.modals.verify.introNoSpecimen', { caseId: deficiency.caseId })}
           </p>
           <div className="ps-defichist-item">
-            <div className="ps-defichist-row"><span className="ps-defic-label">Corrective action taken:</span> {deficiency.correctiveAction}</div>
+            <div className="ps-defichist-row"><span className="ps-defic-label">{t('qualityAssurance.modals.verify.correctiveActionTaken')}</span> {deficiency.correctiveAction}</div>
             {deficiency.preventiveAction && (
-              <div className="ps-defichist-row"><span className="ps-defic-label">Preventive action:</span> {deficiency.preventiveAction}</div>
+              <div className="ps-defichist-row"><span className="ps-defic-label">{t('qualityAssurance.modals.verify.preventiveActionTaken')}</span> {deficiency.preventiveAction}</div>
             )}
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="verify-comment">Did the corrective action actually work? <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="verify-comment">{t('qualityAssurance.modals.verify.didItWork')} <span className="ps-conf-required">*</span></label>
             <textarea id="verify-comment" className="ps-conf-input ps-conf-textarea" value={comment} onChange={e => setComment(e.target.value)}
-              placeholder="What did you check, and what did you find?" />
+              placeholder={t('qualityAssurance.modals.verify.didItWorkPlaceholder')} />
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-secondary" onClick={() => onVerify('recurred', comment)} disabled={!comment.trim()}>
-            Recurred — Reopen
+            {t('qualityAssurance.modals.verify.recurredReopen')}
           </button>
           <button className="ps-conf-btn-primary" onClick={() => onVerify('effective', comment)} disabled={!comment.trim()}>
-            Effective — Close
+            {t('qualityAssurance.modals.verify.effectiveClose')}
           </button>
         </div>
       </div>
@@ -381,11 +406,17 @@ const VerifyModal: React.FC<{
 // section: code correction, charge reversal, billing-admin override, or
 // a physician's clinical addendum.
 
-const RESOLUTION_REASON_LABEL: Record<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>, string> = {
-  CODE_CORRECTED: 'Code corrected',
-  CHARGE_REVERSED: 'Charge reversed',
-  APPROVED_BY_BILLING_ADMIN: 'Approved by billing admin (override)',
-  PHYSICIAN_ADDENDUM_ADDED: 'Physician addendum added',
+// Real, per this file's i18n pass: an i18n-key map, not a literal
+// English label map — looked up with t() at each on-screen call site.
+// Nothing here feeds a CSV export (the Financials tab's own CSV rows
+// use the raw resolutionReasonCode, not this label), so there's no
+// English-for-export counterpart to keep, unlike GROUP_LABELS-style
+// maps elsewhere in this sweep that serve both.
+const RESOLUTION_REASON_LABEL_KEY: Record<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>, string> = {
+  CODE_CORRECTED: 'qualityAssurance.resolutionReason.codeCorrected',
+  CHARGE_REVERSED: 'qualityAssurance.resolutionReason.chargeReversed',
+  APPROVED_BY_BILLING_ADMIN: 'qualityAssurance.resolutionReason.approvedByBillingAdmin',
+  PHYSICIAN_ADDENDUM_ADDED: 'qualityAssurance.resolutionReason.physicianAddendumAdded',
 };
 
 const ResolveBillingDeficiencyModal: React.FC<{
@@ -397,6 +428,7 @@ const ResolveBillingDeficiencyModal: React.FC<{
   ) => void;
   onClose: () => void;
 }> = ({ deficiency, onResolve, onClose }) => {
+  const { t } = useTranslation();
   const [reasonCode, setReasonCode] = useState<BillingDeficiencyRecord['resolutionReasonCode']>('CODE_CORRECTED');
   const [correctedCptCode, setCorrectedCptCode] = useState('');
   // Real, per direct guidance's own follow-up: billing is one of the
@@ -439,30 +471,29 @@ const ResolveBillingDeficiencyModal: React.FC<{
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Resolve Billing Deficiency</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.resolveBilling.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">case {deficiency.caseId} — {deficiency.auditorNotes}</p>
+          <p className="ps-fixgate-intro">{t('qualityAssurance.modals.resolveBilling.intro', { caseId: deficiency.caseId, notes: deficiency.auditorNotes })}</p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="resolve-billing-reason">Resolution Reason <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="resolve-billing-reason">{t('qualityAssurance.modals.resolveBilling.resolutionReason')} <span className="ps-conf-required">*</span></label>
             <select id="resolve-billing-reason" className="ps-conf-select" value={reasonCode} onChange={e => setReasonCode(e.target.value as BillingDeficiencyRecord['resolutionReasonCode'])}>
-              {(Object.keys(RESOLUTION_REASON_LABEL) as Array<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>>).map(k => (
-                <option key={k} value={k}>{RESOLUTION_REASON_LABEL[k]}</option>
+              {(Object.keys(RESOLUTION_REASON_LABEL_KEY) as Array<NonNullable<BillingDeficiencyRecord['resolutionReasonCode']>>).map(k => (
+                <option key={k} value={k}>{t(RESOLUTION_REASON_LABEL_KEY[k])}</option>
               ))}
             </select>
           </div>
           {needsCorrectedCode && (
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" htmlFor="resolve-billing-corrected-code">Corrected CPT Code <span className="ps-conf-required">*</span></label>
+              <label className="ps-conf-label" htmlFor="resolve-billing-corrected-code">{t('qualityAssurance.modals.resolveBilling.correctedCptCode')} <span className="ps-conf-required">*</span></label>
               <input
                 id="resolve-billing-corrected-code"
                 className="ps-conf-input"
                 value={correctedCptCode}
                 onChange={e => setCorrectedCptCode(e.target.value)}
-                placeholder="e.g. 88305"
+                placeholder={t('qualityAssurance.modals.resolveBilling.correctedCptCodePlaceholder')}
               />
               <p className="ps-billing-reason-hint">
-                Real, per direct fix — the original charge will be reversed with a credit and a new charge
-                created with this code, both permanently recorded on the case's own billing ledger.
+                {t('qualityAssurance.modals.resolveBilling.correctedCodeHint')}
               </p>
             </div>
           )}
@@ -470,7 +501,7 @@ const ResolveBillingDeficiencyModal: React.FC<{
             <>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label" htmlFor="resolve-billing-postsignout-reason">
-                  Reason for post-sign-out change <span className="ps-conf-required">*</span>
+                  {t('qualityAssurance.modals.resolveBilling.postSignoutReason')} <span className="ps-conf-required">*</span>
                 </label>
                 <select
                   id="resolve-billing-postsignout-reason"
@@ -478,34 +509,33 @@ const ResolveBillingDeficiencyModal: React.FC<{
                   value={postSignoutReasonId}
                   onChange={e => setPostSignoutReasonId(e.target.value)}
                 >
-                  <option value="">— Select —</option>
+                  <option value="">— {t('common.select')} —</option>
                   {reasonOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
                 <p className="ps-billing-reason-hint">
-                  This case has already signed out. Billing is one of the few things that can still
-                  change afterward, but it needs a real, documented reason.
+                  {t('qualityAssurance.modals.resolveBilling.postSignoutHint')}
                 </p>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="resolve-billing-postsignout-comment">Comment <span className="ps-conf-required">*</span></label>
+                <label className="ps-conf-label" htmlFor="resolve-billing-postsignout-comment">{t('qualityAssurance.modals.resolveBilling.comment')} <span className="ps-conf-required">*</span></label>
                 <textarea
                   id="resolve-billing-postsignout-comment"
                   className="ps-conf-textarea"
                   value={postSignoutComment}
                   onChange={e => setPostSignoutComment(e.target.value)}
-                  placeholder="What changed and why — permanently attached to the credit and the corrected charge."
+                  placeholder={t('qualityAssurance.modals.resolveBilling.commentPlaceholder')}
                 />
               </div>
             </>
           )}
           {reasonCode === 'CODE_CORRECTED' && !deficiency.chargeRecordId && (
             <p className="ps-billing-reason-hint">
-              This deficiency isn't tied to one specific charge — no charge correction to apply here.
+              {t('qualityAssurance.modals.resolveBilling.noChargeHint')}
             </p>
           )}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canResolve}
@@ -515,7 +545,7 @@ const ResolveBillingDeficiencyModal: React.FC<{
               needsPostSignoutContext ? { reasonId: postSignoutReasonId, comment: postSignoutComment.trim() } : undefined
             )}
           >
-            Resolve
+            {t('qualityAssurance.modals.resolveBilling.resolveButton')}
           </button>
         </div>
       </div>
@@ -529,13 +559,17 @@ const ResolveBillingDeficiencyModal: React.FC<{
 // types was actually found, plus real auditor notes - the same
 // requirement Trigger A/B's own automated records already carry.
 
-const DEFICIENCY_TYPE_LABEL: Record<BillingDeficiencyType, string> = {
-  UNSUPPORTED_CPT_LEVEL: 'Unsupported CPT level',
-  MISSING_DIAGNOSTIC_ICD10: 'Missing diagnostic ICD-10',
-  NCCI_BUNDLING_VIOLATION: 'NCCI bundling violation',
-  UNATTACHED_ANCILLARY_ORDER: 'Unattached ancillary order',
-  MODIFIER_MISMATCH: 'Modifier mismatch (26/TC)',
-  ZERO_FEE_MAPPING_ERROR: 'Zero-fee mapping error',
+// Real, per this file's i18n pass: an i18n-key map, not a literal
+// English label map — same reasoning as RESOLUTION_REASON_LABEL_KEY
+// above. Nothing here feeds a CSV export either (the CSV rows use the
+// raw deficiencyType, not this label).
+const DEFICIENCY_TYPE_LABEL_KEY: Record<BillingDeficiencyType, string> = {
+  UNSUPPORTED_CPT_LEVEL: 'qualityAssurance.deficiencyType.unsupportedCptLevel',
+  MISSING_DIAGNOSTIC_ICD10: 'qualityAssurance.deficiencyType.missingDiagnosticIcd10',
+  NCCI_BUNDLING_VIOLATION: 'qualityAssurance.deficiencyType.ncciBundlingViolation',
+  UNATTACHED_ANCILLARY_ORDER: 'qualityAssurance.deficiencyType.unattachedAncillaryOrder',
+  MODIFIER_MISMATCH: 'qualityAssurance.deficiencyType.modifierMismatch',
+  ZERO_FEE_MAPPING_ERROR: 'qualityAssurance.deficiencyType.zeroFeeMappingError',
 };
 
 const ReviewPoolEntryModal: React.FC<{
@@ -543,49 +577,52 @@ const ReviewPoolEntryModal: React.FC<{
   onReview: (outcome: 'NO_ISSUE_FOUND' | 'DEFICIENCY_RAISED', deficiencyType?: BillingDeficiencyType, auditorNotes?: string) => void;
   onClose: () => void;
 }> = ({ entry, onReview, onClose }) => {
+  const { t } = useTranslation();
   const [outcome, setOutcome] = useState<'NO_ISSUE_FOUND' | 'DEFICIENCY_RAISED'>('NO_ISSUE_FOUND');
   const [deficiencyType, setDeficiencyType] = useState<BillingDeficiencyType>('UNSUPPORTED_CPT_LEVEL');
   const [auditorNotes, setAuditorNotes] = useState('');
   const canSubmit = outcome === 'NO_ISSUE_FOUND' || auditorNotes.trim().length > 0;
+  const sourceText = entry.source === 'MANUAL'
+    ? t('qualityAssurance.modals.reviewPool.flaggedBy', { name: entry.flaggedByName ?? 'staff' })
+    : t('qualityAssurance.modals.reviewPool.randomSample');
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Review Code Review Pool Entry</div>
+        <div className="ps-ms-header">{t('qualityAssurance.modals.reviewPool.header')}</div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            case {entry.caseId} — {entry.source === 'MANUAL' ? `flagged by ${entry.flaggedByName ?? 'staff'}` : 'random sample'}
-            {entry.notes ? `: ${entry.notes}` : ''}
+            {t('qualityAssurance.modals.reviewPool.intro', { caseId: entry.caseId, sourceText, notesSuffix: entry.notes ? `: ${entry.notes}` : '' })}
           </p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Review Outcome <span className="ps-conf-required">*</span></label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className={outcome === 'NO_ISSUE_FOUND' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('NO_ISSUE_FOUND')}>No Issue Found</button>
-              <button className={outcome === 'DEFICIENCY_RAISED' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('DEFICIENCY_RAISED')}>Raise Billing Deficiency</button>
+            <label className="ps-conf-label">{t('qualityAssurance.modals.reviewPool.reviewOutcome')} <span className="ps-conf-required">*</span></label>
+            <div className="ps-qa-inline-actions">
+              <button className={outcome === 'NO_ISSUE_FOUND' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('NO_ISSUE_FOUND')}>{t('qualityAssurance.modals.reviewPool.noIssueFound')}</button>
+              <button className={outcome === 'DEFICIENCY_RAISED' ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setOutcome('DEFICIENCY_RAISED')}>{t('qualityAssurance.modals.reviewPool.raiseBillingDeficiency')}</button>
             </div>
           </div>
           {outcome === 'DEFICIENCY_RAISED' && (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="pool-deficiency-type">Deficiency Type <span className="ps-conf-required">*</span></label>
+                <label className="ps-conf-label" htmlFor="pool-deficiency-type">{t('qualityAssurance.modals.raise.deficiencyTypeLabel')} <span className="ps-conf-required">*</span></label>
                 <select id="pool-deficiency-type" className="ps-conf-select" value={deficiencyType} onChange={e => setDeficiencyType(e.target.value as BillingDeficiencyType)}>
-                  {(Object.keys(DEFICIENCY_TYPE_LABEL) as BillingDeficiencyType[]).map(k => (
-                    <option key={k} value={k}>{DEFICIENCY_TYPE_LABEL[k]}</option>
+                  {(Object.keys(DEFICIENCY_TYPE_LABEL_KEY) as BillingDeficiencyType[]).map(k => (
+                    <option key={k} value={k}>{t(DEFICIENCY_TYPE_LABEL_KEY[k])}</option>
                   ))}
                 </select>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="pool-auditor-notes">Auditor Notes <span className="ps-conf-required">*</span></label>
+                <label className="ps-conf-label" htmlFor="pool-auditor-notes">{t('qualityAssurance.modals.reviewPool.auditorNotes')} <span className="ps-conf-required">*</span></label>
                 <textarea id="pool-auditor-notes" className="ps-conf-input ps-conf-textarea" value={auditorNotes} onChange={e => setAuditorNotes(e.target.value)}
-                  placeholder="What did you actually find during review?" />
+                  placeholder={t('qualityAssurance.modals.reviewPool.auditorNotesPlaceholder')} />
               </div>
             </>
           )}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary" disabled={!canSubmit} onClick={() => onReview(outcome, outcome === 'DEFICIENCY_RAISED' ? deficiencyType : undefined, outcome === 'DEFICIENCY_RAISED' ? auditorNotes.trim() : undefined)}>
-            Submit Review
+            {t('qualityAssurance.modals.reviewPool.submitReview')}
           </button>
         </div>
       </div>
@@ -594,6 +631,7 @@ const ReviewPoolEntryModal: React.FC<{
 };
 
 const QualityAssurancePage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { crumbs, setCrumbs } = useBreadcrumb();
@@ -722,8 +760,11 @@ const QualityAssurancePage: React.FC = () => {
     return () => clearTimeout(clearHighlight);
   }, [deficiencies]);
 
-  const typeName = (id: string) => deficiencyTypes.find(t => t.id === id)?.name ?? id;
-  const resolutionName = (id?: string) => id ? (resolutionTypes.find(t => t.id === id)?.name ?? id) : '—';
+  // Real — renamed both loop vars from 't' to 'dt'/'rt' so they don't
+  // shadow this component's own useTranslation() 't', added above for
+  // this file's i18n pass.
+  const typeName = (id: string) => deficiencyTypes.find(dt => dt.id === id)?.name ?? id;
+  const resolutionName = (id?: string) => id ? (resolutionTypes.find(rt => rt.id === id)?.name ?? id) : '—';
 
   // Exports "just the working rows" — whatever's actually visible in
   // that tab right now, not the complete historical record (that's
@@ -927,8 +968,10 @@ const QualityAssurancePage: React.FC = () => {
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
       const closedThisMonth = deficiencies.filter(x => {
         if (!x.resolvedAt) return false;
-        const t = new Date(x.resolvedAt).getTime();
-        return t >= monthStart && t < monthEnd && x.status === 'closed';
+        // Real — renamed from 't' to 'resolvedTime' so it doesn't
+        // shadow this component's own useTranslation() 't'.
+        const resolvedTime = new Date(x.resolvedAt).getTime();
+        return resolvedTime >= monthStart && resolvedTime < monthEnd && x.status === 'closed';
       });
       months.push({
         month: monthKey,
@@ -1018,9 +1061,14 @@ const QualityAssurancePage: React.FC = () => {
     }).then(() => { setShowReviewModal(false); loadAll(); });
   };
 
-  const columnsFor = (t: Tab) => {
-    if (t === 'case-specimen' || t === 'escalated') return ['Status', 'Case', 'Specimen', 'Issue', 'Detail', 'When', 'Actions'];
-    return ['Case', 'Specimen', 'Issue', 'Resolution', 'Verified', 'Closed'];
+  // Real — renamed param from 't' to 'tb' (tab) so it doesn't shadow
+  // this component's own useTranslation() 't', which the translated
+  // column headers below now need.
+  const columnsFor = (tb: Tab) => {
+    if (tb === 'case-specimen' || tb === 'escalated') {
+      return [t('qualityAssurance.operations.colStatus'), t('qualityAssurance.common.case'), t('qualityAssurance.common.specimen'), t('qualityAssurance.common.issue'), t('qualityAssurance.common.detail'), t('qualityAssurance.operations.colWhen'), t('qualityAssurance.common.actions')];
+    }
+    return [t('qualityAssurance.common.case'), t('qualityAssurance.common.specimen'), t('qualityAssurance.common.issue'), t('qualityAssurance.common.resolution'), t('qualityAssurance.common.verified'), t('qualityAssurance.common.closed')];
   };
 
   return (
@@ -1028,13 +1076,9 @@ const QualityAssurancePage: React.FC = () => {
       <div className="ps-defic-scroll">
       <div className="ps-defic-inner">
       <div className="ps-defic-page-header">
-        <h1 className="ps-defic-page-title">✓ Quality Assurance</h1>
+        <h1 className="ps-defic-page-title">{t('qualityAssurance.page.title')}</h1>
         <p className="ps-defic-page-subtitle">
-          Three real pillars. Operations tracks nonconformances and Clinical Quality metrics — Frozen Linkage,
-          Discordance &amp; Reconciliation, Countersign Turnaround, Credentialing Review, and more. Financials
-          tracks billing/coding deficiencies raised automatically at case sign-out. CAPA Engine governs the
-          corrective-action lifecycle across both — a correction doesn't close out by itself, it's escalated here
-          until someone actually confirms it worked, with periodic management review.
+          {t('qualityAssurance.page.subtitle')}
         </p>
       </div>
 
@@ -1060,8 +1104,8 @@ const QualityAssurancePage: React.FC = () => {
                 return (
                   <div className="ps-tat-trend__tooltip">
                     <div className="ps-tat-trend__tooltip-header">{label}</div>
-                    <div className="ps-defic-trend-tooltip-closed">Closed: {payload[0]?.payload?.closed ?? 0}</div>
-                    <div className="ps-defic-trend-tooltip-reopened">Reopened at least once: {payload[0]?.payload?.reopened ?? 0}</div>
+                    <div className="ps-defic-trend-tooltip-closed">{t('qualityAssurance.trend.closed', { count: payload[0]?.payload?.closed ?? 0 })}</div>
+                    <div className="ps-defic-trend-tooltip-reopened">{t('qualityAssurance.trend.reopened', { count: payload[0]?.payload?.reopened ?? 0 })}</div>
                   </div>
                 );
               }} />
@@ -1088,11 +1132,13 @@ const QualityAssurancePage: React.FC = () => {
           horizontal scrolling once they don't all fit on one line. */}
       <div className="ps-auditlog-tabswitch">
         {([
-          { key: 'operations', label: 'Operations' },
-          { key: 'financials', label: 'Financials' },
-          { key: 'capa', label: 'CAPA Engine' },
-          { key: 'cytology', label: '🔬 Cytology QA' },
-          { key: 'enterprise', label: '🌐 Enterprise Rollup' },
+          { key: 'operations', label: t('qualityAssurance.pillars.operations') },
+          { key: 'financials', label: t('qualityAssurance.pillars.financials') },
+          { key: 'capa', label: t('qualityAssurance.pillars.capa') },
+          { key: 'cytology', label: t('qualityAssurance.pillars.cytology') },
+          { key: 'enterprise', label: t('qualityAssurance.pillars.enterprise') },
+          { key: 'qaDashboard', label: t('qualityAssurance.pillars.qaDashboard') },
+          { key: 'inspection', label: t('qualityAssurance.pillars.inspection') },
         ] as const).map(p => (
           <button
             key={p.key}
@@ -1104,46 +1150,46 @@ const QualityAssurancePage: React.FC = () => {
         ))}
       </div>
 
-      {pillar !== 'cytology' && pillar !== 'enterprise' && (
+      {pillar !== 'cytology' && pillar !== 'enterprise' && pillar !== 'qaDashboard' && pillar !== 'inspection' && (
       <div className="ps-qa-tab-tiles">
         {([
-          { key: 'case-specimen', label: '⚠️ Deficiencies', count: openCount, color: '#EF4444', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
-          { key: 'escalated', label: '🚩 Escalated to CAPA', count: pendingCount, color: '#f59e0b', sublabel: overdueCount > 0 ? `${overdueCount} overdue` : undefined },
-          { key: 'closed', label: '✓ Closed', count: closedCount, color: '#10B981', sublabel: undefined },
-          { key: 'reviews', label: '📋 Mgmt Reviews', count: managementReviews.length, color: '#536EEA', sublabel: undefined },
-          { key: 'intraop-linkage', label: '🔬 Frozen Linkage', count: undefined, color: '#0891B2', sublabel: undefined },
-          { key: 'discordance', label: '⚖️ Discordance', count: undefined, color: '#8B5CF6', sublabel: undefined },
-          { key: 'countersign', label: '✍️ Countersign Turnaround', count: undefined, color: '#f59e0b', sublabel: undefined },
-          { key: 'fppe', label: '📜 Credentialing Review', count: undefined, color: '#261CE3', sublabel: undefined },
-          { key: 'drift-correction', label: '🔄 Post-Final Drift', count: undefined, color: '#EC4899', sublabel: undefined },
-          { key: 'patient-match-review', label: '🪪 Patient Match Review', count: undefined, color: '#53E2EA', sublabel: undefined },
-          { key: 'patient-management', label: '🧬 Patient Management', count: undefined, color: '#53E2EA', sublabel: undefined },
-          { key: 'access-requests', label: '🔑 Access Requests', count: undefined, color: '#94a3b8', sublabel: undefined },
-          { key: 'financials-open', label: '💲 Billing Deficiencies', count: billingDeficienciesOpen.length, color: '#EF4444', sublabel: undefined },
-          { key: 'financials-resolved', label: '✓ Resolved', count: billingDeficienciesResolved.length, color: '#10B981', sublabel: undefined },
-          { key: 'financials-code-review', label: '🔍 Code Review Pool', count: codeReviewPending.length, color: '#8B5CF6', sublabel: undefined },
-        ] as const).filter(t => (PILLAR_TABS[pillar] as readonly Tab[]).includes(t.key)).map(t => {
-          const isActive = tab === t.key;
+          { key: 'case-specimen', label: t('qualityAssurance.tiles.deficiencies'), count: openCount, color: '#EF4444', sublabel: overdueCount > 0 ? t('qualityAssurance.tiles.overdueSublabel', { count: overdueCount }) : undefined },
+          { key: 'escalated', label: t('qualityAssurance.tiles.escalatedToCapa'), count: pendingCount, color: '#f59e0b', sublabel: overdueCount > 0 ? t('qualityAssurance.tiles.overdueSublabel', { count: overdueCount }) : undefined },
+          { key: 'closed', label: t('qualityAssurance.tiles.closed'), count: closedCount, color: '#10B981', sublabel: undefined },
+          { key: 'reviews', label: t('qualityAssurance.tiles.mgmtReviews'), count: managementReviews.length, color: '#536EEA', sublabel: undefined },
+          { key: 'intraop-linkage', label: t('qualityAssurance.tiles.frozenLinkage'), count: undefined, color: '#0891B2', sublabel: undefined },
+          { key: 'discordance', label: t('qualityAssurance.tiles.discordance'), count: undefined, color: '#8B5CF6', sublabel: undefined },
+          { key: 'countersign', label: t('qualityAssurance.tiles.countersignTurnaround'), count: undefined, color: '#f59e0b', sublabel: undefined },
+          { key: 'fppe', label: t('qualityAssurance.tiles.credentialingReview'), count: undefined, color: '#261CE3', sublabel: undefined },
+          { key: 'drift-correction', label: t('qualityAssurance.tiles.postFinalDrift'), count: undefined, color: '#EC4899', sublabel: undefined },
+          { key: 'patient-match-review', label: t('qualityAssurance.tiles.patientMatchReview'), count: undefined, color: '#53E2EA', sublabel: undefined },
+          { key: 'patient-management', label: t('qualityAssurance.tiles.patientManagement'), count: undefined, color: '#53E2EA', sublabel: undefined },
+          { key: 'access-requests', label: t('qualityAssurance.tiles.accessRequests'), count: undefined, color: '#94a3b8', sublabel: undefined },
+          { key: 'financials-open', label: t('qualityAssurance.tiles.billingDeficiencies'), count: billingDeficienciesOpen.length, color: '#EF4444', sublabel: undefined },
+          { key: 'financials-resolved', label: t('qualityAssurance.tiles.resolved'), count: billingDeficienciesResolved.length, color: '#10B981', sublabel: undefined },
+          { key: 'financials-code-review', label: t('qualityAssurance.tiles.codeReviewPool'), count: codeReviewPending.length, color: '#8B5CF6', sublabel: undefined },
+        ] as const).filter(tile => (PILLAR_TABS[pillar] as readonly Tab[]).includes(tile.key)).map(tile => {
+          const isActive = tab === tile.key;
           return (
             <button
-              key={t.key}
+              key={tile.key}
               className="ps-wl-filter-tile"
-              title={isActive ? `Showing: ${t.label} — click to switch` : `View: ${t.label}`}
-              onClick={() => setTab(t.key as typeof tab)}
+              title={isActive ? t('qualityAssurance.tiles.showingTitle', { label: tile.label }) : t('qualityAssurance.tiles.viewTitle', { label: tile.label })}
+              onClick={() => setTab(tile.key as typeof tab)}
               style={{
-                '--tile-bg': isActive ? `${t.color}2e` : `${t.color}0d`,
-                '--tile-border': isActive ? t.color : `${t.color}2e`,
-                '--tile-shadow': isActive ? `0 0 12px ${t.color}66` : 'none',
+                '--tile-bg': isActive ? `${tile.color}2e` : `${tile.color}0d`,
+                '--tile-border': isActive ? tile.color : `${tile.color}2e`,
+                '--tile-shadow': isActive ? `0 0 12px ${tile.color}66` : 'none',
               } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? t.color : '#8899aa' } as React.CSSProperties}>
-                {t.label}
+              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? tile.color : '#8899aa' } as React.CSSProperties}>
+                {tile.label}
               </div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': t.color } as React.CSSProperties}>
-                {t.count ?? '\u00A0'}
+              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': tile.color } as React.CSSProperties}>
+                {tile.count ?? '\u00A0'}
               </div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': t.color, '--tile-sublabel-opacity': t.sublabel ? 0.75 : 0 } as React.CSSProperties}>
-                {t.sublabel || '\u00A0'}
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': tile.color, '--tile-sublabel-opacity': tile.sublabel ? 0.75 : 0 } as React.CSSProperties}>
+                {tile.sublabel || '\u00A0'}
               </div>
             </button>
           );
@@ -1157,13 +1203,13 @@ const QualityAssurancePage: React.FC = () => {
           // this tile has no real tab of its own on this page.
           <button
             className="ps-wl-filter-tile"
-            title="View failed outbound charge dispatches in Configuration"
+            title={t('qualityAssurance.tiles.failedDispatchesTitle')}
             onClick={() => navigate('/configuration?tab=system&section=outbound_charge_dlq')}
             style={{ '--tile-bg': '#f59e0b0d', '--tile-border': '#f59e0b2e', '--tile-shadow': 'none' } as React.CSSProperties}
           >
-            <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>📮 Failed Dispatches</div>
+            <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>{t('qualityAssurance.tiles.failedDispatches')}</div>
             <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#f59e0b' } as React.CSSProperties}>{failedDlqCount}</div>
-            <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#f59e0b', '--tile-sublabel-opacity': 0.75 } as React.CSSProperties}>in Config →</div>
+            <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#f59e0b', '--tile-sublabel-opacity': 0.75 } as React.CSSProperties}>{t('qualityAssurance.tiles.failedDispatchesSublabel')}</div>
           </button>
         )}
       </div>
@@ -1175,12 +1221,12 @@ const QualityAssurancePage: React.FC = () => {
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
                 <tr>
-                  <th className="ps-conf-th">Case</th>
-                  <th className="ps-conf-th">Source</th>
-                  <th className="ps-conf-th">Flagged By</th>
-                  <th className="ps-conf-th">Notes</th>
-                  <th className="ps-conf-th">Flagged</th>
-                  <th className="ps-conf-th">Actions</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.common.case')}</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.codeReview.colSource')}</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.codeReview.colFlaggedBy')}</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.common.notes')}</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.codeReview.colFlagged')}</th>
+                  <th className="ps-conf-th">{t('qualityAssurance.common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1189,17 +1235,17 @@ const QualityAssurancePage: React.FC = () => {
                     <td className="ps-conf-td">
                       <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${e.caseId}/synoptic`)}>{e.caseId}</button>
                     </td>
-                    <td className="ps-conf-td">{e.source === 'MANUAL' ? 'Manual' : 'Random sample'}</td>
+                    <td className="ps-conf-td">{e.source === 'MANUAL' ? t('qualityAssurance.codeReview.sourceManual') : t('qualityAssurance.codeReview.sourceRandom')}</td>
                     <td className="ps-conf-td">{e.flaggedByName ?? '—'}</td>
                     <td className="ps-conf-td"><div className="ps-specreq-meta">{e.notes ?? '—'}</div></td>
                     <td className="ps-conf-td">{formatTimestamp(e.flaggedAt)}</td>
                     <td className="ps-conf-td">
-                      <button className="ps-conf-btn-primary" onClick={() => setReviewingPoolEntryId(e.id)}>Review</button>
+                      <button className="ps-conf-btn-primary" onClick={() => setReviewingPoolEntryId(e.id)}>{t('qualityAssurance.codeReview.reviewButton')}</button>
                     </td>
                   </tr>
                 ))}
                 {codeReviewPending.length === 0 && (
-                  <tr><td className="ps-conf-empty-row" colSpan={6}>No cases pending code review.</td></tr>
+                  <tr><td className="ps-conf-empty-row" colSpan={6}>{t('qualityAssurance.codeReview.empty')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1222,7 +1268,7 @@ const QualityAssurancePage: React.FC = () => {
               'Resolved': d.resolvedAt ?? '',
             })),
             `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.csv`
-          )}>Export</button>
+          )}>{t('qualityAssurance.common.export')}</button>
         </div>
         <div className="ps-conf-table-wrap">
           <div className="ps-conf-table-scroll">
@@ -1230,8 +1276,8 @@ const QualityAssurancePage: React.FC = () => {
               <thead className="ps-conf-thead-sticky">
                 <tr>
                   {(tab === 'financials-open'
-                    ? ['Case', 'Type', 'Severity', 'Trigger', 'Notes', 'Raised', 'Actions']
-                    : ['Case', 'Type', 'Severity', 'Resolution', 'Resolved']
+                    ? [t('qualityAssurance.common.case'), t('qualityAssurance.common.type'), t('qualityAssurance.common.severity'), t('qualityAssurance.common.trigger'), t('qualityAssurance.common.notes'), t('qualityAssurance.common.raised'), t('qualityAssurance.common.actions')]
+                    : [t('qualityAssurance.common.case'), t('qualityAssurance.common.type'), t('qualityAssurance.common.severity'), t('qualityAssurance.common.resolution'), t('qualityAssurance.common.resolved')]
                   ).map(h => <th key={h} className="ps-conf-th">{h}</th>)}
                 </tr>
               </thead>
@@ -1249,7 +1295,7 @@ const QualityAssurancePage: React.FC = () => {
                         <td className="ps-conf-td"><div className="ps-specreq-meta">{d.auditorNotes}</div></td>
                         <td className="ps-conf-td">{formatTimestamp(d.createdAt)}</td>
                         <td className="ps-conf-td">
-                          <button className="ps-conf-btn-primary" onClick={() => setResolvingBillingDeficiencyId(d.id)}>Resolve</button>
+                          <button className="ps-conf-btn-primary" onClick={() => setResolvingBillingDeficiencyId(d.id)}>{t('qualityAssurance.modals.resolveBilling.resolveButton')}</button>
                         </td>
                       </>
                     ) : (
@@ -1262,7 +1308,7 @@ const QualityAssurancePage: React.FC = () => {
                 ))}
                 {(tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).length === 0 && (
                   <tr><td className="ps-conf-empty-row" colSpan={tab === 'financials-open' ? 7 : 5}>
-                    No {tab === 'financials-open' ? 'open' : 'resolved'} billing deficiencies.
+                    {tab === 'financials-open' ? t('qualityAssurance.financials.noOpen') : t('qualityAssurance.financials.noResolved')}
                   </td></tr>
                 )}
               </tbody>
@@ -1279,6 +1325,8 @@ const QualityAssurancePage: React.FC = () => {
       {tab === 'enterprise-rollup' && <EnterpriseRollupTab />}
       {tab === 'discordance' && <ReconciliationTab />}
       {tab === 'cytology-qa' && <CytologyQaTab />}
+      {tab === 'qa-dashboard' && <QaDashboardTab />}
+      {tab === 'inspection' && <InspectionModeTab />}
       {tab === 'countersign' && <CountersignTurnaroundTab />}
       {tab === 'fppe' && <FppeTrackingTab />}
       {tab === 'drift-correction' && <DriftCorrectionTab />}
@@ -1288,18 +1336,18 @@ const QualityAssurancePage: React.FC = () => {
 
       {tab === 'closed' && (
         <div className="ps-defic-review-banner">
-          <span>{unreviewedClosed.length} closed item{unreviewedClosed.length === 1 ? '' : 's'} not yet covered by a Management Review.</span>
+          <span>{t('qualityAssurance.operations.unreviewedBanner', { count: unreviewedClosed.length })}</span>
           <button className="ps-conf-btn-primary" onClick={() => setShowReviewModal(true)} disabled={unreviewedClosed.length === 0}>
-            Start Management Review
+            {t('qualityAssurance.operations.startManagementReview')}
           </button>
         </div>
       )}
 
       {(tab === 'case-specimen' || tab === 'escalated' || tab === 'closed') && (
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>Export</button>
+          <button className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>{t('qualityAssurance.common.export')}</button>
           {tab === 'case-specimen' && (
-            <button className="ps-conf-btn-primary" onClick={() => setShowRaiseDeficiencyModal(true)}>Raise Deficiency</button>
+            <button className="ps-conf-btn-primary" onClick={() => setShowRaiseDeficiencyModal(true)}>{t('qualityAssurance.operations.raiseDeficiency')}</button>
           )}
         </div>
       )}
@@ -1309,7 +1357,7 @@ const QualityAssurancePage: React.FC = () => {
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
-                <tr>{columnsFor(tab).map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+                <tr>{columnsFor(tab).map((h, i) => <th key={i} className="ps-conf-th">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {(tab === 'case-specimen' || tab === 'escalated') && (() => {
@@ -1322,7 +1370,7 @@ const QualityAssurancePage: React.FC = () => {
                         <div className="ps-conf-status-cell">
                           <span className={`ps-conf-status-dot ${d.status === 'open' ? 'ps-conf-status-dot--open' : 'ps-conf-status-dot--pending'}`} />
                           <span className={`ps-conf-status-text ${d.status === 'open' ? 'ps-conf-status-text--open' : 'ps-conf-status-text--pending'}`}>
-                            {d.status === 'open' ? 'Open' : 'Pending Verification'}
+                            {d.status === 'open' ? t('qualityAssurance.operations.statusOpen') : t('qualityAssurance.operations.statusPending')}
                           </span>
                         </div>
                       </td>
@@ -1330,40 +1378,40 @@ const QualityAssurancePage: React.FC = () => {
                         <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
                       </td>
                       <td className="ps-conf-td">
-                        {d.specimenLabel ? `Specimen ${d.specimenLabel}` : <em className="ps-defic-caselevel">Case-level</em>}
+                        {d.specimenLabel ? `${t('qualityAssurance.common.specimen')} ${d.specimenLabel}` : <em className="ps-defic-caselevel">{t('qualityAssurance.operations.caseLevel')}</em>}
                       </td>
                       <td className="ps-conf-td">
                         {typeName(d.deficiencyTypeId)}
-                        {!!d.reopenCount && <span className="ps-defic-reopen-badge" title="Reopened after a failed effectiveness check">↺ {d.reopenCount}</span>}
+                        {!!d.reopenCount && <span className="ps-defic-reopen-badge" title={t('qualityAssurance.operations.reopenTitle')}>↺ {d.reopenCount}</span>}
                       </td>
                       <td className="ps-conf-td">
                         <div className="ps-specreq-meta">{d.status === 'open' ? (d.comment || '—') : (d.correctiveAction || '—')}</div>
                       </td>
                       <td className="ps-conf-td">
                         {d.status === 'open'
-                          ? <>{d.raisedBy === 'system' ? 'System' : d.raisedBy} · {formatTimestamp(d.raisedAt)}</>
-                          : <span className={isOverdue(d.verificationDueDate) ? 'ps-defic-overdue' : ''}>Due {formatDateOnly(d.verificationDueDate)}</span>}
+                          ? <>{d.raisedBy === 'system' ? t('qualityAssurance.operations.systemRaisedBy') : d.raisedBy} · {formatTimestamp(d.raisedAt)}</>
+                          : <span className={isOverdue(d.verificationDueDate) ? 'ps-defic-overdue' : ''}>{t('qualityAssurance.operations.dueDate', { date: formatDateOnly(d.verificationDueDate) })}</span>}
                       </td>
                       <td className="ps-conf-td">
                         {d.status === 'open'
-                          ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              <button className="ps-conf-btn-secondary" onClick={() => setContainingId(d.id)}>Immediate Containment</button>
-                              <button className="ps-conf-btn-primary" onClick={() => setResolvingId(d.id)}>Escalate to CAPA</button>
+                          ? <div className="ps-qa-inline-actions">
+                              <button className="ps-conf-btn-secondary" onClick={() => setContainingId(d.id)}>{t('qualityAssurance.operations.immediateContainment')}</button>
+                              <button className="ps-conf-btn-primary" onClick={() => setResolvingId(d.id)}>{t('qualityAssurance.operations.escalateToCapa')}</button>
                             </div>
-                          : <button className="ps-conf-btn-primary" onClick={() => setVerifyingId(d.id)}>Verify Effectiveness</button>}
+                          : <button className="ps-conf-btn-primary" onClick={() => setVerifyingId(d.id)}>{t('qualityAssurance.operations.verifyEffectiveness')}</button>}
                       </td>
                     </tr>
                   );
                   return (
                     <>
-                      <tr className="ps-defic-group-header"><td colSpan={7}>Case-Level ({caseLevelActive.length})</td></tr>
+                      <tr className="ps-defic-group-header"><td colSpan={7}>{t('qualityAssurance.operations.caseLevelHeader', { count: caseLevelActive.length })}</td></tr>
                       {caseLevelActive.length > 0
                         ? caseLevelActive.map(renderActiveRow)
-                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No {tab === 'escalated' ? 'escalated' : 'open'} case-level deficiencies.</td></tr>}
-                      <tr className="ps-defic-group-header"><td colSpan={7}>Specimen-Level ({specimenLevelActive.length})</td></tr>
+                        : <tr><td className="ps-conf-empty-row" colSpan={7}>{tab === 'escalated' ? t('qualityAssurance.operations.noCaseLevelEscalated') : t('qualityAssurance.operations.noCaseLevelOpen')}</td></tr>}
+                      <tr className="ps-defic-group-header"><td colSpan={7}>{t('qualityAssurance.operations.specimenLevelHeader', { count: specimenLevelActive.length })}</td></tr>
                       {specimenLevelActive.length > 0
                         ? specimenLevelActive.map(renderActiveRow)
-                        : <tr><td className="ps-conf-empty-row" colSpan={7}>No {tab === 'escalated' ? 'escalated' : 'open'} specimen-level deficiencies.</td></tr>}
+                        : <tr><td className="ps-conf-empty-row" colSpan={7}>{tab === 'escalated' ? t('qualityAssurance.operations.noSpecimenLevelEscalated') : t('qualityAssurance.operations.noSpecimenLevelOpen')}</td></tr>}
                     </>
                   );
                 })()}
@@ -1373,19 +1421,19 @@ const QualityAssurancePage: React.FC = () => {
                       <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
                     </td>
                     <td className="ps-conf-td">
-                      {d.specimenLabel ? `Specimen ${d.specimenLabel}` : <em className="ps-defic-caselevel">Case-level</em>}
+                      {d.specimenLabel ? `${t('qualityAssurance.common.specimen')} ${d.specimenLabel}` : <em className="ps-defic-caselevel">{t('qualityAssurance.operations.caseLevel')}</em>}
                     </td>
                     <td className="ps-conf-td">
                       {typeName(d.deficiencyTypeId)}
-                      {!!d.reopenCount && <span className="ps-defic-reopen-badge" title="Reopened after a failed effectiveness check">↺ {d.reopenCount}</span>}
+                      {!!d.reopenCount && <span className="ps-defic-reopen-badge" title={t('qualityAssurance.operations.reopenTitle')}>↺ {d.reopenCount}</span>}
                     </td>
                     <td className="ps-conf-td">{resolutionName(d.resolutionTypeId)}</td>
-                    <td className="ps-conf-td">{d.verifiedBy ? `${d.verifiedBy} · ${formatTimestamp(d.verifiedAt)}` : <em className="ps-defic-caselevel">instant fix, not verified</em>}</td>
+                    <td className="ps-conf-td">{d.verifiedBy ? `${d.verifiedBy} · ${formatTimestamp(d.verifiedAt)}` : <em className="ps-defic-caselevel">{t('qualityAssurance.operations.instantFix')}</em>}</td>
                     <td className="ps-conf-td">{formatTimestamp(d.resolvedAt)}</td>
                   </tr>
                 ))}
                 {tab === 'closed' && filtered.length === 0 && (
-                  <tr><td className="ps-conf-empty-row" colSpan={6}>No closed deficiencies yet.</td></tr>
+                  <tr><td className="ps-conf-empty-row" colSpan={6}>{t('qualityAssurance.operations.noClosed')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1393,7 +1441,7 @@ const QualityAssurancePage: React.FC = () => {
         </div>
       ) : tab === 'reviews' ? (
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={exportManagementReviews}>Export</button>
+          <button className="ps-conf-btn-secondary" onClick={exportManagementReviews}>{t('qualityAssurance.common.export')}</button>
         </div>
       ) : null}
       {tab === 'reviews' && (
@@ -1401,7 +1449,7 @@ const QualityAssurancePage: React.FC = () => {
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
-                <tr>{['Reviewed', 'Reviewed By', 'Items in Scope', 'Findings'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+                <tr>{[t('qualityAssurance.reviews.colReviewed'), t('qualityAssurance.reviews.colReviewedBy'), t('qualityAssurance.reviews.colItemsInScope'), t('qualityAssurance.reviews.colFindings')].map((h, i) => <th key={i} className="ps-conf-th">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {[...managementReviews].sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt)).map(r => (
@@ -1413,7 +1461,7 @@ const QualityAssurancePage: React.FC = () => {
                   </tr>
                 ))}
                 {managementReviews.length === 0 && (
-                  <tr><td className="ps-conf-empty-row" colSpan={4}>No management reviews recorded yet.</td></tr>
+                  <tr><td className="ps-conf-empty-row" colSpan={4}>{t('qualityAssurance.reviews.empty')}</td></tr>
                 )}
               </tbody>
             </table>

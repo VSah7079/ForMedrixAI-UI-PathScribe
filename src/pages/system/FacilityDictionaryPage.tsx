@@ -15,9 +15,16 @@
  * actually use. Now wired to the same facilityService everything else uses,
  * so a facility added here shows up everywhere else, and vice versa.
  * useClientDictionary.ts has since been retired entirely.
+ *
+ * i18n note: the audit-log `detail` string and each reference-check
+ * `s.label` (from referenceCheckService.ts, e.g. "Physicians",
+ * "Grossing Route Overrides") stay literal English, matching the
+ * precedent already set by DepartmentsSection.tsx/
+ * SpecimenCategoriesSection.tsx for the same shared service.
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import '../../pathscribe.css';
 import { facilityService, auditService } from "../../services";
 import { checkFacilityReferences } from "../../services/referenceCheck/referenceCheckService";
@@ -28,6 +35,7 @@ import { FacilityEditorModal } from "../../components/FacilityDictionary/Facilit
 import { FacilityTable } from "../../components/FacilityDictionary/FacilityTable";
 
 export const FacilityDictionaryPage = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +100,7 @@ export const FacilityDictionaryPage = () => {
     const refCheck = await checkFacilityReferences(id);
     if (refCheck.hasReferences) {
       const detail = refCheck.sources.map(s => `${s.count} ${s.label}`).join(', ');
-      setPendingDeactivation({ id, message: `This facility is still referenced by: ${detail}. Deactivating it now won't remove those references — they'll keep pointing at a facility that's no longer active. Deactivate anyway?` });
+      setPendingDeactivation({ id, message: t('facilityDictionaryPage.stillInUseMessage', { detail }) });
       return;
     }
     const res = await facilityService.deactivate(id);
@@ -115,7 +123,7 @@ export const FacilityDictionaryPage = () => {
     return (
       <div className="config-section-container">
         <div className="config-section-loading">
-          Loading facilities...
+          {t('facilityDictionaryPage.loading')}
         </div>
       </div>
     );
@@ -126,13 +134,13 @@ export const FacilityDictionaryPage = () => {
       <div className="config-section-header">
         <div className="config-section-header-row">
           <div>
-            <h2 className="config-section-title">Facility Configuration</h2>
+            <h2 className="config-section-title">{t('facilityDictionaryPage.title')}</h2>
             <p className="config-section-description">
-              Manage facility definitions, roles, HL7 integration settings, and reporting preferences.
+              {t('facilityDictionaryPage.description')}
             </p>
           </div>
           <button className="config-primary-button" onClick={handleAdd}>
-            + Add Facility
+            {t('facilityDictionaryPage.addButton')}
           </button>
         </div>
       </div>
@@ -158,10 +166,10 @@ export const FacilityDictionaryPage = () => {
 
       <ConfirmModal
         show={!!pendingDeactivation}
-        title="Facility still in use"
+        title={t('facilityDictionaryPage.stillInUseTitle')}
         message={pendingDeactivation?.message ?? ''}
-        confirmLabel="Deactivate Anyway"
-        cancelLabel="Cancel"
+        confirmLabel={t('departmentsSection.deactivation.confirmLabel')}
+        cancelLabel={t('common.cancel')}
         onConfirm={confirmDeactivation}
         onCancel={() => setPendingDeactivation(null)}
       />

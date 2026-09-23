@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Case } from '@/types/case/Case';
 import { isUrgent, isExhausted, isLost, isDamaged, isEntirelySubmitted, entirelySubmittedBlockRangeText } from '@/utils/blockExceptionStates';
 import { resolveBlockDisplayId, resolveSlideDisplayId } from '@/utils/materialDisplayId';
@@ -59,6 +60,7 @@ function toggleGroup(groupKeys: string[], selected: Set<string>, onSetSelected: 
 }
 
 const SelectAllPill: React.FC<{ allKeys: string[]; selected: Set<string>; onSetSelected: (next: Set<string>) => void }> = ({ allKeys, selected, onSetSelected }) => {
+  const { t } = useTranslation();
   const allSelected = allKeys.length > 0 && allKeys.every(k => selected.has(k));
   return (
     <button
@@ -66,7 +68,7 @@ const SelectAllPill: React.FC<{ allKeys: string[]; selected: Set<string>; onSetS
       disabled={allKeys.length === 0}
       onClick={() => onSetSelected(allSelected ? new Set() : new Set(allKeys))}
     >
-      {allSelected ? 'Clear' : 'Select All'}
+      {allSelected ? t('common.clear') : t('manageReprintsModal.selectAll')}
     </button>
   );
 };
@@ -123,6 +125,7 @@ const CheckCard: React.FC<{
   label, sublabel, checked, onToggle, urgent, truncateSublabel, stacked, recut, emptySlides, exhausted,
   lost, damaged, exceptionNote, exceptionReportedAt, entirelySubmitted, resolvedId,
 }) => {
+  const { t } = useTranslation();
   // Real feature, per direct follow-up covering the full exception-
   // states matrix. Lost genuinely blocks selection outright (the
   // physical cassette can't be found, so cutting is impossible) —
@@ -133,11 +136,16 @@ const CheckCard: React.FC<{
   // Lost, not the same treatment under a different name.
   const disabled = exhausted || lost;
   const reportedDate = exceptionReportedAt ? new Date(exceptionReportedAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : undefined;
+  // exceptionNote is real, tech-entered free-text data (kept untranslated,
+  // interpolated as-is); only the fixed sentence fragments around it (and
+  // the date, which is a formatted value, not text) are translated — the
+  // conditional " {{date}}"/" — {{note}}" inclusion logic itself stays in
+  // JS so an absent date/note produces no stray punctuation, same as before.
   const tooltip =
-    lost ? `Block reported lost${reportedDate ? ` ${reportedDate}` : ''}${exceptionNote ? ` — ${exceptionNote}` : ''}. Not available for selection until located.`
-    : damaged ? `Block damaged${reportedDate ? ` ${reportedDate}` : ''}${exceptionNote ? ` — ${exceptionNote}` : ''}. Re-embedding required before any recut.`
-    : exhausted ? 'Block exhausted during grossing/levels — no tissue remains to cut. Not available for new slide requests.'
-    : entirelySubmitted ? 'Specimen entirely submitted — all tissue used during grossing, nothing remains.'
+    lost ? `${t('manageReprintsModal.tooltip.lostBase')}${reportedDate ? ` ${reportedDate}` : ''}${exceptionNote ? ` — ${exceptionNote}` : ''}. ${t('manageReprintsModal.tooltip.lostSuffix')}`
+    : damaged ? `${t('manageReprintsModal.tooltip.damagedBase')}${reportedDate ? ` ${reportedDate}` : ''}${exceptionNote ? ` — ${exceptionNote}` : ''}. ${t('manageReprintsModal.tooltip.damagedSuffix')}`
+    : exhausted ? t('manageReprintsModal.tooltip.exhausted')
+    : entirelySubmitted ? t('manageReprintsModal.tooltip.entirelySubmitted')
     : undefined;
   return (
   <label
@@ -167,15 +175,15 @@ const CheckCard: React.FC<{
             pulled from storage." Real, existing StainOrderStatus =
             'Recut Requested' (Specimen.ts) — rolled up here, not a
             new status invented for this modal. */}
-        {recut && <span className="ps-reprint-card-recut-badge">🔄 Recut</span>}
-        {exhausted && <span className="ps-reprint-card-exhausted-badge">🚫 Exhausted</span>}
-        {entirelySubmitted && <span className="ps-reprint-card-exhausted-badge">🚫 Entirely Submitted</span>}
+        {recut && <span className="ps-reprint-card-recut-badge">🔄 {t('manageReprintsModal.badge.recut')}</span>}
+        {exhausted && <span className="ps-reprint-card-exhausted-badge">🚫 {t('manageReprintsModal.badge.exhausted')}</span>}
+        {entirelySubmitted && <span className="ps-reprint-card-exhausted-badge">🚫 {t('manageReprintsModal.badge.entirelySubmitted')}</span>}
         {/* Real feature, per direct follow-up: "Badge: [ ⚠️ LOST ]...
             (Amber / High-contrast warning fill)." */}
-        {lost && <span className="ps-reprint-card-lost-badge">⚠️ Lost</span>}
+        {lost && <span className="ps-reprint-card-lost-badge">⚠️ {t('manageReprintsModal.badge.lost')}</span>}
         {/* Real feature, per direct follow-up: "Badge: [ ⚡ DAMAGED ]
             ... (Red or Orange outline)." */}
-        {damaged && <span className="ps-reprint-card-damaged-badge">🛠️ Damaged</span>}
+        {damaged && <span className="ps-reprint-card-damaged-badge">🛠️ {t('manageReprintsModal.badge.damaged')}</span>}
       </span>
       {/* Real feature, per direct follow-up: "resolveBlockDisplayId()
           etc. are defined but never called anywhere in the real UI...
@@ -208,7 +216,7 @@ const CheckCard: React.FC<{
           data (exceptionNote/exceptionReportedAt), settable through
           the real Block/Cassette editor — not placeholder text. */}
       {(lost || damaged) && exceptionNote && (
-        <span className="ps-reprint-card-exception-note">{exceptionNote}{reportedDate ? ` · Reported ${reportedDate}` : ''}</span>
+        <span className="ps-reprint-card-exception-note">{exceptionNote}{reportedDate ? ` · ${t('manageReprintsModal.reportedOn', { date: reportedDate })}` : ''}</span>
       )}
     </div>
   </label>
@@ -218,6 +226,7 @@ const CheckCard: React.FC<{
 export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
   caseData, onClose, onReprintRequisition, onReprintContainer, onReprintCassette, onReprintSlide, batchPrintBlocked,
 }) => {
+  const { t } = useTranslation();
   const [selectedReq, setSelectedReq] = useState<Set<string>>(new Set());
   const [selectedSpecimens, setSelectedSpecimens] = useState<Set<string>>(new Set());
   const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
@@ -253,9 +262,14 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
     .map(sp => {
       const blockCount = sp.blocks?.length ?? 0;
       const consumed = isEntirelySubmitted(sp);
+      // Group headers are visually upper-cased (no CSS text-transform here —
+      // matches how Column's own title is upper-cased in JS below).
+      const label = consumed
+        ? t('manageReprintsModal.group.specimenConsumed', { label: sp.label, count: blockCount })
+        : t('manageReprintsModal.group.specimen', { label: sp.label });
       return {
         key: sp.label,
-        label: consumed ? `SPECIMEN ${sp.label} (CONSUMED — ${blockCount} BLOCK${blockCount === 1 ? '' : 'S'})` : `SPECIMEN ${sp.label}`,
+        label: label.toUpperCase(),
         rows: (sp.blocks ?? []).map(block => ({ specimen: sp, block })),
       };
     });
@@ -282,7 +296,11 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
       // they can never enter selectedBlocks in the first place — but
       // the label logic is kept complete and correct regardless, not
       // dependent on that other, separate mechanism holding forever.
-      const label = isLost(block) ? `BLOCK ${key} (LOST)` : isDamaged(block) ? `BLOCK ${key} (DAMAGED — AWAITING RE-EMBED)` : `BLOCK ${key}`;
+      const label = (
+        isLost(block) ? t('manageReprintsModal.group.blockLost', { key })
+        : isDamaged(block) ? t('manageReprintsModal.group.blockDamaged', { key })
+        : t('manageReprintsModal.group.block', { key })
+      ).toUpperCase();
       return {
         key, label, specimen, block,
         rows: (block.stains ?? []).map((stain, idx) => ({ specimen, block, stain, level: `L${idx + 1}` })),
@@ -345,7 +363,7 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
       <div className="ps-modal-dark ps-reprint-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-reprint-header">
           <div>
-            <div className="ps-reprint-header-title">🖨️ Manage Reprints</div>
+            <div className="ps-reprint-header-title">🖨️ {t('manageReprintsModal.title')}</div>
             <div className="ps-reprint-header-subtitle" data-phi="accession">{caseData.accession.fullAccession}</div>
           </div>
           <button onClick={onClose} className="ps-reprint-close-btn">✕</button>
@@ -353,9 +371,9 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
 
         <div className="ps-reprint-columns">
           {/* Column 1 — Requisition */}
-          <Column n={1} title="Requisition" count={1} widthClass="ps-reprint-column--req" bordered>
+          <Column n={1} title={t('manageReprintsModal.column.requisition')} count={1} widthClass="ps-reprint-column--req" bordered>
             <CheckCard
-              label={caseData.accession.fullAccession} sublabel="Full-page requisition label"
+              label={caseData.accession.fullAccession} sublabel={t('manageReprintsModal.requisitionSublabel')}
               checked={selectedReq.has(REQ_KEY)} onToggle={() => setSelectedReq(prev => toggle(prev, REQ_KEY))}
               stacked truncateSublabel
             />
@@ -363,10 +381,10 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
 
           {/* Column 2 — Specimen */}
           <Column
-            n={2} title="Specimen" count={specimens.length} widthClass="ps-reprint-column--specimen" bordered
+            n={2} title={t('manageReprintsModal.column.specimen')} count={specimens.length} widthClass="ps-reprint-column--specimen" bordered
             allKeys={specimens.map(sp => sp.label)} selected={selectedSpecimens} onSetSelected={setSelectedSpecimens}
           >
-            {specimens.length === 0 && <div className="ps-reprint-empty">No specimens yet.</div>}
+            {specimens.length === 0 && <div className="ps-reprint-empty">{t('manageReprintsModal.empty.noSpecimens')}</div>}
             {specimens.map(sp => {
               // Real feature, per direct follow-up: "Add a clear
               // badge like [ 🚫 Entirely Submitted ]... Replace or
@@ -385,8 +403,8 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
               const consumed = isEntirelySubmitted(sp);
               return (
                 <CheckCard
-                  key={sp.id} label={`Specimen ${sp.label}`}
-                  sublabel={consumed ? entirelySubmittedBlockRangeText(sp) : sp.description}
+                  key={sp.id} label={t('manageReprintsModal.specimenLabel', { label: sp.label })}
+                  sublabel={consumed ? entirelySubmittedBlockRangeText(sp, t) : sp.description}
                   checked={selectedSpecimens.has(sp.label)}
                   onToggle={() => setSelectedSpecimens(prev => toggle(prev, sp.label))}
                   entirelySubmitted={consumed}
@@ -398,12 +416,12 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
 
           {/* Column 3 — Block / Cassette, grouped by parent Specimen */}
           <Column
-            n={3} title="Block" count={visibleBlockRows.length} widthClass="ps-reprint-column--block" bordered
+            n={3} title={t('manageReprintsModal.column.block')} count={visibleBlockRows.length} widthClass="ps-reprint-column--block" bordered
             allKeys={visibleBlockRows.map(({ specimen, block }) => blockKey(specimen.label, block.label))}
             selected={selectedBlocks} onSetSelected={setSelectedBlocks}
           >
-            {selectedSpecimens.size === 0 && <div className="ps-reprint-empty">Check a specimen to see its blocks.</div>}
-            {selectedSpecimens.size > 0 && visibleBlockRows.length === 0 && <div className="ps-reprint-empty">No blocks on the checked specimen(s) yet.</div>}
+            {selectedSpecimens.size === 0 && <div className="ps-reprint-empty">{t('manageReprintsModal.empty.checkSpecimen')}</div>}
+            {selectedSpecimens.size > 0 && visibleBlockRows.length === 0 && <div className="ps-reprint-empty">{t('manageReprintsModal.empty.noBlocks')}</div>}
             {blockGroups.filter(g => g.rows.length > 0).map((group, i) => (
               <SectionedGroup
                 key={group.key} label={group.label} count={group.rows.length} first={i === 0}
@@ -415,7 +433,7 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
                   const slideCount = block.stains?.length ?? 0;
                   return (
                     <CheckCard
-                      key={key} label={key} sublabel={`${slideCount} slide${slideCount === 1 ? '' : 's'}`}
+                      key={key} label={key} sublabel={t('manageReprintsModal.slideCount', { count: slideCount })}
                       checked={selectedBlocks.has(key)}
                       onToggle={() => setSelectedBlocks(prev => toggle(prev, key))}
                       urgent={isUrgent(block, caseData)}
@@ -437,11 +455,11 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
 
           {/* Column 4 — Slide / Stain, grouped by parent Block */}
           <Column
-            n={4} title="Slides" count={visibleSlideRows.length} widthClass="ps-reprint-column--slides"
+            n={4} title={t('manageReprintsModal.column.slides')} count={visibleSlideRows.length} widthClass="ps-reprint-column--slides"
             allKeys={visibleSlideRows.map(({ specimen, block, level }) => slideKey(specimen.label, block.label, level))}
             selected={selectedSlides} onSetSelected={setSelectedSlides}
           >
-            {selectedBlocks.size === 0 && <div className="ps-reprint-empty">Check a block to see its slides.</div>}
+            {selectedBlocks.size === 0 && <div className="ps-reprint-empty">{t('manageReprintsModal.empty.checkBlock')}</div>}
             {/* Real feature, per direct follow-up: "Display a clear
                 empty-state card under the SPECIMEN A > BLOCK A3
                 boundary header: BLOCK A3 (0)... No slides generated
@@ -474,13 +492,13 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
                     current condition. */}
                 {isDamaged(group.block) && (
                   <div className="ps-reprint-damaged-banner">
-                    🛠️ {group.block.exceptionNote || 'Tissue structure damaged. Re-embedding required before recuts.'}
+                    🛠️ {group.block.exceptionNote || t('manageReprintsModal.damagedBannerFallback')}
                   </div>
                 )}
                 {group.rows.length === 0 ? (
                   <div className="ps-reprint-empty-block-card">
                     <span className="ps-reprint-card-empty-slide-icon" aria-hidden="true" />
-                    No slides generated for this block yet.
+                    {t('manageReprintsModal.empty.noSlidesForBlock')}
                   </div>
                 ) : group.rows.map(({ specimen, block, stain, level }) => {
                   const key = slideKey(specimen.label, block.label, level);
@@ -504,34 +522,34 @@ export const ManageReprintsModal: React.FC<ManageReprintsModalProps> = ({
         <div className="ps-reprint-footer">
           <div className="ps-reprint-footer-cell ps-reprint-footer-cell--req ps-reprint-footer-cell--bordered">
             <button onClick={printSelectedReq} disabled={selectedReq.size === 0} className="ps-reprint-print-btn">
-              🖨️ Print Req ({selectedReq.size})
+              🖨️ {t('manageReprintsModal.footer.printReq', { count: selectedReq.size })}
             </button>
           </div>
           <div className="ps-reprint-footer-cell ps-reprint-footer-cell--specimen ps-reprint-footer-cell--bordered">
             <button onClick={printSelectedSpecimens} disabled={selectedSpecimens.size === 0} className="ps-reprint-print-btn">
-              🖨️ Print Spec ({selectedSpecimens.size})
+              🖨️ {t('manageReprintsModal.footer.printSpec', { count: selectedSpecimens.size })}
             </button>
           </div>
           <div className="ps-reprint-footer-cell ps-reprint-footer-cell--block ps-reprint-footer-cell--bordered">
             <button
               onClick={printSelectedBlocks} disabled={selectedBlocks.size === 0 || batchPrintBlocked}
-              title={batchPrintBlocked ? 'Batch printing is disabled — this lab enforces on-demand cassette printing.' : undefined}
+              title={batchPrintBlocked ? t('manageReprintsModal.footer.batchDisabledCassette') : undefined}
               className="ps-reprint-print-btn"
             >
-              🖨️ Print Blk ({selectedBlocks.size})
+              🖨️ {t('manageReprintsModal.footer.printBlk', { count: selectedBlocks.size })}
             </button>
           </div>
           <div className="ps-reprint-footer-cell ps-reprint-footer-cell--slides">
             <button
               onClick={printSelectedSlides} disabled={selectedSlides.size === 0 || batchPrintBlocked}
-              title={batchPrintBlocked ? 'Batch printing is disabled — this lab enforces on-demand slide printing.' : undefined}
+              title={batchPrintBlocked ? t('manageReprintsModal.footer.batchDisabledSlide') : undefined}
               className="ps-reprint-print-btn"
             >
-              🖨️ Print Sld ({selectedSlides.size})
+              🖨️ {t('manageReprintsModal.footer.printSld', { count: selectedSlides.size })}
             </button>
           </div>
         </div>
-        {busy && <div className="ps-reprint-busy">Printing…</div>}
+        {busy && <div className="ps-reprint-busy">{t('manageReprintsModal.printing')}</div>}
       </div>
     </div>
   );

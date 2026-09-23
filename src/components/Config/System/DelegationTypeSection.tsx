@@ -19,6 +19,7 @@
  * real, chosen id is what persists.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockDelegationTypeService } from '../../../services/delegationTypes/mockDelegationTypeService';
 import type { DelegationType } from '../../../services/delegationTypes/IDelegationTypeService';
@@ -72,6 +73,7 @@ interface FormProps {
 }
 
 const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSave, onCancel }) => {
+  const { t } = useTranslation();
   const isNew = mode === 'add';
   const [form, setForm]         = useState<DelegationType>(initial ?? BLANK());
   const [idTouched, setIdTouched] = useState(mode === 'edit');
@@ -86,9 +88,9 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
 
   const validate = () => {
     const e: Partial<Record<keyof DelegationType, string>> = {};
-    if (!form.label.trim())       e.label       = 'Required';
-    if (!form.id.trim())          e.id          = 'Required';
-    if (!form.description.trim()) e.description = 'Required';
+    if (!form.label.trim())       e.label       = t('common.required');
+    if (!form.id.trim())          e.id          = t('common.required');
+    if (!form.description.trim()) e.description = t('common.required');
     // Real, per direct request: "Label and ID should be unique."
     // Include Performing Lab: both checks are scoped by
     // performingLabFacilityId as a compound key — per the same,
@@ -99,11 +101,15 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
     const excludeId = mode === 'edit' ? initial?.id : undefined;
     if (form.label.trim() && !e.label) {
       const labelCollision = findDuplicate(existingEntries, { performingLabFacilityId: form.performingLabFacilityId, label: form.label.trim() }, ['performingLabFacilityId', 'label'], excludeId);
-      if (labelCollision) e.label = `A delegation type labeled "${labelCollision.label}" already exists${form.performingLabFacilityId ? ' for this performing lab' : ''}.`;
+      if (labelCollision) e.label = form.performingLabFacilityId
+        ? t('delegationTypeSection.errors.labelExistsForLab', { label: labelCollision.label })
+        : t('delegationTypeSection.errors.labelExists', { label: labelCollision.label });
     }
     if (form.id.trim() && !e.id) {
       const idCollision = findDuplicate(existingEntries, { performingLabFacilityId: form.performingLabFacilityId, id: form.id.trim() }, ['performingLabFacilityId', 'id'], excludeId);
-      if (idCollision) e.id = `ID "${idCollision.id}" already exists${form.performingLabFacilityId ? ' for this performing lab' : ''}.`;
+      if (idCollision) e.id = form.performingLabFacilityId
+        ? t('delegationTypeSection.errors.idExistsForLab', { id: idCollision.id })
+        : t('delegationTypeSection.errors.idExists', { id: idCollision.id });
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -114,9 +120,13 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
       <div className="fm-modal fm-modal--config ps-del-modal" onClick={e => e.stopPropagation()}>
         <div className="fm-modal-header">
           <div>
-            <div className="fm-eyebrow">Configuration · Delegation Types</div>
+            <div className="fm-eyebrow">{t('delegationTypeSection.modal.eyebrow')}</div>
             <h2 className="fm-title ps-del-modal-title">
-              {mode === 'edit' ? `Edit — ${initial?.label}` : initial ? `Duplicate — ${initial.label}` : 'Add Delegation Type'}
+              {mode === 'edit'
+                ? t('delegationTypeSection.modal.editTitle', { label: initial?.label })
+                : initial
+                  ? t('delegationTypeSection.modal.duplicateTitle', { label: initial.label })
+                  : t('delegationTypeSection.modal.addTitle')}
             </h2>
           </div>
         </div>
@@ -126,23 +136,29 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
           {/* Label + ID row */}
           <div className="ps-del-form-row-2col">
             <div className="ps-sub-field">
-              <label className="ps-sub-label">Label <span className="ps-sub-label-req">*</span></label>
+              <label className="ps-sub-label">{t('delegationTypeSection.modal.labelField')} <span className="ps-sub-label-req">*</span></label>
               <input
                 className={errors.label ? 'ps-sub-input ps-sub-input--error' : 'ps-sub-input'}
                 value={form.label}
-                placeholder="e.g. Consult Request"
+                placeholder={t('delegationTypeSection.modal.labelPlaceholder')}
                 onChange={e => set('label', e.target.value)}
               />
               {errors.label && <span className="ps-sub-error">{errors.label}</span>}
             </div>
             <div className="ps-sub-field">
               <label className="ps-sub-label">
-                ID {isNew && <span className="ps-sub-label-opt">(auto-derived, editable)</span>}
+                {t('delegationTypeSection.modal.idField')} {isNew && <span className="ps-sub-label-opt">{t('delegationTypeSection.modal.idAutoHint')}</span>}
               </label>
               <input
                 className={`ps-sub-input ps-del-id-input${errors.id ? ' ps-sub-input--error' : ''}${!isNew ? ' ps-del-id-input--locked' : ''}`}
                 value={form.id}
                 disabled={!isNew}
+                // Real, illustrative ID-format example — shows the
+                // upper-case/underscore transform generateId() applies
+                // to a label, so left as a literal English example
+                // (an ID-format sample, not user-facing prose) rather
+                // than translated alongside the Label field's own
+                // "e.g. Consult Request" example.
                 placeholder="CONSULT_REQUEST"
                 onChange={e => { setIdTouched(true); set('id', e.target.value.toUpperCase()); }}
               />
@@ -152,12 +168,12 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
 
           {/* Description */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Description <span className="ps-sub-label-req">*</span></label>
+            <label className="ps-sub-label">{t('delegationTypeSection.modal.descriptionField')} <span className="ps-sub-label-req">*</span></label>
             <textarea
               className={`ps-sub-input ps-del-textarea${errors.description ? ' ps-sub-input--error' : ''}`}
               value={form.description}
               rows={2}
-              placeholder="Shown to staff during delegation…"
+              placeholder={t('delegationTypeSection.modal.descriptionPlaceholder')}
               onChange={e => set('description', e.target.value)}
             />
             {errors.description && <span className="ps-sub-error">{errors.description}</span>}
@@ -165,29 +181,29 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
 
           {/* CPT Hint */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">CPT Hint <span className="ps-sub-label-opt">(optional)</span></label>
+            <label className="ps-sub-label">{t('delegationTypeSection.modal.cptHintField')} <span className="ps-sub-label-opt">({t('common.optional')})</span></label>
             <input
               className="ps-sub-input"
               value={form.cptHint ?? ''}
-              placeholder="e.g. 88321–88325"
+              placeholder={t('delegationTypeSection.modal.cptHintPlaceholder')}
               onChange={e => set('cptHint', e.target.value || undefined)}
             />
           </div>
 
           {/* Performing Lab */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label" htmlFor="deltype-performing-lab">Performing Lab</label>
+            <label className="ps-sub-label" htmlFor="deltype-performing-lab">{t('delegationTypeSection.modal.performingLabField')}</label>
             <select id="deltype-performing-lab" className="ps-sub-input"
               value={form.performingLabFacilityId ?? ''}
               onChange={e => set('performingLabFacilityId', (e.target.value || undefined) as any)}>
-              <option value="">— All Labs (available to everyone) —</option>
+              <option value="">{t('delegationTypeSection.modal.allLabsOption')}</option>
               {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </div>
 
           {/* Colour */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Accent Colour</label>
+            <label className="ps-sub-label">{t('delegationTypeSection.modal.accentColourField')}</label>
             <div className="ps-type-color-row">
               {PRESET_COLORS.map(c => (
                 <button
@@ -203,19 +219,19 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
                 value={form.color}
                 onChange={e => set('color', e.target.value)}
                 className="ps-type-color-input"
-                title="Custom colour"
+                title={t('delegationTypeSection.modal.customColourTitle')}
               />
             </div>
           </div>
 
           {/* Toggles */}
           <div className="ps-sub-field">
-            <label className="ps-sub-label">Options</label>
+            <label className="ps-sub-label">{t('delegationTypeSection.modal.optionsField')}</label>
             <div className="ps-del-toggle-stack">
-              <Toggle checked={form.active}               onChange={v => set('active', v)}               label="Active" />
-              <Toggle checked={!!form.transfersOwnership} onChange={v => set('transfersOwnership', v)}   label="Transfers Ownership" />
-              <Toggle checked={!!form.requiresNote}       onChange={v => set('requiresNote', v)}         label="Requires Note" />
-              <Toggle checked={!!form.multiAssign}        onChange={v => set('multiAssign', v)}          label="Allows Multiple Recipients" />
+              <Toggle checked={form.active}               onChange={v => set('active', v)}               label={t('common.active')} />
+              <Toggle checked={!!form.transfersOwnership} onChange={v => set('transfersOwnership', v)}   label={t('delegationTypeSection.modal.toggles.transfersOwnership')} />
+              <Toggle checked={!!form.requiresNote}       onChange={v => set('requiresNote', v)}         label={t('delegationTypeSection.modal.toggles.requiresNote')} />
+              <Toggle checked={!!form.multiAssign}        onChange={v => set('multiAssign', v)}          label={t('delegationTypeSection.modal.toggles.multiAssign')} />
             </div>
           </div>
 
@@ -224,12 +240,12 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
         <div className="fm-footer">
           <span className="fm-footer-status" />
           <div className="ps-del-footer-actions">
-            <button onClick={onCancel} className="fm-btn-cancel">Cancel</button>
+            <button onClick={onCancel} className="fm-btn-cancel">{t('common.cancel')}</button>
             <button
               onClick={() => validate() && onSave({ ...form, cptHint: form.cptHint?.trim() || undefined })}
               className="fm-btn-apply"
             >
-              {mode === 'edit' ? 'Save Changes' : 'Add Type'}
+              {mode === 'edit' ? t('delegationTypeSection.modal.saveChangesButton') : t('delegationTypeSection.modal.addTypeButton')}
             </button>
           </div>
         </div>
@@ -242,6 +258,7 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
 // ── Main section ──────────────────────────────────────────────────────────────
 
 const DelegationTypeSection: React.FC = () => {
+  const { t } = useTranslation();
   const [types,         setTypes]         = useState<DelegationType[]>([]);
   const [labs,          setLabs]          = useState<Facility[]>([]);
   const [loading,       setLoading]       = useState(true);
@@ -261,7 +278,7 @@ const DelegationTypeSection: React.FC = () => {
     getActivePerformingLabs().then(setLabs);
   }, [load]);
 
-  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'All Labs';
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('delegationTypeSection.allLabsLabel');
 
   const handleToggle = async (dt: DelegationType) => {
     await mockDelegationTypeService.update(dt.id, { active: !dt.active });
@@ -292,13 +309,13 @@ const DelegationTypeSection: React.FC = () => {
     setModal({ mode: 'add', entry: { ...cloned, id: generateId(cloned.label), isSystem: false } });
   };
 
-  const filtered = types.filter(t => {
+  const filtered = types.filter(dt => {
     const matchLab = labFilter === 'All'
-      || (labFilter === 'Global' ? !t.performingLabFacilityId : t.performingLabFacilityId === labFilter);
+      || (labFilter === 'Global' ? !dt.performingLabFacilityId : dt.performingLabFacilityId === labFilter);
     return matchLab;
   });
-  const systemTypes = filtered.filter(t =>  t.isSystem).sort((a, b) => a.sortOrder - b.sortOrder);
-  const customTypes = filtered.filter(t => !t.isSystem).sort((a, b) => a.sortOrder - b.sortOrder);
+  const systemTypes = filtered.filter(dt =>  dt.isSystem).sort((a, b) => a.sortOrder - b.sortOrder);
+  const customTypes = filtered.filter(dt => !dt.isSystem).sort((a, b) => a.sortOrder - b.sortOrder);
 
   const renderRow = (dt: DelegationType) => (
     <tr key={dt.id} className="ps-conf-tr">
@@ -308,38 +325,38 @@ const DelegationTypeSection: React.FC = () => {
       <td className="ps-conf-td">
         <div className="ps-conf-identity-name">
           {dt.label}
-          {dt.isSystem && <span className="ps-del-tag">🔒 system</span>}
+          {dt.isSystem && <span className="ps-del-tag">{t('delegationTypeSection.tags.system')}</span>}
         </div>
         <div className="ps-conf-identity-sub">{dt.description}</div>
       </td>
       <td className="ps-conf-td">
         <div className="ps-del-badge-row">
-          {dt.transfersOwnership && <span className="ps-del-tag ps-del-tag--warn">transfers ownership</span>}
-          {dt.requiresNote       && <span className="ps-del-tag">requires note</span>}
-          {dt.multiAssign        && <span className="ps-del-tag">multi-recipient</span>}
-          {dt.cptHint            && <span className="ps-del-tag">CPT {dt.cptHint}</span>}
+          {dt.transfersOwnership && <span className="ps-del-tag ps-del-tag--warn">{t('delegationTypeSection.tags.transfersOwnership')}</span>}
+          {dt.requiresNote       && <span className="ps-del-tag">{t('delegationTypeSection.tags.requiresNote')}</span>}
+          {dt.multiAssign        && <span className="ps-del-tag">{t('delegationTypeSection.tags.multiRecipient')}</span>}
+          {dt.cptHint            && <span className="ps-del-tag">{t('delegationTypeSection.tags.cptPrefix', { code: dt.cptHint })}</span>}
           {!dt.transfersOwnership && !dt.requiresNote && !dt.multiAssign && !dt.cptHint && '—'}
         </div>
       </td>
       <td className="ps-conf-td">{labName(dt.performingLabFacilityId)}</td>
       <td className="ps-conf-td">
-        <Toggle checked={dt.active} onChange={() => handleToggle(dt)} label={dt.active ? 'Active' : 'Inactive'} />
+        <Toggle checked={dt.active} onChange={() => handleToggle(dt)} label={dt.active ? t('common.active') : t('common.inactive')} />
       </td>
       <td className="ps-conf-td">
         <div className="ps-conf-row-actions">
           {!dt.isSystem && (
-            <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: dt })}>Edit</button>
+            <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: dt })}>{t('common.edit')}</button>
           )}
-          <button className="ps-conf-btn-row" onClick={() => handleClone(dt)}>Duplicate</button>
+          <button className="ps-conf-btn-row" onClick={() => handleClone(dt)}>{t('common.duplicate')}</button>
           {!dt.isSystem && (
             deleteConfirm === dt.id ? (
               <span className="ps-del-confirm-row">
-                <span className="ps-del-confirm-label">Delete?</span>
-                <button className="ps-sub-btn-inactivate" onClick={async () => { await mockDelegationTypeService.remove(dt.id); setDeleteConfirm(null); await load(); }}>Yes</button>
-                <button className="fm-btn-cancel" onClick={() => setDeleteConfirm(null)}>No</button>
+                <span className="ps-del-confirm-label">{t('delegationTypeSection.confirmDeleteLabel')}</span>
+                <button className="ps-sub-btn-inactivate" onClick={async () => { await mockDelegationTypeService.remove(dt.id); setDeleteConfirm(null); await load(); }}>{t('common.yes')}</button>
+                <button className="fm-btn-cancel" onClick={() => setDeleteConfirm(null)}>{t('common.no')}</button>
               </span>
             ) : (
-              <button className="ps-conf-btn-row ps-del-delete-btn" onClick={() => setDeleteConfirm(dt.id)}>Delete</button>
+              <button className="ps-conf-btn-row ps-del-delete-btn" onClick={() => setDeleteConfirm(dt.id)}>{t('common.delete')}</button>
             )
           )}
         </div>
@@ -352,18 +369,18 @@ const DelegationTypeSection: React.FC = () => {
 
       <div className="ps-del-header">
         <div>
-          <h2 className="ps-sub-title">Delegation Types</h2>
-          <p className="ps-sub-subtitle">System types can be enabled or disabled, and duplicated into a new custom type. Custom types are fully editable.</p>
+          <h2 className="ps-sub-title">{t('delegationTypeSection.title')}</h2>
+          <p className="ps-sub-subtitle">{t('delegationTypeSection.subtitle')}</p>
         </div>
         <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>
-          + Add Type
+          {t('delegationTypeSection.addTypeButton')}
         </button>
       </div>
 
       <div className="ps-conf-form-row">
         <select value={labFilter} onChange={e => setLabFilter(e.target.value)} className="ps-conf-select">
-          <option value="All">All Labs</option>
-          <option value="Global">Global only (no lab set)</option>
+          <option value="All">{t('delegationTypeSection.allLabsLabel')}</option>
+          <option value="Global">{t('delegationTypeSection.labFilter.globalOnly')}</option>
           {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -380,14 +397,21 @@ const DelegationTypeSection: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="ps-del-loading">Loading…</div>
+        <div className="ps-del-loading">{t('common.loading')}</div>
       ) : (
         <div className="ps-conf-table-wrap">
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
               <thead className="ps-conf-thead-sticky">
                 <tr>
-                  {['ID', 'Delegation Type', 'Options', 'Performing Lab', 'Status', 'Actions'].map(h => (
+                  {[
+                    t('delegationTypeSection.headers.id'),
+                    t('delegationTypeSection.headers.type'),
+                    t('delegationTypeSection.headers.options'),
+                    t('delegationTypeSection.headers.performingLab'),
+                    t('delegationTypeSection.headers.status'),
+                    t('delegationTypeSection.headers.actions'),
+                  ].map(h => (
                     <th key={h} className="ps-conf-th">{h}</th>
                   ))}
                 </tr>
@@ -395,7 +419,7 @@ const DelegationTypeSection: React.FC = () => {
               <tbody>
                 {systemTypes.map(renderRow)}
                 {customTypes.length === 0 && systemTypes.length === 0 ? (
-                  <tr><td className="ps-conf-td ps-del-empty-cell" colSpan={6}>No delegation types yet — create one with the Add Type button.</td></tr>
+                  <tr><td className="ps-conf-td ps-del-empty-cell" colSpan={6}>{t('delegationTypeSection.emptyState')}</td></tr>
                 ) : customTypes.map(renderRow)}
               </tbody>
             </table>

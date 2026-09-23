@@ -15,12 +15,18 @@ beforeEach(() => {
 });
 
 describe('mockQaActivityTypeService', () => {
-  it('seeds four real, distinct activity types by default', async () => {
+  it('seeds six real, distinct activity types by default', async () => {
     const res = await mockQaActivityTypeService.getAll();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.data.length).toBe(4);
-    expect(res.data.map(t => t.id)).toEqual(expect.arrayContaining(['qa-activity-frozen-final', 'qa-activity-cyto-histo', 'qa-activity-abnormal-finding-confirmation', 'qa-activity-gyn-cytology-secondary-screening']));
+    // Real, per PS-324: two new seed entries added this session
+    // (Surgical Post-Sign-Out Peer Review, Surgical Biopsy-to-Resection
+    // Correlation) — six is the current, real count, not four.
+    expect(res.data.length).toBe(6);
+    expect(res.data.map(t => t.id)).toEqual(expect.arrayContaining([
+      'qa-activity-frozen-final', 'qa-activity-cyto-histo', 'qa-activity-abnormal-finding-confirmation', 'qa-activity-gyn-cytology-secondary-screening',
+      'qa-activity-surgical-peer-review', 'qa-activity-surgical-biopsy-resection',
+    ]));
   });
 
   it('the seeded Frozen vs Final type has teachingOnboardingEnabled true and a real field schema', async () => {
@@ -55,7 +61,7 @@ describe('mockQaActivityTypeService', () => {
     expect(res.ok).toBe(true);
     const all = await mockQaActivityTypeService.getAll();
     if (!all.ok) return;
-    expect(all.data.length).toBe(5);
+    expect(all.data.length).toBe(7); // 6 real seeds (PS-324) + this one
   });
 
   it('deactivate/reactivate toggle the real active flag', async () => {

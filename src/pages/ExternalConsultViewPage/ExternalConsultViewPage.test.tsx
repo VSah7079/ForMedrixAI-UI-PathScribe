@@ -5,9 +5,15 @@
 // Real, closing a noted gap from the PS-290 build: only the service layer
 // underneath this page (mockConsultTokenService.test.ts) had test coverage
 // — the outside-consultant-facing page itself, the entire reason this
-// domain exists, had none. This page has no useTranslation() calls (its
-// own header notes it's the outside half, not yet i18n-converted), so
-// react-i18next isn't mocked here.
+// domain exists, had none.
+//
+// i18n/cleanup sweep, batch 164: the page gained useTranslation()/Trans
+// calls, so this file now follows the established codebase pattern
+// (first used in GrossingScreenPage.test.tsx) of mocking react-i18next's
+// useTranslation to return the raw key (with interpolation values
+// appended as `key:{"opt":"val"}`) rather than loading the real i18n
+// config, and mocking Trans to render its own i18nKey — assertions below
+// check for key presence, not translated text.
 //
 // react-router-dom's useParams is mocked directly rather than wrapping in
 // a MemoryRouter — this page only ever reads `token` off the URL, it
@@ -21,6 +27,11 @@ import type { ConsultToken } from '@/services/consultAccess/IConsultTokenService
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ token: 'ct_abc123' }),
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }));
 
 const { getCase } = vi.hoisted(() => ({ getCase: vi.fn() }));
@@ -77,7 +88,7 @@ describe('ExternalConsultViewPage — real render/behavior coverage', () => {
     resolve.mockResolvedValue({ ok: false, error: 'This link is invalid or no longer active.' });
     await renderPage();
 
-    expect(await screen.findByText('This link is invalid or no longer active')).not.toBeNull();
+    expect(await screen.findByText('externalConsultViewPage.invalidLink.title')).not.toBeNull();
     expect(getCase).not.toHaveBeenCalled();
     expect(recordAccess).not.toHaveBeenCalled();
   });
@@ -89,11 +100,11 @@ describe('ExternalConsultViewPage — real render/behavior coverage', () => {
 
     expect(await screen.findByText('S26-1234')).not.toBeNull();
     expect(screen.getByText(/Roe, Jane/)).not.toBeNull();
-    expect(screen.getByText(/DOB 1980-01-01/)).not.toBeNull();
-    expect(screen.getByText(/Full case access/)).not.toBeNull();
+    expect(screen.getByText(/externalConsultViewPage\.dobPrefix/)).not.toBeNull();
+    expect(screen.getByText(/externalConsultViewPage\.fullCaseAccess/)).not.toBeNull();
     expect(screen.getByText('A-1 · H&E')).not.toBeNull();
     expect(screen.getByText('A-1 · ER')).not.toBeNull();
-    expect(screen.getByText(/This is a demo\/pilot access link/)).not.toBeNull();
+    expect(screen.getByText('externalConsultViewPage.disclosureBanner')).not.toBeNull();
 
     expect(recordAccess).toHaveBeenCalledTimes(1);
     expect(recordAccess).toHaveBeenCalledWith('ctok-1');
@@ -104,7 +115,7 @@ describe('ExternalConsultViewPage — real render/behavior coverage', () => {
     getCase.mockResolvedValue(CASE);
     await renderPage();
 
-    expect(await screen.findByText(/Scoped access — 1 slide\(s\)/)).not.toBeNull();
+    expect(await screen.findByText(/externalConsultViewPage\.scopedAccess/)).not.toBeNull();
     expect(screen.queryByText('A-1 · H&E')).toBeNull();
     expect(screen.getByText('A-1 · ER')).not.toBeNull();
   });
@@ -116,19 +127,19 @@ describe('ExternalConsultViewPage — real render/behavior coverage', () => {
     await renderPage();
     await screen.findByText('S26-1234');
 
-    fireEvent.click(screen.getByText('Submit Opinion'));
+    fireEvent.click(screen.getByText('externalConsultViewPage.submitOpinionButton'));
     await act(async () => {});
-    expect(screen.getByText('An opinion is required before submitting.')).not.toBeNull();
+    expect(screen.getByText('externalConsultViewPage.requiredOpinionError')).not.toBeNull();
     expect(submitOpinion).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByPlaceholderText('Enter your diagnostic impression / opinion…'), { target: { value: 'Concur with invasive ductal carcinoma.' } });
-    fireEvent.click(screen.getByText('Submit Opinion'));
+    fireEvent.change(screen.getByPlaceholderText('externalConsultViewPage.opinionPlaceholder'), { target: { value: 'Concur with invasive ductal carcinoma.' } });
+    fireEvent.click(screen.getByText('externalConsultViewPage.submitOpinionButton'));
     await act(async () => {});
 
     expect(submitOpinion).toHaveBeenCalledWith({
       tokenId: 'ctok-1', caseId: 'case-1', consultantIdentifier: 'Dr. Jane Reviewer',
       diagnosticCategory: undefined, signedStatus: 'Draft', opinionText: 'Concur with invasive ductal carcinoma.',
     });
-    expect(screen.getByText(/Your opinion has been recorded/)).not.toBeNull();
+    expect(screen.getByText('externalConsultViewPage.opinionSubmittedConfirmation')).not.toBeNull();
   });
 });

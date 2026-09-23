@@ -6,10 +6,27 @@
  *
  * TODO: Replace PROTOCOL_REGISTRY with a useProtocols() hook once the
  * data layer (API / context) is wired up.
+ *
+ * i18n (file-by-file sweep):
+ *   PROTOCOL_REGISTRY entries (name, category, type, owner, reviewNote, …)
+ *   are persisted mock data — the same posture as section.title/field.label
+ *   in other swept files — and stay untouched/English. `protocolGroup()`'s
+ *   return values ('Surgical Pathology', 'Non-GYN Cytology', …) are a
+ *   cross-file comparison key consumed by ActiveProtocolsSection.tsx (not
+ *   part of this batch) via strict string equality, so they're left as
+ *   English data identifiers here too, per the "internal schema/data-key
+ *   identifiers stay English" convention — that file's own rendering of
+ *   these values as tab labels will need a LABEL_KEY mapping of its own
+ *   when it's swept. Governing-body abbreviations (CAP/RCPath/ICCR/RCPA)
+ *   are fixed vocabulary, same posture as source badges elsewhere in this
+ *   sweep. LifecycleState is a real persisted enum, so its display label
+ *   goes through a LIFECYCLE_LABEL_KEY map instead of being translated
+ *   directly.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -210,7 +227,7 @@ export let PROTOCOL_REGISTRY: Protocol[] = [
     lastModified: '2026-07-25', owner: 'System',
   },
   {
-    id: 'autopsy_gross_examination', name: 'Autopsy Gross Examination \u2014 Whole Body / Multi-Cavity',
+    id: 'autopsy_gross_examination', name: 'Autopsy Gross Examination — Whole Body / Multi-Cavity',
     category: 'AUTOPSY', version: '0.4.0-draft', source: 'Custom', type: 'Base template',
     status: 'in_review', fields: 98, snomedPct: 0, icdPct: 0,
     lastModified: '2026-09-13', owner: 'System',
@@ -444,6 +461,17 @@ export const LIFECYCLE_STYLES: Record<LifecycleState, { bg: string; color: strin
   published:     { bg: 'rgba(8,145,178,0.15)',   color: '#38bdf8', border: 'rgba(8,145,178,0.3)'    },
 };
 
+// Translation keys for each persisted LifecycleState value — the value
+// itself stays the untranslated English enum used throughout the app;
+// only the label LifecycleBadge renders is translated.
+const LIFECYCLE_LABEL_KEY: Record<LifecycleState, string> = {
+  draft:         'protocolShared.lifecycle.draft',
+  in_review:     'protocolShared.lifecycle.inReview',
+  needs_changes: 'protocolShared.lifecycle.needsChanges',
+  approved:      'protocolShared.lifecycle.approved',
+  published:     'protocolShared.lifecycle.published',
+};
+
 export const SOURCE_STYLES: Record<string, { color: string; bg: string }> = {
   CAP:        { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
   RCPath:     { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
@@ -468,14 +496,14 @@ export const LIFECYCLE_ORDER: LifecycleState[] = ['draft', 'in_review', 'approve
 // ─── Shared micro-components ──────────────────────────────────────────────────
 
 export const LifecycleBadge: React.FC<{ state: LifecycleState }> = ({ state }) => {
+  const { t } = useTranslation();
   const s = LIFECYCLE_STYLES[state];
-  const label = state === 'needs_changes' ? 'Needs Changes' : state.replace('_', ' ');
+  const label = t(LIFECYCLE_LABEL_KEY[state]);
   return (
-    <span style={{
-      fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '99px',
-      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-      textTransform: 'capitalize', whiteSpace: 'nowrap',
-    }}>
+    <span
+      className="ps-pshare-lifecycle-badge"
+      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
+    >
       {label}
     </span>
   );
@@ -484,13 +512,13 @@ export const LifecycleBadge: React.FC<{ state: LifecycleState }> = ({ state }) =
 export const CoverageBar: React.FC<{ pct: number; label: string }> = ({ pct, label }) => {
   const color = pct >= 85 ? '#10B981' : pct >= 65 ? '#fbbf24' : '#f87171';
   return (
-    <div style={{ flex: 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-        <span style={{ fontSize: '10px', color: '#64748b' }}>{label}</span>
-        <span style={{ fontSize: '10px', fontWeight: 700, color }}>{pct}%</span>
+    <div className="ps-pshare-coverage">
+      <div className="ps-pshare-coverage-head">
+        <span className="ps-pshare-coverage-label">{label}</span>
+        <span className="ps-pshare-coverage-pct" style={{ color }}>{pct}%</span>
       </div>
-      <div style={{ height: '3px', background: '#334155', borderRadius: '2px', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '2px' }} />
+      <div className="ps-pshare-coverage-track">
+        <div className="ps-pshare-coverage-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
@@ -502,17 +530,27 @@ export const CoverageBar: React.FC<{ pct: number; label: string }> = ({ pct, lab
 
 type GoverningBody = 'CAP' | 'RCPath' | 'ICCR' | 'RCPA' | 'Other';
 
-const GOVERNING_BODIES: { id: GoverningBody; label: string; desc: string }[] = [
-  { id: 'CAP',    label: 'CAP',    desc: 'College of American Pathologists' },
-  { id: 'RCPath', label: 'RCPath', desc: 'Royal College of Pathologists (UK)' },
-  { id: 'ICCR',   label: 'ICCR',   desc: 'International Collaboration on Cancer Reporting' },
-  { id: 'RCPA',   label: 'RCPA',   desc: 'Royal College of Pathologists of Australasia' },
-  { id: 'Other',  label: 'Other',  desc: 'Custom or unlisted governing body' },
-];
+// Labels for the four real governing-body abbreviations are fixed
+// vocabulary (same posture as source badges elsewhere in this sweep) and
+// stay literal; only 'Other' is an ordinary UI word and the descriptions
+// are explanatory prose, so both go through t(). A hook (not a module
+// constant) because it needs useTranslation().
+const useGoverningBodies = (): { id: GoverningBody; label: string; desc: string }[] => {
+  const { t } = useTranslation();
+  return [
+    { id: 'CAP',    label: 'CAP',    desc: t('protocolShared.uploadModal.governingBody.capDesc') },
+    { id: 'RCPath', label: 'RCPath', desc: t('protocolShared.uploadModal.governingBody.rcpathDesc') },
+    { id: 'ICCR',   label: 'ICCR',   desc: t('protocolShared.uploadModal.governingBody.iccrDesc') },
+    { id: 'RCPA',   label: 'RCPA',   desc: t('protocolShared.uploadModal.governingBody.rcpaDesc') },
+    { id: 'Other',  label: t('protocolShared.uploadModal.governingBody.other'), desc: t('protocolShared.uploadModal.governingBody.otherDesc') },
+  ];
+};
 
 export const UploadProtocolModal: React.FC<{
   onClose: () => void;
 }> = ({ onClose }) => {
+  const { t } = useTranslation();
+  const GOVERNING_BODIES = useGoverningBodies();
   const [govBody,  setGovBody]  = React.useState<GoverningBody>('CAP');
   const [file,     setFile]     = React.useState<File | null>(null);
   const [dragging, setDragging] = React.useState(false);
@@ -526,33 +564,33 @@ export const UploadProtocolModal: React.FC<{
 
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 500, padding: 0 }} onClick={e => e.stopPropagation()}>
+      <div className="ps-modal-dark ps-pshare-modal" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div className="ps-pshare-modal-header">
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9' }}>Upload Protocol</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Manual upload — fallback if nightly sync misses an update</div>
+            <div className="ps-pshare-modal-title">{t('protocolShared.uploadModal.title')}</div>
+            <div className="ps-pshare-modal-subtitle">{t('protocolShared.uploadModal.subtitle')}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} className="ps-pshare-close-btn">✕</button>
         </div>
 
-        <div style={{ padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="ps-pshare-modal-body">
 
           {/* Governing body */}
           <div>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Governing Body</div>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <div className="ps-pshare-section-label">{t('protocolShared.uploadModal.governingBodyLabel')}</div>
+            <div className="ps-pshare-pill-row">
               {GOVERNING_BODIES.map(gb => (
                 <button
                   key={gb.id} onClick={() => setGovBody(gb.id)} title={gb.desc}
-                  style={{ padding: '5px 14px', borderRadius: '99px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace', transition: 'all 0.12s', background: govBody === gb.id ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)', color: govBody === gb.id ? '#0891B2' : '#64748b', border: `1px solid ${govBody === gb.id ? 'rgba(8,145,178,0.4)' : '#334155'}` }}
+                  className={`ps-pshare-pill${govBody === gb.id ? ' ps-pshare-pill--active' : ''}`}
                 >
                   {gb.label}
                 </button>
               ))}
             </div>
-            <div style={{ fontSize: '11px', color: '#475569', marginTop: '5px' }}>{GOVERNING_BODIES.find(g => g.id === govBody)?.desc}</div>
+            <div className="ps-pshare-pill-desc">{GOVERNING_BODIES.find(g => g.id === govBody)?.desc}</div>
           </div>
 
           {/* Drop zone */}
@@ -561,38 +599,38 @@ export const UploadProtocolModal: React.FC<{
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             onClick={() => document.getElementById('ps-upload-input')?.click()}
-            style={{ border: `2px dashed ${dragging ? '#0891B2' : file ? 'rgba(16,185,129,0.5)' : '#334155'}`, borderRadius: '10px', padding: '28px', textAlign: 'center', background: dragging ? 'rgba(8,145,178,0.05)' : file ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.02)', transition: 'all 0.15s', cursor: 'pointer' }}
+            className={`ps-pshare-dropzone${dragging ? ' ps-pshare-dropzone--dragging' : file ? ' ps-pshare-dropzone--filled' : ''}`}
           >
             <input id="ps-upload-input" type="file" accept=".json,.xml,.xlsx" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && setFile(e.target.files[0])} />
             {file ? (
               <>
-                <div style={{ fontSize: '22px', marginBottom: '6px' }}>✅</div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#10B981' }}>{file.name}</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>Click to change</div>
+                <div className="ps-pshare-dropzone-icon">✅</div>
+                <div className="ps-pshare-dropzone-filename">{file.name}</div>
+                <div className="ps-pshare-dropzone-hint">{t('protocolShared.uploadModal.clickToChange')}</div>
               </>
             ) : (
               <>
-                <div style={{ fontSize: '26px', marginBottom: '8px' }}>📤</div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8' }}>Drop {govBody} protocol file here</div>
-                <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px' }}>JSON, XML or XLSX · or click to browse</div>
+                <div className="ps-pshare-dropzone-icon ps-pshare-dropzone-icon--lg">📤</div>
+                <div className="ps-pshare-dropzone-text">{t('protocolShared.uploadModal.dropHereText', { govBody })}</div>
+                <div className="ps-pshare-dropzone-hint ps-pshare-dropzone-hint--dim">{t('protocolShared.uploadModal.formatsHint')}</div>
               </>
             )}
           </div>
 
           {/* Warning */}
-          <div style={{ padding: '10px 13px', borderRadius: '7px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '11px', color: '#94a3b8', lineHeight: 1.6 }}>
-            <span style={{ color: '#fbbf24', fontWeight: 600 }}>ℹ️ Review required — </span>
-            uploaded protocols go to the Review Queue and must pass verification before being published.
+          <div className="ps-pshare-warning">
+            <span className="ps-pshare-warning-prefix">ℹ️ {t('protocolShared.uploadModal.warningPrefix')} </span>
+            {t('protocolShared.uploadModal.warningBody')}
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={onClose} className="ps-conf-btn-secondary">Cancel</button>
+          <div className="ps-pshare-actions">
+            <button onClick={onClose} className="ps-conf-btn-secondary">{t('common.cancel')}</button>
             <button
               disabled={!file} onClick={onClose}
               className="ps-conf-btn-teal-accent"
             >
-              Upload to Review Queue →
+              {t('protocolShared.uploadModal.uploadButton')}
             </button>
           </div>
         </div>
@@ -610,6 +648,7 @@ export const BuildCustomiseModal: React.FC<{
   onBuildBlank:        () => void;
   onBuildFromTemplate: (templateId: string) => void;
 }> = ({ onClose, onBuildBlank, onBuildFromTemplate }) => {
+  const { t } = useTranslation();
   const [selectedTpl, setSelectedTpl] = React.useState<string | null>(null);
   const [search,      setSearch]      = React.useState('');
   const publishedTemplates = PROTOCOL_REGISTRY.filter(p => p.status === 'published');
@@ -623,64 +662,60 @@ export const BuildCustomiseModal: React.FC<{
 
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 500, padding: 0 }} onClick={e => e.stopPropagation()}>
+      <div className="ps-modal-dark ps-pshare-modal" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div className="ps-pshare-modal-header">
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9' }}>Build / Customise</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Start blank or base it on an existing template</div>
+            <div className="ps-pshare-modal-title">{t('protocolShared.buildModal.title')}</div>
+            <div className="ps-pshare-modal-subtitle">{t('protocolShared.buildModal.subtitle')}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} className="ps-pshare-close-btn">✕</button>
         </div>
 
-        <div style={{ padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="ps-pshare-modal-body ps-pshare-modal-body--tight">
 
           {/* Blank */}
           <div
             onClick={onBuildBlank}
-            style={{ display: 'flex', gap: '14px', alignItems: 'center', padding: '16px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid #334155', cursor: 'pointer', transition: 'border-color 0.15s' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#a78bfa')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#334155')}
+            className="ps-pshare-scratch-card"
           >
-            <div style={{ width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0, background: 'rgba(167,139,250,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🧩</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9' }}>Start from Scratch</div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>Blank template — define your own sections, fields, and coding</div>
+            <div className="ps-pshare-scratch-icon">🧩</div>
+            <div className="ps-pshare-scratch-text">
+              <div className="ps-pshare-scratch-title">{t('protocolShared.buildModal.scratchTitle')}</div>
+              <div className="ps-pshare-scratch-desc">{t('protocolShared.buildModal.scratchDesc')}</div>
             </div>
-            <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+            <span className="ps-pshare-scratch-chevron">›</span>
           </div>
 
           {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ flex: 1, height: '1px', background: '#334155' }} />
-            <span style={{ fontSize: '11px', color: '#475569' }}>or base it on</span>
-            <div style={{ flex: 1, height: '1px', background: '#334155' }} />
+          <div className="ps-pshare-divider-row">
+            <div className="ps-pshare-divider-line" />
+            <span className="ps-pshare-divider-text">{t('protocolShared.buildModal.orBaseOnDivider')}</span>
+            <div className="ps-pshare-divider-line" />
           </div>
 
           {/* Template picker */}
           <div>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Existing Template</div>
+            <div className="ps-pshare-section-label">{t('protocolShared.buildModal.existingTemplateLabel')}</div>
 
             {/* Search */}
-            <div style={{ position: 'relative', marginBottom: '8px' }}>
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#475569', pointerEvents: 'none' }}>🔍</span>
+            <div className="ps-pshare-search-wrap">
+              <span className="ps-pshare-search-icon">🔍</span>
               <input
                 type="text"
-                placeholder="Search by name, source, or category…"
+                placeholder={t('protocolShared.buildModal.searchPlaceholder')}
                 value={search}
                 onChange={e => { setSearch(e.target.value); setSelectedTpl(null); }}
-                style={{ width: '100%', padding: '8px 10px 8px 30px', borderRadius: '7px', border: '1px solid #334155', background: 'rgba(255,255,255,0.04)', color: '#f1f5f9', fontSize: '12px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-                onFocus={e => e.currentTarget.style.borderColor = '#0891B2'}
-                onBlur={e => e.currentTarget.style.borderColor = '#334155'}
+                className="ps-pshare-search-input"
                 autoFocus={false}
               />
             </div>
 
-            <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div className="ps-pshare-template-list">
               {filtered.length === 0 && (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#475569', fontSize: '12px' }}>
-                  No templates match "{search}"
+                <div className="ps-pshare-empty">
+                  {t('protocolShared.buildModal.noMatches', { search })}
                 </div>
               )}
               {filtered.map(p => {
@@ -690,14 +725,14 @@ export const BuildCustomiseModal: React.FC<{
                   <div
                     key={p.id}
                     onClick={() => setSelectedTpl(selected ? null : p.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '8px', background: selected ? 'rgba(8,145,178,0.08)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selected ? 'rgba(8,145,178,0.35)' : '#334155'}`, cursor: 'pointer', transition: 'all 0.12s' }}
+                    className={`ps-pshare-template-row${selected ? ' ps-pshare-template-row--selected' : ''}`}
                   >
-                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: srcStyle.bg, color: srcStyle.color, fontFamily: 'monospace' }}>{p.source}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9' }} data-phi="name">{p.name}</div>
-                      <div style={{ fontSize: '11px', color: '#475569' }}>{p.version} · {p.fields} fields</div>
+                    <span className="ps-pshare-template-source" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+                    <div className="ps-pshare-template-info">
+                      <div className="ps-pshare-template-name" data-phi="name">{p.name}</div>
+                      <div className="ps-pshare-template-meta">{p.version} · {p.fields} fields</div>
                     </div>
-                    {selected && <span style={{ color: '#0891B2', fontSize: '16px' }}>✓</span>}
+                    {selected && <span className="ps-pshare-template-check">✓</span>}
                   </div>
                 );
               })}
@@ -705,14 +740,14 @@ export const BuildCustomiseModal: React.FC<{
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
-            <button onClick={onClose} className="ps-conf-btn-secondary">Cancel</button>
+          <div className="ps-pshare-actions ps-pshare-actions--spaced">
+            <button onClick={onClose} className="ps-conf-btn-secondary">{t('common.cancel')}</button>
             {selectedTpl && (
               <button
                 onClick={() => onBuildFromTemplate(selectedTpl)}
                 className="ps-conf-btn-teal-accent"
               >
-                Customise This Template →
+                {t('protocolShared.buildModal.customiseButton')}
               </button>
             )}
           </div>

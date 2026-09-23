@@ -1,5 +1,15 @@
 // src/components/TemplateBuilder/TemplatePalette.tsx
+//
+// i18n note: `PALETTE_ITEMS` (types/template.ts) is a shared,
+// multi-consumer array — its own `label`/`subtitle` also double as
+// the real default `label` a new `TemplateNode` is created with
+// (createDefaultNode, same file), i.e. real content the user places
+// into their own report design and can rename, not pure UI chrome —
+// left as literal English, out of scope for this single-file batch.
+// `CATEGORY_CONFIG` below, by contrast, is local to this file and
+// purely decorative palette-grouping chrome, so it's translated here.
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PALETTE_ITEMS, type PaletteItem } from '../../types/template';
 
 const PALETTE_DRAG_PREFIX = 'palette::';
@@ -14,11 +24,11 @@ const PALETTE_DRAG_PREFIX = 'palette::';
 
 const CATEGORY_ORDER = ['content', 'structure', 'conditional', 'layout'] as const;
 
-const CATEGORY_CONFIG: Record<string, { label: string; icon: string }> = {
-  content:     { label: 'Content Blocks', icon: '◧' },
-  structure:   { label: 'Structure',      icon: '⊟' },
-  conditional: { label: 'Conditional',    icon: '⋮' },
-  layout:      { label: 'Layout',         icon: '⊞' },
+const CATEGORY_CONFIG: Record<string, { labelKey: string; icon: string }> = {
+  content:     { labelKey: 'templatePalette.categories.content',     icon: '◧' },
+  structure:   { labelKey: 'templatePalette.categories.structure',   icon: '⊟' },
+  conditional: { labelKey: 'templatePalette.categories.conditional', icon: '⋮' },
+  layout:      { labelKey: 'templatePalette.categories.layout',      icon: '⊞' },
 };
 
 // ── Palette item ───────────────────────────────────────────────
@@ -66,6 +76,7 @@ const CategoryGroup: React.FC<{
   items: PaletteItem[];
   defaultOpen?: boolean;
 }> = ({ category, items, defaultOpen = true }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const cfg = CATEGORY_CONFIG[category];
 
@@ -77,7 +88,7 @@ const CategoryGroup: React.FC<{
         className={`ps-tpal-group-header${open ? ' ps-tpal-group-header--open' : ''}`}
       >
         <span className="ps-tpal-group-icon">{cfg.icon}</span>
-        <span className="ps-tpal-group-label">{cfg.label}</span>
+        <span className="ps-tpal-group-label">{t(cfg.labelKey)}</span>
         <span className="ps-tpal-group-count">{items.length}</span>
         <span className={`ps-tpal-group-chevron${open ? '' : ' ps-tpal-group-chevron--closed'}`}>▾</span>
       </button>
@@ -97,6 +108,7 @@ const CategoryGroup: React.FC<{
 // ── Main palette ───────────────────────────────────────────────
 
 export const TemplatePalette: React.FC = () => {
+  const { t } = useTranslation();
   const grouped = CATEGORY_ORDER.map(cat => ({
     category: cat,
     items: PALETTE_ITEMS.filter(p => p.category === cat),
@@ -106,8 +118,8 @@ export const TemplatePalette: React.FC = () => {
     <aside className="ps-tpal-root">
       {/* Header */}
       <div className="ps-tpal-header">
-        <div className="ps-tpal-header-title">Components</div>
-        <div className="ps-tpal-header-sub">Drag onto canvas</div>
+        <div className="ps-tpal-header-title">{t('templatePalette.headerTitle')}</div>
+        <div className="ps-tpal-header-sub">{t('templatePalette.headerSubtitle')}</div>
       </div>
 
       {/* Scrollable groups */}

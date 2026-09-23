@@ -101,7 +101,12 @@ describe('OrSuiteDashboardPage — real render smoke test', () => {
   it('an in-progress specimen shows its real workflow step and a disabled "In progress" button', async () => {
     await renderBoard(inProgressEntry());
     expect(screen.getByText('Jane Roe')).not.toBeNull();
-    expect(screen.getByText('Grossing')).not.toBeNull();
+    // Real i18n-sweep fix: resolveCurrentWorkflowStep() now returns a
+    // stable key ('grossing') instead of the display string ("Grossing")
+    // directly, translated via OrBoardRow.tsx's own WORKFLOW_STEP_LABEL_KEY
+    // map — this file's react-i18next mock returns the raw key, so the
+    // rendered text is the key, not the old English literal.
+    expect(screen.getByText('orSuiteDashboard.workflowStep.grossing')).not.toBeNull();
     const button = screen.getByText('orSuiteDashboard.inProgress').closest('button');
     expect(button?.hasAttribute('disabled')).toBe(true);
   });

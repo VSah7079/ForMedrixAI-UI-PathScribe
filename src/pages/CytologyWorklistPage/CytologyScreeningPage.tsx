@@ -78,7 +78,8 @@ import { mockUserService } from '@/services/users/mockUserService';
 // rather than a second, separate countersign mechanism.
 import { countersignService, qaSupervisionAssignmentService } from '@/services';
 import { resolveResidentCountersignRequired } from '@/services/cases/resolveResidentCountersignRequired';
-import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
+import { resolveCytologyIsPathologistTrack } from '@/services/cases/resolveCytologyIsPathologistTrack';
+import { FPPE_ACTIVITY_TYPE_ID, CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { sendEmail } from '@/services/communications/notificationService';
 import type { CaseParticipant } from '@/types/case/Case';
 import type { ProviderCredential } from '@/types/staff/ProviderCredential';
@@ -359,7 +360,6 @@ export default function CytologyScreeningPage() {
   // Workspace" breadcrumb navigation across Cytology sub-routes.
   const { pushCrumb } = useBreadcrumb();
   useEffect(() => { pushCrumb(t('cytologyWorklist.breadcrumbLabel'), '/cytology-worklist'); }, [pushCrumb, t]);
-  const isPathologist = user?.role === 'pathologist' || user?.role === 'pathologist-admin';
   // Real, per direct guidance's own confirmed decision: cytology
   // (especially Non-GYN — FNA, fluids) needs its own lightweight,
   // informal review request, genuinely distinct from the formal QC
@@ -473,6 +473,27 @@ export default function CytologyScreeningPage() {
   };
 
   const [caseData, setCaseData] = useState<Case | null>(null);
+
+  // Real, per direct follow-up ("It shouldn't be any different than
+  // [surgical] pathology or autopsy. Check the performing types on
+  // cases."): previously `user?.role === 'pathologist' ||
+  // 'pathologist-admin'` — this app's login-level User.role has no
+  // resident or cytotechnologist value at all, so that was true for
+  // EVERY real clinical login, always. Now derived from this reviewer's
+  // real, per-case participation type (resolveCytologyIsPathologistTrack.ts),
+  // matching how surgical pathology and autopsy already read
+  // Case.participants for their own equivalent decisions, instead of a
+  // blunt account-level flag. accountIsAdminTier covers the genuine
+  // admin/pathologist-admin/superadmin override (consistent with
+  // canFinalizeCase's own admin-override precedent) and is also the
+  // fallback used when this reviewer has no real participant record on
+  // the case yet (a case claimed before acceptPoolCase() was corrected
+  // to tag real roles) — every NEW claim always has one.
+  const accountIsAdminTier = user?.role === 'admin' || user?.role === 'pathologist-admin' || user?.role === 'superadmin';
+  const isPathologist = useMemo(
+    () => resolveCytologyIsPathologistTrack(caseData?.participants, user?.id, accountIsAdminTier),
+    [caseData?.participants, user?.id, accountIsAdminTier],
+  );
   // Real, per direct guidance's own confirmed 3-part sign-out gate
   // design — resolved once at the component level (a real facility
   // lookup and a real staff-record lookup, neither pure), then reused
@@ -1847,27 +1868,44 @@ export default function CytologyScreeningPage() {
     // follow-up: "the same countersign needs to work for Cytology as
     // well"). Must run before anything else below, including the
     // 5-year lookback/ROSE-discrepancy/peer-review side effects — if
-    // the current user is a resident (not also attending) or an FPPE
-    // provisional hire under active supervision, their "sign out"
-    // doesn't finalize anything; it releases the case for the
-    // attending/proctor to review and countersign. Everyone else
-    // (attending, or no resident participant) falls through to the
-    // existing logic completely unchanged.
+    // the current user is a resident (not also attending), an FPPE
+    // provisional hire under active supervision, or a Cytotechnologist
+    // under an active New Cytotechnologist Competency Assessment
+    // (real, per direct follow-up: "We also should account for
+    // Cytotecs trained and new staff while we are here" — the real
+    // CLIA '88 Subpart M gap this closes: a brand-new CT could
+    // otherwise independently sign NILM GYN cases under
+    // resolveCytologySignOutGate's own real credentialed-CT exception
+    // with zero supervision during their real, mandated first-year
+    // competency window), their "sign out" doesn't finalize anything;
+    // it releases the case for the attending/proctor/supervisor to
+    // review and countersign. Everyone else (attending, or no
+    // qualifying participation type) falls through to the existing
+    // logic completely unchanged.
     if (caseData?.id) {
       const provisionalParticipant = caseData?.participants?.some(
         (p: CaseParticipant) => p.status === 'active' && p.staffId === user.id && p.participationTypeIds?.includes('provisional_hire')
       );
+      const cytotechParticipant = caseData?.participants?.some(
+        (p: CaseParticipant) => p.status === 'active' && p.staffId === user.id && p.participationTypeIds?.includes('cytotechnologist')
+      );
       const isAttendingToo = caseData?.participants?.some(
         (p: CaseParticipant) => p.status === 'active' && p.staffId === user.id && p.participationTypeIds?.includes('attending')
       );
-      const activeFppeAssignment = provisionalParticipant && !isAttendingToo
-        ? await qaSupervisionAssignmentService.getActiveAssignmentForUser(FPPE_ACTIVITY_TYPE_ID, user.id, (caseData as any)?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
-        : null;
+      const [activeFppeAssignment, activeCytotechCompetencyAssignment] = await Promise.all([
+        provisionalParticipant && !isAttendingToo
+          ? qaSupervisionAssignmentService.getActiveAssignmentForUser(FPPE_ACTIVITY_TYPE_ID, user.id, (caseData as any)?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
+          : Promise.resolve(null),
+        cytotechParticipant && !isAttendingToo
+          ? qaSupervisionAssignmentService.getActiveAssignmentForUser(CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID, user.id, (caseData as any)?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
       const countersignCheck = resolveResidentCountersignRequired({
         participants: caseData?.participants,
         signingUserId: user.id,
         hasActiveFppeAssignment: !!activeFppeAssignment,
+        hasActiveCytotechCompetencyAssignment: !!activeCytotechCompetencyAssignment,
       });
 
       if (countersignCheck.required) {
@@ -1904,7 +1942,7 @@ export default function CytologyScreeningPage() {
         const attendingParticipant = caseData?.participants?.find(
           (p: CaseParticipant) => p.status === 'active' && p.participationTypeIds?.includes('attending')
         );
-        const reviewerId = activeFppeAssignment?.supervisorUserId ?? attendingParticipant?.staffId;
+        const reviewerId = activeFppeAssignment?.supervisorUserId ?? activeCytotechCompetencyAssignment?.supervisorUserId ?? attendingParticipant?.staffId;
         if (reviewerId) {
           const attendingUserRes = await mockUserService.getById(reviewerId).catch(() => null);
           const attendingEmail = attendingUserRes?.ok ? attendingUserRes.data?.email : undefined;

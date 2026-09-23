@@ -14,9 +14,18 @@
 // selecting.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import ClinicalHistoryEntryPanel from './ClinicalHistoryEntryPanel';
+
+// File-by-file cleanup sweep: ClinicalHistoryEntryPanel.tsx's own strings
+// now go through useTranslation()/t() — same real mocking convention
+// already established in Home.test.tsx/OrSuiteDashboardPage.test.tsx/
+// GrossingScreenPage.test.tsx (return the raw key, so assertions target
+// the stable key rather than one locale's translated text).
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 afterEach(cleanup);
 
@@ -55,7 +64,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'Prior Abnormal Cytology' } });
     expect(await screen.findByText('Prior Abnormal Cytology')).toBeTruthy();
@@ -66,7 +75,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'HX_ABNL_CYTO_01' } });
     expect(await screen.findByText('Prior Abnormal Cytology')).toBeTruthy();
@@ -76,7 +85,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'Prior' } });
     expect(await screen.findByText('Prior Abnormal Cytology')).toBeTruthy();
@@ -85,14 +94,14 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     await waitFor(() => expect(screen.queryByText('Prior Abnormal Cytology')).toBeNull());
     // Real, direct verification: the Add button stays disabled — Escape
     // never silently commits whatever was highlighted.
-    expect((screen.getByText(/Add to Clinical History/) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText(/accessionPage\.clinicalHistory\.addToHistory/) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('real, per Acceptance Criteria 2: Enter commits the highlighted match and advances focus to the first real metadata field', async () => {
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'Prior Abnormal Cytology' } });
     await screen.findByText('Prior Abnormal Cytology');
@@ -117,7 +126,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     // Real, empty query — every real PRIOR_PATH entry shows, per this
     // component's own real default-shows-all-in-category behavior.
@@ -135,7 +144,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     render(<ClinicalHistoryEntryPanel specimenTypes={['Cytology']} targets={CASE_TARGET} onChangeTarget={() => {}} requestedCategory={{ category: 'PRIOR_PATH', nonce: 1 }} />);
     await waitFor(() => expect((screen.getByLabelText(/Category/i) as HTMLSelectElement).value).toBe('PRIOR_PATH'));
 
-    const search = screen.getByPlaceholderText('Type to search…');
+    const search = screen.getByPlaceholderText('accessionPage.clinicalHistory.typeToSearch');
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'Prior Abnormal Cytology' } });
     fireEvent.keyDown(search, { key: 'Enter' });
@@ -146,7 +155,7 @@ describe('ClinicalHistoryEntryPanel — real, per direct follow-up on Story 4 ke
     // highlighted before a real Add attempt has actually failed.
     expect(accessionField.className).not.toContain('ps-conf-input--error');
 
-    fireEvent.click(screen.getByText(/Add to Clinical History/));
+    fireEvent.click(screen.getByText(/accessionPage\.clinicalHistory\.addToHistory/));
     await waitFor(() => {
       expect(accessionField.className).toContain('ps-conf-input--error');
       expect(dateField.className).toContain('ps-conf-input--error');

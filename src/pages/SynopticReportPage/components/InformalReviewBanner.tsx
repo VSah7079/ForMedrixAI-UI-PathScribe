@@ -20,23 +20,30 @@
 // 'CASUAL_REVIEW' ("Informal Review") and 'SECOND_OPINION' (the more
 // formal path) — see services/delegationTypes/mockDelegationTypeService.ts.
 //
-// No dedicated banner CSS exists for this yet (checked directly against
-// pathscribe.css rather than assume) - uses inline styles for the
-// container to avoid introducing new global classes for one banner, and
-// the real, verified ps-btn-secondary class (single hyphen - not
+// Inline container style promoted to a new .ps-informal-review-banner
+// class as part of the i18n sweep's own CSS-cleanup pass; the real,
+// verified ps-btn-secondary class (single hyphen - not
 // ps-btn--secondary) for the button, matching this codebase's actual
-// button-class convention.
+// button-class convention, is unchanged.
+//
+// i18n note: `requestorName`/`pending.fromUserId` (a real person's
+// name/id, used only as a display fallback) and `pending.note` (a
+// pathologist's own free-text note) are real data, not UI chrome, so
+// they stay untranslated.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useCallback } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { getDelegations, completeDelegation, type DelegationRecord } from '@/services/cases/mockCaseService';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import { userService } from '@/services';
+import '@/pathscribe.css';
 
 interface InformalReviewBannerProps {
   caseId?: string;
 }
 
 export const InformalReviewBanner: React.FC<InformalReviewBannerProps> = ({ caseId }) => {
+  const { t } = useTranslation();
   const [pending, setPending]             = useState<DelegationRecord | null>(null);
   const [requestorName, setRequestorName] = useState<string>('');
   const [completing, setCompleting]       = useState(false);
@@ -73,18 +80,17 @@ export const InformalReviewBanner: React.FC<InformalReviewBannerProps> = ({ case
   };
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-      padding: '10px 14px', margin: '0 0 12px', borderRadius: '6px',
-      background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.25)',
-      color: '#e2e8f0', fontSize: '13px',
-    }}>
+    <div className="ps-informal-review-banner">
       <span>
-        📋 Informal review requested by <strong>{requestorName || pending.fromUserId}</strong>
+        📋 <Trans
+          i18nKey="informalReviewBanner.requestedBy"
+          values={{ name: requestorName || pending.fromUserId }}
+          components={{ strong: <strong /> }}
+        />
         {pending.note ? <>: <em>{pending.note}</em></> : null}
       </span>
       <button className="ps-btn-secondary" disabled={completing} onClick={handleComplete}>
-        {completing ? 'Marking complete…' : 'Mark Review Complete'}
+        {completing ? t('informalReviewBanner.markingComplete') : t('informalReviewBanner.markComplete')}
       </button>
     </div>
   );

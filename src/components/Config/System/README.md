@@ -17,7 +17,7 @@ group as `OrSuiteTerminalsSection.tsx`).
 gave interoperability config its own top-level Configuration tab.
 Per direct follow-up, that tab is gone — those two, plus
 `TerminologyServicesSection.tsx`, `CrosswalkSection.tsx`,
-`ClientDictionaryPage`, `FacilitySetupSection.tsx`,
+`FacilityDictionaryPage`, `FacilitySetupSection.tsx`,
 `CaseMaskConfigSection.tsx`, `CasePoolAssignmentSection.tsx`,
 `RoutingRulesSection.tsx`, `PhysiciansSection.tsx`, and
 `DeficienciesSection.tsx` are all back under this file's own
@@ -79,7 +79,7 @@ removed. Same real reasoning as LIS: `SystemConfig.identifierFormats`
 was globally scoped across every real organisation in the deployment,
 retired in favor of `Facility.identifierFormats` (Enterprise-default,
 real per-facility override). The real UI moved to
-`components/ClientDictionary/IdentifierFormatsTab.tsx`, a new tab in
+`components/FacilityDictionary/IdentifierFormatsTab.tsx`, a new tab in
 the Facility editor — see that folder's own README, and
 `services/facilities/README.md`'s `Facility.identifierFormats` doc
 comment, for the full account.
@@ -765,7 +765,10 @@ invented per screen.
   own labels/description text were regeneralized to name all three
   pages rather than dictation alone (action keys kept stable so
   already-saved bindings aren't broken; see
-  `types/footPedal/FootPedalConfig.ts`'s `FOOT_PEDAL_ACTION_LABELS`).
+  `types/footPedal/FootPedalConfig.ts`'s `FOOT_PEDAL_ACTION_LABEL_KEYS`).
+  **i18n sweep (batch 39):** this section's on-screen text now goes
+  through a new `footPedalSection` i18n namespace — see
+  `src/i18n/README.md`'s own batch-39 entry.
 
 ## Other new sections (Aug 2026)
 

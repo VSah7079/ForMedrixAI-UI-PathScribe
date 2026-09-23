@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { printerProfileService } from '../../../services';
 import type { PrinterProfile, PrinterVendor, PrinterBridgeType, Facility } from '../../../services';
@@ -16,24 +17,28 @@ import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
 type Draft = Omit<PrinterProfile, 'id' | 'createdAt' | 'updatedAt'>;
 
-const VENDOR_LABELS: Record<PrinterVendor, string> = {
-  ZEBRA_ZPL: 'Zebra (ZPL)',
-  CITIZEN: 'Citizen',
-  SATO: 'SATO',
-  LEICA_CEREBRO: 'Leica CEREBRO',
-  SAKURA_TISSUE_TEK: 'Sakura Tissue-Tek',
-  OTHER: 'Other',
+// Real, persisted enum values stay as data — only the display label
+// each one maps to gets translated, same `XXX_LABEL_KEY` split this
+// sweep already established elsewhere (e.g. QC_MODE_LABEL_KEY,
+// MODIFIER_LABEL_KEY).
+const VENDOR_LABEL_KEY: Record<PrinterVendor, string> = {
+  ZEBRA_ZPL: 'printerProfilesSection.vendorLabels.ZEBRA_ZPL',
+  CITIZEN: 'printerProfilesSection.vendorLabels.CITIZEN',
+  SATO: 'printerProfilesSection.vendorLabels.SATO',
+  LEICA_CEREBRO: 'printerProfilesSection.vendorLabels.LEICA_CEREBRO',
+  SAKURA_TISSUE_TEK: 'printerProfilesSection.vendorLabels.SAKURA_TISSUE_TEK',
+  OTHER: 'printerProfilesSection.vendorLabels.OTHER',
 };
 
 // Real, researched labels — see PrinterBridgeType's own doc comment
 // in IPrinterProfileService.ts for the full reasoning behind each.
-const BRIDGE_LABELS: Record<PrinterBridgeType, string> = {
-  qz_tray: 'QZ Tray (vendor-agnostic — real, working integration built)',
-  zebra_browser_print: 'Zebra Browser Print (Zebra-only, single vendor)',
-  bartender_rest: 'BarTender Automation (server-to-server, enterprise)',
-  direct_interface_engine: 'Direct via Interface Engine (no local bridge)',
-  pathscribe_agent: 'PathScribe Agent (fallback — not yet built)',
-  os_print_dialog: "OS Print Dialog (browser's own print queue)",
+const BRIDGE_LABEL_KEY: Record<PrinterBridgeType, string> = {
+  qz_tray: 'printerProfilesSection.bridgeLabels.qz_tray',
+  zebra_browser_print: 'printerProfilesSection.bridgeLabels.zebra_browser_print',
+  bartender_rest: 'printerProfilesSection.bridgeLabels.bartender_rest',
+  direct_interface_engine: 'printerProfilesSection.bridgeLabels.direct_interface_engine',
+  pathscribe_agent: 'printerProfilesSection.bridgeLabels.pathscribe_agent',
+  os_print_dialog: 'printerProfilesSection.bridgeLabels.os_print_dialog',
 };
 
 const emptyDraft = (defaultFacilityId?: string): Draft => ({
@@ -52,6 +57,7 @@ interface EditorModalProps {
 }
 
 const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFacilityId, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(entry ? {
     printerId: entry.printerId, model: entry.model, dpi: entry.dpi,
     supportsDataMatrix: entry.supportsDataMatrix, supportsGS1: entry.supportsGS1,
@@ -65,84 +71,84 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
 
   return (
     <div className="ps-ms-overlay">
-      <div className="ps-ms-modal" style={{ width: 560 }}>
+      <div className="ps-ms-modal ps-ms-modal--medium">
         <div className="ps-ms-header-row">
-          <div className="ps-ms-header">{mode === 'edit' ? `Edit — ${entry?.printerId}` : 'Add Printer Profile'}</div>
-          <button className="ps-ms-close-btn" onClick={onClose} title="Close">✕</button>
+          <div className="ps-ms-header">{mode === 'edit' ? t('printerProfilesSection.modal.editTitle', { printerId: entry?.printerId }) : t('printerProfilesSection.modal.addTitle')}</div>
+          <button className="ps-ms-close-btn" onClick={onClose} title={t('printerProfilesSection.modal.closeTitle')}>✕</button>
         </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Printer ID <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={draft.printerId} onChange={e => set('printerId', e.target.value)} placeholder="e.g. ZEBRA-192.168.12.85" />
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.printerIdField')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={draft.printerId} onChange={e => set('printerId', e.target.value)} placeholder={t('printerProfilesSection.modal.printerIdPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Model <span className="ps-conf-required">*</span></label>
-              <input className="ps-conf-input" value={draft.model} onChange={e => set('model', e.target.value)} placeholder="e.g. ZT411" />
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.modelField')} <span className="ps-conf-required">*</span></label>
+              <input className="ps-conf-input" value={draft.model} onChange={e => set('model', e.target.value)} placeholder={t('printerProfilesSection.modal.modelPlaceholder')} />
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Vendor</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.vendorField')}</label>
               <select className="ps-conf-select" value={draft.vendor} onChange={e => set('vendor', e.target.value as PrinterVendor)}>
-                {(Object.keys(VENDOR_LABELS) as PrinterVendor[]).map(v => <option key={v} value={v}>{VENDOR_LABELS[v]}</option>)}
+                {(Object.keys(VENDOR_LABEL_KEY) as PrinterVendor[]).map(v => <option key={v} value={v}>{t(VENDOR_LABEL_KEY[v])}</option>)}
               </select>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">ZPL Version</label>
-              <input className="ps-conf-input" value={draft.zplVersion} onChange={e => set('zplVersion', e.target.value)} placeholder="e.g. 7.0" />
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.zplVersionField')}</label>
+              <input className="ps-conf-input" value={draft.zplVersion} onChange={e => set('zplVersion', e.target.value)} placeholder={t('printerProfilesSection.modal.zplVersionPlaceholder')} />
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" title="How a browser actually reaches this printer at this site — a separate, real question from which hardware brand it is.">
-                Bridge Type
+              <label className="ps-conf-label" title={t('printerProfilesSection.modal.bridgeTypeHint')}>
+                {t('printerProfilesSection.modal.bridgeTypeField')}
               </label>
               <select className="ps-conf-select" value={draft.bridgeType} onChange={e => set('bridgeType', e.target.value as PrinterBridgeType)}>
-                {(Object.keys(BRIDGE_LABELS) as PrinterBridgeType[]).map(b => <option key={b} value={b}>{BRIDGE_LABELS[b]}</option>)}
+                {(Object.keys(BRIDGE_LABEL_KEY) as PrinterBridgeType[]).map(b => <option key={b} value={b}>{t(BRIDGE_LABEL_KEY[b])}</option>)}
               </select>
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" title="A real, shared network-pool printer reachable from more than one facility's own benches has no single owner — leave this on Global for that case.">
-                Facility
+              <label className="ps-conf-label" title={t('printerProfilesSection.modal.facilityHint')}>
+                {t('printerProfilesSection.modal.facilityField')}
               </label>
               <select className="ps-conf-select" value={draft.facilityId ?? ''} onChange={e => set('facilityId', e.target.value || undefined)}>
-                <option value="">— Global (shared across facilities) —</option>
+                <option value="">{t('printerProfilesSection.modal.globalFacilityOption')}</option>
                 {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">DPI</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.dpiField')}</label>
               <input className="ps-conf-input" type="number" value={draft.dpi} onChange={e => set('dpi', Number(e.target.value) || 0)} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Max Print Density</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.maxPrintDensityField')}</label>
               <input className="ps-conf-input" type="number" value={draft.maxPrintDensity} onChange={e => set('maxPrintDensity', Number(e.target.value) || 0)} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label" title="Real DataMatrix module size, in dots — directly affects real scannability at this printer's own DPI.">
-                DataMatrix Module Size
+              <label className="ps-conf-label" title={t('printerProfilesSection.modal.moduleSizeHint')}>
+                {t('printerProfilesSection.modal.moduleSizeField')}
               </label>
               <input className="ps-conf-input" type="number" value={draft.moduleSize} onChange={e => set('moduleSize', Number(e.target.value) || 0)} />
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">IP Address</label>
-              <input className="ps-conf-input" value={draft.ipAddress} onChange={e => set('ipAddress', e.target.value)} placeholder="e.g. 192.168.12.85" />
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.ipAddressField')}</label>
+              <input className="ps-conf-input" value={draft.ipAddress} onChange={e => set('ipAddress', e.target.value)} placeholder={t('printerProfilesSection.modal.ipAddressPlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Port</label>
-              <input className="ps-conf-input" type="number" value={draft.port ?? ''} onChange={e => set('port', e.target.value ? Number(e.target.value) : undefined)} placeholder="9100" />
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.portField')}</label>
+              <input className="ps-conf-input" type="number" value={draft.port ?? ''} onChange={e => set('port', e.target.value ? Number(e.target.value) : undefined)} placeholder={t('printerProfilesSection.modal.portPlaceholder')} />
             </div>
           </div>
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Supports DataMatrix</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.supportsDataMatrixField')}</label>
               <div className="ps-conf-toggle-row">
                 <div onClick={() => set('supportsDataMatrix', !draft.supportsDataMatrix)} className={`ps-conf-toggle-track ${draft.supportsDataMatrix ? 'ps-conf-toggle-track--active' : ''}`}>
                   <div className="ps-conf-toggle-thumb" />
@@ -150,7 +156,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
               </div>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Supports GS1</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.supportsGs1Field')}</label>
               <div className="ps-conf-toggle-row">
                 <div onClick={() => set('supportsGS1', !draft.supportsGS1)} className={`ps-conf-toggle-track ${draft.supportsGS1 ? 'ps-conf-toggle-track--active' : ''}`}>
                   <div className="ps-conf-toggle-thumb" />
@@ -158,7 +164,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
               </div>
             </div>
             <div className="ps-conf-form-field">
-              <label className="ps-conf-label">Active</label>
+              <label className="ps-conf-label">{t('printerProfilesSection.modal.activeField')}</label>
               <div className="ps-conf-toggle-row">
                 <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                   <div className="ps-conf-toggle-thumb" />
@@ -168,9 +174,9 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={() => onSave(draft)} disabled={!canSave}>
-            {mode === 'add' ? 'Add Profile' : 'Save Changes'}
+            {mode === 'add' ? t('printerProfilesSection.modal.addProfileButton') : t('printerProfilesSection.modal.saveChangesButton')}
           </button>
         </div>
       </div>
@@ -179,6 +185,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
 };
 
 const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ selectedFacilityId }) => {
+  const { t } = useTranslation();
   const [profiles, setProfiles] = useState<PrinterProfile[]>([]);
   const [labs, setLabs] = useState<Facility[]>([]);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: PrinterProfile } | null>(null);
@@ -198,7 +205,7 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
     ? profiles.filter(p => !p.facilityId || p.facilityId === selectedFacilityId)
     : profiles;
 
-  const facilityName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : 'Global';
+  const facilityName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('printerProfilesSection.globalFacilityLabel');
 
   const handleSave = (draft: Draft) => {
     const promise = modal?.mode === 'edit' && modal.entry
@@ -215,16 +222,13 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Printer Profiles</h3>
+          <h3 className="ps-conf-section-title">{t('printerProfilesSection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            Real printer capabilities (DPI, GS1/DataMatrix support, module size) — used to select the correct
-            label template and reject jobs a printer genuinely can't handle before they're sent. Per PS-51's own
-            spec: this registry is real and complete on the PathScribe side; actually detecting a connected
-            printer's own capabilities is the separate Local Bridge Agent's job, not this app's.
+            {t('printerProfilesSection.subtitle')}
           </p>
         </div>
         <div className="ps-specdict-header-actions">
-          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>+ Add Printer Profile</button>
+          <button className="ps-conf-btn-primary ps-conf-btn-primary--nowrap" onClick={() => setModal({ mode: 'add' })}>{t('printerProfilesSection.addProfileButton')}</button>
         </div>
       </div>
 
@@ -232,7 +236,19 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
         <div className="ps-conf-table-scroll">
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
-              <tr>{['Printer ID', 'Model', 'Vendor', 'Bridge', 'Facility', 'DPI', 'GS1 / DataMatrix', 'Status', 'Actions'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr>
+              <tr>
+                {([
+                  ['printerId', t('printerProfilesSection.headers.printerId')],
+                  ['model', t('printerProfilesSection.headers.model')],
+                  ['vendor', t('printerProfilesSection.headers.vendor')],
+                  ['bridge', t('printerProfilesSection.headers.bridge')],
+                  ['facility', t('printerProfilesSection.headers.facility')],
+                  ['dpi', t('printerProfilesSection.headers.dpi')],
+                  ['gs1DataMatrix', t('printerProfilesSection.headers.gs1DataMatrix')],
+                  ['status', t('printerProfilesSection.headers.status')],
+                  ['actions', t('printerProfilesSection.headers.actions')],
+                ] as const).map(([key, label]) => <th key={key} className="ps-conf-th">{label}</th>)}
+              </tr>
             </thead>
             <tbody>
               {filteredProfiles.map(p => (
@@ -242,24 +258,24 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
                     {p.ipAddress && <div className="ps-specreq-meta">{p.ipAddress}{p.port ? `:${p.port}` : ''}</div>}
                   </td>
                   <td className="ps-conf-td">{p.model}</td>
-                  <td className="ps-conf-td">{VENDOR_LABELS[p.vendor]}</td>
-                  <td className="ps-conf-td">{BRIDGE_LABELS[p.bridgeType]}</td>
+                  <td className="ps-conf-td">{t(VENDOR_LABEL_KEY[p.vendor])}</td>
+                  <td className="ps-conf-td">{t(BRIDGE_LABEL_KEY[p.bridgeType])}</td>
                   <td className="ps-conf-td">{facilityName(p.facilityId)}</td>
                   <td className="ps-conf-td">{p.dpi}</td>
-                  <td className="ps-conf-td">{p.supportsGS1 && p.supportsDataMatrix ? '✓ Both' : p.supportsDataMatrix ? 'DataMatrix only' : p.supportsGS1 ? 'GS1 only' : '—'}</td>
+                  <td className="ps-conf-td">{p.supportsGS1 && p.supportsDataMatrix ? t('printerProfilesSection.supportBoth') : p.supportsDataMatrix ? t('printerProfilesSection.supportDataMatrixOnly') : p.supportsGS1 ? t('printerProfilesSection.supportGs1Only') : t('printerProfilesSection.supportNone')}</td>
                   <td className="ps-conf-td">
                     <span className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${p.active ? 'ps-conf-status-dot--active' : ''}`} />
-                      <span className={`ps-conf-status-text ${p.active ? 'ps-conf-status-text--active' : ''}`}>{p.active ? 'Active' : 'Inactive'}</span>
+                      <span className={`ps-conf-status-text ${p.active ? 'ps-conf-status-text--active' : ''}`}>{p.active ? t('common.active') : t('common.inactive')}</span>
                     </span>
                   </td>
                   <td className="ps-conf-td">
-                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: p })}>Edit</button>
-                    <button className="ps-conf-btn-row" onClick={() => handleRemove(p.id)}>Remove</button>
+                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: p })}>{t('common.edit')}</button>
+                    <button className="ps-conf-btn-row" onClick={() => handleRemove(p.id)}>{t('common.remove')}</button>
                   </td>
                 </tr>
               ))}
-              {filteredProfiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={9}>No printer profiles {selectedFacilityId ? 'for this facility' : 'yet'}.</td></tr>}
+              {filteredProfiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={9}>{selectedFacilityId ? t('printerProfilesSection.emptyStateForFacility') : t('printerProfilesSection.emptyStateAll')}</td></tr>}
             </tbody>
           </table>
         </div>

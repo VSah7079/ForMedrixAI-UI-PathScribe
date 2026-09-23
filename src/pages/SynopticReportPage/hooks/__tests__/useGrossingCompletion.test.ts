@@ -20,6 +20,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+// Initializes the real i18next instance so t() resolves to actual English
+// text at test time — this hook's toast strings are now i18n-driven, and
+// several assertions below require exact-text equality, not just substring
+// containment.
+import '@/i18n/config';
 import { useGrossingCompletion } from '../useGrossingCompletion';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';

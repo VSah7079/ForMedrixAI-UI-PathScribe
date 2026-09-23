@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 // Shared by both Case and Specimen comment modals -- one remembered
@@ -42,6 +43,7 @@ const CommentModalShell: React.FC<{
   footerLeft?: React.ReactNode;
   editorMode?: boolean;
 }> = ({ title, subtitle, onClose, children, footerLeft, editorMode }) => {
+  const { t } = useTranslation();
   const [pos, setPos] = React.useState<Pos | null>(() => loadPos());
   const dragging   = React.useRef(false);
   const dragStart  = React.useRef({ mx: 0, my: 0, px: 0, py: 0 });
@@ -104,9 +106,26 @@ const CommentModalShell: React.FC<{
         </div>
 
         {/* Footer */}
+        {/* Real fix (PS-312 — "the Case and Specimen Comment 'Save'
+            button should not be active/clickable unless there's
+            actually something to save"): checked both real callers
+            (CaseCommentModal.tsx, ReportCommentModal.tsx) — this
+            button never actually saved anything. Every real comment
+            here is an append-only thread entry, already committed the
+            moment "Post Comment" is clicked (that button already has
+            its own, correct disabled-while-empty guard); this footer
+            button's own onClick has only ever been onClose. Labeling
+            a plain close action "Save" is what actually produced the
+            reported confusion — it implies a draft sitting in the
+            composer gets persisted by clicking it, when it would
+            really just be discarded, same as the header's own ✕. The
+            honest fix is the label, not a disabled state a close
+            action was never going to have: renamed to say what it
+            does, matching ✕ exactly, so there's no longer a "Save"
+            control here to wonder about enabling or disabling. */}
         <div className="ps-cmnt-footer">
           <div className="ps-cmnt-footer-note">{footerLeft}</div>
-          <button className="ps-cmnt-save-btn" onClick={onClose}>Save</button>
+          <button className="ps-cmnt-save-btn" onClick={onClose}>{t('commentModalShell.close')}</button>
         </div>
       </div>
     </div>

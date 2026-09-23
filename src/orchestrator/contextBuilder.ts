@@ -26,6 +26,13 @@ import { mockReportTemplateService } from '../services/reportTemplates/mockRepor
 import { getOrgDocumentStyleDefault, getOrgHeaderStyleDefault, getOrgFooterStyleDefault } from '../components/Config/System/documentStyleConfig';
 import { mockReportPartService } from '../services/reportParts/mockReportPartService';
 import { getTemplate } from '../services/templates/templateService';
+// Plain service module, not a hook/component — can't call useTranslation().
+// Imports the already-initialized i18next instance directly and calls its
+// t() method, same pattern as utils/labels/printLabels.ts and
+// services/auth/caseAccessControl.ts. These warnings are genuinely shown
+// on screen — useReportGeneration.ts's surfaceContextWarnings() joins and
+// displays ctx.warnings verbatim via showToast().
+import i18n from '@/i18n/config';
 
 // narrativeTemplateRegistry.ts is retired as of this change (see
 // NEXT_SESSION_BRIEF §1a). It is no longer imported anywhere in this file —
@@ -474,8 +481,10 @@ async function resolveAllSpecimenSynoptics(
       }];
     } catch (e) {
       warnings.push(
-        `Legacy synoptic template '${legacyTemplateId}' could not be resolved ` +
-        `(${(e as Error)?.message ?? 'unknown error'}) — no synoptic answers in context`
+        i18n.t('contextBuilder.warnings.legacySynopticTemplateFailed', {
+          templateId: legacyTemplateId,
+          error: (e as Error)?.message ?? i18n.t('contextBuilder.labels.unknownError'),
+        })
       );
       return [];
     }
@@ -494,9 +503,11 @@ async function resolveAllSpecimenSynoptics(
       };
     } catch (e) {
       warnings.push(
-        `Synoptic template '${report.templateId}' for specimen '${report.specimenId}' ` +
-        `could not be resolved (${(e as Error)?.message ?? 'unknown error'}) — ` +
-        `that specimen's synoptic answers are missing from context`
+        i18n.t('contextBuilder.warnings.specimenSynopticTemplateFailed', {
+          templateId: report.templateId,
+          specimenId: report.specimenId,
+          error: (e as Error)?.message ?? i18n.t('contextBuilder.labels.unknownError'),
+        })
       );
       return {
         specimenId:   report.specimenId,
@@ -533,7 +544,7 @@ export async function buildContext(
 
   // ── Patient ──────────────────────────────────────────────
   const patient = caseData.patient;
-  if (!patient) warnings.push('Patient data is missing');
+  if (!patient) warnings.push(i18n.t('contextBuilder.warnings.patientDataMissing'));
 
   const patientContext: PatientContext = {
     mrn:         safe(patient?.mrn),
@@ -546,7 +557,7 @@ export async function buildContext(
 
   // ── Accession ─────────────────────────────────────────────
   const acc = caseData.accession;
-  if (!acc?.accessionNumber) warnings.push('Accession number is missing');
+  if (!acc?.accessionNumber) warnings.push(i18n.t('contextBuilder.warnings.accessionNumberMissing'));
 
   const accessionContext: AccessionContext = {
     accessionNumber: safe(acc?.accessionNumber),
@@ -574,7 +585,7 @@ export async function buildContext(
     quantity:       safe((spec as any).quantity),
   }));
 
-  if (specimens.length === 0) warnings.push('No specimens found on case');
+  if (specimens.length === 0) warnings.push(i18n.t('contextBuilder.warnings.noSpecimensFound'));
 
   // ── Diagnostic ────────────────────────────────────────────
   const dx: DiagnosticMetadata = caseData.diagnostic ?? {};
@@ -644,7 +655,9 @@ export async function buildContext(
   } catch (e) {
     // Routing must never hard-fail report generation — degrade to
     // gold-standard and surface the problem as a warning instead.
-    warnings.push(`Template routing failed (${(e as Error)?.message ?? 'unknown error'}) — using gold-standard template`);
+    warnings.push(i18n.t('contextBuilder.warnings.templateRoutingFailed', {
+      error: (e as Error)?.message ?? i18n.t('contextBuilder.labels.unknownError'),
+    }));
     routingResult = {
       templateId: 'tmpl-gold-standard',
       ambiguous:  false,
@@ -655,15 +668,38 @@ export async function buildContext(
 
   if (routingResult.ambiguous) {
     warnings.push(
-      `Template routing matched multiple candidate templates (${routingResult.candidates.join(', ')}) — ` +
-      `using ${routingResult.templateId}. Multi-organ case may need the pathologist to confirm via Change ▾.`
+      i18n.t('contextBuilder.warnings.ambiguousRouting', {
+        candidates: routingResult.candidates.join(', '),
+        templateId: routingResult.templateId,
+      })
     );
   }
 
   const effectiveTemplateId = templateIdOverride ?? routingResult.templateId;
   if (templateIdOverride && templateIdOverride !== routingResult.templateId) {
+    // Real fix (PS-318 — "the Preliminary Diagnosis was expected to be
+    // present but isn't showing"): traced one real, silent way this
+    // happens — Pass -1 above (PS-292's "stay strict" preliminary-status
+    // gate) auto-routes any not-yet-final case straight to
+    // tmpl-prelim-surgpath, the ONLY template that carries a
+    // "Preliminary Diagnosis" section at all. An explicit pathologist
+    // override (Change ▾) bypasses that gate entirely — correct, since
+    // an override is a deliberate choice — but until now nothing said
+    // THIS specific, real consequence of it: the overridden template
+    // has no Preliminary Diagnosis section, full stop, even though the
+    // case is still genuinely not final. Calling that out specifically
+    // (not just "a different template was used") when it's actually
+    // true, rather than only the generic override notice below.
     warnings.push(
-      `Pathologist override: using template '${templateIdOverride}' instead of auto-resolved '${routingResult.templateId}'`
+      routingResult.templateId === 'tmpl-prelim-surgpath'
+        ? i18n.t('contextBuilder.warnings.overridePrelimConsequence', {
+            overrideId: templateIdOverride,
+            autoResolvedId: routingResult.templateId,
+          })
+        : i18n.t('contextBuilder.warnings.overrideGeneric', {
+            overrideId: templateIdOverride,
+            autoResolvedId: routingResult.templateId,
+          })
     );
   }
 
@@ -672,8 +708,10 @@ export async function buildContext(
     resolved = await resolveTemplateSections(effectiveTemplateId);
   } catch (e) {
     warnings.push(
-      `Template/Part resolution failed for '${effectiveTemplateId}' ` +
-      `(${(e as Error)?.message ?? 'unknown error'}) — falling back to gold-standard template`
+      i18n.t('contextBuilder.warnings.templatePartResolutionFailed', {
+        templateId: effectiveTemplateId,
+        error: (e as Error)?.message ?? i18n.t('contextBuilder.labels.unknownError'),
+      })
     );
     try {
       resolved = await resolveTemplateSections('tmpl-gold-standard');
@@ -683,7 +721,9 @@ export async function buildContext(
       // further fallback — surface an empty narrative rather than silently
       // reintroducing the retired registry.
       warnings.push(
-        `Gold-standard template also failed to resolve (${(e2 as Error)?.message ?? 'unknown error'}) — narrative will be empty`
+        i18n.t('contextBuilder.warnings.goldStandardResolutionFailed', {
+          error: (e2 as Error)?.message ?? i18n.t('contextBuilder.labels.unknownError'),
+        })
       );
       resolved = { template: null, sections: [], bodyAssembly: [], headerAssembly: [], footerAssembly: [] };
     }

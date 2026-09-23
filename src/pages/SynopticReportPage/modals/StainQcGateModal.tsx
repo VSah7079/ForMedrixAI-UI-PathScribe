@@ -20,7 +20,16 @@
 // workflow that deficiency is meant to go through.
 // ─────────────────────────────────────────────────────────────────────────────
 
+//
+// i18n note: `batchMasterBarcode`/`specimenLabel`/`blockLabel`/
+// `stainName` are real, per-specimen data, joined into the row title
+// as an interpolated parameter, never translated themselves.
+// `signingUserName` is a real person's name, same treatment. Reuses
+// FixativeTimeGateModal.tsx's exact-text Cancel/Continue/"Confirming…"
+// keys, since this modal mirrors that one's shape.
+
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockBatchService } from '@/services/batches/mockBatchService';
 import type { StainQcGateBlockingItem } from '../hooks/checkStainQcGate';
@@ -34,6 +43,7 @@ interface Props {
 }
 
 export const StainQcGateModal: React.FC<Props> = ({ blocking, signingUserId, signingUserName, onContinue, onCancel }) => {
+  const { t } = useTranslation();
   const [confirmedBatchIds, setConfirmedBatchIds] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -63,10 +73,10 @@ export const StainQcGateModal: React.FC<Props> = ({ blocking, signingUserId, sig
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal ps-ms-modal--wide">
-        <div className="ps-ms-header">⚠ Stain QC Gate — Sign-Out Blocked</div>
+        <div className="ps-ms-header">⚠ {t('stainQcGateModal.header')}</div>
         <div className="ps-ms-body ps-fixgate-body">
           <p className="ps-fixgate-intro">
-            The stain batch(es) below require resolution before this case can be signed out.
+            {t('stainQcGateModal.intro')}
           </p>
 
           {[...byBatch.entries()].map(([batchId, items]) => {
@@ -75,23 +85,26 @@ export const StainQcGateModal: React.FC<Props> = ({ blocking, signingUserId, sig
             return (
               <div key={batchId} className="ps-fixgate-row">
                 <div className="ps-fixgate-row-title">
-                  Batch {items[0].batchMasterBarcode} — {items.map(i => `${i.specimenLabel}${i.blockLabel} (${i.stainName})`).join(', ')}
+                  {t('stainQcGateModal.rowTitle', {
+                    batchBarcode: items[0].batchMasterBarcode,
+                    specimenList: items.map(i => `${i.specimenLabel}${i.blockLabel} (${i.stainName})`).join(', '),
+                  })}
                 </div>
 
                 {failed ? (
                   <div className="ps-fixgate-row-actions">
                     <span className="ps-fixgate-unrecoverable-badge">
-                      Real instrument failure reported — a deficiency has been raised. Resolve it via the QA Deficiencies tab before this case can sign out.
+                      {t('stainQcGateModal.failedBadge')}
                     </span>
                   </div>
                 ) : confirmed ? (
                   <div className="ps-fixgate-row-actions">
-                    <span className="ps-fixgate-unrecoverable-badge">Visual read confirmed by {signingUserName}.</span>
+                    <span className="ps-fixgate-unrecoverable-badge">{t('stainQcGateModal.confirmedBadge', { name: signingUserName })}</span>
                   </div>
                 ) : (
                   <div className="ps-fixgate-row-actions">
                     <button className="ps-btn-secondary ps-fixgate-unrecoverable-btn" disabled={confirming === batchId} onClick={() => handleConfirm(batchId)}>
-                      {confirming === batchId ? 'Confirming\u2026' : 'Confirm visual read checklist complete'}
+                      {confirming === batchId ? t('patientMatchReviewSection.confirmingBtn') : t('stainQcGateModal.confirmButton')}
                     </button>
                   </div>
                 )}
@@ -100,15 +113,15 @@ export const StainQcGateModal: React.FC<Props> = ({ blocking, signingUserId, sig
           })}
 
           {hasFailedBatch && (
-            <p className="ps-fixgate-intro" style={{ marginTop: 12 }}>
-              This case cannot be signed out until every real instrument-failure deficiency above is resolved.
+            <p className="ps-fixgate-intro ps-fixgate-intro--spaced">
+              {t('stainQcGateModal.failedBatchNotice')}
             </p>
           )}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onCancel}>Cancel — don't sign out</button>
+          <button className="ps-ms-btn-cancel" onClick={onCancel}>{t('preAnalyticDateGateModal.cancelButton')}</button>
           <button className="ps-ms-btn-apply" onClick={onContinue} disabled={!allResolvableConfirmed || hasFailedBatch}>
-            Continue Sign-Out
+            {t('preAnalyticDateGateModal.continueButton')}
           </button>
         </div>
       </div>

@@ -22,8 +22,15 @@
 // are pure Node-environment tests (utilities, calculations, services) with
 // no DOM dependency; switching the environment globally would be an
 // unnecessary, unverified risk to a suite that already works.
+//
+// Real update alongside this hook's own i18n sweep conversion: it now
+// calls useTranslation(), so the real i18next instance needs to be
+// initialized before render — same side-effect import main.tsx itself
+// uses (`import '@/i18n/config'`) — otherwise t() has nothing to
+// resolve keys against.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useLisIntegration } from '../useLisIntegration';

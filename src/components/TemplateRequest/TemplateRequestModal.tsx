@@ -2,7 +2,7 @@
  * components/TemplateRequest/TemplateRequestModal.tsx
  * ─────────────────────────────────────────────────────────────────────────────
  * Pathologist-facing form to request a new synoptic template.
- * 
+ *
  * - Submits via messageService.send() to the admin pool (u3 / System Admin)
  * - Embeds structured request metadata in the message body as JSON
  * - Base template selector pulls from published PROTOCOL_REGISTRY entries
@@ -15,6 +15,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { messageService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessaging } from '@/contexts/MessagingContext';
@@ -22,42 +24,66 @@ import { PROTOCOL_REGISTRY } from '@/components/Config/Protocols/protocolShared'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ORGANS = [
-  'Breast', 'Colorectal / Rectum', 'Lung', 'Prostate', 'Kidney',
-  'Bladder', 'Liver / Biliary', 'Pancreas', 'Skin / Melanoma',
-  'Thyroid', 'Head & Neck', 'Gynaecological', 'Haematopathology',
-  'Neuropathology', 'Soft Tissue / Bone', 'Other',
+// The real organ value stays untouched (embedded English in the message
+// subject/body/JSON metadata sent to the admin pool); labelKey is only
+// used to render the translated option text — same label-key-map pattern
+// used elsewhere in this sweep.
+const ORGANS: { value: string; labelKey: string }[] = [
+  { value: 'Breast',              labelKey: 'templateRequestModal.organs.breast' },
+  { value: 'Colorectal / Rectum', labelKey: 'templateRequestModal.organs.colorectalRectum' },
+  { value: 'Lung',                labelKey: 'templateRequestModal.organs.lung' },
+  { value: 'Prostate',            labelKey: 'templateRequestModal.organs.prostate' },
+  { value: 'Kidney',              labelKey: 'templateRequestModal.organs.kidney' },
+  { value: 'Bladder',             labelKey: 'templateRequestModal.organs.bladder' },
+  { value: 'Liver / Biliary',     labelKey: 'templateRequestModal.organs.liverBiliary' },
+  { value: 'Pancreas',            labelKey: 'templateRequestModal.organs.pancreas' },
+  { value: 'Skin / Melanoma',     labelKey: 'templateRequestModal.organs.skinMelanoma' },
+  { value: 'Thyroid',             labelKey: 'templateRequestModal.organs.thyroid' },
+  { value: 'Head & Neck',         labelKey: 'templateRequestModal.organs.headNeck' },
+  { value: 'Gynaecological',      labelKey: 'templateRequestModal.organs.gynaecological' },
+  { value: 'Haematopathology',    labelKey: 'templateRequestModal.organs.haematopathology' },
+  { value: 'Neuropathology',      labelKey: 'templateRequestModal.organs.neuropathology' },
+  { value: 'Soft Tissue / Bone',  labelKey: 'templateRequestModal.organs.softTissueBone' },
+  { value: 'Other',               labelKey: 'templateRequestModal.organs.other' },
 ];
 
+// CAP / RCPath / ICCR / RCPA are real standards-body acronyms and stay as
+// literal text in every locale; only the "Custom / Institution" entry
+// gets a translated display label (its underlying value stays English).
 const STANDARDS = ['CAP', 'RCPath', 'ICCR', 'RCPA', 'Custom / Institution'];
 
+// .label stays English — it's embedded directly into the persisted
+// message body sent to the admin pool. .labelKey/.descKey are for the
+// on-screen radio options only.
 const URGENCIES = [
-  { value: 'routine',  label: 'Routine',       desc: 'No immediate deadline' },
-  { value: 'moderate', label: 'Moderate',       desc: 'Needed within 4–6 weeks' },
-  { value: 'urgent',   label: 'Urgent',         desc: 'New service / accreditation deadline' },
+  { value: 'routine',  label: 'Routine',  labelKey: 'templateRequestModal.urgencies.routine.label',  descKey: 'templateRequestModal.urgencies.routine.desc'  },
+  { value: 'moderate', label: 'Moderate', labelKey: 'templateRequestModal.urgencies.moderate.label', descKey: 'templateRequestModal.urgencies.moderate.desc' },
+  { value: 'urgent',   label: 'Urgent',   labelKey: 'templateRequestModal.urgencies.urgent.label',   descKey: 'templateRequestModal.urgencies.urgent.desc'   },
 ];
 
 // Admin pool recipient — System Admin (u3)
 const ADMIN_RECIPIENT = { id: 'u3', name: 'System Admin' };
 
-// ─── Styling constants ────────────────────────────────────────────────────────
-
-const C = {
-  bg:      '#0f172a',
-  surface: '#1e293b',
-  border:  '#334155',
-  text:    '#f1f5f9',
-  muted:   '#94a3b8',
-  teal:    '#0891b2',
-  tealBg:  'rgba(8,145,178,0.08)',
-  tealBdr: 'rgba(8,145,178,0.25)',
-  amber:   '#f59e0b',
-  amberBg: 'rgba(245,158,11,0.08)',
-  amberBdr:'rgba(245,158,11,0.25)',
-  green:   '#22c55e',
-  greenBg: 'rgba(34,197,94,0.08)',
-  greenBdr:'rgba(34,197,94,0.25)',
-  input:   '#0f172a',
+// Locates one or more values inside an already-translated sentence and
+// wraps each in <strong>, correct regardless of a locale's word order.
+// Same helper as RequestReviewModal.tsx's own boldSubstrings().
+const boldSubstrings = (text: string, values: string[]): React.ReactNode => {
+  const positions = values
+    .filter(Boolean)
+    .map(v => ({ v, i: text.indexOf(v) }))
+    .filter(p => p.i !== -1)
+    .sort((a, b) => a.i - b.i);
+  if (positions.length === 0) return text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  positions.forEach(({ v, i }, idx) => {
+    if (i < cursor) return;
+    parts.push(text.slice(cursor, i));
+    parts.push(<strong key={idx} className="trm-strong">{v}</strong>);
+    cursor = i + v.length;
+  });
+  parts.push(text.slice(cursor));
+  return parts;
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -69,6 +95,7 @@ interface TemplateRequestModalProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onClose }) => {
+  const { t }            = useTranslation();
   const { user }         = useAuth();
   const { setMessages }  = useMessaging();
 
@@ -99,6 +126,12 @@ export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onCl
     p.source.toLowerCase().includes(baseSearch.toLowerCase())
   );
   const selectedBase = publishedTemplates.find(p => p.id === baseTemplate);
+
+  const standardLabel = (s: string) => s === 'Custom / Institution' ? t('templateRequestModal.standards.custom') : s;
+  const organLabel = (value: string) => {
+    const found = ORGANS.find(o => o.value === value);
+    return found ? t(found.labelKey) : value;
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -171,10 +204,10 @@ export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onCl
         setMessages(prev => [...prev, result.data]);
         setSubmitted(true);
       } else {
-        setError('Failed to send request. Please try again.');
+        setError(t('templateRequestModal.genericError'));
       }
     } catch {
-      setError('Failed to send request. Please try again.');
+      setError(t('templateRequestModal.genericError'));
     } finally {
       setSubmitting(false);
     }
@@ -182,260 +215,218 @@ export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onCl
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
-    border: `1px solid ${C.border}`, background: C.input, color: C.text,
-    outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase',
-    letterSpacing: '0.06em', display: 'block', marginBottom: 6,
-  };
-
   return (
-    <div className="ps-overlay" style={{ zIndex: 9000, padding: 24 }}>
-      <div style={{
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
-        width: '100%', maxWidth: 600, maxHeight: '90vh',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
-      }}>
+    <div className="ps-overlay trm-overlay">
+      <div className="trm-modal">
 
         {/* Header */}
-        <div style={{
-          padding: '20px 24px 16px', borderBottom: `1px solid ${C.border}`,
-          background: 'rgba(0,0,0,0.2)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="trm-header">
+          <div className="trm-header-row">
             <div>
-              <h2 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>
-                Request a Synoptic Template
+              <h2 className="trm-title">
+                {t('templateRequestModal.title')}
               </h2>
-              <p style={{ fontSize: 12, color: C.muted, margin: '4px 0 0' }}>
-                Your request will be sent to the template administration team for review and construction.
+              <p className="trm-subtitle">
+                {t('templateRequestModal.subtitle')}
               </p>
             </div>
-            <button onClick={onClose} style={{
-              background: 'transparent', border: 'none', color: C.muted,
-              fontSize: 20, cursor: 'pointer', padding: '4px 8px', lineHeight: 1,
-            }}>×</button>
+            <button onClick={onClose} className="trm-close-btn">×</button>
           </div>
         </div>
 
         {/* Submitted state */}
         {submitted ? (
-          <div style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
-              Request Submitted
+          <div className="trm-submitted">
+            <div className="trm-submitted-icon">✅</div>
+            <h3 className="trm-submitted-title">
+              {t('templateRequestModal.submittedTitle')}
             </h3>
-            <p style={{ fontSize: 13, color: C.muted, margin: '0 0 24px', lineHeight: 1.6 }}>
-              Your request for a <strong style={{ color: C.text }}>{standard} {organ} {procedure}</strong> template
-              has been sent to the template administration team. You'll receive a message when it's ready.
+            <p className="trm-submitted-text">
+              {boldSubstrings(
+                t('templateRequestModal.submittedMessage', { details: `${standardLabel(standard)} ${organLabel(organ)} ${procedure}` }),
+                [`${standardLabel(standard)} ${organLabel(organ)} ${procedure}`]
+              )}
             </p>
-            <div style={{
-              background: C.tealBg, border: `1px solid ${C.tealBdr}`,
-              borderRadius: 8, padding: '10px 16px', fontSize: 12, color: C.teal, marginBottom: 24,
-            }}>
-              💡 In the meantime, check the Synoptic Library — a similar published template may meet your needs.
+            <div className="trm-submitted-callout">
+              {'💡 '}{t('templateRequestModal.submittedTip')}
             </div>
-            <button onClick={onClose} style={{
-              padding: '9px 24px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', border: 'none', background: C.teal, color: '#fff',
-            }}>
-              Close
+            <button onClick={onClose} className="trm-submitted-close-btn">
+              {t('templateRequestModal.close')}
             </button>
           </div>
         ) : (
           <>
             {/* Body */}
-            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="trm-body">
 
               {/* Organ + Procedure row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="trm-row-2col">
                 <div>
-                  <label style={labelStyle}>Organ / Subspecialty *</label>
-                  <select value={organ} onChange={e => setOrgan(e.target.value)} style={inputStyle}>
-                    <option value="">Select organ…</option>
-                    {ORGANS.map(o => <option key={o} value={o}>{o}</option>)}
+                  <label className="trm-label">{t('templateRequestModal.organLabel')}</label>
+                  <select value={organ} onChange={e => setOrgan(e.target.value)} className="trm-input">
+                    <option value="">{t('templateRequestModal.selectOrganPlaceholder')}</option>
+                    {ORGANS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Standard *</label>
-                  <select value={standard} onChange={e => setStandard(e.target.value)} style={inputStyle}>
-                    {STANDARDS.map(s => <option key={s} value={s}>{s}</option>)}
+                  <label className="trm-label">{t('templateRequestModal.standardLabel')}</label>
+                  <select value={standard} onChange={e => setStandard(e.target.value)} className="trm-input">
+                    {STANDARDS.map(s => <option key={s} value={s}>{standardLabel(s)}</option>)}
                   </select>
                 </div>
               </div>
 
               {/* Procedure */}
               <div>
-                <label style={labelStyle}>Procedure / Specimen Type *</label>
+                <label className="trm-label">{t('templateRequestModal.procedureLabel')}</label>
                 <input
                   value={procedure}
                   onChange={e => setProcedure(e.target.value)}
-                  placeholder="e.g. Wide local excision, Radical cystectomy, TURBT"
-                  style={inputStyle}
+                  placeholder={t('templateRequestModal.procedurePlaceholder')}
+                  className="trm-input"
                 />
               </div>
 
               {/* Key fields */}
               <div>
-                <label style={labelStyle}>Key Fields Required *</label>
+                <label className="trm-label">{t('templateRequestModal.keyFieldsLabel')}</label>
                 <textarea
                   value={keyFields}
                   onChange={e => setKeyFields(e.target.value)}
-                  placeholder={`List the data elements you need, e.g.:\n- Breslow thickness\n- Clark level\n- Ulceration (present / absent)\n- Mitotic rate\n- Microsatellites`}
-                  style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }}
+                  placeholder={t('templateRequestModal.keyFieldsPlaceholder')}
+                  className="trm-input trm-textarea"
                 />
-                <p style={{ fontSize: 11, color: C.muted, margin: '4px 0 0' }}>
-                  Clinical terms are fine — the admin team will map these to the correct template fields.
+                <p className="trm-field-hint">
+                  {t('templateRequestModal.keyFieldsHint')}
                 </p>
               </div>
 
               {/* Base template selector */}
               <div ref={baseRef}>
-                <label style={labelStyle}>Base Template <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(optional — admin will start from this)</span></label>
-                <div style={{ position: 'relative' }}>
+                <label className="trm-label">
+                  {t('templateRequestModal.baseTemplateLabel')}{' '}
+                  <span className="trm-optional-label">{t('templateRequestModal.baseTemplateOptional')}</span>
+                </label>
+                <div className="trm-base-wrap">
                   <input
                     value={showBaseList ? baseSearch : (selectedBase?.name ?? '')}
                     onChange={e => { setBaseSearch(e.target.value); setShowBaseList(true); }}
                     onFocus={() => { setShowBaseList(true); setBaseSearch(''); }}
-                    placeholder="Search published templates…"
-                    style={{ ...inputStyle, paddingRight: baseTemplate ? 36 : 12 }}
+                    placeholder={t('templateRequestModal.baseSearchPlaceholder')}
+                    className="trm-input"
+                    style={{ paddingRight: baseTemplate ? 36 : 12 }}
                   />
                   {baseTemplate && (
                     <button
                       onClick={() => { setBaseTemplate(''); setBaseSearch(''); }}
-                      style={{
-                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                        background: 'transparent', border: 'none', color: C.muted,
-                        fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1,
-                      }}
+                      className="trm-base-clear-btn"
                     >×</button>
                   )}
                   {showBaseList && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-                      maxHeight: 200, overflowY: 'auto', marginTop: 4,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                    }}>
+                    <div className="trm-base-dropdown">
                       {filteredBase.length === 0 ? (
-                        <div style={{ padding: '12px 16px', fontSize: 13, color: C.muted }}>No templates found</div>
-                      ) : filteredBase.map(p => (
-                        <div
-                          key={p.id}
-                          onClick={() => { setBaseTemplate(p.id); setShowBaseList(false); setBaseSearch(''); }}
-                          style={{
-                            padding: '10px 16px', cursor: 'pointer', fontSize: 13,
-                            background: p.id === baseTemplate ? C.tealBg : 'transparent',
-                            color: C.text, borderBottom: `1px solid ${C.border}`,
-                            display: 'flex', alignItems: 'center', gap: 10,
-                          }}
-                          onMouseEnter={e => { if (p.id !== baseTemplate) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                          onMouseLeave={e => { if (p.id !== baseTemplate) e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600 }} data-phi="name">{p.name}</div>
-                            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                              {p.source} · {p.fields} fields · v{p.version}
+                        <div className="trm-base-empty">{t('templateRequestModal.noTemplatesFound')}</div>
+                      ) : filteredBase.map(p => {
+                        const active = p.id === baseTemplate;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => { setBaseTemplate(p.id); setShowBaseList(false); setBaseSearch(''); }}
+                            className={`trm-base-option${active ? ' trm-base-option--active' : ''}`}
+                            style={{ '--trm-option-bg': active ? 'rgba(8,145,178,0.08)' : 'transparent' } as React.CSSProperties}
+                          >
+                            <div className="trm-base-option-info">
+                              <div className="trm-base-option-name" data-phi="name">{p.name}</div>
+                              <div className="trm-base-option-meta">
+                                {p.source} · {p.fields} fields · v{p.version}
+                              </div>
                             </div>
+                            {active && <span className="trm-base-option-check">✓</span>}
                           </div>
-                          {p.id === baseTemplate && <span style={{ color: C.teal, fontWeight: 800 }}>✓</span>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
                 {selectedBase && (
-                  <div style={{
-                    marginTop: 8, padding: '8px 12px', borderRadius: 7,
-                    background: C.tealBg, border: `1px solid ${C.tealBdr}`,
-                    fontSize: 12, color: C.teal,
-                  }}>
-                    Admin will start from <strong>{selectedBase.name}</strong> ({selectedBase.fields} fields, {selectedBase.source} v{selectedBase.version})
+                  <div className="trm-base-selected-note">
+                    {t('templateRequestModal.baseSelectedNote', {
+                      name: selectedBase.name, fields: selectedBase.fields, source: selectedBase.source, version: selectedBase.version,
+                    })}
                   </div>
                 )}
               </div>
 
               {/* Urgency */}
               <div>
-                <label style={labelStyle}>Urgency</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {URGENCIES.map(u => (
-                    <label key={u.value} style={{
-                      flex: 1, padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-                      border: `1px solid ${urgency === u.value ? C.teal : C.border}`,
-                      background: urgency === u.value ? C.tealBg : 'transparent',
-                      display: 'flex', flexDirection: 'column', gap: 3,
-                    }}>
-                      <input type="radio" value={u.value} checked={urgency === u.value}
-                        onChange={() => setUrgency(u.value)} style={{ display: 'none' }} />
-                      <span style={{ fontSize: 13, fontWeight: 700, color: urgency === u.value ? C.teal : C.text }}>
-                        {u.label}
-                      </span>
-                      <span style={{ fontSize: 11, color: C.muted }}>{u.desc}</span>
-                    </label>
-                  ))}
+                <label className="trm-label">{t('templateRequestModal.urgencyLabel')}</label>
+                <div className="trm-urgency-row">
+                  {URGENCIES.map(u => {
+                    const active = urgency === u.value;
+                    return (
+                      <label
+                        key={u.value}
+                        className="trm-urgency-option"
+                        style={{
+                          '--trm-urgency-border': active ? '#0891b2' : '#334155',
+                          '--trm-urgency-bg':     active ? 'rgba(8,145,178,0.08)' : 'transparent',
+                          '--trm-urgency-color':  active ? '#0891b2' : '#f1f5f9',
+                        } as React.CSSProperties}
+                      >
+                        <input type="radio" value={u.value} checked={active}
+                          onChange={() => setUrgency(u.value)} className="trm-urgency-radio" />
+                        <span className="trm-urgency-option-label">
+                          {t(u.labelKey)}
+                        </span>
+                        <span className="trm-urgency-option-desc">{t(u.descKey)}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Reason */}
               <div>
-                <label style={labelStyle}>Reason / Additional Context <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(optional)</span></label>
+                <label className="trm-label">
+                  {t('templateRequestModal.reasonLabel')}{' '}
+                  <span className="trm-optional-label">{t('templateRequestModal.reasonOptional')}</span>
+                </label>
                 <input
                   value={reason}
                   onChange={e => setReason(e.target.value)}
-                  placeholder="e.g. New melanoma subspecialty clinic starting in March, ASHI inspection in 6 weeks"
-                  style={inputStyle}
+                  placeholder={t('templateRequestModal.reasonPlaceholder')}
+                  className="trm-input"
                 />
               </div>
 
               {/* Info callout */}
-              <div style={{
-                padding: '10px 14px', borderRadius: 8, fontSize: 12, color: C.muted,
-                background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`,
-                lineHeight: 1.6,
-              }}>
-                <strong style={{ color: C.text }}>What happens next:</strong> Your request is sent to the template administration team as an internal message. They will construct the template in the Synoptic Library, where it will go through the standard governance workflow (draft → review → approved → published). You will receive a notification when it is ready to use.
+              <div className="trm-callout">
+                <strong>{t('templateRequestModal.whatHappensNextLabel')}</strong> {t('templateRequestModal.whatHappensNextText')}
               </div>
 
               {error && (
-                <div style={{ fontSize: 12, color: '#ef4444', padding: '8px 12px', borderRadius: 8,
-                  background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <div className="trm-error">
                   {error}
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div style={{
-              padding: '14px 24px', borderTop: `1px solid ${C.border}`,
-              display: 'flex', justifyContent: 'flex-end', gap: 10,
-              background: 'rgba(0,0,0,0.15)',
-            }}>
-              <button onClick={onClose} style={{
-                padding: '9px 18px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-                border: `1px solid ${C.border}`, background: 'transparent', color: C.muted,
-                fontFamily: 'inherit',
-              }}>
-                Cancel
+            <div className="trm-footer">
+              <button onClick={onClose} className="trm-cancel-btn">
+                {t('templateRequestModal.cancel')}
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!isValid || submitting}
+                className="trm-submit-btn"
                 style={{
-                  padding: '9px 24px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                  cursor: isValid && !submitting ? 'pointer' : 'not-allowed',
-                  border: 'none', fontFamily: 'inherit',
-                  background: isValid && !submitting ? C.teal : 'rgba(8,145,178,0.2)',
-                  color: isValid && !submitting ? '#fff' : C.muted,
-                  transition: 'all 0.15s',
-                }}
+                  '--trm-submit-bg':     isValid && !submitting ? '#0891b2' : 'rgba(8,145,178,0.2)',
+                  '--trm-submit-color':  isValid && !submitting ? '#fff' : '#94a3b8',
+                  '--trm-submit-cursor': isValid && !submitting ? 'pointer' : 'not-allowed',
+                } as React.CSSProperties}
               >
-                {submitting ? 'Sending…' : 'Submit Request'}
+                {submitting ? t('templateRequestModal.sending') : t('templateRequestModal.submitRequest')}
               </button>
             </div>
           </>

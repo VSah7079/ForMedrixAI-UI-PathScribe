@@ -2,6 +2,8 @@
 // Word-style paginated preview. Auto-paginates from content height.
 // Page size is sticky across sessions via localStorage.
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { ReportTemplate as OldTemplate, TemplateNode } from '../../types/template';
 import type { StructuredContext } from '../../orchestrator/contextBuilder';
 
@@ -9,17 +11,33 @@ import type { StructuredContext } from '../../orchestrator/contextBuilder';
 const MM = 96 / 25.4;
 const mm = (v: number) => Math.round(v * MM);
 
-export interface PageSize { id: string; label: string; widthMm: number; heightMm: number; region: string; }
+// Paper size names (A4, US Letter, ...) are standardised international
+// nomenclature and stay literal in every locale; only the descriptive
+// "where it's used" region text is translated, via this id-keyed map.
+export interface PageSize { id: string; label: string; widthMm: number; heightMm: number; }
 const PAGE_SIZES: PageSize[] = [
-  { id: 'a4',     label: 'A4',        widthMm: 210, heightMm: 297, region: 'UK · EU · International' },
-  { id: 'letter', label: 'US Letter', widthMm: 216, heightMm: 279, region: 'United States · Canada' },
-  { id: 'legal',  label: 'US Legal',  widthMm: 216, heightMm: 356, region: 'United States · Legal' },
-  { id: 'a3',     label: 'A3',        widthMm: 297, heightMm: 420, region: 'Large format' },
-  { id: 'b5',     label: 'B5',        widthMm: 176, heightMm: 250, region: 'Japan · Smaller clinical' },
+  { id: 'a4',     label: 'A4',        widthMm: 210, heightMm: 297 },
+  { id: 'letter', label: 'US Letter', widthMm: 216, heightMm: 279 },
+  { id: 'legal',  label: 'US Legal',  widthMm: 216, heightMm: 356 },
+  { id: 'a3',     label: 'A3',        widthMm: 297, heightMm: 420 },
+  { id: 'b5',     label: 'B5',        widthMm: 176, heightMm: 250 },
 ];
+const PAGE_SIZE_REGION_KEY: Record<string, string> = {
+  a4: 'templatePreviewPanel.pageSize.region.a4',
+  letter: 'templatePreviewPanel.pageSize.region.letter',
+  legal: 'templatePreviewPanel.pageSize.region.legal',
+  a3: 'templatePreviewPanel.pageSize.region.a3',
+  b5: 'templatePreviewPanel.pageSize.region.b5',
+};
 
 export interface Margins { top: number; right: number; bottom: number; left: number; }
 const DEFAULT_MARGINS: Margins = { top: 25, right: 20, bottom: 25, left: 20 };
+const MARGIN_SIDE_LABEL_KEY: Record<keyof Margins, string> = {
+  top: 'templatePreviewPanel.margins.top',
+  right: 'templatePreviewPanel.margins.right',
+  bottom: 'templatePreviewPanel.margins.bottom',
+  left: 'templatePreviewPanel.margins.left',
+};
 
 // ── Mock context ───────────────────────────────────────────────
 // TODO: update field names when StructuredContext type stabilises.
@@ -105,12 +123,12 @@ function humanizeKey(key: string): string {
 // seeded template's assembly. Pulled out to its own function (called
 // before the main switch, not as a case inside it) so the switch
 // keeps real discriminated-union narrowing for every formal node type.
-function renderSynopticBlock(ctx: StructuredContext) {
+function renderSynopticBlock(ctx: StructuredContext, t: TFunction) {
   const primary = (ctx as any).primarySynoptic ?? (ctx as any).synopticReports?.[0] ?? null;
   const answers: Record<string, string> = primary?.answers ?? {};
   const entries = Object.entries(answers);
   if (entries.length === 0) {
-    return <div className="ps-tpp-no-content">No synoptic data recorded</div>;
+    return <div className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noSynopticData')}</div>;
   }
   return (
     <div className="ps-tpp-field-table">
@@ -188,6 +206,7 @@ const FieldTable: React.FC<{ nodes: TemplateNode[]; ctx: StructuredContext }> = 
 // ── Content node ───────────────────────────────────────────────
 const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNum?: number; totalPages?: number }> =
   ({ node, ctx, pageNum = 1, totalPages = 1 }) => {
+  const { t } = useTranslation();
   if (node.showWhen && !evalCond(node.showWhen, ctx)) return null;
   if (isField(node)) return <FieldTable nodes={[node]} ctx={ctx} />;
   // 'synoptic-block' is deliberately outside the formal TemplateNode
@@ -195,7 +214,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
   // cast) — handled here, before the switch, so the switch below keeps
   // its real discriminated-union narrowing for every formal node type.
   if ((node.type as string) === 'synoptic-block') {
-    return renderSynopticBlock(ctx);
+    return renderSynopticBlock(ctx, t);
   }
   switch (node.type) {
     case 'static-label': {
@@ -215,7 +234,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
         <div className="ps-tpp-paragraph">
           <div className="ps-tpp-paragraph-label">{node.label}</div>
           <div className="ps-tpp-paragraph-text">
-            {text || <span className="ps-tpp-no-content">No content</span>}
+            {text || <span className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noContent')}</span>}
           </div>
         </div>
       );
@@ -226,7 +245,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
         style={{ fontSize: node.fontSize ?? 12, textAlign: node.textAlign ?? 'left' }}
         className="ps-tpp-richtext"
       >
-        {node.content || <span className="ps-tpp-no-content">No content</span>}
+        {node.content || <span className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noContent')}</span>}
       </div>;
     case 'section': {
       const heading = node.printHeading || node.label;
@@ -239,7 +258,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
     }
     case 'repeat-group': {
       const items: any[] = (ctx as any)[node.iterateOver] ?? [];
-      if (!items.length) return <div className="ps-tpp-no-items">No items</div>;
+      if (!items.length) return <div className="ps-tpp-no-items">{t('templatePreviewPanel.emptyState.noItems')}</div>;
       return <div>{items.map((item, i) => {
         const ic = { ...ctx, [node.itemAlias ?? 'item']: item, specimen: item } as StructuredContext;
         return <div key={i} className="ps-tpp-repeat-item"><GroupedChildren children={node.children} ctx={ic} pageNum={pageNum} totalPages={totalPages} /></div>;
@@ -285,11 +304,16 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
                 // width/height are per-node user-configured placeholder dimensions — stay inline.
                 style={{ width: node.width ?? 80, height: node.height ?? 80 }}
                 className="ps-tpp-image-placeholder"
-              >Image</div>}
+              >{t('templatePreviewPanel.emptyState.imagePlaceholder')}</div>}
           {node.caption && <div className="ps-tpp-image-caption">{node.caption}</div>}
         </div>
       );
     case 'header':
+      // "PathScribe Laboratory" / "Department of Anatomic Pathology" mirror
+      // the same default institution-name/department fallback values seeded
+      // in mockReportPartService.ts (e('Institution', ..., 'PathScribe
+      // Laboratory')) — mock/demo institution data for this preview, not
+      // UI chrome, so left untranslated like the rest of MOCK_CTX.
       return (
         <div className="ps-tpp-print-header">
           <div>
@@ -303,10 +327,12 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
         </div>
       );
     case 'footer':
+      // Patient name/DOB/accession are mock demo data (MOCK_CTX), left
+      // untranslated like the rest of the mock context.
       return (
         <div className="ps-tpp-print-footer">
           <span>{MOCK_CTX.patient.name} · DOB {MOCK_CTX.patient.dob} · {MOCK_CTX.order.fullAccession}</span>
-          {node.showPageNumbers && <span>Page {pageNum} of {totalPages}</span>}
+          {node.showPageNumbers && <span>{t('templatePreviewPanel.pageNumber', { pageNum, totalPages })}</span>}
         </div>
       );
     case 'template-ref':
@@ -419,13 +445,14 @@ const PageCard: React.FC<{
   pageNum: number; totalPages: number;
   widthPx: number; heightPx: number; margins: Margins; ctx: StructuredContext;
 }> = ({ sections, headers, footers, pageNum, totalPages, widthPx, heightPx, margins, ctx }) => {
+  const { t } = useTranslation();
   const [mL, mR, mT, mB] = [mm(margins.left), mm(margins.right), mm(margins.top), mm(margins.bottom)];
   return (
     // width/minHeight are computed page dimensions (from mm + scale) — stay inline.
     <div style={{ width: widthPx, minHeight: heightPx }} className="ps-tpp-page-card">
       {totalPages > 1 && (
         <div className="ps-tpp-page-num">
-          Page {pageNum} of {totalPages}
+          {t('templatePreviewPanel.pageNumber', { pageNum, totalPages })}
         </div>
       )}
       <div style={{ paddingLeft: mL, paddingRight: mR, paddingTop: mT }}>
@@ -451,6 +478,7 @@ const PageCard: React.FC<{
 interface Props { template: OldTemplate; onClose: () => void; }
 
 export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => {
+  const { t } = useTranslation();
   // ── Sticky page size across sessions ──────────────────────────
   const [pageSizeId, setPageSizeId] = useState(() =>
     localStorage.getItem('ps_preview_page_size') ?? 'a4'
@@ -494,23 +522,23 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       <div className="ps-tpp-toolbar">
         <select value={pageSizeId} onChange={e => handlePageSizeChange(e.target.value)}
           className="ps-tpp-toolbar-select">
-          {PAGE_SIZES.map(p => <option key={p.id} value={p.id}>{p.label} — {p.region}</option>)}
+          {PAGE_SIZES.map(p => <option key={p.id} value={p.id}>{p.label} — {t(PAGE_SIZE_REGION_KEY[p.id])}</option>)}
         </select>
         <span className="ps-tpp-toolbar-dim">{ps.widthMm} × {ps.heightMm} mm</span>
         <div className="ps-tpp-toolbar-spacer" />
-        <span className="ps-tpp-toolbar-dim">{pages.length} page{pages.length !== 1 ? 's' : ''}</span>
-        <button onClick={() => setSettingsOpen(o => !o)} className="ps-tpp-toolbar-btn">⚙ Margins</button>
-        <button onClick={() => setShowCtx(s => !s)} className="ps-tpp-toolbar-btn">{showCtx ? 'Hide' : 'Context JSON'}</button>
-        <button onClick={onClose} className="ps-tpp-toolbar-btn ps-tpp-toolbar-btn--close">Close</button>
+        <span className="ps-tpp-toolbar-dim">{t('templatePreviewPanel.toolbar.pageCount', { count: pages.length })}</span>
+        <button onClick={() => setSettingsOpen(o => !o)} className="ps-tpp-toolbar-btn">⚙ {t('templatePreviewPanel.toolbar.margins')}</button>
+        <button onClick={() => setShowCtx(s => !s)} className="ps-tpp-toolbar-btn">{showCtx ? t('templatePreviewPanel.toolbar.hide') : t('templatePreviewPanel.toolbar.contextJson')}</button>
+        <button onClick={onClose} className="ps-tpp-toolbar-btn ps-tpp-toolbar-btn--close">{t('templatePreviewPanel.toolbar.close')}</button>
       </div>
 
       {/* Margin settings */}
       {settingsOpen && (
         <div className="ps-tpp-margins-panel">
-          <span className="ps-tpp-margins-label">MARGINS (mm)</span>
+          <span className="ps-tpp-margins-label">{t('templatePreviewPanel.margins.heading')}</span>
           {(['top','right','bottom','left'] as (keyof Margins)[]).map(side => (
             <label key={side} className="ps-tpp-margin-field">
-              {side.charAt(0).toUpperCase() + side.slice(1)}
+              {t(MARGIN_SIDE_LABEL_KEY[side])}
               <input type="number" value={margins[side]} min={5} max={50}
                 onChange={e => setMargins(m => {
                     const next = { ...m, [side]: parseInt(e.target.value) || 20 };
@@ -526,7 +554,7 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       {/* Context JSON */}
       {showCtx && (
         <div className="ps-tpp-ctx-panel">
-          <div className="ps-tpp-ctx-title">Mock Context — Eleanor Whitmore · Breast NST</div>
+          <div className="ps-tpp-ctx-title">{t('templatePreviewPanel.context.title', { descriptor: 'Eleanor Whitmore · Breast NST' })}</div>
           <pre className="ps-tpp-ctx-json">{JSON.stringify(ctx, null, 2)}</pre>
         </div>
       )}

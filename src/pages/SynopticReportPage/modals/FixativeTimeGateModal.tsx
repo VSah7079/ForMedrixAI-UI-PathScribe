@@ -14,9 +14,13 @@
 //      last-resort override, audited same as the other two.
 // No preliminary-report escape valve yet (not built) — this modal is
 // the entire interim safety valve until that exists.
+//
+// i18n note: `s.label`/`s.description` are real specimen data, never
+// translated.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 
 export interface FixativeGateSpecimen {
@@ -45,6 +49,7 @@ type RowState =
   | { mode: 'unrecoverable'; comment: string };
 
 export const FixativeTimeGateModal: React.FC<Props> = ({ specimens, onContinue, onCancel }) => {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Record<string, RowState>>(
     Object.fromEntries(specimens.map(s => [s.specimenId, { mode: 'unset' as const }]))
   );
@@ -83,18 +88,19 @@ export const FixativeTimeGateModal: React.FC<Props> = ({ specimens, onContinue, 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal ps-ms-modal--wide">
-        <div className="ps-ms-header">⚠ Fixation Time Required Before Sign-Out</div>
+        <div className="ps-ms-header">⚠ {t('fixativeTimeGateModal.header')}</div>
         <div className="ps-ms-body ps-fixgate-body">
           <p className="ps-fixgate-intro">
-            The specimen(s) below require documented fixation timing (CAP/ASCO biomarker guidance)
-            before this case can be signed out. Resolve each one to continue.
+            {t('fixativeTimeGateModal.intro')}
           </p>
 
           {specimens.map(s => {
             const row = rows[s.specimenId] ?? { mode: 'unset' as const };
             return (
               <div key={s.specimenId} className="ps-fixgate-row">
-                <div className="ps-fixgate-row-title">Specimen {s.label} — {s.description}</div>
+                <div className="ps-fixgate-row-title">
+                  {t('fixativeTimeGateModal.specimenRowTitle', { label: s.label, description: s.description })}
+                </div>
 
                 {row.mode !== 'unrecoverable' && (
                   <div className="ps-fixgate-row-fields">
@@ -111,7 +117,7 @@ export const FixativeTimeGateModal: React.FC<Props> = ({ specimens, onContinue, 
                         disabled={row.mode !== 'time' || !row.value}
                         onChange={e => row.mode === 'time' && setRow(s.specimenId, { ...row, estimated: e.target.checked })}
                       />
-                      Estimated — not directly documented
+                      {t('accessionPage.specimens.processedAtEstimated')}
                     </label>
                   </div>
                 )}
@@ -119,15 +125,15 @@ export const FixativeTimeGateModal: React.FC<Props> = ({ specimens, onContinue, 
                 <div className="ps-fixgate-row-actions">
                   {row.mode === 'unrecoverable' ? (
                     <>
-                      <span className="ps-fixgate-unrecoverable-badge">Confirmed unavailable — no estimate possible</span>
-                      <button className="ps-btn-secondary" onClick={() => setRow(s.specimenId, { mode: 'unset' })}>Undo</button>
+                      <span className="ps-fixgate-unrecoverable-badge">{t('fixativeTimeGateModal.unrecoverableBadge')}</span>
+                      <button className="ps-btn-secondary" onClick={() => setRow(s.specimenId, { mode: 'unset' })}>{t('caseTeamModal.dropZone.undoButton')}</button>
                     </>
                   ) : (
                     <button
                       className="ps-btn-secondary ps-fixgate-unrecoverable-btn"
                       onClick={() => setRow(s.specimenId, { mode: 'unrecoverable', comment: '' })}
                     >
-                      No time or estimate possible — override
+                      {t('fixativeTimeGateModal.unrecoverableButton')}
                     </button>
                   )}
                 </div>
@@ -136,9 +142,9 @@ export const FixativeTimeGateModal: React.FC<Props> = ({ specimens, onContinue, 
           })}
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onCancel}>Cancel — don't sign out</button>
+          <button className="ps-ms-btn-cancel" onClick={onCancel}>{t('preAnalyticDateGateModal.cancelButton')}</button>
           <button className="ps-ms-btn-apply" onClick={handleContinue} disabled={!allResolved}>
-            Continue Sign-Out
+            {t('preAnalyticDateGateModal.continueButton')}
           </button>
         </div>
       </div>

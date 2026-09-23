@@ -38,6 +38,7 @@
 // -----------------------------------------------------------------------------
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
 
 interface AddedThisSession {
@@ -54,11 +55,14 @@ interface AddedThisSession {
  *  established "no specific stain" value) wherever it's actually applied. */
 const BLOCK_LEVEL = '__block_level__';
 
-const LEVEL_LABEL: Record<BillingDictionaryEntry['level'], string> = {
-  specimen: 'Specimen-level',
-  block: 'Block-level',
-  stain: 'Stain-level',
-  decant: 'Decant-level',
+// Real, persisted BillingDictionaryEntry.level enum values stay as data;
+// only the displayed label is translated (same LABEL_KEY pattern used
+// throughout this sweep).
+const LEVEL_LABEL_KEY: Record<BillingDictionaryEntry['level'], string> = {
+  specimen: 'codeSearchModal.level.specimen',
+  block: 'codeSearchModal.level.block',
+  stain: 'codeSearchModal.level.stain',
+  decant: 'codeSearchModal.level.decant',
 };
 
 export const CodeSearchModal: React.FC<{
@@ -119,6 +123,7 @@ export const CodeSearchModal: React.FC<{
    *  BillingReviewPanel's own pending-review list already uses. */
   onHighlightStain?: (stainId: string | undefined) => void;
 }> = ({ entries, targetLabel, onClose, initialValue, onSelect, onSelectFreeText, targetLevel, stains, initialStainId, onAddCode, isAlreadyApplied, onHighlightStain }) => {
+  const { t } = useTranslation();
   const [value, setValue] = useState(initialValue ?? '');
   const isMulti = !!stains && !!onAddCode;
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
@@ -148,6 +153,8 @@ export const CodeSearchModal: React.FC<{
   }
   const relevantMatches = relevantLevels.size > 0 ? matches.filter(e => relevantLevels.has(e.level)) : matches;
   const otherMatches = relevantLevels.size > 0 ? matches.filter(e => !relevantLevels.has(e.level)) : [];
+  const relevantLevelHeading = Array.from(relevantLevels).map(l => t(LEVEL_LABEL_KEY[l])).join(' & ');
+  const relevantLevelLower = Array.from(relevantLevels).map(l => t(LEVEL_LABEL_KEY[l]).toLowerCase()).join('/');
 
   const toggleKey = (key: string) => {
     setSelectedKeys(prev => {
@@ -174,16 +181,16 @@ export const CodeSearchModal: React.FC<{
 
   const selectedLabel = (() => {
     if (!isMulti) return '';
-    const names = Array.from(selectedKeys).map(k => k === BLOCK_LEVEL ? 'Block-level' : stains?.find(s => s.stainOrderId === k)?.stainName).filter(Boolean);
+    const names = Array.from(selectedKeys).map(k => k === BLOCK_LEVEL ? t(LEVEL_LABEL_KEY.block) : stains?.find(s => s.stainOrderId === k)?.stainName).filter(Boolean);
     if (names.length === 0) return '';
     if (names.length === 1) return ` — ${names[0]}`;
-    return ` — ${names.length} targets selected`;
+    return ` — ${t('codeSearchModal.targetsSelected', { count: names.length })}`;
   })();
 
   const handlePick = (code: string, description: string) => {
     if (isMulti) {
       if (selectedKeys.size === 0) {
-        setWarning('Select at least one stain or Block-level first.');
+        setWarning(t('codeSearchModal.warnings.selectAtLeastOne', { blockLevel: t(LEVEL_LABEL_KEY.block) }));
         return;
       }
       const targets = Array.from(selectedKeys).map(k => k === BLOCK_LEVEL ? undefined : k);
@@ -192,7 +199,7 @@ export const CodeSearchModal: React.FC<{
       const applied: AddedThisSession[] = [];
       for (const stainId of targets) {
         if (isAlreadyApplied?.(code, stainId)) {
-          alreadyApplied.push(stainId ? (stains?.find(s => s.stainOrderId === stainId)?.stainName ?? stainId) : 'Block-level');
+          alreadyApplied.push(stainId ? (stains?.find(s => s.stainOrderId === stainId)?.stainName ?? stainId) : t(LEVEL_LABEL_KEY.block));
           continue;
         }
         toApply.push(stainId);
@@ -203,9 +210,9 @@ export const CodeSearchModal: React.FC<{
         setAddedThisSession(prev => [...prev, ...applied]);
       }
       if (alreadyApplied.length > 0 && applied.length === 0) {
-        setWarning(`${code} is already applied to ${alreadyApplied.join(', ')}.`);
+        setWarning(t('codeSearchModal.warnings.alreadyApplied', { code, targets: alreadyApplied.join(', ') }));
       } else if (alreadyApplied.length > 0) {
-        setWarning(`${code} was already applied to ${alreadyApplied.join(', ')} — added to the rest.`);
+        setWarning(t('codeSearchModal.warnings.alreadyAppliedPartial', { code, targets: alreadyApplied.join(', ') }));
       } else {
         setWarning(null);
       }
@@ -221,66 +228,49 @@ export const CodeSearchModal: React.FC<{
     <div
       key={entry.code}
       onClick={() => handlePick(entry.code, entry.description)}
-      style={{
-        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(148,163,184,0.12)',
-        opacity: deEmphasized ? 0.55 : 1,
-      }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(56,189,248,0.08)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+      className={`ps-codesearch-result${deEmphasized ? ' ps-codesearch-result--deemphasized' : ''}`}
     >
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{entry.code}</div>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-        {entry.description}{entry.workRvu !== undefined ? ` · RVU ${entry.workRvu}` : ''}
+      <div className="ps-codesearch-result-code">{entry.code}</div>
+      <div className="ps-codesearch-result-desc">
+        {entry.workRvu !== undefined
+          ? t('codeSearchModal.resultDescriptionWithRvu', { description: entry.description, rvu: entry.workRvu })
+          : entry.description}
       </div>
     </div>
   );
 
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 'min(560px, 92vw)', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+      <div className="ps-modal-dark ps-modal-dark--codesearch" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">Search Billing Codes</span>
+          <span className="ps-modal-dark-title">{t('codeSearchModal.title')}</span>
           <button onClick={onClose} className="ps-research-close">&#x2715;</button>
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>
-          Applying to: <strong style={{ color: '#e2e8f0' }}>{targetLabel}{selectedLabel}</strong>
+        <div className="ps-codesearch-target-line">
+          {t('codeSearchModal.applyingTo')} <strong className="ps-codesearch-target-value">{targetLabel}{selectedLabel}</strong>
         </div>
 
         {isMulti && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div className="ps-codesearch-chip-row">
             <button
               onClick={() => toggleKey(BLOCK_LEVEL)}
-              style={{
-                fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
-                border: selectedKeys.has(BLOCK_LEVEL) ? '1.5px solid #22d3ee' : '1px solid rgba(148,163,184,0.3)',
-                background: selectedKeys.has(BLOCK_LEVEL) ? 'rgba(34,211,238,0.12)' : 'rgba(255,255,255,0.02)',
-                color: selectedKeys.has(BLOCK_LEVEL) ? '#67e8f9' : '#94a3b8',
-              }}
+              className={`ps-codesearch-chip${selectedKeys.has(BLOCK_LEVEL) ? ' ps-codesearch-chip--selected' : ''}`}
             >
-              {selectedKeys.has(BLOCK_LEVEL) ? '✓ ' : ''}Block-level
+              {selectedKeys.has(BLOCK_LEVEL) ? '✓ ' : ''}{t(LEVEL_LABEL_KEY.block)}
             </button>
             {stains && stains.length > 1 && (
               <button
                 onClick={toggleAllStains}
-                style={{
-                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
-                  border: '1px dashed rgba(148,163,184,0.4)', background: 'rgba(255,255,255,0.02)', color: '#94a3b8',
-                }}
+                className="ps-codesearch-chip ps-codesearch-chip--all"
               >
-                {allStainsSelected ? 'Deselect all stains' : 'All stains'}
+                {allStainsSelected ? t('codeSearchModal.deselectAllStains') : t('codeSearchModal.allStains')}
               </button>
             )}
             {stains!.map(s => (
               <button
                 key={s.stainOrderId}
                 onClick={() => toggleKey(s.stainOrderId)}
-                style={{
-                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
-                  border: selectedKeys.has(s.stainOrderId) ? '1.5px solid #22d3ee' : '1px solid rgba(148,163,184,0.3)',
-                  background: selectedKeys.has(s.stainOrderId) ? 'rgba(34,211,238,0.12)' : 'rgba(255,255,255,0.02)',
-                  color: selectedKeys.has(s.stainOrderId) ? '#67e8f9' : '#94a3b8',
-                }}
+                className={`ps-codesearch-chip${selectedKeys.has(s.stainOrderId) ? ' ps-codesearch-chip--selected' : ''}`}
               >
                 {selectedKeys.has(s.stainOrderId) ? '✓ ' : ''}{s.stainName}
               </button>
@@ -291,25 +281,25 @@ export const CodeSearchModal: React.FC<{
         <input
           className="ps-conf-input"
           autoFocus
-          placeholder="e.g. 88342 — search by code or description"
+          placeholder={t('codeSearchModal.searchPlaceholder')}
           value={value}
           onChange={e => setValue(e.target.value)}
         />
-        <div style={{ overflowY: 'auto', maxHeight: isMulti ? '35vh' : '50vh', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className={`ps-codesearch-results ${isMulti ? 'ps-codesearch-results--multi' : 'ps-codesearch-results--single'}`}>
           {matches.length > 0 ? (
             <>
               {relevantLevels.size > 0 && (
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', margin: '2px 0' }}>
-                  {Array.from(relevantLevels).map(l => LEVEL_LABEL[l]).join(' & ')} codes
+                <div className="ps-codesearch-group-heading">
+                  {t('codeSearchModal.levelCodesHeading', { levels: relevantLevelHeading })}
                 </div>
               )}
               {relevantMatches.length > 0 ? relevantMatches.map(e => renderResult(e, false)) : relevantLevels.size > 0 && (
-                <div style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>No matching {Array.from(relevantLevels).map(l => LEVEL_LABEL[l].toLowerCase()).join('/')} codes found.</div>
+                <div className="ps-codesearch-empty-note">{t('codeSearchModal.noMatchingLevelCodes', { levels: relevantLevelLower })}</div>
               )}
               {otherMatches.length > 0 && (
                 <>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', margin: '10px 0 2px' }}>
-                    Other codes
+                  <div className="ps-codesearch-group-heading ps-codesearch-group-heading--spaced">
+                    {t('codeSearchModal.otherCodes')}
                   </div>
                   {otherMatches.map(e => renderResult(e, true))}
                 </>
@@ -318,33 +308,33 @@ export const CodeSearchModal: React.FC<{
           ) : value.trim() ? (
             <div
               onClick={() => handlePick(value.trim(), value.trim())}
-              style={{ padding: '10px 12px', borderRadius: 8, cursor: 'pointer', border: '1px dashed rgba(148,163,184,0.3)', color: '#94a3b8', fontSize: 12 }}
+              className="ps-codesearch-freetext-row"
             >
-              No matching verified codes — use "{value.trim()}" as entered
+              {t('codeSearchModal.noVerifiedMatch', { value: value.trim() })}
             </div>
           ) : (
-            <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 12 }}>Start typing to search.</div>
+            <div className="ps-codesearch-hint-row">{t('codeSearchModal.startTyping')}</div>
           )}
         </div>
 
         {warning && (
-          <p style={{ fontSize: 11, color: '#f59e0b', margin: 0 }}>{warning}</p>
+          <p className="ps-codesearch-warning">{warning}</p>
         )}
 
         {isMulti && addedThisSession.length > 0 && (
-          <div style={{ borderTop: '1px solid rgba(148,163,184,0.15)', paddingTop: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
-              Added this session
+          <div className="ps-codesearch-session-block">
+            <div className="ps-codesearch-session-heading">
+              {t('codeSearchModal.addedThisSession')}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="ps-codesearch-session-list">
               {addedThisSession.map((a, i) => (
                 <div
                   key={i}
                   onClick={() => onHighlightStain?.(a.stainId)}
-                  style={{ fontSize: 12, color: '#94a3b8', cursor: onHighlightStain ? 'pointer' : 'default' }}
+                  className={`ps-codesearch-session-row${onHighlightStain ? ' ps-codesearch-session-row--clickable' : ''}`}
                 >
-                  <span style={{ color: '#34d399', fontWeight: 700 }}>{a.code}</span>
-                  {' '}— {a.stainName ?? 'Block-level'}
+                  <span className="ps-codesearch-session-code">{a.code}</span>
+                  {' '}— {a.stainName ?? t(LEVEL_LABEL_KEY.block)}
                 </div>
               ))}
             </div>
@@ -353,7 +343,9 @@ export const CodeSearchModal: React.FC<{
 
         {isMulti && (
           <button className="ps-btn-primary" onClick={onClose}>
-            Done{addedThisSession.length > 0 ? ` (${addedThisSession.length} added)` : ''}
+            {addedThisSession.length > 0
+              ? t('codeSearchModal.doneWithCount', { count: addedThisSession.length })
+              : t('codeSearchModal.done')}
           </button>
         )}
       </div>

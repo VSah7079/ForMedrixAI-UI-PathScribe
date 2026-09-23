@@ -15,6 +15,12 @@
 // function encodes the real, conditional rule set instead — see the
 // four real scenarios traced against it in evaluateMicroscopicFinalizeGate.test.ts,
 // matching the exact scenario table this was specified against.
+//
+// i18n note: this is a plain utility with no `useTranslation()` of
+// its own, so `reason` is a translation key (`reasonKey`) rather than
+// rendered text — the caller (handleRequestFinalize, in
+// useSignOutWorkflow.ts) resolves it via `t()` before passing it to
+// `showToast()`. Keys live under `evaluateMicroscopicFinalizeGate.*`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type MicroscopicNarrativeStatus = 'not-started' | 'draft' | 'saved';
@@ -45,11 +51,11 @@ export interface MicroscopicFinalizeGateInput {
 
 export interface MicroscopicFinalizeGateResult {
   blocked: boolean;
-  /** Human-readable, present only when blocked — matches the real
-   *  toast-message pattern handleRequestFinalize already uses for
-   *  its other blocking checks (missing fields, unverified AI
-   *  suggestions). */
-  reason?: string;
+  /** Translation key, present only when blocked — resolved by the
+   *  caller (handleRequestFinalize) via `t()`, matching the real
+   *  toast-message pattern it already uses for its other blocking
+   *  checks (missing fields, unverified AI suggestions). */
+  reasonKey?: string;
 }
 
 export function evaluateMicroscopicFinalizeGate(
@@ -63,7 +69,7 @@ export function evaluateMicroscopicFinalizeGate(
   if (input.microscopicStatus === 'draft') {
     return {
       blocked: true,
-      reason: 'The Microscopic Description has unsaved changes — save or clear it before finalizing.',
+      reasonKey: 'evaluateMicroscopicFinalizeGate.unsavedDraft',
     };
   }
 
@@ -86,7 +92,7 @@ export function evaluateMicroscopicFinalizeGate(
   if (input.requiresMicroscopicNarrative) {
     return {
       blocked: true,
-      reason: 'A Microscopic Description is required for this procedure — enter narrative text before finalizing.',
+      reasonKey: 'evaluateMicroscopicFinalizeGate.requiredForProcedure',
     };
   }
 
@@ -97,7 +103,7 @@ export function evaluateMicroscopicFinalizeGate(
   if (!input.hasSynopticTemplate) {
     return {
       blocked: true,
-      reason: 'No synoptic template is assigned and no Microscopic Description has been entered — at least one is required to document this case.',
+      reasonKey: 'evaluateMicroscopicFinalizeGate.noDocumentationAtAll',
     };
   }
 
@@ -111,7 +117,7 @@ export function evaluateMicroscopicFinalizeGate(
   if (!input.allRequiredSynopticFieldsComplete) {
     return {
       blocked: true,
-      reason: 'The Microscopic Description is empty and the active synoptic template still has incomplete required fields.',
+      reasonKey: 'evaluateMicroscopicFinalizeGate.incompleteSynopticFields',
     };
   }
 

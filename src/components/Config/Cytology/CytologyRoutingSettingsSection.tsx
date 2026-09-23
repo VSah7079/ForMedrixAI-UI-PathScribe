@@ -10,7 +10,16 @@
 // throughout, no style={{...}} anywhere in this file.
 // ─────────────────────────────────────────────────────────────────────────────
 
+//
+// i18n note: `nonGynCytologyRouting` is a real, persisted enum value —
+// the module-level `ROUTES` array (outside the component, so it
+// can't call `useTranslation()` itself) carries a `labelKey` per
+// entry, resolved with `t()` at each render site. Same real two-tier
+// cascade pattern as `CytologyNomenclatureSettingsSection.tsx` (batch
+// 190) — reuses its exact-text keys throughout.
+
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockCytologyRoutingSettingsService } from '../../../services/cytology/mockCytologyRoutingSettingsService';
 import { mockFacilityCytologyRoutingOverrideService } from '../../../services/cytology/mockFacilityCytologyRoutingOverrideService';
@@ -19,12 +28,13 @@ import type { NonGynCytologyRouting } from '../../../services/cytology/ICytology
 import type { FacilityCytologyRoutingOverride } from '../../../services/cytology/IFacilityCytologyRoutingOverrideService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 
-const ROUTES: { id: NonGynCytologyRouting; label: string }[] = [
-  { id: 'surgical_pathology_worklist', label: 'Surgical Pathology Worklist' },
-  { id: 'cytology_worklist', label: 'Cytology Worklist' },
+const ROUTES: { id: NonGynCytologyRouting; labelKey: string }[] = [
+  { id: 'surgical_pathology_worklist', labelKey: 'cytologyRoutingSettingsSection.routes.surgicalPathologyWorklist' },
+  { id: 'cytology_worklist', labelKey: 'cytologyRoutingSettingsSection.routes.cytologyWorklist' },
 ];
 
 const CytologyRoutingSettingsSection: React.FC = () => {
+  const { t } = useTranslation();
   const [enterpriseDraft, setEnterpriseDraft] = useState<NonGynCytologyRouting>('surgical_pathology_worklist');
   const [savedEnterprise, setSavedEnterprise] = useState<NonGynCytologyRouting>('surgical_pathology_worklist');
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -53,32 +63,31 @@ const CytologyRoutingSettingsSection: React.FC = () => {
   };
 
   const facilityName = (id: string) => facilities.find(f => f.id === id)?.name ?? id;
-  const routeLabel = (id: NonGynCytologyRouting) => ROUTES.find(r => r.id === id)?.label ?? id;
+  const routeLabel = (id: NonGynCytologyRouting) => t(ROUTES.find(r => r.id === id)?.labelKey ?? id);
 
   return (
     <div className="ps-conf-page">
-      <h2 className="ps-conf-section-title">Non-GYN Cytology Routing</h2>
+      <h2 className="ps-conf-section-title">{t('cytologyRoutingSettingsSection.title')}</h2>
       <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
-        Which real worklist a non-GYN cytology specimen (FNA, body fluid, etc.) lands on for review.
-        Two-tier cascade — Enterprise default, with an optional Facility override.
+        {t('cytologyRoutingSettingsSection.subtitle')}
       </p>
 
       <div className="ps-conf-card ps-conf-card--spaced">
-        <div className="ps-conf-card-title">Enterprise Default</div>
+        <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.enterprise.title')}</div>
         <div className="ps-conf-row-actions">
           <select className="ps-conf-select" value={enterpriseDraft} onChange={e => setEnterpriseDraft(e.target.value as NonGynCytologyRouting)}>
-            {ROUTES.map(r => (<option key={r.id} value={r.id}>{r.label}</option>))}
+            {ROUTES.map(r => (<option key={r.id} value={r.id}>{t(r.labelKey)}</option>))}
           </select>
-          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>Save</button>
+          <button className="ps-conf-btn-primary" onClick={saveEnterprise} disabled={saving}>{t('common.save')}</button>
         </div>
-        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">Unsaved change</div>}
+        {enterpriseDraft !== savedEnterprise && <div className="ps-conf-saving-indicator">{t('cytologyQcSettingsSection.enterprise.unsavedChange')}</div>}
       </div>
 
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
-          <div className="ps-conf-card-title">Facility Overrides</div>
+          <div className="ps-conf-card-title">{t('cytologyQcSettingsSection.facility.title')}</div>
           {!addingFacility && (
-            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', routing: enterpriseDraft })}>+ Add Override</button>
+            <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility({ facilityId: facilities[0]?.id ?? '', routing: enterpriseDraft })}>{t('cytologyQcSettingsSection.addOverrideBtn')}</button>
           )}
         </div>
 
@@ -87,12 +96,12 @@ const CytologyRoutingSettingsSection: React.FC = () => {
             <span className="ps-conf-value">{facilityName(o.facilityId)}</span>
             <div className="ps-conf-row-actions">
               <span className="ps-conf-value">{o.overrides.nonGynCytologyRouting ? routeLabel(o.overrides.nonGynCytologyRouting) : '—'}</span>
-              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyRoutingOverrideService.remove(o.facilityId); refresh(); }}>Remove</button>
+              <button className="ps-conf-btn-secondary" onClick={async () => { await mockFacilityCytologyRoutingOverrideService.remove(o.facilityId); refresh(); }}>{t('common.remove')}</button>
             </div>
           </div>
         ))}
         {facilityOverrides.length === 0 && !addingFacility && (
-          <div className="ps-conf-empty-row">No facility overrides — every facility uses the Enterprise default.</div>
+          <div className="ps-conf-empty-row">{t('cytologyQcSettingsSection.facility.emptyState')}</div>
         )}
 
         {addingFacility && (
@@ -102,13 +111,13 @@ const CytologyRoutingSettingsSection: React.FC = () => {
             </select>
             <div className="ps-conf-row-actions">
               <select className="ps-conf-select" value={addingFacility.routing} onChange={e => setAddingFacility({ ...addingFacility, routing: e.target.value as NonGynCytologyRouting })}>
-                {ROUTES.map(r => (<option key={r.id} value={r.id}>{r.label}</option>))}
+                {ROUTES.map(r => (<option key={r.id} value={r.id}>{t(r.labelKey)}</option>))}
               </select>
               <button className="ps-conf-btn-primary" onClick={async () => {
                 await mockFacilityCytologyRoutingOverrideService.create(addingFacility.facilityId, { nonGynCytologyRouting: addingFacility.routing });
                 setAddingFacility(null); refresh();
-              }}>Save</button>
-              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>Cancel</button>
+              }}>{t('common.save')}</button>
+              <button className="ps-conf-btn-secondary" onClick={() => setAddingFacility(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         )}

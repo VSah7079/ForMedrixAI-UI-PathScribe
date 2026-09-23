@@ -1,14 +1,10 @@
-pathscribe-update-210.zip — files to DELETE from your local project
-(a zip can only add/overwrite files, not remove them — these 5 files
-were retired as part of the Cell Block → Decant migration and are
-dead code if left in place):
+Batch 188 — dead-code removal. These files should be DELETED from the
+project (zip archives cannot express deletions):
 
-src/types/cytology/CytologyCellBlock.ts
-src/services/cytology/resolveCytologyCellBlockMutations.ts
-src/services/cytology/resolveCytologyCellBlockMutations.test.ts
-src/services/cytology/resolveCytologyCellBlockAncillaryPendingMembership.ts
-src/services/cytology/resolveCytologyCellBlockAncillaryPendingMembership.test.ts
+src/pages/SynopticReportPage/modals/CreateMegablockModal.tsx
+src/pages/SynopticReportPage/components/MegablockDiagram.tsx
 
-After deleting these and extracting/overlaying this zip's src/ folder
-into your project, run npm install if needed and npx tsc --noEmit to
-confirm a clean build on your own machine.
+Both were confirmed orphaned (zero importers anywhere in the codebase)
+and fully superseded by CreateBiopsyArrayModal.tsx / BiopsyArrayDiagram.tsx,
+which are what SynopticReportPage.tsx actually wires up. Full suite
+(499/499 files, 4329/4329 tests) still passes after deletion.

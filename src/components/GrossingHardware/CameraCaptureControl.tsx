@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DigitalAsset, DigitalAssetKind } from '@/types/case/Material';
 import { mockImageUploadService } from '@/services/imageAssociation/mockImageUploadService';
 
@@ -40,6 +41,7 @@ interface CameraCaptureControlProps {
 }
 
 const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, capturedBy, onCapture, onClose }) => {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,12 +55,12 @@ const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, captu
     // or a genuinely unsupported browser; surfaced as a real, clear
     // message rather than an unexplained silent failure.
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera access is not available in this browser/context.');
+      setError(t('cameraCaptureControl.notAvailable'));
       return;
     }
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
       .then(stream => {
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        if (cancelled) { stream.getTracks().forEach(track => track.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -71,16 +73,16 @@ const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, captu
         // differently to a real user than "no camera found," which
         // reads differently again from a genuine device/driver error.
         const name = err?.name ?? 'UnknownError';
-        if (name === 'NotAllowedError') setError('Camera permission was denied. Allow camera access and try again.');
-        else if (name === 'NotFoundError') setError('No camera was found on this device.');
-        else setError(`Could not access the camera (${name}).`);
+        if (name === 'NotAllowedError') setError(t('cameraCaptureControl.permissionDenied'));
+        else if (name === 'NotFoundError') setError(t('cameraCaptureControl.noCameraFound'));
+        else setError(t('cameraCaptureControl.accessError', { name }));
       });
 
     return () => {
       cancelled = true;
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current?.getTracks().forEach(track => track.stop());
     };
-  }, []);
+  }, [t]);
 
   const handleCapture = async () => {
     const video = videoRef.current;
@@ -89,7 +91,7 @@ const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, captu
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
-    if (!ctx) { setError('Could not process the captured frame.'); return; }
+    if (!ctx) { setError(t('cameraCaptureControl.frameProcessingError')); return; }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     // Real, transient only — this base64 frame is never itself
     // persisted anywhere; it exists only long enough to hand to the
@@ -105,7 +107,7 @@ const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, captu
       // Real, honest failure — never falls back to storing the raw
       // captured frame directly, which is exactly the non-compliant
       // behavior this migration removes.
-      setError('error' in uploadResult ? uploadResult.error : 'Upload failed.');
+      setError('error' in uploadResult ? uploadResult.error : t('cameraCaptureControl.uploadFailed'));
       return;
     }
 
@@ -116,23 +118,23 @@ const CameraCaptureControl: React.FC<CameraCaptureControlProps> = ({ kind, captu
       capturedAt: new Date().toISOString(),
       capturedBy,
     };
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current?.getTracks().forEach(track => track.stop());
     onCapture(asset);
   };
 
   return (
-    <div className="ps-conf-page" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#1e293b', borderRadius: 8, padding: 16, maxWidth: 640, width: '90%' }}>
-        <h3 style={{ color: '#e2e8f0', marginTop: 0 }}>{kind === 'gross_photo' ? 'Capture Gross Photo' : 'Capture Block Face Photo'}</h3>
+    <div className="ps-conf-page ccc-overlay">
+      <div className="ccc-panel">
+        <h3 className="ccc-title">{kind === 'gross_photo' ? t('cameraCaptureControl.captureGrossPhoto') : t('cameraCaptureControl.captureBlockFacePhoto')}</h3>
         {error ? (
-          <div style={{ color: '#f87171', padding: 12, background: 'rgba(248,113,113,0.1)', borderRadius: 4 }}>{error}</div>
+          <div className="ccc-error">{error}</div>
         ) : (
-          <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: 4, background: '#000' }} />
+          <video ref={videoRef} autoPlay playsInline muted className="ccc-video" />
         )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-          <button type="button" className="ps-btn-small" onClick={onClose} disabled={uploading}>Cancel</button>
+        <div className="ccc-actions">
+          <button type="button" className="ps-btn-small" onClick={onClose} disabled={uploading}>{t('cameraCaptureControl.cancel')}</button>
           <button type="button" className="ps-btn-small ps-btn-primary" disabled={!ready || uploading} onClick={handleCapture}>
-            {uploading ? 'Uploading…' : '📷 Capture'}
+            {uploading ? t('cameraCaptureControl.uploading') : t('cameraCaptureControl.captureButton')}
           </button>
         </div>
       </div>

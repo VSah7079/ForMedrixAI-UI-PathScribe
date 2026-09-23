@@ -10,10 +10,19 @@
  * Navigation:
  *   "Open Reviewer" → /template-review/:id  (TemplateRenderer)
  *   "Open Editor"   → /template-editor/:id  (SynopticEditor)
+ *
+ * i18n note: `p.name`/`p.version`/`p.source`/`p.type`/`p.owner`/
+ * `p.reviewNote` are real protocol data — never translated. The
+ * per-category/per-source accent colors (`CATEGORY_COLORS`/
+ * `SOURCE_STYLES`) are genuinely dynamic per-instance values from an
+ * open-ended lookup map, so — matching this same card's sibling in
+ * `ActiveProtocolsSection.tsx` — they stay as a small inline `style`
+ * on their own class rather than being forced into fixed modifiers.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -36,6 +45,7 @@ import {
 // ─── ProtocolCard ─────────────────────────────────────────────────────────────
 
 const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const catColor = CATEGORY_COLORS[p.category] ?? '#64748b';
   const srcStyle = SOURCE_STYLES[p.source]     ?? SOURCE_STYLES.Custom;
@@ -51,52 +61,39 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
   };
 
   const actionLabel = p.status === 'needs_changes'
-    ? '✏️ Open Editor to Address Changes'
+    ? `✏️ ${t('reviewQueueSection.openEditorToAddressChanges')}`
     : p.status === 'approved'
-    ? '🚀 Open Reviewer to Publish'
-    : '🔍 Open Reviewer';
+    ? `🚀 ${t('reviewQueueSection.openReviewerToPublish')}`
+    : `🔍 ${t('allProtocolsSection.openReviewerButton')}`;
 
   return (
     <div
       onClick={handleCardClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '14px',
-        padding: '14px 18px', marginBottom: '8px',
-        background: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '10px',
-        cursor: 'pointer', transition: 'all 0.12s',
-      }}
-      onMouseEnter={e => { e.currentTarget.style.background = '#243050'; e.currentTarget.style.borderColor = '#475569'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.borderColor = '#334155'; }}
+      className="ps-reviewqueue-card"
       title={actionLabel}
     >
       {/* Category accent */}
-      <div style={{ width: '3px', height: '36px', borderRadius: '2px', background: catColor, flexShrink: 0 }} />
+      <div className="ps-reviewqueue-card-accent" style={{ background: catColor }} />
 
       {/* Name + meta */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }} data-phi="name">{p.name}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{p.version}</span>
-          <span style={{ color: '#334155' }}>&bull;</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'monospace', padding: '1px 7px', borderRadius: '4px', background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
-          <span style={{ color: '#334155' }}>&bull;</span>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>{p.type}</span>
+      <div className="ps-reviewqueue-info">
+        <div className="ps-reviewqueue-name" data-phi="name">{p.name}</div>
+        <div className="ps-reviewqueue-meta">
+          <span className="ps-reviewqueue-version">{p.version}</span>
+          <span className="ps-reviewqueue-dot">&bull;</span>
+          <span className="ps-reviewqueue-source-badge" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+          <span className="ps-reviewqueue-dot">&bull;</span>
+          <span className="ps-reviewqueue-meta-text">{p.type}</span>
           {p.owner && <>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>{p.owner}</span>
+            <span className="ps-reviewqueue-dot">&bull;</span>
+            <span className="ps-reviewqueue-meta-text">{p.owner}</span>
           </>}
         </div>
         {/* Review note preview if present */}
         {p.reviewNote && (
-          <div style={{
-            marginTop: '6px', fontSize: '11px', lineHeight: 1.4,
-            color: p.status === 'needs_changes' ? '#f87171' : '#fbbf24',
-            display: 'flex', gap: '6px', alignItems: 'flex-start',
-          }}>
-            <span style={{ flexShrink: 0 }}>{p.status === 'needs_changes' ? '↩' : '⚠'}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '480px' }}>{p.reviewNote}</span>
+          <div className={`ps-reviewqueue-note${p.status === 'needs_changes' ? ' ps-reviewqueue-note--needs-changes' : ' ps-reviewqueue-note--warning'}`}>
+            <span className="ps-reviewqueue-note-icon">{p.status === 'needs_changes' ? '↩' : '⚠'}</span>
+            <span className="ps-reviewqueue-note-text">{p.reviewNote}</span>
           </div>
         )}
       </div>
@@ -104,7 +101,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
       <LifecycleBadge state={p.status} />
 
       {/* Directional cue */}
-      <span style={{ fontSize: '16px', color: '#475569', flexShrink: 0 }}>›</span>
+      <span className="ps-reviewqueue-chevron">›</span>
     </div>
   );
 };
@@ -112,6 +109,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ReviewQueueSection: React.FC = () => {
+  const { t }                       = useTranslation();
   const navigate                    = useNavigate();
   const [search, setSearch]         = useState('');
   const [showUpload, setShowUpload] = useState(false);
@@ -139,32 +137,32 @@ const ReviewQueueSection: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
+      <div className="ps-activeprotocols-header">
         <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>🕐 Review Queue</div>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Templates staged for clinical and informatics review. Approve or request changes before publishing.</p>
+          <div className="ps-activeprotocols-title">🕐 {t('templateRenderer.nav.breadcrumbReviewQueue')}</div>
+          <p className="ps-activeprotocols-subtitle">{t('reviewQueueSection.subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginLeft: '16px' }}>
-          <OutlineBtn onClick={() => setShowUpload(true)}>📤 Upload Protocol</OutlineBtn>
-          <TealBtn    onClick={() => setShowBuild(true)}>🔬 Build / Customise</TealBtn>
+        <div className="ps-activeprotocols-header-actions">
+          <OutlineBtn onClick={() => setShowUpload(true)}>📤 {t('activeProtocolsSection.uploadProtocolButton')}</OutlineBtn>
+          <TealBtn    onClick={() => setShowBuild(true)}>🔬 {t('activeProtocolsSection.buildCustomiseButton')}</TealBtn>
         </div>
       </div>
 
       {/* Status summary banner */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+      <div className="ps-reviewqueue-summary-row">
         {[
-          { label: 'In Review',     count: inReviewCount,     color: '#fbbf24', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.2)'  },
-          { label: 'Needs Changes', count: needsChangesCount, color: '#f87171', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.2)'   },
-          { label: 'Approved',      count: approvedCount,     color: '#10B981', bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.2)'  },
+          { labelKey: 'protocolShared.lifecycle.inReview',     count: inReviewCount,     variant: 'warning' },
+          { labelKey: 'protocolShared.lifecycle.needsChanges', count: needsChangesCount, variant: 'error'   },
+          { labelKey: 'protocolShared.lifecycle.approved',     count: approvedCount,     variant: 'success' },
         ].map(s => (
-          <div key={s.label} style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: s.bg, border: `1px solid ${s.border}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.count}</div>
-            <div style={{ fontSize: '11px', color: s.color, fontWeight: 600 }}>{s.label}</div>
+          <div key={s.labelKey} className={`ps-reviewqueue-summary-tile ps-reviewqueue-summary-tile--${s.variant}`}>
+            <div className="ps-reviewqueue-summary-count">{s.count}</div>
+            <div className="ps-reviewqueue-summary-label">{t(s.labelKey)}</div>
           </div>
         ))}
-        <div style={{ flex: 2, padding: '10px 14px', borderRadius: '8px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '14px' }}>⚠️</span>
-          <span style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>Templates require ≥80% SNOMED coverage and clinical sign-off before publishing.</span>
+        <div className="ps-reviewqueue-disclaimer">
+          <span className="ps-reviewqueue-disclaimer-icon">⚠️</span>
+          <span className="ps-reviewqueue-disclaimer-text">{t('reviewQueueSection.coverageDisclaimer')}</span>
         </div>
       </div>
 

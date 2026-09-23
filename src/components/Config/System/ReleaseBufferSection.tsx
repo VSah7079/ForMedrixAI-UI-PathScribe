@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockReportReleaseService } from '../../../services/reportRelease/mockReportReleaseService';
 import type { ReportReleaseOrgConfig } from '../../../services/reportRelease/IReportReleaseService';
@@ -38,21 +39,9 @@ const Toggle: React.FC<ToggleProps> = ({ enabled, onChange, disabled = false, ar
     aria-label={ariaLabel}
     disabled={disabled}
     onClick={() => !disabled && onChange(!enabled)}
-    style={{
-      width: '44px', height: '24px', borderRadius: '12px', border: 'none',
-      background: disabled ? '#334155' : enabled ? '#0891B2' : '#475569',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-      opacity: disabled ? 0.5 : 1,
-    }}
+    className={`ps-rbuf-toggle ${disabled ? 'ps-rbuf-toggle--disabled' : enabled ? 'ps-rbuf-toggle--on' : 'ps-rbuf-toggle--off'}`}
   >
-    <span style={{
-      position: 'absolute', top: '3px',
-      left: enabled ? '23px' : '3px',
-      width: '18px', height: '18px', borderRadius: '50%',
-      background: 'white', transition: 'left 0.2s',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-    }} />
+    <span className={`ps-rbuf-toggle-thumb ${enabled ? 'ps-rbuf-toggle-thumb--on' : 'ps-rbuf-toggle-thumb--off'}`} />
   </button>
 );
 
@@ -71,25 +60,16 @@ interface SettingRowProps {
 const SettingRow: React.FC<SettingRowProps> = ({
   label, description, children, indented = false, dimmed = false,
 }) => (
-  <div style={{
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '14px 16px',
-    marginLeft: indented ? '20px' : '0',
-    borderLeft: indented ? '2px solid rgba(8,145,178,0.3)' : 'none',
-    background: 'rgba(255,255,255,0.03)',
-    borderRadius: '8px', marginBottom: '8px',
-    opacity: dimmed ? 0.65 : 1,
-    transition: 'opacity 0.2s',
-  }}>
-    <div style={{ flex: 1, marginRight: '16px' }}>
-      <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', marginBottom: '3px' }}>
+  <div className={`ps-rbuf-setting-row ${indented ? 'ps-rbuf-setting-row--indented' : ''} ${dimmed ? 'ps-rbuf-setting-row--dimmed' : ''}`}>
+    <div className="ps-rbuf-setting-row-text">
+      <div className="ps-rbuf-setting-row-label">
         {label}
       </div>
-      <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5' }}>
+      <div className="ps-rbuf-setting-row-desc">
         {description}
       </div>
     </div>
-    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', paddingTop: '2px' }}>
+    <div className="ps-rbuf-setting-row-control">
       {children}
     </div>
   </div>
@@ -99,6 +79,7 @@ const DURATION_MIN = 1;
 const DURATION_MAX = 30;
 
 const ReleaseBufferSection: React.FC = () => {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ReportReleaseOrgConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -124,29 +105,25 @@ const ReleaseBufferSection: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
-          ⏳ Post-Sign-Out Release Buffer
+      <div className="ps-rbuf-header">
+        <h2 className="ps-rbuf-title">
+          {t('releaseBufferSection.title')}
         </h2>
-        <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, lineHeight: '1.5' }}>
-          A temporary hold window between sign-out and genuine external release,
-          during which the signing pathologist can recall and correct a report
-          without triggering a formal amendment. This is the org-wide default —
-          individual performing labs can inherit it or define their own values
-          on the Facility Configuration edit modal.
+        <p className="ps-rbuf-subtitle">
+          {t('releaseBufferSection.subtitle')}
         </p>
       </div>
 
       <SettingRow
-        label="Enable Post-Sign-Out Release Buffer"
-        description="When on, a signed report is held at Pending Release for the configured duration before genuinely finalizing, unless a bypass rule below applies."
+        label={t('releaseBufferSection.settings.enableBuffer.label')}
+        description={t('releaseBufferSection.settings.enableBuffer.description')}
       >
-        <Toggle enabled={config.enabled} onChange={val => persist({ ...config, enabled: val })} ariaLabel="Enable Post-Sign-Out Release Buffer" />
+        <Toggle enabled={config.enabled} onChange={val => persist({ ...config, enabled: val })} ariaLabel={t('releaseBufferSection.settings.enableBuffer.label')} />
       </SettingRow>
 
       <SettingRow
-        label="Buffer Duration"
-        description={`How long a report stays recallable after sign-out, in minutes (${DURATION_MIN}–${DURATION_MAX}).`}
+        label={t('releaseBufferSection.settings.bufferDuration.label')}
+        description={t('releaseBufferSection.settings.bufferDuration.description', { min: DURATION_MIN, max: DURATION_MAX })}
         indented
         dimmed={durationDimmed}
       >
@@ -161,19 +138,13 @@ const ReleaseBufferSection: React.FC = () => {
             const clamped = Number.isFinite(raw) ? Math.min(DURATION_MAX, Math.max(DURATION_MIN, raw)) : config.durationMinutes;
             persist({ ...config, durationMinutes: clamped });
           }}
-          style={{
-            width: '80px', padding: '8px 12px', borderRadius: '7px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: config.enabled ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
-            color: '#f1f5f9', fontSize: '13px', outline: 'none',
-            cursor: config.enabled ? 'text' : 'not-allowed',
-          }}
+          className={`ps-rbuf-input ps-rbuf-input--number ${config.enabled ? 'ps-rbuf-input--enabled' : 'ps-rbuf-input--disabled'}`}
         />
       </SettingRow>
 
       <SettingRow
-        label="Bypass Buffer for STAT Cases"
-        description="STAT-priority cases release immediately upon sign-out, regardless of the buffer duration above."
+        label={t('releaseBufferSection.settings.bypassForStat.label')}
+        description={t('releaseBufferSection.settings.bypassForStat.description')}
         indented
         dimmed={durationDimmed}
       >
@@ -181,13 +152,13 @@ const ReleaseBufferSection: React.FC = () => {
           enabled={config.bypassForStat}
           onChange={val => persist({ ...config, bypassForStat: val })}
           disabled={!config.enabled}
-          ariaLabel="Bypass Buffer for STAT Cases"
+          ariaLabel={t('releaseBufferSection.settings.bypassForStat.label')}
         />
       </SettingRow>
 
       <SettingRow
-        label="Watermark Banner Text"
-        description="Rendered diagonally across any on-screen view of a Pending Release report, and sent through to hardcopy PDF generation."
+        label={t('releaseBufferSection.settings.watermarkText.label')}
+        description={t('releaseBufferSection.settings.watermarkText.description')}
         indented
         dimmed={durationDimmed}
       >
@@ -196,19 +167,13 @@ const ReleaseBufferSection: React.FC = () => {
           value={config.watermarkText}
           disabled={!config.enabled}
           onChange={e => persist({ ...config, watermarkText: e.target.value })}
-          style={{
-            width: '360px', padding: '8px 12px', borderRadius: '7px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: config.enabled ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
-            color: '#f1f5f9', fontSize: '13px', outline: 'none',
-            cursor: config.enabled ? 'text' : 'not-allowed',
-          }}
+          className={`ps-rbuf-input ps-rbuf-input--text ${config.enabled ? 'ps-rbuf-input--enabled' : 'ps-rbuf-input--disabled'}`}
         />
       </SettingRow>
 
       <SettingRow
-        label="Restrict In-House Hardcopy Printing"
-        description="Blocks hardcopy printing while a report is Pending Release, by default. An operator can override per print action — the printed PDF still carries the watermark above when they do."
+        label={t('releaseBufferSection.settings.restrictHardcopy.label')}
+        description={t('releaseBufferSection.settings.restrictHardcopy.description')}
         indented
         dimmed={durationDimmed}
       >
@@ -216,13 +181,13 @@ const ReleaseBufferSection: React.FC = () => {
           enabled={config.restrictHardcopyPrinting}
           onChange={val => persist({ ...config, restrictHardcopyPrinting: val })}
           disabled={!config.enabled}
-          ariaLabel="Restrict In-House Hardcopy Printing"
+          ariaLabel={t('releaseBufferSection.settings.restrictHardcopy.label')}
         />
       </SettingRow>
 
       {saved && (
-        <div style={{ marginTop: '4px', marginLeft: '16px', fontSize: '12px', color: '#22c55e', fontWeight: 600 }}>
-          ✓ Saved
+        <div className="ps-rbuf-saved">
+          {t('releaseBufferSection.saved')}
         </div>
       )}
     </div>

@@ -22,6 +22,61 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Case, CaseParticipant } from '@/types/case/Case';
 
+/** Real, per direct follow-up on the Cytology review-role/sign-out
+ *  review — the real, confirmed sibling to syncPrimaryAssignee() below,
+ *  for the one real call site (acceptPoolCase) that was blindly calling
+ *  syncPrimaryAssignee() for EVERY pool-claim, tagging every claimer
+ *  'primary'/Attending regardless of who they actually are. Everything
+ *  syncPrimaryAssignee's own header says about delegateCase/CaseTeamModal
+ *  still holds — those are explicit, human-chosen "make this person
+ *  primary" actions and are untouched here. This function instead tags
+ *  the claimer with whatever real participation type they were actually
+ *  resolved to (resolveClaimParticipationType.ts) — 'resident',
+ *  'cytotechnologist', etc. — never assuming 'primary'. Deliberately
+ *  the same participant-upsert shape as syncPrimaryAssignee (existing
+ *  participant gets the type added; a new claimer gets a fresh record),
+ *  so the two stay visibly parallel rather than silently diverging. */
+export function syncClaimAssignee(
+  caseData: Case,
+  claimingStaffId: string,
+  claimingStaffName: string | undefined,
+  participationTypeId: string,
+): Partial<Case> {
+  const existingParticipants: CaseParticipant[] = caseData.participants ?? [];
+  const targetIndex = existingParticipants.findIndex(p => p.staffId === claimingStaffId && p.status !== 'removed');
+
+  let updatedParticipants: CaseParticipant[];
+  if (targetIndex >= 0) {
+    const types = new Set(existingParticipants[targetIndex].participationTypeIds);
+    types.add(participationTypeId);
+    updatedParticipants = existingParticipants.map((p, i) =>
+      i === targetIndex ? { ...p, participationTypeIds: Array.from(types), status: 'active' } : p
+    );
+  } else {
+    updatedParticipants = [
+      ...existingParticipants,
+      {
+        staffId: claimingStaffId,
+        staffName: claimingStaffName ?? claimingStaffId,
+        source: 'manual',
+        participationTypeIds: [participationTypeId],
+        addedBy: claimingStaffId,
+        addedAt: new Date().toISOString(),
+        status: 'active',
+      },
+    ];
+  }
+
+  return {
+    order: {
+      ...caseData.order,
+      assignedTo: claimingStaffId,
+      assignedParticipationTypeId: participationTypeId,
+    },
+    participants: updatedParticipants,
+  };
+}
+
 export function syncPrimaryAssignee(
   caseData: Case,
   newPrimaryStaffId: string,

@@ -66,6 +66,38 @@ export interface QaCapaTriggerRule {
   deficiencyTypeId?: string;
 }
 
+/**
+ * Real, per direct guidance (PS-117): the finite set of normalized,
+ * pre-computed case signals the generic case-selection engine
+ * (resolveQaCaseSelectionContext.ts) can express a targeted rule
+ * against. Genuinely admin-configurable — picking any signal here for
+ * any QaActivityType requires zero code — but adding a brand-new
+ * signal itself (a new kind of case fact nobody's computed yet) is a
+ * real, honest code change, the same way it would be in any real rule
+ * engine with a finite fact vocabulary. Deliberately NOT a full
+ * boolean-expression DSL: the one real, currently-shipped hardcoded
+ * condition this generalizes (Discordance's own "does this case have
+ * a non-deferred frozen category") is a single boolean fact, not a
+ * multi-field expression — building a general expression language
+ * against a single known real use case would be speculative, not
+ * "generalized."
+ */
+export type QaCaseSelectionSignal = 'hasNonDeferredFrozenCategory';
+
+/**
+ * Real, per direct guidance (PS-117, generalizing Discordance's own
+ * hardcoded trigger — see useSignOutWorkflow.ts's real merged-intraop-
+ * session check): a targeted-selection rule is satisfied when the
+ * named signal is true for the case being considered. Undefined means
+ * this activity has no targeted rule at all — it may still be
+ * selected via samplingPercentage below, or never automatically
+ * selected (fully manual), matching every other real "absence means
+ * off" convention in this file.
+ */
+export interface QaTargetedSelectionRule {
+  signal: QaCaseSelectionSignal;
+}
+
 export interface QaReviewFieldOption {
   id: string;
   label: string;
@@ -154,6 +186,18 @@ export interface QaActivityType {
    * later ticket), deliberately not built here.
    */
   samplingPercentage?: number;
+  /**
+   * Real, per direct guidance (PS-117): the generic, admin-configurable
+   * targeted-selection condition — see QaTargetedSelectionRule's own
+   * doc comment above. Undefined means no targeted rule; an activity
+   * can have a targeted rule, a samplingPercentage, both (targeted
+   * cases are always selected; the random roll additionally covers
+   * cases the targeted rule doesn't catch), or neither (fully manual
+   * selection). Storage and admin config only — resolveQaActivity
+   * SelectionForCase.ts is what actually evaluates this against a
+   * real case.
+   */
+  targetedSelectionRule?: QaTargetedSelectionRule;
   /** Real, per direct guidance (PS-115, Story 1.4) — see
    *  QaCapaTriggerRule's own doc comment above for the full account. */
   capaTriggerRule?: QaCapaTriggerRule;

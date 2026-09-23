@@ -29,12 +29,12 @@ const CytologySlideOverDrawer: React.FC<CytologySlideOverDrawerProps> = ({ isOpe
   return (
     <>
       <div className="ps-drawer-backdrop" onClick={onClose} />
-      <div className="ps-drawer" style={{ width: 420 }}>
+      <div className="ps-drawer ps-cytology-slideover">
         <div className="ps-drawer-header">
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: '#e5e7eb', margin: 0 }}>{title}</h2>
+          <h2 className="ps-cytology-slideover-title">{title}</h2>
           <button onClick={onClose} className="ps-research-close">✕</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+        <div className="ps-cytology-slideover-body">
           {children}
         </div>
       </div>

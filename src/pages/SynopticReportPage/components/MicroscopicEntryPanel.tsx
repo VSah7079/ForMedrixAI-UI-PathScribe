@@ -2,28 +2,61 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Real feature, per direct follow-up: "So after gross complete, then
 // the next logical step is to generate a Microscopic Description...
-// Perhaps a gap in our orchestration flow." Deliberately a simple,
-// dedicated panel — a plain, controlled <textarea>, not the full
-// TipTap-based rich editor OrchestratorSectionEditor.tsx uses for the
-// Report Draft's own narrative sections. Confirmed directly before
-// building: that system requires a resolved report template
-// (buildContext/resolveReportTemplate) and carries its own real,
-// documented UX fragility (report draft persistence, layout —
-// flagged as pending review in this app's own prior session notes) —
-// building on it here would couple a genuinely new, independent
-// feature to a system with open problems of its own, for no real
-// benefit; a Microscopic narrative doesn't need rich formatting.
+// Perhaps a gap in our orchestration flow."
+//
+// Real fix (PS-313 — "The Microscopic Description field's current
+// styling is jarring on the eyes. It should probably use the same
+// darker background as the Case Comment field... and should be a
+// rich-text (RTF) field since it's a major report element"): this
+// panel originally used a plain, controlled <textarea>, deliberately
+// NOT the full TipTap-based rich editor OrchestratorSectionEditor.tsx
+// uses for the Report Draft's own narrative sections — that system
+// requires a resolved report template (buildContext/
+// resolveReportTemplate) and carries its own real, documented UX
+// fragility, so building on it here would have coupled a genuinely
+// new, independent feature to a system with open problems of its
+// own. That reasoning still holds — this still does NOT use
+// OrchestratorSectionEditor. But PathScribeEditor (the same
+// standalone rich-text component CaseCommentModal.tsx/
+// ReportCommentModal.tsx already use for Case/Specimen Comment, with
+// no report-template dependency of its own) is a different, lighter
+// real option that sidesteps that exact risk while genuinely giving
+// this "major report element" real formatting and the darker,
+// easier-to-read `theme="dark"` background the ticket asked to
+// match. Checked every real consumer of MicroscopicReportInstance.text
+// before switching formats (Sidebar.tsx, useSignOutWorkflow.ts,
+// evaluateMicroscopicFinalizeGate.ts) — every one only ever checks
+// non-emptiness (`.trim().length > 0`), never parses or renders this
+// text as plain text anywhere; this narrative isn't wired into any
+// PDF/report-preview renderer yet (a real, separate, already-known
+// gap this ticket doesn't touch), so there is no existing plain-text
+// consumer this format change could break.
 //
 // Dictation wired directly via useVoice()'s own startDictation, same
 // real "register as target when focused and the global mic is
-// pressed" pattern OrchestratorSectionEditor.tsx already uses —
-// reusing the proven voice infrastructure without reusing the
-// heavier rich-editor machinery it's normally paired with.
+// pressed" pattern OrchestratorSectionEditor.tsx already uses. Now
+// that the field is a real rich editor, dictated text is inserted at
+// the cursor through the editor's own Tiptap instance (via
+// PathScribeEditorHandle.getEditor()) rather than naive string
+// concatenation — the same real pattern
+// OrchestratorSectionEditor.tsx's own registerDictationTarget
+// already uses, not a second, independently-invented approach.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useVoice } from '@/contexts/VoiceProvider';
 import type { MicroscopicReportInstance } from '@/types/case/Case';
+import PathScribeEditor from '@/components/Editor/PathScribeEditor';
+import type { PathScribeEditorHandle } from '@/components/Editor/PathScribeEditorRef';
+import '../../../pathscribe.css';
+
+/** Same real "strip tags, then check for actual text" convention
+ *  PathScribeEditor.tsx's own MacroModal preview already uses —
+ *  robust to whichever exact empty-HTML shape (`''`, `<p></p>`,
+ *  `<p><br></p>`) the editor happens to produce, unlike a single
+ *  hardcoded string comparison. */
+const isRichTextEmpty = (html: string): boolean => !html || !html.replace(/<[^>]+>/g, ' ').trim();
 
 interface MicroscopicEntryPanelProps {
   specimenId: string;
@@ -39,11 +72,12 @@ const MicroscopicEntryPanel: React.FC<MicroscopicEntryPanelProps> = ({
   specimenId, specimenLabel, specimenDesc, instance,
   onSaveDraft, onConfirmAndSave, onClearAndSave,
 }) => {
+  const { t } = useTranslation();
   const [text, setText] = useState(instance?.text ?? '');
   const [entryMethod, setEntryMethod] = useState<MicroscopicReportInstance['entryMethod']>(instance?.entryMethod);
   const [isFocused, setIsFocused] = useState(false);
   const [saving, setSaving] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<PathScribeEditorHandle>(null);
 
   // Real, deliberate re-sync when the underlying instance changes for
   // a reason other than this panel's own edits (e.g. specimen
@@ -61,18 +95,28 @@ const MicroscopicEntryPanel: React.FC<MicroscopicEntryPanelProps> = ({
   const registerDictationTarget = useCallback(() => {
     startDictation({
       fieldId: `micro-${specimenId}`,
-      label: `Microscopic Description — Specimen ${specimenLabel}`,
+      label: t('microscopicEntryPanel.dictationLabel', { specimenLabel }),
       context: 'micro',
       onText: (dictated: string, isInterim?: boolean) => {
-        setText(prev => {
-          const next = prev ? `${prev}${dictated}` : dictated;
-          if (!isInterim) onSaveDraft(specimenId, next, entryMethod === 'typed' ? 'mixed' : 'dictated');
-          return next;
-        });
-        if (!isInterim) setEntryMethod(prev => prev === 'typed' ? 'mixed' : 'dictated');
+        // Real fix (PS-313): insert through the editor's own Tiptap
+        // instance, same real pattern
+        // OrchestratorSectionEditor.tsx's registerDictationTarget
+        // already uses — naive `prev + dictated` string concatenation
+        // (this field's old, plain-textarea approach) would land raw
+        // text outside/after the rich content's closing tags instead
+        // of inside the current paragraph.
+        const editor = editorRef.current?.getEditor();
+        if (!editor) return;
+        editor.chain().focus().insertContent(dictated + (isInterim ? '' : ' ')).run();
+        const next = editor.getHTML();
+        setText(next);
+        if (!isInterim) {
+          onSaveDraft(specimenId, next, entryMethod === 'typed' ? 'mixed' : 'dictated');
+          setEntryMethod(prev => prev === 'typed' ? 'mixed' : 'dictated');
+        }
       },
     });
-  }, [startDictation, specimenId, specimenLabel, onSaveDraft, entryMethod]);
+  }, [startDictation, specimenId, specimenLabel, onSaveDraft, entryMethod, t]);
 
   // Same real "only when the mic was just pressed and nothing else
   // already claimed it" guard as OrchestratorSectionEditor.tsx's own
@@ -94,8 +138,15 @@ const MicroscopicEntryPanel: React.FC<MicroscopicEntryPanelProps> = ({
   };
 
   const handleInsertAttestation = () => {
-    const attestation = 'Microscopic examination performed.';
-    const nextText = text.trim().length > 0 ? `${text}\n\n${attestation}` : attestation;
+    // Real fix (PS-313): inserts as a real paragraph through the
+    // editor's own Tiptap instance — same reasoning as the dictation
+    // handler above, so the standard attestation becomes a genuine
+    // part of the rich content rather than raw text appended after
+    // whatever HTML the editor already holds.
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    editor.chain().focus().insertContent('<p>Microscopic examination performed.</p>').run();
+    const nextText = editor.getHTML();
     setText(nextText);
     setEntryMethod('typed');
     onSaveDraft(specimenId, nextText, 'typed');
@@ -116,64 +167,82 @@ const MicroscopicEntryPanel: React.FC<MicroscopicEntryPanelProps> = ({
 
   const status = instance?.status ?? 'not-started';
   const hasUnsavedChanges = text !== (instance?.text ?? '') || status === 'draft';
+  const isTextEmpty = isRichTextEmpty(text);
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 4, color: '#e2e8f0' }}>🔬 Microscopic Description</h2>
-      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
-        Specimen {specimenLabel}{specimenDesc ? ` — ${specimenDesc}` : ''}
+    <div className="ps-micro-entry">
+      <h2 className="ps-micro-entry-title">{t('microscopicEntryPanel.title')}</h2>
+      <p className="ps-micro-entry-subtitle">
+        {t('accessionPage.cytology.specimenTarget', { label: specimenLabel })}{specimenDesc ? ` — ${specimenDesc}` : ''}
       </p>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
-        Type or dictate — press the mic with this field focused, or insert the standard attestation below
-        and add detail only when clinically indicated. Optional when the active synoptic template's own
-        required fields are complete; saving this narrative is what re-checks whether a different CAP
-        template fits better, same as the review you already get for other AI-proposed changes.
+      <p className="ps-micro-entry-hint">
+        {t('microscopicEntryPanel.hint')}
       </p>
 
+      {/* The quoted phrase mirrors the exact, literal text
+          handleInsertAttestation() inserts into the report narrative
+          (persisted clinical documentation) — kept in English like
+          every other persisted diagnostic/narrative string in this
+          sweep, even though the button's own "Insert" chrome word is
+          translated. */}
       <button
         type="button"
-        className="ps-btn-secondary"
+        className="ps-btn-secondary ps-micro-entry-attest-btn"
         onClick={handleInsertAttestation}
-        style={{ marginBottom: 8, fontSize: 12 }}
       >
-        + Insert "Microscopic examination performed."
+        + {t('microscopicEntryPanel.insertAttestationButton')} "Microscopic examination performed."
       </button>
 
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={e => handleTextChange(e.target.value)}
+      {/* Real fix (PS-313): rich-text field, dark theme — matching
+          CaseCommentModal.tsx's/ReportCommentModal.tsx's own real
+          Case/Specimen Comment editor exactly, per the ticket's own
+          ask ("the same darker background as the Case Comment
+          field"). */}
+      {/* onFocus/onBlur on this wrapper (not a PathScribeEditor prop —
+          it doesn't expose one) rely on React's focus/blur bubbling
+          from the editor's real contentEditable region inside it,
+          same as any other focus-tracked container in this app. */}
+      <div
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
-        placeholder="Sections show..."
-        className="ps-conf-textarea"
-        style={{
-          width: '100%', minHeight: 220, resize: 'vertical', fontSize: 14, lineHeight: 1.6,
-          border: isDictatingHere ? '1px solid #ef4444' : undefined,
-        }}
-      />
+        className={`ps-micro-entry-editor-wrap${isDictatingHere ? ' ps-micro-entry-editor-wrap--dictating' : ''}`}
+      >
+        <PathScribeEditor
+          ref={editorRef}
+          key={`micro-editor-${specimenId}`}
+          content={text}
+          onChange={handleTextChange}
+          placeholder={t('microscopicEntryPanel.editorPlaceholder')}
+          minHeight="220px"
+          theme="dark"
+          allowThemeToggle
+          showRulerDefault={false}
+          macros={[]}
+          approvedFonts={['Arial', 'Times New Roman', 'Calibri', 'Courier New']}
+        />
+      </div>
 
       {isDictatingHere && (
-        <div style={{ fontSize: 12, color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-          Dictating into this field…
+        <div className="ps-micro-entry-dictating-indicator">
+          <span className="ps-micro-entry-dictating-dot" />
+          {t('microscopicEntryPanel.dictatingIndicator')}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+      <div className="ps-micro-entry-actions">
         <button className="ps-btn-primary" onClick={handleSave} disabled={saving || !hasUnsavedChanges}>
-          {saving ? 'Saving…' : '✓ Save'}
+          {saving ? t('common.saving') : t('microscopicEntryPanel.saveButton')}
         </button>
-        {text.trim().length > 0 && (
+        {!isTextEmpty && (
           <button className="ps-btn-secondary" onClick={handleClear} disabled={saving}>
-            Clear
+            {t('common.clear')}
           </button>
         )}
-        <span style={{ fontSize: 12, color: status === 'draft' ? '#f59e0b' : status === 'saved' ? '#34d399' : '#64748b', marginLeft: 8 }}>
-          {status === 'draft' && '● Unsaved changes'}
-          {status === 'saved' && text.trim().length > 0 && '✓ Saved'}
-          {status === 'saved' && text.trim().length === 0 && '— Deliberately left blank'}
-          {status === 'not-started' && 'Not started'}
+        <span className={`ps-micro-entry-status${status === 'draft' ? ' ps-micro-entry-status--draft' : status === 'saved' ? ' ps-micro-entry-status--saved' : ''}`}>
+          {status === 'draft' && t('synopticEditor.nav.unsavedChanges')}
+          {status === 'saved' && !isTextEmpty && t('templateAssemblyPage.savedIndicator')}
+          {status === 'saved' && isTextEmpty && t('microscopicEntryPanel.status.deliberatelyBlank')}
+          {status === 'not-started' && t('sidebar.dotStatus.empty')}
         </span>
       </div>
     </div>

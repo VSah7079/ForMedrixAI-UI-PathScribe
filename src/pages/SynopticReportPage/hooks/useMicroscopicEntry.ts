@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import type { Case, MicroscopicReportInstance } from '@/types/case/Case';
 import type { SetConcurrencyConflict } from './sharedHookTypes';
@@ -60,6 +61,8 @@ export interface UseMicroscopicEntryResult {
 export function useMicroscopicEntry({
   caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast,
 }: UseMicroscopicEntryParams): UseMicroscopicEntryResult {
+  const { t } = useTranslation();
+
   const getInstance = useCallback((specimenId: string): MicroscopicReportInstance | undefined => {
     return (caseData?.microscopicReports ?? []).find(m => m.specimenId === specimenId);
   }, [caseData]);
@@ -104,10 +107,10 @@ export function useMicroscopicEntry({
       return true;
     } catch (e) {
       if (handleConcurrencyConflict(e, setConcurrencyConflict)) return false;
-      showToast('Could not save the Microscopic Description — please try again.');
+      showToast(t('useMicroscopicEntry.toast.saveFailed'));
       return false;
     }
-  }, [caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast]);
+  }, [caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast, t]);
 
   const saveDraft = useCallback((specimenId: string, text: string, entryMethod?: MicroscopicReportInstance['entryMethod']) => {
     writeInstance(specimenId, { text, status: 'draft', entryMethod });

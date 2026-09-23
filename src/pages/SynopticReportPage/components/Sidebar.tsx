@@ -1,5 +1,6 @@
 // src/pages/SynopticReportPage/components/Sidebar.tsx
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ConfirmModal from '@/components/Common/ConfirmModal';
 import type { Case, ProtocolChange } from '@/types/case/Case';
 import type { SpecimenLisStatus } from '@/types/case/Specimen';
@@ -53,33 +54,41 @@ interface SidebarProps {
 
 type DotStatus = 'complete' | 'partial' | 'empty';
 
-const DOT_STATUS_LABEL: Record<DotStatus, string> = {
-  complete: 'All fields answered',
-  partial:  'Partially answered',
-  empty:    'Not started',
+// Persisted-enum-style label maps — translate only the displayed label.
+const DOT_STATUS_LABEL_KEY: Record<DotStatus, string> = {
+  complete: 'sidebar.dotStatus.complete',
+  partial:  'sidebar.dotStatus.partial',
+  empty:    'sidebar.dotStatus.empty',
 };
 
 const StatusDot: React.FC<{ status: DotStatus }> = ({ status }) => {
-  const color = status === 'complete' ? '#10b981' : status === 'partial' ? '#f59e0b' : '#334155';
+  const { t } = useTranslation();
   return (
-    <span className="ps-status-dot-wrap" title={DOT_STATUS_LABEL[status]}>
-      <span className="ps-status-dot" style={{ background: color }} />
+    <span className="ps-status-dot-wrap" title={t(DOT_STATUS_LABEL_KEY[status])}>
+      <span className={`ps-status-dot ps-syn-status-dot--${status}`} />
     </span>
   );
 };
 
 // ── LIS status badge ─────────────────────────────────────────────────────────
-const LIS_BADGE: Record<Exclude<SpecimenLisStatus, 'lis_owned' | 'local_only'>, { label: string; className: string }> = {
-  pending_sync:  { label: 'Not in LIS',    className: 'ps-sp-lis-badge ps-sp-lis-badge--pending'  },
-  sync_sent:     { label: 'Awaiting LIS',  className: 'ps-sp-lis-badge ps-sp-lis-badge--sent'     },
-  sync_rejected: { label: 'LIS Rejected',  className: 'ps-sp-lis-badge ps-sp-lis-badge--rejected' },
+const LIS_BADGE: Record<Exclude<SpecimenLisStatus, 'lis_owned' | 'local_only'>, { labelKey: string; className: string }> = {
+  pending_sync:  { labelKey: 'sidebar.lisStatus.pendingSync',  className: 'ps-sp-lis-badge ps-sp-lis-badge--pending'  },
+  sync_sent:     { labelKey: 'sidebar.lisStatus.syncSent',     className: 'ps-sp-lis-badge ps-sp-lis-badge--sent'     },
+  sync_rejected: { labelKey: 'sidebar.lisStatus.syncRejected', className: 'ps-sp-lis-badge ps-sp-lis-badge--rejected' },
 };
 
 const LisStatusBadge: React.FC<{ status?: SpecimenLisStatus }> = ({ status }) => {
+  const { t } = useTranslation();
   if (!status || status === 'lis_owned' || status === 'local_only') return null;
   const badge = LIS_BADGE[status as keyof typeof LIS_BADGE];
   if (!badge) return null;
-  return <span className={badge.className}>{badge.label}</span>;
+  return <span className={badge.className}>{t(badge.labelKey)}</span>;
+};
+
+const REPORT_TYPE_LABEL_KEY: Record<'grossing' | 'microscopic' | 'synoptic', string> = {
+  grossing: 'sidebar.reportType.grossing',
+  microscopic: 'sidebar.reportType.microscopic',
+  synoptic: 'sidebar.reportType.synoptic',
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -106,6 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   pendingProtocolChanges,
   onReviewProtocolChanges,
 }) => {
+  const { t } = useTranslation();
   const specimens = caseData?.specimens ?? [];
   // Falls back to reading straight off caseData if the page doesn't pass
   // this explicitly — same default-to-source-data pattern as
@@ -136,7 +146,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* ── COLLAPSED: icon rail ─────────────────────────────── */}
       {collapsed && (
         <div className="ps-syn-rail">
-          <button className="ps-syn-rail-toggle" onClick={onToggleCollapse} title="Expand sidebar">
+          <button className="ps-syn-rail-toggle" onClick={onToggleCollapse} title={t('sidebar.expandTitle')}>
             ›
           </button>
 
@@ -147,7 +157,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             const hasAnswers = allInstances.some(r =>
               Object.values(r.answers ?? {}).some(v => v !== '' && !(Array.isArray(v) && !v.length))
             );
-            const dotColor = allInstances.length === 0 ? '#334155' : hasAnswers ? '#f59e0b' : '#334155';
             const isActive = activeSpecimenId === sp.id;
             const hasPendingChange = hasPendingChangeForSpecimen(sp.id);
             return (
@@ -163,21 +172,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                   }
                 }}
                 title={hasPendingChange
-                  ? `${sp.label}: ${sp.description} — AI re-evaluation suggests reviewing this specimen's synoptic assignment`
-                  : `${sp.label}: ${sp.description}`}
-                style={{ position: 'relative' }}
+                  ? t('sidebar.rail.titleWithReviewHint', { label: sp.label, description: sp.description })
+                  : t('sidebar.rail.title', { label: sp.label, description: sp.description })}
               >
                 <span className="ps-syn-rail-letter">{sp.label}</span>
-                <span className="ps-status-dot" style={{ background: dotColor, width: 6, height: 6 }} />
+                <span className={`ps-status-dot ps-syn-rail-dot${hasAnswers ? ' ps-syn-rail-dot--has-answers' : ''}`} />
                 {hasPendingChange && (
                   <span
                     onClick={e => { e.stopPropagation(); onReviewProtocolChanges?.(); }}
-                    style={{
-                      position: 'absolute', top: -3, right: -3,
-                      width: 9, height: 9, borderRadius: '50%',
-                      background: '#fbbf24', border: '1.5px solid #0d1829',
-                      cursor: 'pointer',
-                    }}
+                    className="ps-syn-rail-pending-dot"
                   />
                 )}
               </button>
@@ -190,7 +193,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {!collapsed && (
         <div className="ps-syn-sidebar-content">
 
-          <button className="ps-syn-sidebar-toggle" onClick={onToggleCollapse} title="Collapse sidebar">
+          <button className="ps-syn-sidebar-toggle" onClick={onToggleCollapse} title={t('sidebar.collapseTitle')}>
             ‹
           </button>
 
@@ -201,12 +204,12 @@ const Sidebar: React.FC<SidebarProps> = ({
             role="button" tabIndex={0}
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpenCaseComment?.()}
           >
-            <span style={{ fontSize: 13, lineHeight: 1 }}>💬</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="ps-syn-comment-icon">💬</span>
+            <div className="ps-syn-flex-fill">
               <div className="ps-syn-comment-label">
-                {hasCaseComment ? 'Edit Case Comment' : '+ Add Case Comment'}
+                {hasCaseComment ? t('sidebar.caseComment.edit') : `+ ${t('sidebar.caseComment.add')}`}
               </div>
-              {hasCaseComment && <div className="ps-syn-comment-sublabel">Applies to entire case</div>}
+              {hasCaseComment && <div className="ps-syn-comment-sublabel">{t('sidebar.caseComment.sublabel')}</div>}
             </div>
             {hasCaseComment && <span className="ps-syn-comment-check">✓</span>}
           </div>
@@ -226,14 +229,14 @@ const Sidebar: React.FC<SidebarProps> = ({
             role="button" tabIndex={0}
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpenRetentionHold?.()}
           >
-            <span style={{ fontSize: 13, lineHeight: 1 }}>🔒</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="ps-syn-comment-icon">🔒</span>
+            <div className="ps-syn-flex-fill">
               <div className="ps-syn-comment-label">
-                {hasActiveRetentionHold ? 'Active Retention Hold' : 'Retention Hold'}
+                {hasActiveRetentionHold ? t('sidebar.retentionHold.active') : t('sidebar.retentionHold.label')}
               </div>
-              {hasActiveRetentionHold && <div className="ps-syn-comment-sublabel">Blocks disposal until released</div>}
+              {hasActiveRetentionHold && <div className="ps-syn-comment-sublabel">{t('sidebar.retentionHold.sublabel')}</div>}
             </div>
-            {hasActiveRetentionHold && <span className="ps-syn-comment-check" style={{ color: '#f87171' }}>●</span>}
+            {hasActiveRetentionHold && <span className="ps-syn-comment-check ps-syn-comment-check--alert">●</span>}
           </div>
 
           {/* Real feature, per direct follow-up: "putting a case on
@@ -252,18 +255,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             role="button" tabIndex={0}
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpenCaseHold?.()}
           >
-            <span style={{ fontSize: 13, lineHeight: 1 }}>⛔</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="ps-syn-comment-icon">⛔</span>
+            <div className="ps-syn-flex-fill">
               <div className="ps-syn-comment-label">
-                {hasActiveCaseHold ? 'Case On Hold' : 'Case Hold'}
+                {hasActiveCaseHold ? t('sidebar.caseHold.active') : t('sidebar.caseHold.label')}
               </div>
-              {hasActiveCaseHold && <div className="ps-syn-comment-sublabel">Blocks finalize until released</div>}
+              {hasActiveCaseHold && <div className="ps-syn-comment-sublabel">{t('sidebar.caseHold.sublabel')}</div>}
             </div>
-            {hasActiveCaseHold && <span className="ps-syn-comment-check" style={{ color: '#f87171' }}>●</span>}
+            {hasActiveCaseHold && <span className="ps-syn-comment-check ps-syn-comment-check--alert">●</span>}
           </div>
 
           {/* Section label */}
-          <div className="ps-syn-section-label">Specimens &amp; Reports</div>
+          <div className="ps-syn-section-label">{t('sidebar.sectionLabel')}</div>
 
           {/* Specimen rows */}
           {specimens.map(specimen => {
@@ -325,7 +328,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     if (allRows.length === 0) { onSelectSpecimen?.(specimen.id); onAddSynoptic?.(); }
                     else { toggleExpand(specimen.id); onSelectSpecimen?.(specimen.id); }
                   }}
-                  title={`${specimen.label}: ${specimen.description}`}
+                  title={t('sidebar.specimenRow.title', { label: specimen.label, description: specimen.description })}
                   role="button" tabIndex={0}
                   onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && toggleExpand(specimen.id)}
                 >
@@ -333,7 +336,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     ▶
                   </span>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="ps-syn-flex-fill">
                     <div className="ps-syn-specimen-label">
                       <span className="ps-syn-specimen-label-letter">{specimen.label}:</span>{' '}
                       {specimen.description}
@@ -343,50 +346,32 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                   {specimenUnverifiedCount > 0 && (
                     <span
-                      title={`${specimenUnverifiedCount} AI suggestion${specimenUnverifiedCount === 1 ? '' : 's'} still unverified across this specimen's report${allRows.length === 1 ? '' : 's'}`}
-                      style={{
-                        fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 8,
-                        background: 'rgba(245,158,11,0.15)',
-                        border: '1px solid rgba(245,158,11,0.4)',
-                        color: '#fbbf24',
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        flexShrink: 0,
-                      }}
+                      title={`${t('sidebar.specimenRow.unverifiedCount', { count: specimenUnverifiedCount })} ${t('sidebar.specimenRow.acrossReports', { count: allRows.length })}`}
+                      className="ps-syn-unverified-badge"
                     >
-                      {specimenUnverifiedCount} unverified
+                      {t('sidebar.specimenRow.unverifiedBadge', { count: specimenUnverifiedCount })}
                     </span>
                   )}
 
                   <span
-                    className="ps-specimen-comment-btn"
+                    className={`ps-specimen-comment-btn${(specimenComments[specimen.id]?.length ?? 0) > 0 ? ' ps-specimen-comment-btn--active' : ''}`}
                     onClick={e => { e.stopPropagation(); onOpenSpecimenComment?.(specimen.id); }}
-                    title={(specimenComments[specimen.id]?.length ?? 0) > 0 ? 'View / add comment' : 'Add comment'}
-                    style={{
-                      opacity: (specimenComments[specimen.id]?.length ?? 0) > 0 ? 1 : 0.35,
-                      color:   (specimenComments[specimen.id]?.length ?? 0) > 0 ? '#38bdf8' : '#94a3b8',
-                    }}
+                    title={(specimenComments[specimen.id]?.length ?? 0) > 0 ? t('sidebar.specimenRow.viewAddComment') : t('sidebar.specimenRow.addComment')}
                   >💬</span>
 
                   <span
                     className="ps-specimen-edit-btn"
                     onClick={e => { e.stopPropagation(); onEditSpecimen?.(specimen.id); }}
-                    title="Edit specimen details"
+                    title={t('sidebar.specimenRow.editDetails')}
                   >✏️</span>
 
                   {hasPendingChangeForSpecimen(specimen.id) && (
                     <span
                       onClick={e => { e.stopPropagation(); onReviewProtocolChanges?.(); }}
-                      title="AI re-evaluation suggests this specimen's synoptic assignment may need review — click to see proposed changes."
-                      style={{
-                        fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 8,
-                        background: 'rgba(245,158,11,0.15)',
-                        border: '1px solid rgba(245,158,11,0.4)',
-                        color: '#fbbf24', cursor: 'pointer',
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        flexShrink: 0,
-                      }}
+                      title={t('sidebar.specimenRow.reviewHint')}
+                      className="ps-syn-review-badge"
                     >
-                      <span style={{ fontSize: 11 }}>⚠</span> Review
+                      <span className="ps-syn-review-badge-icon">⚠</span> {t('sidebar.specimenRow.review')}
                     </span>
                   )}
 
@@ -422,40 +407,56 @@ const Sidebar: React.FC<SidebarProps> = ({
                           className={`ps-syn-instance-row${isActiveInst ? ' active' : ''}`}
                           onClick={() => onSelectReport?.(inst.instanceId, specimen.id, inst.reportType)}
                         >
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="ps-syn-flex-fill">
                             <div className="ps-syn-instance-name">
-                              <span style={{
-                                fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                                color: inst.reportType === 'grossing' ? '#fbbf24' : inst.reportType === 'microscopic' ? '#ef4444' : '#38bdf8',
-                                marginRight: 6,
-                              }}>
-                                {inst.reportType === 'grossing' ? 'Gross' : inst.reportType === 'microscopic' ? 'Micro' : 'Synoptic'}
+                              <span className={`ps-syn-instance-type-label ps-syn-instance-type-label--${inst.reportType}`}>
+                                {t(REPORT_TYPE_LABEL_KEY[inst.reportType])}
                               </span>
                               {inst.reportType === 'microscopic'
-                                ? ((inst as any).status === 'draft' ? 'Draft — unsaved' : (inst as any).text?.trim() ? 'Saved' : 'Saved — left blank')
+                                ? ((inst as any).status === 'draft' ? t('sidebar.microscopic.draftUnsaved') : (inst as any).text?.trim() ? t('sidebar.microscopic.saved') : t('sidebar.microscopic.savedBlank'))
                                 : inst.templateName}
                             </div>
                             <div
-                              className="ps-syn-instance-meta"
-                              style={unverifiedCount > 0 ? { color: '#fbbf24', fontWeight: 600 } : undefined}
-                              title={unverifiedCount > 0 ? `${unverifiedCount} AI suggestion${unverifiedCount === 1 ? '' : 's'} still unverified on this report` : undefined}
+                              className={`ps-syn-instance-meta${unverifiedCount > 0 ? ' ps-syn-instance-meta--unverified' : ''}`}
+                              title={unverifiedCount > 0 ? t('sidebar.instance.unverifiedOnReport', { count: unverifiedCount }) : undefined}
                             >
                               {inst.reportType === 'microscopic'
-                                ? (() => { const len = ((inst as any).text ?? '').trim().length; return len > 0 ? `${len} character${len !== 1 ? 's' : ''}` : 'No narrative text yet'; })()
-                                : <>{filledCount} field{filledCount !== 1 ? 's' : ''} answered{unverifiedCount > 0 && ` · ${unverifiedCount} unverified`}</>}
+                                ? (() => { const len = ((inst as any).text ?? '').trim().length; return len > 0 ? t('sidebar.microscopic.characterCount', { count: len }) : t('sidebar.microscopic.noNarrativeYet'); })()
+                                : <>{t('sidebar.instance.fieldsAnswered', { count: filledCount })}{unverifiedCount > 0 && ` · ${t('sidebar.instance.unverifiedSuffix', { count: unverifiedCount })}`}</>}
                             </div>
                           </div>
                           <StatusDot status={instDot} />
+                          {/* Real fix (PS-315 — "Trash-can icon is
+                              almost invisible next to the synoptic
+                              report, compared to the codes"): root
+                              cause was ps-btn-icon-danger's own base
+                              rule — opacity: 0, only reaching opacity:
+                              1 on :hover of this whole row. That's not
+                              low contrast, it's genuinely not rendered
+                              at all until the pointer happens to be
+                              over this exact row. The billing code
+                              rows immediately next to this sidebar in
+                              the same page (BillingReviewPanel.tsx's
+                              own applied-code and suggested-code delete
+                              buttons — the real "codes" being compared
+                              against) already use this same
+                              ps-btn-icon-danger class plus a real
+                              ps-btn-icon-danger--visible modifier that
+                              forces opacity: 1 permanently. Added that
+                              same modifier here so this delete button
+                              matches that same, already-established
+                              always-visible treatment instead of the
+                              hover-only one. */}
                           {inst.instanceId !== '__legacy__' && inst.reportType !== 'microscopic' && onDeleteReport && (
                             <button
                               type="button"
-                              className="ps-btn-icon-danger"
+                              className="ps-btn-icon-danger ps-btn-icon-danger--visible"
                               onClick={e => {
                                 e.stopPropagation();
                                 setConfirmDeleteId(inst.instanceId);
                                 setConfirmDeleteName(inst.templateName);
                               }}
-                              title="Remove this synoptic report"
+                              title={t('sidebar.instance.removeReport')}
                             >🗑</button>
                           )}
                         </div>
@@ -471,11 +472,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {microscopicInstances.length === 0 && (
                       <button
                         type="button"
-                        className="ps-syn-instance-row"
-                        style={{ color: '#94a3b8', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left', width: '100%' }}
+                        className="ps-syn-instance-row ps-syn-add-microscopic-btn"
                         onClick={() => onAddMicroscopic?.(specimen.id)}
                       >
-                        <span style={{ fontSize: 13 }}>+ Add Microscopic Description</span>
+                        <span className="ps-syn-add-microscopic-label">+ {t('sidebar.addMicroscopic')}</span>
                       </button>
                     )}
                   </div>
@@ -485,7 +485,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           })}
 
           <button className="ps-syn-add-btn" onClick={() => onAddSynoptic?.()}>
-            <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add Synoptic Report
+            <span className="ps-syn-add-icon">+</span> {t('sidebar.addSynoptic')}
           </button>
 
         </div>
@@ -493,10 +493,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <ConfirmModal
         show={!!confirmDeleteId}
-        title="Remove Synoptic Report"
-        message={`Remove "${confirmDeleteName}"? This cannot be undone until you save the case.`}
-        confirmLabel="Remove"
-        cancelLabel="Keep"
+        title={t('sidebar.confirmDelete.title')}
+        message={t('sidebar.confirmDelete.message', { name: confirmDeleteName })}
+        confirmLabel={t('sidebar.confirmDelete.confirm')}
+        cancelLabel={t('sidebar.confirmDelete.cancel')}
         onConfirm={() => { if (confirmDeleteId) onDeleteReport?.(confirmDeleteId); setConfirmDeleteId(null); }}
         onCancel={() => setConfirmDeleteId(null)}
       />

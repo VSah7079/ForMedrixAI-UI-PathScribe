@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { batchService } from '@/services';
 import { generateBarcodeSvg } from '@/utils/labels/generateBarcodeSvg';
 import { BATCH_PROCESSING_NODES } from '@/services/batches/IBatchService';
@@ -23,6 +24,7 @@ interface Props {
 }
 
 const CreateBatchModal: React.FC<Props> = ({ onClose, onCreated, userId, userName, stationId }) => {
+  const { t } = useTranslation();
   const [processingNode, setProcessingNode] = useState<BatchProcessingNode>(BATCH_PROCESSING_NODES[0]);
   const [protocol, setProtocol] = useState('');
   const [priority, setPriority] = useState<BatchPriority>('Routine');
@@ -51,51 +53,51 @@ const CreateBatchModal: React.FC<Props> = ({ onClose, onCreated, userId, userNam
         {!createdBatch ? (
           <>
             <div className="ps-batch-modal-header">
-              <div className="ps-batch-modal-title">Create Batch</div>
+              <div className="ps-batch-modal-title">{t('createBatchModal.title')}</div>
               <button className="ps-mth-close" onClick={onClose}>✕</button>
             </div>
             <div className="ps-batch-modal-body">
-              <label className="ps-batch-field-label">Processing Node</label>
+              <label className="ps-batch-field-label">{t('createBatchModal.processingNode')}</label>
               <select className="ps-batch-select" value={processingNode} onChange={e => setProcessingNode(e.target.value as BatchProcessingNode)}>
-                {BATCH_PROCESSING_NODES.map(node => <option key={node} value={node}>{node}</option>)}
+                {BATCH_PROCESSING_NODES.map(node => <option key={node} value={node}>{t(`batchManagement.nodes.${node}`)}</option>)}
               </select>
 
-              <label className="ps-batch-field-label">Protocol / Run Parameters</label>
+              <label className="ps-batch-field-label">{t('createBatchModal.protocolLabel')}</label>
               <input
                 className="ps-batch-text-input"
                 type="text"
-                placeholder="e.g. Standard H&E Overnight Run"
+                placeholder={t('createBatchModal.protocolPlaceholder')}
                 value={protocol}
                 onChange={e => setProtocol(e.target.value)}
               />
 
-              <label className="ps-batch-field-label">Priority</label>
+              <label className="ps-batch-field-label">{t('createBatchModal.priority')}</label>
               <div className="ps-batch-priority-toggle">
                 <button
                   className={`ps-batch-priority-btn${priority === 'Routine' ? ' ps-batch-priority-btn--active' : ''}`}
                   onClick={() => setPriority('Routine')}
                 >
-                  Routine
+                  {t('createBatchModal.priorityRoutine')}
                 </button>
                 <button
                   className={`ps-batch-priority-btn ps-batch-priority-btn--stat${priority === 'STAT' ? ' ps-batch-priority-btn--active' : ''}`}
                   onClick={() => setPriority('STAT')}
                 >
-                  STAT
+                  {t('createBatchModal.priorityStat')}
                 </button>
               </div>
             </div>
             <div className="ps-batch-modal-footer">
-              <button className="ps-btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="ps-btn-secondary" onClick={onClose}>{t('createBatchModal.cancel')}</button>
               <button className="ps-btn-primary" disabled={!canCreate || busy} onClick={handleCreate}>
-                {busy ? 'Creating…' : 'Create Batch'}
+                {busy ? t('createBatchModal.creating') : t('createBatchModal.create')}
               </button>
             </div>
           </>
         ) : (
           <>
             <div className="ps-batch-modal-header">
-              <div className="ps-batch-modal-title">Batch Created</div>
+              <div className="ps-batch-modal-title">{t('createBatchModal.createdTitle')}</div>
               {/* Real fix, found via live testing, not assumed: this used
                   to call plain onClose, same as the pre-creation form's
                   own "✕" — but by this point the batch genuinely,
@@ -108,16 +110,16 @@ const CreateBatchModal: React.FC<Props> = ({ onClose, onCreated, userId, userNam
               <button className="ps-mth-close" onClick={() => onCreated(createdBatch)}>✕</button>
             </div>
             <div className="ps-batch-modal-body ps-batch-barcode-body">
-              <div className="ps-batch-barcode-label">Print this Master Batch Barcode and affix it to the physical carrier.</div>
+              <div className="ps-batch-barcode-label">{t('createBatchModal.printInstruction')}</div>
               {barcodeSvg && (
                 <div className="ps-batch-barcode-svg-wrap" dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
               )}
               <div className="ps-batch-barcode-value">{createdBatch.masterBarcode}</div>
-              <div className="ps-batch-barcode-meta">{createdBatch.processingNode} · {createdBatch.protocol} · {createdBatch.priority}</div>
+              <div className="ps-batch-barcode-meta">{t(`batchManagement.nodes.${createdBatch.processingNode}`)} · {createdBatch.protocol} · {createdBatch.priority === 'STAT' ? t('createBatchModal.priorityStat') : t('createBatchModal.priorityRoutine')}</div>
             </div>
             <div className="ps-batch-modal-footer">
-              <button className="ps-btn-secondary" onClick={() => window.print()}>🖨️ Print</button>
-              <button className="ps-btn-primary" onClick={() => onCreated(createdBatch)}>Continue — Scan Items</button>
+              <button className="ps-btn-secondary" onClick={() => window.print()}>🖨️ {t('createBatchModal.print')}</button>
+              <button className="ps-btn-primary" onClick={() => onCreated(createdBatch)}>{t('createBatchModal.continueScanning')}</button>
             </div>
           </>
         )}

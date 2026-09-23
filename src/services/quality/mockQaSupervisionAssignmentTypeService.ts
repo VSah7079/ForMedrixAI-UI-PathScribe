@@ -16,7 +16,7 @@ import type { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type { IQaSupervisionAssignmentTypeService } from './IQaSupervisionAssignmentTypeService';
 import type { QaSupervisionAssignmentType } from '@/types/quality/QaSupervisionAssignmentType';
-import { FPPE_ACTIVITY_TYPE_ID } from './mockQaSupervisionAssignmentService';
+import { FPPE_ACTIVITY_TYPE_ID, CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID } from './mockQaSupervisionAssignmentService';
 
 const STORAGE_KEY = 'qa_supervision_assignment_types';
 
@@ -27,6 +27,24 @@ const SEED_TYPES: QaSupervisionAssignmentType[] = [
     description: 'Focused Professional Practice Evaluation — supervised sign-out for a newly credentialed or provisionally hired pathologist, until their real case-count or duration threshold is met.',
     tabScope: 'standard',
     jurisdictions: ['US', 'CA', 'GB_EW', 'GB_SCT', 'GB_NIR', 'IE', 'AU', 'NZ', 'KR'],
+    active: true,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    createdBy: 'system-seed',
+  },
+  // Real, per direct follow-up — see CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID's
+  // own doc comment in mockQaSupervisionAssignmentService.ts for the
+  // full CLIA rationale and this archetype's honest scope boundary
+  // (the "twice in year one" leg only). US-only jurisdiction,
+  // deliberately unlike FPPE's broad list above — CLIA '88 is a US
+  // federal statute; it has no real bearing on a UK/AU/KR lab's own
+  // competency-assessment obligations, which are a genuinely separate,
+  // not-yet-built concern.
+  {
+    id: CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID,
+    name: 'New Cytotechnologist Competency Assessment',
+    description: 'CLIA ’88 (42 CFR § 493 Subpart M) new-testing-personnel competency monitoring — supervised, countersigned sign-out for a newly hired Cytotechnologist until two documented competency assessments are recorded in their first year.',
+    tabScope: 'standard',
+    jurisdictions: ['US'],
     active: true,
     createdAt: '2024-01-01T00:00:00.000Z',
     createdBy: 'system-seed',

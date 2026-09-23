@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { stainTypeService } from '@/services';
 import { WsiViewerLaunchButton } from '../components/WsiViewerLaunchButton';
@@ -33,7 +34,26 @@ import { mockCassetteColorService } from '@/services/cassetteColors/mockCassette
 import { DECANT_TYPE_LABEL } from '@/types/case/Material';
 
 const BLOCK_STATUSES = ['Pending', 'Grossed', 'Embedded', 'Exhausted', 'Lost', 'Damaged'] as const;
+// Real, persisted enum values (block.status) stay as data — only the
+// displayed option text translates, same LABEL_KEY pattern used
+// elsewhere in this sweep for other persisted status enums.
+const BLOCK_STATUS_LABEL_KEY: Record<typeof BLOCK_STATUSES[number], string> = {
+  Pending: 'blockStainEditorModal.blockStatusLabels.pending',
+  Grossed: 'blockStainEditorModal.blockStatusLabels.grossed',
+  Embedded: 'blockStainEditorModal.blockStatusLabels.embedded',
+  Exhausted: 'blockStainEditorModal.blockStatusLabels.exhausted',
+  Lost: 'blockStainEditorModal.blockStatusLabels.lost',
+  Damaged: 'blockStainEditorModal.blockStatusLabels.damaged',
+};
+
 const PRIORITY_OPTIONS: CasePriority[] = ['Routine', 'Rush', 'STAT'];
+// Same real-enum-stays-data pattern as BLOCK_STATUS_LABEL_KEY above —
+// casePriority/block.priority are real, persisted values.
+const PRIORITY_LABEL_KEY: Record<CasePriority, string> = {
+  Routine: 'blockStainEditorModal.priorityLabels.routine',
+  Rush: 'blockStainEditorModal.priorityLabels.rush',
+  STAT: 'blockStainEditorModal.priorityLabels.stat',
+};
 
 // Real feature, per direct confirmation, grounded explicitly in CAP
 // ANP.11600, CLIA 493.1105, and ISO 15189:2012 5.8: "Add a required
@@ -41,6 +61,13 @@ const PRIORITY_OPTIONS: CasePriority[] = ['Routine', 'Rush', 'STAT'];
 // generic status dropdown below (which calls onUpdateBlock with no
 // audit trail at all) — cancellation gets its own, dedicated control
 // so a reason is always captured, never optional.
+// Deliberately NOT translated: whichever of these a user selects
+// becomes the permanently-persisted audit-trail value
+// (block.cancelReason), read back verbatim in the read-only audit
+// display below — translating the picklist would mean the exact
+// same choice gets stored as different text depending on the UI
+// language active at the moment it was picked, which is exactly the
+// kind of drift a CAP/CLIA audit trail can't tolerate.
 const CANCEL_REASONS = [
   'Wrong specimen assigned to this block',
   'Wrong block for this tissue',
@@ -52,6 +79,9 @@ const CANCEL_REASONS = [
 
 // Real feature, per direct confirmation: "Order Restain... Captures
 // reason (e.g., 'Weak stain', 'Artifact', 'Pathologist request')."
+// Same not-translated reasoning as CANCEL_REASONS above — the chosen
+// value is permanently persisted as stain.restainReason and read back
+// verbatim in the audit display.
 const RESTAIN_REASONS = [
   'Weak stain',
   'Artifact',
@@ -82,6 +112,7 @@ export const StainMultiSelect: React.FC<{
    *  that isn't cancelled) actually offers spare creation. */
   onCreateSpare?: () => void;
 }> = ({ stainTypes, stains, onChange, masterTargets, onCreateSpare }) => {
+  const { t } = useTranslation();
   const [editingTargetsForId, setEditingTargetsForId] = useState<string | null>(null);
   const [targetSearchQuery, setTargetSearchQuery] = useState('');
   const [query, setQuery] = useState('');
@@ -119,7 +150,7 @@ export const StainMultiSelect: React.FC<{
       // record upon creation." Only meaningful for a real Molecular
       // stain - a copy, not a live reference, so editing it here never
       // touches this StainType's own dictionary default.
-      selectedTargets: s.category === 'Molecular' && s.defaultTargets ? s.defaultTargets.map(t => ({ ...t })) : undefined,
+      selectedTargets: s.category === 'Molecular' && s.defaultTargets ? s.defaultTargets.map(tgt => ({ ...tgt })) : undefined,
     }]);
     setQuery('');
   };
@@ -139,10 +170,10 @@ export const StainMultiSelect: React.FC<{
                 <button
                   type="button"
                   onClick={() => setEditingTargetsForId(editingTargetsForId === s.id ? null : s.id)}
-                  title="Edit targets for this order"
-                  style={{ marginLeft: 5, fontSize: 10, color: '#a78bfa', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: 999, padding: '1px 6px', cursor: 'pointer' }}
+                  title={t('blockStainEditorModal.stainMultiSelect.editTargetsTitle')}
+                  className="ps-blockstain-target-count-btn"
                 >
-                  {s.selectedTargets.length} target{s.selectedTargets.length === 1 ? '' : 's'}
+                  {t('blockStainEditorModal.stainMultiSelect.targetCount', { count: s.selectedTargets.length })}
                 </button>
               )}
               {/* Real feature, per the Hybrid Request-Driven Workflow
@@ -151,10 +182,10 @@ export const StainMultiSelect: React.FC<{
                   flagged in place once the real LIS request resolves
                   — never silently dropped on rejection. */}
               {s.lisRequestStatus === 'pending' && (
-                <span title="Sent to the LIS, awaiting confirmation" style={{ marginLeft: 5, fontSize: 10, color: '#f59e0b' }}>⏳</span>
+                <span title={t('blockStainEditorModal.stainMultiSelect.lisPendingTitle')} className="ps-blockstain-lis-icon ps-blockstain-lis-icon--pending">⏳</span>
               )}
               {s.lisRequestStatus === 'rejected' && (
-                <span title="The LIS rejected this request — follow up with histology" style={{ marginLeft: 5, fontSize: 10, color: '#f87171' }}>⚠</span>
+                <span title={t('blockStainEditorModal.stainMultiSelect.lisRejectedTitle')} className="ps-blockstain-lis-icon ps-blockstain-lis-icon--rejected">⚠</span>
               )}
               <WsiViewerLaunchButton status={s.status} displayId={s.displayId} />
               <button type="button" onClick={() => remove(s.id)} className="ps-protocol-stainselect-chip-remove">×</button>
@@ -167,53 +198,53 @@ export const StainMultiSelect: React.FC<{
         if (!editingStain) return null;
         const currentTargets = editingStain.selectedTargets ?? [];
         return (
-          <div style={{ padding: 10, marginBottom: 8, background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', marginBottom: 6 }}>
-              Targets for {editingStain.stainName}
+          <div className="ps-blockstain-target-editor">
+            <div className="ps-blockstain-target-editor-title">
+              {t('blockStainEditorModal.stainMultiSelect.targetsForStain', { name: editingStain.stainName })}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {currentTargets.map(t => (
-                <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px', borderRadius: 999, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', fontSize: 12, color: '#a78bfa' }}>
-                  {t.symbol}{t.detail ? ` (${t.detail})` : ''}
+            <div className="ps-blockstain-target-chips">
+              {currentTargets.map(tgt => (
+                <span key={tgt.id} className="ps-blockstain-target-chip">
+                  {tgt.symbol}{tgt.detail ? ` (${tgt.detail})` : ''}
                   <button
                     type="button"
-                    onClick={() => updateTargets(editingStain.id, currentTargets.filter(x => x.id !== t.id))}
-                    style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
-                    aria-label={`Remove ${t.symbol}`}
+                    onClick={() => updateTargets(editingStain.id, currentTargets.filter(x => x.id !== tgt.id))}
+                    className="ps-blockstain-target-chip-remove"
+                    aria-label={t('blockStainEditorModal.stainMultiSelect.removeTargetAriaLabel', { symbol: tgt.symbol })}
                   >×</button>
                 </span>
               ))}
-              {currentTargets.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>No targets selected — this order will not produce a real charge until at least one is added.</span>}
+              {currentTargets.length === 0 && <span className="ps-blockstain-target-empty">{t('blockStainEditorModal.stainMultiSelect.noTargetsSelected')}</span>}
             </div>
             <input
               className="ps-conf-input"
-              placeholder="Search targets to add (e.g. TP53, MYC)…"
+              placeholder={t('blockStainEditorModal.stainMultiSelect.searchTargetsPlaceholder')}
               value={targetSearchQuery}
               onChange={e => setTargetSearchQuery(e.target.value)}
             />
             {targetSearchQuery.trim() && (
-              <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 4, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}>
+              <div className="ps-blockstain-target-results">
                 {masterTargets
-                  .filter(t => !currentTargets.some(x => x.id === t.id))
-                  .filter(t => t.symbol.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()) || t.detail?.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()))
+                  .filter(tgt => !currentTargets.some(x => x.id === tgt.id))
+                  .filter(tgt => tgt.symbol.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()) || tgt.detail?.toLowerCase().includes(targetSearchQuery.trim().toLowerCase()))
                   .slice(0, 20)
-                  .map(t => (
-                    <div key={t.id} onMouseDown={() => { updateTargets(editingStain.id, [...currentTargets, t]); setTargetSearchQuery(''); }}
-                      style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>
-                      <strong>{t.symbol}</strong>{t.detail ? <span style={{ color: '#64748b' }}> — {t.detail}</span> : null}
+                  .map(tgt => (
+                    <div key={tgt.id} onMouseDown={() => { updateTargets(editingStain.id, [...currentTargets, tgt]); setTargetSearchQuery(''); }}
+                      className="ps-blockstain-target-result-row">
+                      <strong>{tgt.symbol}</strong>{tgt.detail ? <span className="ps-blockstain-target-result-detail"> — {tgt.detail}</span> : null}
                     </div>
                   ))}
               </div>
             )}
-            <div style={{ textAlign: 'right', marginTop: 8 }}>
-              <button type="button" className="ps-conf-btn-secondary" onClick={() => { setEditingTargetsForId(null); setTargetSearchQuery(''); }}>Done</button>
+            <div className="ps-blockstain-target-editor-footer">
+              <button type="button" className="ps-conf-btn-secondary" onClick={() => { setEditingTargetsForId(null); setTargetSearchQuery(''); }}>{t('blockStainEditorModal.doneButton')}</button>
             </div>
           </div>
         );
       })()}
       <input
         className="ps-conf-input"
-        placeholder="Search stains to add — name or category…"
+        placeholder={t('blockStainEditorModal.stainMultiSelect.searchStainsPlaceholder')}
         value={query}
         onFocus={() => setOpen(true)}
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
@@ -222,12 +253,11 @@ export const StainMultiSelect: React.FC<{
         <div className="ps-protocol-stainselect-dropdown">
           {showUnstainedOption && (
             <div
-              className="ps-protocol-stainselect-option"
+              className={`ps-protocol-stainselect-option${matches.length > 0 ? ' ps-blockstain-option--divided' : ''}`}
               onMouseDown={() => { onCreateSpare!(); setQuery(''); setOpen(false); }}
-              style={{ borderBottom: matches.length > 0 ? '1px solid rgba(255,255,255,0.08)' : undefined }}
             >
-              <span>🩹 Unstained (spare slide)</span>
-              <span className="ps-protocol-stainselect-option-cat">No stain yet — cut and ready</span>
+              <span>{t('blockStainEditorModal.stainMultiSelect.unstainedOption')}</span>
+              <span className="ps-protocol-stainselect-option-cat">{t('blockStainEditorModal.stainMultiSelect.unstainedOptionMeta')}</span>
             </div>
           )}
           {matches.map(s => (
@@ -240,7 +270,7 @@ export const StainMultiSelect: React.FC<{
       )}
       {open && query.trim() && !showUnstainedOption && matches.length === 0 && (
         <div className="ps-protocol-stainselect-dropdown">
-          <div className="ps-protocol-stainselect-empty">No matching stains.</div>
+          <div className="ps-protocol-stainselect-empty">{t('blockStainEditorModal.stainMultiSelect.noMatchingStains')}</div>
         </div>
       )}
     </div>
@@ -348,6 +378,7 @@ const BlockCptSuggestion: React.FC<{
   allSuggestedSources: { code: string; stainOrderId?: string }[];
   onUpdateBlock: (specimenId: string, blockId: string, changes: Partial<any>) => void;
 }> = ({ specimenId, block, allSuggestedSources, onUpdateBlock }) => {
+  const { t } = useTranslation();
   const appliedCodes: { code: string; stainOrderId?: string }[] = block.coding?.cpt ?? [];
   const rejectedCodes: { code: string; stainOrderId?: string }[] = block.coding?.rejectedCpt ?? [];
   const newSuggestions = computeNewSuggestionsWithSources(appliedCodes, allSuggestedSources, rejectedCodes);
@@ -359,15 +390,15 @@ const BlockCptSuggestion: React.FC<{
   };
 
   return (
-    <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 8 }}>
+    <div className="ps-fixgate-intro ps-blockstain-cpt-suggestion">
       {appliedCodes.length > 0 && (
-        <div>Applied ancillary codes: <strong>{appliedCodes.map(c => c.code).join(', ')}</strong></div>
+        <div>{t('blockStainEditorModal.cptSuggestion.appliedCodes')} <strong>{appliedCodes.map(c => c.code).join(', ')}</strong></div>
       )}
       {newSuggestions.length > 0 && (
-        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>Suggested from this block's stains: <strong>{newSuggestions.map(s => s.code).join(', ')}</strong></span>
-          <button className="ps-btn-secondary" onClick={handleApply} style={{ fontSize: 11, padding: '2px 8px' }}>
-            Apply
+        <div className="ps-blockstain-cpt-suggestion-row">
+          <span>{t('blockStainEditorModal.cptSuggestion.suggestedFromStains')} <strong>{newSuggestions.map(s => s.code).join(', ')}</strong></span>
+          <button className="ps-btn-secondary ps-blockstain-cpt-apply-btn" onClick={handleApply}>
+            {t('blockStainEditorModal.cptSuggestion.applyButton')}
           </button>
         </div>
       )}
@@ -393,13 +424,28 @@ const BlockCptSuggestion: React.FC<{
 // substantial, formatted case/specimen-level note. Produces plain
 // text (MaterialComment), never rendered via dangerouslySetInnerHTML.
 const BlockCommentComposer: React.FC<{ onSubmit: (text: string) => void }> = ({ onSubmit }) => {
+  const { t } = useTranslation();
   const [value, setValue] = useState('');
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+    <div className="ps-blockstain-comment-composer">
+      {/* Real fix (PS-314 — "unnecessary Block Comment dropdown"):
+          this is a plain free-text field, not a <select>, but it was
+          on ps-conf-select — the class that paints the dropdown-
+          chevron background and sets cursor: pointer for real <select>
+          elements. That's the actual "dropdown" being reported; there
+          was never a real dropdown behavior here to remove, only this
+          class mismatch. Swapped to ps-conf-input, the plain-text-
+          input counterpart. Same exact defect, on the same screen,
+          also existed (not just here) on several other plain inputs
+          below — the embed-count-confirm field, the Lost/Damaged
+          exception note, Pieces Grossed, Piece Description, and Tissue
+          Description — so all of those are fixed alongside this one
+          rather than leaving the identical bug in place a few fields
+          away from the one the ticket named. */}
       <input
         type="text"
-        className="ps-conf-select"
-        placeholder="Add a comment…"
+        className="ps-conf-input"
+        placeholder={t('blockStainEditorModal.commentComposer.placeholder')}
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => {
@@ -412,7 +458,7 @@ const BlockCommentComposer: React.FC<{ onSubmit: (text: string) => void }> = ({ 
         disabled={!value.trim()}
         onClick={() => { onSubmit(value.trim()); setValue(''); }}
       >
-        Add
+        {t('blockStainEditorModal.commentComposer.addButton')}
       </button>
     </div>
   );
@@ -436,20 +482,20 @@ const StainCommentControl: React.FC<{
   const count = (stain.comments ?? []).length;
 
   return (
-    <div style={{ display: 'inline-block', marginLeft: 8 }}>
+    <div className="ps-blockstain-comment-toggle-wrap">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        style={{ fontSize: 11, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+        className="ps-blockstain-comment-toggle-btn"
       >
         💬{count > 0 ? ` ${count}` : ''}
       </button>
       {open && (
-        <div style={{ marginTop: 4 }}>
+        <div className="ps-blockstain-comment-list">
           {(stain.comments ?? []).map((c: MaterialComment) => (
-            <div key={c.id} style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2, padding: '3px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
-              <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
-              <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+            <div key={c.id} className="ps-blockstain-comment-row">
+              <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+              <div className="ps-blockstain-comment-text">{c.text}</div>
             </div>
           ))}
           <BlockCommentComposer
@@ -468,6 +514,7 @@ const CancelBlockControl: React.FC<{
   block: any;
   onCancel: (reason: string) => void;
 }> = ({ block, onCancel }) => {
+  const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const [reasonChoice, setReasonChoice] = useState<string>(CANCEL_REASONS[0]);
   const [otherDetail, setOtherDetail] = useState('');
@@ -477,10 +524,10 @@ const CancelBlockControl: React.FC<{
       ? new Date(block.cancelledAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
       : '—';
     return (
-      <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 8, color: '#ef4444' }}>
-        <div style={{ fontWeight: 700 }}>🚫 Cancelled</div>
-        <div>Reason: {block.cancelReason || '—'}</div>
-        <div>By: {block.cancelledBy || '—'} · {cancelledAtDisplay}</div>
+      <div className="ps-fixgate-intro ps-blockstain-cancelled-block">
+        <div className="ps-blockstain-cancelled-block-title">{t('blockStainEditorModal.cancelBlock.cancelledTitle')}</div>
+        <div>{t('blockStainEditorModal.cancelBlock.reasonLine', { reason: block.cancelReason || '—' })}</div>
+        <div>{t('blockStainEditorModal.cancelBlock.byLine', { who: block.cancelledBy || '—', when: cancelledAtDisplay })}</div>
       </div>
     );
   }
@@ -490,9 +537,9 @@ const CancelBlockControl: React.FC<{
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        style={{ fontSize: 12, color: '#f87171', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginTop: 8 }}
+        className="ps-blockstain-cancel-block-btn"
       >
-        🚫 Cancel this block
+        {t('blockStainEditorModal.cancelBlock.cancelThisBlockButton')}
       </button>
     );
   }
@@ -501,8 +548,8 @@ const CancelBlockControl: React.FC<{
   const canConfirm = finalReason.length > 0;
 
   return (
-    <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 8 }}>
-      <label className="ps-conf-label" htmlFor={`cancel-reason-${block.id}`}>Reason for cancellation (required)</label>
+    <div className="ps-fixgate-intro ps-blockstain-cancel-form">
+      <label className="ps-conf-label" htmlFor={`cancel-reason-${block.id}`}>{t('blockStainEditorModal.cancelBlock.reasonFieldLabel')}</label>
       <select
         id={`cancel-reason-${block.id}`}
         className="ps-conf-select"
@@ -513,31 +560,27 @@ const CancelBlockControl: React.FC<{
       </select>
       {reasonChoice === 'Other' && (
         <input
-          className="ps-conf-input"
-          style={{ marginTop: 6 }}
-          placeholder="Describe the reason…"
+          className="ps-conf-input ps-blockstain-other-detail-input"
+          placeholder={t('blockStainEditorModal.describeReasonPlaceholder')}
           value={otherDetail}
           onChange={e => setOtherDetail(e.target.value)}
         />
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      <div className="ps-blockstain-confirm-row">
         <button
           type="button"
           disabled={!canConfirm}
           onClick={() => canConfirm && onCancel(finalReason)}
-          style={{
-            fontSize: 12, fontWeight: 600, color: 'white', background: canConfirm ? '#dc2626' : 'rgba(255,255,255,0.06)',
-            border: 'none', borderRadius: 5, padding: '4px 10px', cursor: canConfirm ? 'pointer' : 'not-allowed',
-          }}
+          className={`ps-blockstain-danger-confirm-btn${canConfirm ? ' ps-blockstain-danger-confirm-btn--enabled' : ''}`}
         >
-          Confirm Cancellation
+          {t('blockStainEditorModal.cancelBlock.confirmCancellationButton')}
         </button>
         <button
           type="button"
           onClick={() => { setConfirming(false); setReasonChoice(CANCEL_REASONS[0]); setOtherDetail(''); }}
-          style={{ fontSize: 12, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          className="ps-blockstain-nevermind-btn"
         >
-          Never mind
+          {t('blockStainEditorModal.nevermindButton')}
         </button>
       </div>
     </div>
@@ -557,6 +600,7 @@ const RestainControl: React.FC<{
   stainTypes: StainType[];
   onOrderRestain: (stainName: string, reason: string) => void;
 }> = ({ stain, stainTypes, onOrderRestain }) => {
+  const { t } = useTranslation();
   const isUnstained = stain.stainName === UNSTAINED_LABEL;
   const [ordering, setOrdering] = useState(false);
   const [stainName, setStainName] = useState(isUnstained ? '' : stain.stainName);
@@ -568,8 +612,8 @@ const RestainControl: React.FC<{
       ? new Date(stain.restainOrderedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
       : '—';
     return (
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-        🔁 Restain — {stain.restainReason} · By {stain.restainOrderedBy || '—'} · {orderedAtDisplay}
+      <div className="ps-blockstain-restain-record">
+        {t('blockStainEditorModal.restainControl.restainRecordLine', { reason: stain.restainReason, who: stain.restainOrderedBy || '—', when: orderedAtDisplay })}
       </div>
     );
   }
@@ -579,9 +623,9 @@ const RestainControl: React.FC<{
       <button
         type="button"
         onClick={() => setOrdering(true)}
-        style={{ fontSize: 11, color: '#7dd3fc', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginLeft: 8 }}
+        className="ps-blockstain-order-restain-btn"
       >
-        🔁 Order Restain
+        {t('blockStainEditorModal.restainControl.orderRestainButton')}
       </button>
     );
   }
@@ -590,47 +634,43 @@ const RestainControl: React.FC<{
   const canConfirm = finalReason.length > 0 && stainName.trim().length > 0;
 
   return (
-    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)' }}>
+    <div className="ps-blockstain-restain-form">
       {isUnstained && (
         <>
-          <label className="ps-conf-label" style={{ fontSize: 10 }}>Stain</label>
-          <select className="ps-conf-select" value={stainName} onChange={e => setStainName(e.target.value)} style={{ marginBottom: 6 }}>
-            <option value="">— Select —</option>
+          <label className="ps-conf-label ps-blockstain-small-label">{t('blockStainEditorModal.restainControl.stainFieldLabel')}</label>
+          <select className="ps-conf-select ps-blockstain-restain-select" value={stainName} onChange={e => setStainName(e.target.value)}>
+            <option value="">{t('blockStainEditorModal.selectPlaceholder')}</option>
             {stainTypes.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
         </>
       )}
-      <label className="ps-conf-label" style={{ fontSize: 10 }}>Reason for restain (required)</label>
+      <label className="ps-conf-label ps-blockstain-small-label">{t('blockStainEditorModal.restainControl.reasonFieldLabel')}</label>
       <select className="ps-conf-select" value={reasonChoice} onChange={e => setReasonChoice(e.target.value)}>
         {RESTAIN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
       </select>
       {reasonChoice === 'Other' && (
         <input
-          className="ps-conf-input"
-          style={{ marginTop: 6 }}
-          placeholder="Describe the reason…"
+          className="ps-conf-input ps-blockstain-other-detail-input"
+          placeholder={t('blockStainEditorModal.describeReasonPlaceholder')}
           value={otherDetail}
           onChange={e => setOtherDetail(e.target.value)}
         />
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      <div className="ps-blockstain-confirm-row">
         <button
           type="button"
           disabled={!canConfirm}
           onClick={() => canConfirm && onOrderRestain(stainName.trim(), finalReason)}
-          style={{
-            fontSize: 11, fontWeight: 600, color: 'white', background: canConfirm ? '#0891B2' : 'rgba(255,255,255,0.06)',
-            border: 'none', borderRadius: 5, padding: '4px 10px', cursor: canConfirm ? 'pointer' : 'not-allowed',
-          }}
+          className={`ps-blockstain-teal-confirm-btn${canConfirm ? ' ps-blockstain-teal-confirm-btn--enabled' : ''}`}
         >
-          Confirm Restain Order
+          {t('blockStainEditorModal.restainControl.confirmRestainOrderButton')}
         </button>
         <button
           type="button"
           onClick={() => { setOrdering(false); setReasonChoice(RESTAIN_REASONS[0]); setOtherDetail(''); }}
-          style={{ fontSize: 11, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          className="ps-blockstain-nevermind-btn"
         >
-          Never mind
+          {t('blockStainEditorModal.nevermindButton')}
         </button>
       </div>
     </div>
@@ -638,6 +678,7 @@ const RestainControl: React.FC<{
 };
 
 export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePriority, fullAccession, onUpdateBlock, onUpdateDecant, onPrintDecantContainerLabel, onSendStainOrder, onCancelBlock, onCreateSpareSlide, onOrderRestain, currentUserId, currentUserName, onClose, initialFocusBlockId, initialFocusDecantId }) => {
+  const { t } = useTranslation();
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [masterTargets, setMasterTargets] = useState<MolecularTarget[]>([]);
   // Real, per the RFP-APLIS-2026-GLOBAL Grossing Station Hardware
@@ -646,7 +687,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
   const [capturingPhotoForBlockId, setCapturingPhotoForBlockId] = useState<string | null>(null);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
-    mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(t => t.active)); });
+    mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(tgt => tgt.active)); });
   }, []);
 
   // Real feature, per direct follow-up: "Additional Requirements for
@@ -824,12 +865,12 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
       const finalStains = nextStains.map(s => s.id === added.id ? { ...s, lisRequestStatus: result.ok ? 'confirmed' as const : 'rejected' as const } : s);
       onUpdateBlock(specimenId, block.id, { stains: finalStains });
       if (!result.ok) {
-        setOrderErrors(prev => ({ ...prev, [block.id]: `LIS rejected ${added.stainName} — flagged, follow up with histology.` }));
+        setOrderErrors(prev => ({ ...prev, [block.id]: t('blockStainEditorModal.errors.lisRejected', { stainName: added.stainName }) }));
       }
     } catch (e) {
       const rejectedStains = nextStains.map(s => s.id === added.id ? { ...s, lisRequestStatus: 'rejected' as const } : s);
       onUpdateBlock(specimenId, block.id, { stains: rejectedStains });
-      setOrderErrors(prev => ({ ...prev, [block.id]: `Failed to order ${added.stainName}: ${(e as Error).message}` }));
+      setOrderErrors(prev => ({ ...prev, [block.id]: t('blockStainEditorModal.errors.orderFailed', { stainName: added.stainName, message: (e as Error).message }) }));
     } finally {
       setOrderingBlockId(null);
     }
@@ -850,14 +891,12 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal ps-ms-modal--protocol">
         <div className="ps-ms-header-row">
-          <div className="ps-ms-header">Blocks &amp; Stains</div>
-          <button className="ps-ms-close-btn" onClick={onClose} title="Close">✕</button>
+          <div className="ps-ms-header">{t('blockStainEditorModal.header')}</div>
+          <button className="ps-ms-close-btn" onClick={onClose} title={t('common.close')}>✕</button>
         </div>
         <div className="ps-ms-body">
           <p className="ps-fixgate-intro">
-            Direct edits — status, stains, and a per-block priority override. Priority defaults to inheriting the
-            case's own priority ({casePriority}); only set an override here if this specific block genuinely needs
-            different urgency than the rest of the case.
+            {t('blockStainEditorModal.introText', { priority: t(PRIORITY_LABEL_KEY[casePriority]) })}
           </p>
           <div className="ps-protocol-tracks-scroll">
             {blocks.map(({ specimenId, specimenLabel, specimenDescription, block }) => (
@@ -874,7 +913,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                 </div>
                 <div className="ps-conf-form-row">
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label" htmlFor={`block-status-${block.id}`}>Status</label>
+                    <label className="ps-conf-label" htmlFor={`block-status-${block.id}`}>{t('blockStainEditorModal.statusFieldLabel')}</label>
                     <select id={`block-status-${block.id}`} className="ps-conf-select" value={block.status}
                       disabled={block.status === 'Cancelled'}
                       onChange={e => {
@@ -904,8 +943,8 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                           ...(enteringException ? { exceptionReportedAt: new Date().toISOString() } : {}),
                         });
                       }}>
-                      {BLOCK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                      {block.status === 'Cancelled' && <option value="Cancelled">Cancelled</option>}
+                      {BLOCK_STATUSES.map(s => <option key={s} value={s}>{t(BLOCK_STATUS_LABEL_KEY[s])}</option>)}
+                      {block.status === 'Cancelled' && <option value="Cancelled">{t('blockStainEditorModal.blockStatusLabels.cancelled')}</option>}
                     </select>
                     {/* Real feature, per direct follow-up: "an
                         immediate Tissue Discrepancy QA Flag is raised
@@ -916,13 +955,13 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                         observed) are stored and MaterialTreePanel.tsx
                         renders the real comparison directly. */}
                     {embedCountPrompt?.blockId === block.id && (
-                      <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                        <div style={{ fontSize: 12, color: '#fbbf24', fontWeight: 600, marginBottom: 6 }}>
-                          {block.pieceCount} piece{block.pieceCount === 1 ? '' : 's'} were recorded at grossing. How many do you actually see now?
+                      <div className="ps-blockstain-embed-prompt">
+                        <div className="ps-blockstain-embed-prompt-text">
+                          {t('blockStainEditorModal.embedCountPrompt.question', { count: block.pieceCount })}
                         </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <div className="ps-blockstain-embed-prompt-row">
                           <input
-                            type="number" min={0} className="ps-conf-select" style={{ width: 90 }}
+                            type="number" min={0} className="ps-conf-input ps-blockstain-embed-count-input"
                             value={embedCountPrompt.observedCount}
                             onChange={e => setEmbedCountPrompt({ blockId: block.id, observedCount: e.target.value })}
                           />
@@ -934,22 +973,22 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                               onUpdateBlock(specimenId, block.id, { status: 'Embedded', pieceCountAtEmbedding: observed });
                             }}
                           >
-                            Confirm
+                            {t('common.confirm')}
                           </button>
                           <button type="button" className="ps-conf-btn-secondary" onClick={() => setEmbedCountPrompt(null)}>
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label" htmlFor={`block-priority-${block.id}`}>Priority</label>
+                    <label className="ps-conf-label" htmlFor={`block-priority-${block.id}`}>{t('blockStainEditorModal.priorityFieldLabel')}</label>
                     <select id={`block-priority-${block.id}`} className="ps-conf-select" value={block.priority ?? ''}
                       disabled={block.status === 'Cancelled'}
                       onChange={e => onUpdateBlock(specimenId, block.id, { priority: e.target.value || undefined })}>
-                      <option value="">Inherit from case ({casePriority})</option>
-                      {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p} (override)</option>)}
+                      <option value="">{t('blockStainEditorModal.inheritFromCaseOption', { priority: t(PRIORITY_LABEL_KEY[casePriority]) })}</option>
+                      {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{t('blockStainEditorModal.priorityOverrideOption', { priority: t(PRIORITY_LABEL_KEY[p]) })}</option>)}
                     </select>
                   </div>
                 </div>
@@ -961,14 +1000,14 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     directly in the Manage Reprints modal and
                     MaterialTreePanel, not a status label alone. */}
                 {(block.status === 'Lost' || block.status === 'Damaged') && (
-                  <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
+                  <div className="ps-conf-form-field ps-blockstain-field-spaced">
                     <label className="ps-conf-label" htmlFor={`block-exception-note-${block.id}`}>
-                      {block.status === 'Lost' ? 'Missing / incident details' : 'Damage / re-embed details'}
+                      {block.status === 'Lost' ? t('blockStainEditorModal.exceptionNote.missingLabel') : t('blockStainEditorModal.exceptionNote.damagedLabel')}
                     </label>
                     <input
-                      id={`block-exception-note-${block.id}`} type="text" className="ps-conf-select"
+                      id={`block-exception-note-${block.id}`} type="text" className="ps-conf-input"
                       value={block.exceptionNote ?? ''}
-                      placeholder={block.status === 'Lost' ? 'e.g. Block missing from archive · QC Incident #1042' : 'e.g. Paraffin cracked · Requires re-embedding'}
+                      placeholder={block.status === 'Lost' ? t('blockStainEditorModal.exceptionNote.missingPlaceholder') : t('blockStainEditorModal.exceptionNote.damagedPlaceholder')}
                       onChange={e => onUpdateBlock(specimenId, block.id, { exceptionNote: e.target.value || undefined })}
                     />
                   </div>
@@ -986,12 +1025,12 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     handleUpdateBlock). */}
                 <div className="ps-conf-form-row">
                   <div className="ps-conf-form-field">
-                    <label className="ps-conf-label" htmlFor={`block-piece-count-${block.id}`}>Pieces Grossed</label>
+                    <label className="ps-conf-label" htmlFor={`block-piece-count-${block.id}`}>{t('blockStainEditorModal.piecesGrossedLabel')}</label>
                     <input
-                      id={`block-piece-count-${block.id}`} type="number" min={0} className="ps-conf-select"
+                      id={`block-piece-count-${block.id}`} type="number" min={0} className="ps-conf-input"
                       disabled={block.status === 'Cancelled'}
                       value={block.pieceCount ?? ''}
-                      placeholder="e.g. 3"
+                      placeholder={t('blockStainEditorModal.piecesGrossedPlaceholder')}
                       onChange={e => {
                         const n = e.target.value === '' ? undefined : Math.max(0, parseInt(e.target.value, 10) || 0);
                         onUpdateBlock(specimenId, block.id, { pieceCount: n });
@@ -999,25 +1038,25 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     />
                   </div>
                   <div className="ps-conf-form-field">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 22 }}>
+                    <label className="ps-blockstain-checkbox-label">
                       <input
                         type="checkbox"
                         checked={block.isEntirelySubmitted ?? true}
                         disabled={block.status === 'Cancelled'}
                         onChange={e => onUpdateBlock(specimenId, block.id, { isEntirelySubmitted: e.target.checked })}
-                        style={{ width: 16, height: 16 }}
+                        className="ps-blockstain-checkbox-input"
                       />
-                      <span style={{ fontSize: 13, color: '#e2e8f0' }}>Entirely submitted (none held in wet storage)</span>
+                      <span className="ps-blockstain-checkbox-text">{t('blockStainEditorModal.entirelySubmittedLabel')}</span>
                     </label>
                   </div>
                 </div>
-                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-                  <label className="ps-conf-label" htmlFor={`block-piece-desc-${block.id}`}>Piece Description</label>
+                <div className="ps-conf-form-field ps-blockstain-field-spaced">
+                  <label className="ps-conf-label" htmlFor={`block-piece-desc-${block.id}`}>{t('blockStainEditorModal.pieceDescriptionLabel')}</label>
                   <input
-                    id={`block-piece-desc-${block.id}`} type="text" className="ps-conf-select"
+                    id={`block-piece-desc-${block.id}`} type="text" className="ps-conf-input"
                     disabled={block.status === 'Cancelled'}
                     value={block.pieceDescription ?? ''}
-                    placeholder="e.g. 2 core fragments, 1 tiny dust piece"
+                    placeholder={t('blockStainEditorModal.pieceDescriptionPlaceholder')}
                     onChange={e => onUpdateBlock(specimenId, block.id, { pieceDescription: e.target.value || undefined })}
                   />
                 </div>
@@ -1031,13 +1070,13 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     and distinct from the Block Comments thread below
                     (a running note log, not a structured, one-line
                     identifying description). */}
-                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-                  <label className="ps-conf-label" htmlFor={`block-tissue-desc-${block.id}`}>Tissue Description</label>
+                <div className="ps-conf-form-field ps-blockstain-field-spaced">
+                  <label className="ps-conf-label" htmlFor={`block-tissue-desc-${block.id}`}>{t('blockStainEditorModal.tissueDescriptionLabel')}</label>
                   <input
-                    id={`block-tissue-desc-${block.id}`} type="text" className="ps-conf-select"
+                    id={`block-tissue-desc-${block.id}`} type="text" className="ps-conf-input"
                     disabled={block.status === 'Cancelled'}
                     value={block.tissueDescription ?? ''}
-                    placeholder="e.g. Heart — LAD, Cerebral Cortex, Left Ventricle"
+                    placeholder={t('blockStainEditorModal.tissueDescriptionPlaceholder')}
                     onChange={e => onUpdateBlock(specimenId, block.id, { tissueDescription: e.target.value || undefined })}
                   />
                 </div>
@@ -1046,11 +1085,11 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     real, previously-empty DigitalAsset pipeline (see
                     CameraCaptureControl.tsx's own header for the full
                     account). */}
-                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-                  <label className="ps-conf-label">Block Face Photos</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                <div className="ps-conf-form-field ps-blockstain-field-spaced">
+                  <label className="ps-conf-label">{t('blockStainEditorModal.blockFacePhotosLabel')}</label>
+                  <div className="ps-blockstain-photo-thumbs">
                     {(block.digitalAssets ?? []).filter((a: any) => a.kind === 'block_face_photo').map((a: any) => (
-                      <img key={a.id} src={a.url} alt="Block face" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 4, border: '1px solid #334155' }} />
+                      <img key={a.id} src={a.url} alt={t('blockStainEditorModal.blockFacePhotoAlt')} className="ps-blockstain-photo-thumb" />
                     ))}
                   </div>
                   <button
@@ -1058,7 +1097,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     className="ps-btn-small"
                     onClick={() => setCapturingPhotoForBlockId(block.id)}
                   >
-                    📷 Add Photo
+                    {t('blockStainEditorModal.addPhotoButton')}
                   </button>
                 </div>
                 {capturingPhotoForBlockId === block.id && (
@@ -1072,12 +1111,12 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     onClose={() => setCapturingPhotoForBlockId(null)}
                   />
                 )}
-                <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-                  <label className="ps-conf-label">Block Comments</label>
+                <div className="ps-conf-form-field ps-blockstain-field-spaced">
+                  <label className="ps-conf-label">{t('blockStainEditorModal.blockCommentsLabel')}</label>
                   {(block.comments ?? []).map(c => (
-                    <div key={c.id} style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
-                      <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
-                      <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+                    <div key={c.id} className="ps-blockstain-comment-row">
+                      <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                      <div className="ps-blockstain-comment-text">{c.text}</div>
                     </div>
                   ))}
                   {block.status !== 'Cancelled' && (
@@ -1107,8 +1146,8 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                   externalIdSource={block.externalIdSource}
                   disabled={block.status === 'Cancelled'}
                   idPrefix={`block-${block.id}`}
-                  sourcePlaceholder="e.g. Riverside Medical Center"
-                  idPlaceholder="e.g. the id already on the container"
+                  sourcePlaceholder={t('blockStainEditorModal.foreignId.blockSourcePlaceholder')}
+                  idPlaceholder={t('blockStainEditorModal.foreignId.blockIdPlaceholder')}
                   collision={foreignIdCollisions[block.id] ?? null}
                   onCommit={changes => onUpdateBlock(specimenId, block.id, changes)}
                   onCheckCollision={(id, source) => checkForeignIdCollision(block.id, id, source)}
@@ -1122,16 +1161,16 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                 {block.externalId && block.externalIdSource && (
                   <button
                     type="button" onClick={() => printSecondaryLabel(block, specimenLabel)}
-                    style={{ fontSize: 12, fontWeight: 600, color: '#0891B2', background: 'rgba(8,145,178,0.1)', border: '1px solid rgba(8,145,178,0.3)', borderRadius: 7, padding: '7px 12px', cursor: 'pointer', marginBottom: 12 }}
+                    className="ps-blockstain-print-secondary-btn"
                   >
-                    🖨️ Print Secondary Label (barcode unreadable)
+                    {t('blockStainEditorModal.printSecondaryLabelButton')}
                   </button>
                 )}
-                <label className="ps-conf-label">Stains</label>
+                <label className="ps-conf-label">{t('blockStainEditorModal.stainsLabel')}</label>
                 {block.status === 'Cancelled' ? (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div className="ps-blockstain-cancelled-stains">
                     {(block.stains ?? []).map((s: any) => (
-                      <span key={s.id} className="ps-protocol-stainselect-chip" style={{ opacity: 0.5 }}>
+                      <span key={s.id} className="ps-protocol-stainselect-chip ps-blockstain-cancelled-stain-chip">
                         {s.stainName} ({s.status})
                       </span>
                     ))}
@@ -1154,9 +1193,25 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                         own required-reason control, not a plain
                         chip. */}
                     {(block.stains ?? []).map((s: any) => (
-                      <div key={s.id} style={{ marginTop: 6 }}>
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                          {s.stainName === UNSTAINED_LABEL ? '🩹 Unstained (spare)' : s.stainName} — {s.status}
+                      <div key={s.id} className="ps-blockstain-stain-row">
+                        {/* Real fix (PS-314 — "'Stain' field could show
+                            a Stain identifier for clarity"): s.displayId
+                            is the real, already-generated slide
+                            identifier (slideIdentifier(), the same real
+                            id WsiViewerLaunchButton routes a scan launch
+                            to) — it existed on this record already but
+                            was never actually shown anywhere a person
+                            reads, only used internally for that launch
+                            URL. With more than one stain on a block
+                            (routine, especially after a restain), stain
+                            name + status alone doesn't say which
+                            physical slide is which; the real identifier
+                            does. Shown only when present — a stain not
+                            yet through labeling has no real displayId
+                            yet. */}
+                        <span className="ps-blockstain-stain-row-label">
+                          {s.stainName === UNSTAINED_LABEL ? t('blockStainEditorModal.unstainedSpareLabel') : s.stainName}
+                          {s.displayId ? ` (${s.displayId})` : ''} — {s.status}
                         </span>
                         <RestainControl
                           stain={s}
@@ -1179,17 +1234,17 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                     <button
                       type="button"
                       onClick={() => onCreateSpareSlide(specimenId, block.id)}
-                      style={{ fontSize: 11, color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginTop: 8 }}
+                      className="ps-blockstain-create-spare-btn"
                     >
-                      + Create Spare Slide
+                      {t('blockStainEditorModal.createSpareSlideButton')}
                     </button>
                   </>
                 )}
                 {orderingBlockId === block.id && (
-                  <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 4 }}>Placing stain order…</div>
+                  <div className="ps-fixgate-intro ps-blockstain-inline-status">{t('blockStainEditorModal.placingStainOrder')}</div>
                 )}
                 {orderErrors[block.id] && (
-                  <div className="ps-fixgate-intro" style={{ fontSize: 12, marginTop: 4, color: '#ef4444' }}>
+                  <div className="ps-fixgate-intro ps-blockstain-inline-status ps-blockstain-inline-status--error">
                     {orderErrors[block.id]}
                   </div>
                 )}
@@ -1205,7 +1260,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                 />
               </div>
             ))}
-            {blocks.length === 0 && <div className="ps-cmnt-thread-empty">No blocks on this case yet.</div>}
+            {blocks.length === 0 && <div className="ps-cmnt-thread-empty">{t('blockStainEditorModal.noBlocksYet')}</div>}
 
             {/* Real feature, per direct follow-up: "decant-level
                 linking UI. In the same UI we add specimens, blocks
@@ -1221,7 +1276,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
             {decants.length > 0 && (
               <>
                 <div className="ps-decants-section-label">
-                  Decants
+                  {t('blockStainEditorModal.decantsSectionLabel')}
                 </div>
                 {decants.map(({ specimenId, specimenLabel, specimenDescription, decant }) => (
                   <div key={decant.id} ref={decant.id === initialFocusDecantId ? focusedDecantRef : undefined} className="ps-protocol-track-card">
@@ -1247,8 +1302,8 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       externalId={decant.externalId}
                       externalIdSource={decant.externalIdSource}
                       idPrefix={`decant-${decant.id}`}
-                      sourcePlaceholder="e.g. Outside Cytology Lab"
-                      idPlaceholder="e.g. the id already assigned by that lab"
+                      sourcePlaceholder={t('blockStainEditorModal.foreignId.decantSourcePlaceholder')}
+                      idPlaceholder={t('blockStainEditorModal.foreignId.decantIdPlaceholder')}
                       collision={decantForeignIdCollisions[decant.id] ?? null}
                       onCommit={changes => onUpdateDecant(specimenId, decant.id, changes)}
                       onCheckCollision={(id, source) => checkDecantForeignIdCollision(decant.id, id, source)}
@@ -1273,12 +1328,12 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                         reusing onUpdateDecant's own generic patch
                         callback. See Decant.comments's own doc
                         comment (types/case/Material.ts). */}
-                    <div className="ps-conf-form-field" style={{ marginBottom: 12 }}>
-                      <label className="ps-conf-label">Decant Comments</label>
+                    <div className="ps-conf-form-field ps-blockstain-field-spaced">
+                      <label className="ps-conf-label">{t('blockStainEditorModal.decantCommentsLabel')}</label>
                       {(decant.comments ?? []).map(c => (
-                        <div key={c.id} style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4, padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
-                          <strong style={{ color: '#e2e8f0' }}>{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
-                          <div style={{ color: '#cbd5e1', marginTop: 2 }} >{c.text}</div>
+                        <div key={c.id} className="ps-blockstain-comment-row">
+                          <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                          <div className="ps-blockstain-comment-text">{c.text}</div>
                         </div>
                       ))}
                       <BlockCommentComposer
@@ -1304,7 +1359,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       onClick={() => onPrintDecantContainerLabel(specimenId, decant.id)}
                       className="ps-teal-action-btn ps-teal-action-btn--block"
                     >
-                      🖨️ Print Container Label
+                      {t('blockStainEditorModal.printContainerLabelButton')}
                     </button>
 
                     {/* Real feature, per direct follow-up: "no
@@ -1322,11 +1377,11 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                         onClick={() => printSecondaryLabelForDecant(decant, specimenLabel)}
                         className="ps-teal-action-btn ps-teal-action-btn--block"
                       >
-                        🖨️ Print Secondary Label (barcode unreadable)
+                        {t('blockStainEditorModal.printSecondaryLabelButton')}
                       </button>
                     )}
 
-                    <label className="ps-conf-label">Stains</label>
+                    <label className="ps-conf-label">{t('blockStainEditorModal.stainsLabel')}</label>
                     <StainMultiSelect
                       stainTypes={stainTypes}
                       stains={decant.stains ?? []}
@@ -1340,7 +1395,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
           </div>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-apply" onClick={onClose}>Done</button>
+          <button className="ps-ms-btn-apply" onClick={onClose}>{t('blockStainEditorModal.doneButton')}</button>
         </div>
       </div>
     </div>

@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,9 +36,19 @@ function formatDate(iso: string): string {
   try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
 }
 
+// Real, label-key-map — keeps the real DisposalQueueItem['materialType']
+// value (used for filtering/matching elsewhere) untouched, translating
+// only the on-screen label. Same real values disposalReport.materialType.*
+// already covers (DisposalReportPage.tsx's own CSV export), given its own
+// separate namespace here per this sweep's one-namespace-per-page rule.
+const MATERIAL_TYPE_LABEL_KEY: Record<DisposalQueueItem['materialType'], string> = {
+  block: 'disposalQueue.materialType.block', slide: 'disposalQueue.materialType.slide', wet_tissue: 'disposalQueue.materialType.wet_tissue',
+};
+
 const DisposalQueuePage: React.FC = () => {
+  const { t } = useTranslation();
   const { pushCrumb } = useBreadcrumb();
-  useEffect(() => { pushCrumb('Disposal Queue', '/batch-management/disposal'); }, [pushCrumb]);
+  useEffect(() => { pushCrumb(t('disposalQueue.pageTitle'), '/batch-management/disposal'); }, [pushCrumb, t]);
   const { user } = useAuth();
   const { stationId } = useCurrentScanStation();
 
@@ -85,7 +96,7 @@ const DisposalQueuePage: React.FC = () => {
     if (result.outcome === 'disposed') {
       playScanBeep();
       setQueue(prev => prev.filter(i => i.displayId !== result.displayId));
-      setLastDisposed(`✓ ${result.displayId} disposed`);
+      setLastDisposed(`✓ ${t('disposalQueue.disposedFlash', { displayId: result.displayId })}`);
       if (successTimer.current) window.clearTimeout(successTimer.current);
       successTimer.current = window.setTimeout(() => setLastDisposed(null), 2500);
     } else {
@@ -94,7 +105,7 @@ const DisposalQueuePage: React.FC = () => {
       if (redScreenTimer.current) window.clearTimeout(redScreenTimer.current);
       redScreenTimer.current = window.setTimeout(() => setRedScreen(null), 4000);
     }
-  }, [facilityId, user?.id, user?.name]);
+  }, [facilityId, user?.id, user?.name, t]);
 
   useEffect(() => {
     const listener = (e: Event) => {
@@ -114,44 +125,42 @@ const DisposalQueuePage: React.FC = () => {
         <div className="ps-disposal-redscreen" onClick={() => setRedScreen(null)}>
           <div className="ps-disposal-redscreen-icon">⛔</div>
           <div className="ps-disposal-redscreen-text">{redScreen}</div>
-          <div className="ps-disposal-redscreen-dismiss">Tap anywhere to dismiss</div>
+          <div className="ps-disposal-redscreen-dismiss">{t('disposalQueue.dismissHint')}</div>
         </div>
       )}
 
       <div className="ps-batch-scroll">
         <div className="ps-batch-inner">
           <div className="ps-batch-page-header">
-            <h1 className="ps-batch-page-title">🗑️ Disposal Queue</h1>
+            <h1 className="ps-batch-page-title">🗑️ {t('disposalQueue.pageTitle')}</h1>
             <p className="ps-batch-page-subtitle">
-              A real, computed list of blocks and slides that genuinely qualify for disposal right now — retention
-              period elapsed, no active hold, not already disposed. Scan a physical item's own barcode to dispose it;
-              anything that doesn't match gets rejected immediately, on screen.
-              {facilityName && <> Scoped to <strong>{facilityName}</strong>.</>}
-              {!facilityId && <> No scan station set — showing all locations. Set a station for a location-scoped queue.</>}
+              {t('disposalQueue.pageSubtitle')}
+              {facilityName && <> {t('disposalQueue.scopedTo', { facility: facilityName })}</>}
+              {!facilityId && <> {t('disposalQueue.noStationAllLocations')}</>}
             </p>
           </div>
 
           {lastDisposed && <div className="ps-batch-flash ps-batch-flash--success">{lastDisposed}</div>}
 
-          <div className="ps-batch-scan-hint">📷 Scan a cassette or slide barcode to dispose it. Hands-free — no need to click into a field first.</div>
+          <div className="ps-batch-scan-hint">📷 {t('disposalQueue.scanHint')}</div>
 
           <div className="ps-batch-section-label">
-            Qualifying for Disposal ({queue.length})
+            {t('disposalQueue.sectionLabel', { count: queue.length })}
           </div>
           {loading ? (
-            <div className="ps-batch-empty">Computing the real, current queue…</div>
+            <div className="ps-batch-empty">{t('disposalQueue.computing')}</div>
           ) : queue.length === 0 ? (
-            <div className="ps-batch-empty">Nothing qualifies for disposal right now at this location.</div>
+            <div className="ps-batch-empty">{t('disposalQueue.empty')}</div>
           ) : (
             <div className="ps-batch-manifest">
               {queue.map(item => (
                 <div key={item.key} className="ps-batch-manifest-row">
                   <span className="ps-batch-manifest-id">{item.displayId}</span>
-                  <span className="ps-batch-manifest-type">{item.materialType}</span>
+                  <span className="ps-batch-manifest-type">{t(MATERIAL_TYPE_LABEL_KEY[item.materialType])}</span>
                   <span className="ps-batch-manifest-added">
                     {item.specimenLabel}
-                    {item.specimenLabel.includes(',') && ' (shared)'}
-                    {' · '}Eligible since {formatDate(item.eligibleSince)}
+                    {item.specimenLabel.includes(',') && ` ${t('disposalQueue.shared')}`}
+                    {' · '}{t('disposalQueue.eligibleSince', { date: formatDate(item.eligibleSince) })}
                     {item.lastKnownLocation && <> · {item.lastKnownLocation}</>}
                   </span>
                 </div>

@@ -6,11 +6,23 @@
  *
  * Adds a status filter pill-bar (All / Draft / In Review / Needs Changes /
  * Approved / Published) above the grouped list.
+ *
+ * i18n note: `p.category`/`p.source`/`p.type`/`p.owner`/`p.lastModified`/
+ * `p.name`/`p.reviewNote` are persisted mock registry data (protocolShared.
+ * tsx's own posture) and stay untouched/English here too. This file reuses
+ * several of ActiveProtocolsSection.tsx's (batch 148) already-translated
+ * shared mini-components (SearchBar/CategoryGroup/EmptyState/ActionBtn/
+ * OutlineBtn/TealBtn) as-is, its `.ps-activeprotocols-*` CSS class family
+ * for the layout this card shares with that file's own, and its exact
+ * `protocolShared.lifecycle.*`/`activeProtocolsSection.*` translation keys
+ * for the concepts both files display identically, rather than duplicating
+ * any of that.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
 import '../../../pathscribe.css';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   Protocol,
@@ -36,18 +48,33 @@ import {
 
 type StatusFilter = 'all' | LifecycleState;
 
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all',           label: 'All'           },
-  { id: 'published',     label: 'Published'     },
-  { id: 'approved',      label: 'Approved'      },
-  { id: 'in_review',     label: 'In Review'     },
-  { id: 'needs_changes', label: 'Needs Changes' },
-  { id: 'draft',         label: 'Draft'         },
-];
+const STATUS_FILTERS: StatusFilter[] = ['all', 'published', 'approved', 'in_review', 'needs_changes', 'draft'];
+
+// Reuses the exact protocolShared.lifecycle.* keys LifecycleBadge (and
+// ActiveProtocolsSection.tsx's own lifecycle tracker) already render for
+// these same states, rather than duplicating this translation content.
+const STATUS_FILTER_LABEL_KEY: Record<StatusFilter, string> = {
+  all:           'activeProtocolsSection.filterAll',
+  published:     'protocolShared.lifecycle.published',
+  approved:      'protocolShared.lifecycle.approved',
+  in_review:     'protocolShared.lifecycle.inReview',
+  needs_changes: 'protocolShared.lifecycle.needsChanges',
+  draft:         'protocolShared.lifecycle.draft',
+};
+
+// Same reasoning/reuse as ActiveProtocolsSection.tsx's own identical map:
+// LIFECYCLE_ORDER only ever contains these four real stages.
+const LIFECYCLE_STEP_LABEL_KEY: Partial<Record<Protocol['status'], string>> = {
+  draft:     'protocolShared.lifecycle.draft',
+  in_review: 'protocolShared.lifecycle.inReview',
+  approved:  'protocolShared.lifecycle.approved',
+  published: 'protocolShared.lifecycle.published',
+};
 
 // ─── ProtocolCard (all-protocols variant — shows both reviewer + editor) ──────
 
 const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
+  const { t }            = useTranslation();
   const navigate        = useNavigate();
   const [open, setOpen] = useState(false);
   const catColor        = CATEGORY_COLORS[p.category] ?? '#64748b';
@@ -58,99 +85,101 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
   );
 
   return (
-    <div style={{ marginBottom: '8px' }}>
+    <div className="ps-activeprotocols-card">
       <div
         onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 18px',
-          background: open ? '#1a2744' : '#1e293b',
-          border: `1px solid ${open ? 'rgba(8,145,178,0.3)' : '#334155'}`,
-          borderRadius: open ? '10px 10px 0 0' : '10px',
-          cursor: 'pointer', transition: 'all 0.12s',
-        }}
-        onMouseEnter={e => { if (!open) { e.currentTarget.style.background = '#243050'; e.currentTarget.style.borderColor = '#475569'; }}}
-        onMouseLeave={e => { if (!open) { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.borderColor = '#334155'; }}}
+        className={`ps-activeprotocols-row${open ? ' ps-activeprotocols-row--open' : ''}`}
       >
-        <div style={{ width: '3px', height: '36px', borderRadius: '2px', background: catColor, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }} data-phi="name">{p.name}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{p.version}</span>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'monospace', padding: '1px 7px', borderRadius: '4px', background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>{p.type}</span>
-            <span style={{ color: '#334155' }}>&bull;</span>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>{p.owner}</span>
+        <div className="ps-activeprotocols-cat-bar" style={{ background: catColor }} />
+        <div className="ps-activeprotocols-info">
+          <div className="ps-activeprotocols-name" data-phi="name">{p.name}</div>
+          <div className="ps-activeprotocols-meta">
+            <span className="ps-activeprotocols-version">{p.version}</span>
+            <span className="ps-activeprotocols-dot">&bull;</span>
+            <span className="ps-activeprotocols-source-badge" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+            <span className="ps-activeprotocols-dot">&bull;</span>
+            <span className="ps-activeprotocols-type">{p.type}</span>
+            <span className="ps-activeprotocols-dot">&bull;</span>
+            <span className="ps-activeprotocols-type">{p.owner}</span>
           </div>
         </div>
         <LifecycleBadge state={p.status} />
-        <span style={{ fontSize: '16px', color: '#475569', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', marginLeft: '4px', flexShrink: 0 }}>›</span>
+        <span className={`ps-activeprotocols-chevron${open ? ' ps-activeprotocols-chevron--open' : ''}`}>›</span>
       </div>
 
       {open && (
-        <div style={{ background: '#131c30', border: '1px solid rgba(8,145,178,0.2)', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '16px 20px 18px' }}>
+        <div className="ps-activeprotocols-panel">
           {/* Stats */}
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', paddingBottom: '14px', marginBottom: '14px', borderBottom: '1px solid #1e293b' }}>
+          <div className="ps-activeprotocols-stats">
             {[
-              { label: 'Sections',      value: Math.max(1, Math.round(p.fields / 7)) },
-              { label: 'Fields',        value: p.fields },
-              { label: 'Last Modified', value: p.lastModified },
-              { label: 'Owner',         value: p.owner },
+              { label: t('activeProtocolsSection.stats.sections'),     value: Math.max(1, Math.round(p.fields / 7)) },
+              { label: t('activeProtocolsSection.stats.fields'),       value: p.fields },
+              { label: t('activeProtocolsSection.stats.lastModified'), value: p.lastModified },
+              { label: t('activeProtocolsSection.stats.owner'),        value: p.owner },
             ].map(stat => (
               <div key={stat.label}>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', lineHeight: 1 }}>{stat.value}</div>
-                <div style={{ fontSize: '10px', color: '#475569', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</div>
+                <div className="ps-activeprotocols-stat-value">{stat.value}</div>
+                <div className="ps-activeprotocols-stat-label">{stat.label}</div>
               </div>
             ))}
-            <div style={{ display: 'flex', gap: '16px', flex: 1, minWidth: '220px', alignItems: 'flex-end' }}>
+            <div className="ps-activeprotocols-coverage-row">
               <CoverageBar pct={p.snomedPct} label="SNOMED CT" />
               <CoverageBar pct={p.icdPct}    label="ICD-10/11" />
             </div>
           </div>
 
-          {/* Review note */}
+          {/* Review note — p.reviewNote is persisted reviewer-authored
+              content and stays untouched; only the 2-state (critical/
+              warning) styling is real UI chrome. */}
           {p.reviewNote && (
-            <div style={{ padding: '9px 13px', marginBottom: '14px', borderRadius: '7px', background: p.status === 'needs_changes' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)', border: `1px solid ${p.status === 'needs_changes' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`, fontSize: '12px', color: p.status === 'needs_changes' ? '#f87171' : '#fbbf24', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-              <span style={{ flexShrink: 0 }}>{p.status === 'needs_changes' ? '↩️' : '⚠️'}</span>
+            <div className={`ps-activeprotocols-review-note${p.status === 'needs_changes' ? ' ps-activeprotocols-review-note--critical' : ' ps-activeprotocols-review-note--warning'}`}>
+              <span className="ps-activeprotocols-review-note-icon">{p.status === 'needs_changes' ? '↩️' : '⚠️'}</span>
               {p.reviewNote}
             </div>
           )}
 
           {/* Lifecycle tracker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
+          <div className="ps-activeprotocols-lifecycle">
             {LIFECYCLE_ORDER.map((s, i) => {
-              const sStyle = LIFECYCLE_STYLES[s];
+              const sStyle    = LIFECYCLE_STYLES[s];
               const isCurrent = i === stepIndex;
               const isPast    = i < stepIndex;
               return (
                 <React.Fragment key={s}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 700, flexShrink: 0, background: isPast ? 'rgba(16,185,129,0.2)' : isCurrent ? sStyle.bg : '#1e293b', color: isPast ? '#10B981' : isCurrent ? sStyle.color : '#334155', border: `1px solid ${isPast ? 'rgba(16,185,129,0.4)' : isCurrent ? sStyle.border : '#334155'}` }}>
+                  <div className="ps-activeprotocols-step">
+                    <div
+                      className={`ps-activeprotocols-step-circle${isPast ? ' ps-activeprotocols-step-circle--past' : ''}`}
+                      style={isCurrent && !isPast ? { background: sStyle.bg, color: sStyle.color, border: `1px solid ${sStyle.border}` } : undefined}
+                    >
                       {isPast ? '✓' : i + 1}
                     </div>
-                    <span style={{ fontSize: '11px', fontWeight: isCurrent ? 700 : 400, color: isCurrent ? sStyle.color : isPast ? '#475569' : '#334155', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{s.replace('_', ' ')}</span>
+                    <span
+                      className={`ps-activeprotocols-step-label${isCurrent ? ' ps-activeprotocols-step-label--current' : isPast ? ' ps-activeprotocols-step-label--past' : ''}`}
+                      style={isCurrent ? { color: sStyle.color } : undefined}
+                    >
+                      {t(LIFECYCLE_STEP_LABEL_KEY[s] ?? 'protocolShared.lifecycle.draft')}
+                    </span>
                   </div>
-                  {i < LIFECYCLE_ORDER.length - 1 && <span style={{ color: '#64748b', fontSize: '12px', flexShrink: 0 }}>—</span>}
+                  {i < LIFECYCLE_ORDER.length - 1 && <span className="ps-activeprotocols-step-sep">—</span>}
                 </React.Fragment>
               );
             })}
             {p.status === 'needs_changes' && (
-              <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>↩ Needs Changes</span>
+              <span className="ps-activeprotocols-needs-changes-pill">↩ {t('protocolShared.lifecycle.needsChanges')}</span>
             )}
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="ps-activeprotocols-actions">
             {p.status === 'published'
-              ? <ActionBtn color="#38bdf8" bg="rgba(56,189,248,0.1)" border="rgba(56,189,248,0.25)" onClick={() => navigate(`/template-review/${p.id}`)}>👁 View Protocol</ActionBtn>
-              : <ActionBtn color="#0891B2" bg="rgba(8,145,178,0.15)" border="rgba(8,145,178,0.35)" onClick={() => navigate(`/template-review/${p.id}`)}>🔍 Open Reviewer</ActionBtn>
+              ? <ActionBtn color="#38bdf8" bg="rgba(56,189,248,0.1)" border="rgba(56,189,248,0.25)" onClick={() => navigate(`/template-review/${p.id}`)}>👁 {t('activeProtocolsSection.viewProtocolButton')}</ActionBtn>
+              : <ActionBtn color="#0891B2" bg="rgba(8,145,178,0.15)" border="rgba(8,145,178,0.35)" onClick={() => navigate(`/template-review/${p.id}`)}>🔍 {t('allProtocolsSection.openReviewerButton')}</ActionBtn>
             }
-            {p.status !== 'published' && <ActionBtn onClick={() => navigate(`/template-editor/${p.id}?from=all`)}>✏️ Open Editor</ActionBtn>}
-            <ActionBtn onClick={() => {}}>📋 Duplicate</ActionBtn>
-            <ActionBtn onClick={() => {}}>{'{ }'} Export JSON</ActionBtn>
-            {p.status === 'published' && <ActionBtn onClick={() => {}}>🔁 New Version</ActionBtn>}
-            <ActionBtn danger onClick={() => {}}>🗑 Archive</ActionBtn>
+            {p.status !== 'published' && <ActionBtn onClick={() => navigate(`/template-editor/${p.id}?from=all`)}>✏️ {t('allProtocolsSection.openEditorButton')}</ActionBtn>}
+            <ActionBtn onClick={() => {}}>📋 {t('common.duplicate')}</ActionBtn>
+            <ActionBtn onClick={() => {}}>{'{ }'} {t('activeProtocolsSection.exportJsonButton')}</ActionBtn>
+            {p.status === 'published' && <ActionBtn onClick={() => {}}>🔁 {t('activeProtocolsSection.newVersionButton')}</ActionBtn>}
+            <ActionBtn danger onClick={() => {}}>🗑 {t('common.archive')}</ActionBtn>
           </div>
         </div>
       )}
@@ -161,6 +190,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const AllProtocolsSection: React.FC = () => {
+  const { t }                             = useTranslation();
   const navigate                          = useNavigate();
   const [search,       setSearch]         = useState('');
   const [statusFilter, setStatusFilter]   = useState<StatusFilter>('all');
@@ -183,36 +213,38 @@ const AllProtocolsSection: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
+      <div className="ps-activeprotocols-header">
         <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>📚 All Protocols</div>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Complete library of all templates across all lifecycle states.</p>
+          <div className="ps-activeprotocols-title">📚 {t('allProtocolsSection.title')}</div>
+          <p className="ps-activeprotocols-subtitle">{t('allProtocolsSection.subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginLeft: '16px' }}>
-          <OutlineBtn onClick={() => setShowUpload(true)}>📤 Upload Protocol</OutlineBtn>
-          <TealBtn    onClick={() => setShowBuild(true)}>🔬 Build / Customise</TealBtn>
+        <div className="ps-activeprotocols-header-actions">
+          <OutlineBtn onClick={() => setShowUpload(true)}>📤 {t('activeProtocolsSection.uploadProtocolButton')}</OutlineBtn>
+          <TealBtn    onClick={() => setShowBuild(true)}>🔬 {t('activeProtocolsSection.buildCustomiseButton')}</TealBtn>
         </div>
       </div>
 
-      {/* Status filter pills */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+      {/* Status filter pills — active color is genuinely per-status data
+          (LIFECYCLE_STYLES), so it's set via CSS custom properties on a
+          fixed-layout class, same technique as ActionBtn's own
+          --ps-abtn-* overrides. */}
+      <div className="ps-activeprotocols-filter-row">
         {STATUS_FILTERS.map(f => {
-          const active   = statusFilter === f.id;
-          const lcStyle  = f.id !== 'all' ? LIFECYCLE_STYLES[f.id as LifecycleState] : null;
-          const count    = f.id === 'all' ? allProtocols.length : allProtocols.filter(p => p.status === f.id).length;
+          const active   = statusFilter === f;
+          const lcStyle  = f !== 'all' ? LIFECYCLE_STYLES[f as LifecycleState] : null;
+          const count    = f === 'all' ? allProtocols.length : allProtocols.filter(p => p.status === f).length;
           return (
             <button
-              key={f.id}
-              onClick={() => setStatusFilter(f.id)}
-              style={{
-                padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.12s', fontFamily: 'inherit',
-                background: active ? (lcStyle ? lcStyle.bg : 'rgba(8,145,178,0.15)') : 'rgba(255,255,255,0.04)',
-                color:      active ? (lcStyle ? lcStyle.color : '#0891B2') : '#64748b',
-                border:     `1px solid ${active ? (lcStyle ? lcStyle.border : 'rgba(8,145,178,0.3)') : '#334155'}`,
-              }}
+              key={f}
+              onClick={() => setStatusFilter(f)}
+              className="ps-activeprotocols-status-filter-btn"
+              style={active ? ({
+                '--ps-statusfilter-bg':     lcStyle ? lcStyle.bg     : 'rgba(8,145,178,0.15)',
+                '--ps-statusfilter-color':  lcStyle ? lcStyle.color  : '#0891B2',
+                '--ps-statusfilter-border': lcStyle ? lcStyle.border : 'rgba(8,145,178,0.3)',
+              } as React.CSSProperties) : undefined}
             >
-              {f.label} <span style={{ opacity: 0.7 }}>({count})</span>
+              {t(STATUS_FILTER_LABEL_KEY[f])} <span className="ps-activeprotocols-filter-count">({count})</span>
             </button>
           );
         })}

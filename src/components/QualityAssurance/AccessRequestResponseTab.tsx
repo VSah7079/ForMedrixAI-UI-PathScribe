@@ -10,8 +10,16 @@
 // per-resident "My Contribution" figure. Real turnaround time
 // (resolvedAt - requestedAt), across all three real request types
 // (Pediatric, Pool, Orchestration).
+//
+// i18n note: TYPE_LABELS below stays exactly as it was — literal English
+// — because the CSV export uses it directly ('Type': TYPE_LABELS[r.type]),
+// and exported data stays English per this sweep's standing rule. The
+// new TYPE_LABEL_KEY map is the on-screen-only translated counterpart;
+// `r.type`/`r.status` themselves (the persisted enum values) are never
+// touched.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
@@ -22,10 +30,23 @@ import { exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
 
 const hoursBetween = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
 
+// Exported/persisted CSV column — stays literal English.
 const TYPE_LABELS: Record<AccessRequest['type'], string> = {
   pediatric: 'Pediatric',
   pool: 'Pool',
   orchestration: 'Orchestration',
+};
+
+// On-screen display only.
+const TYPE_LABEL_KEY: Record<AccessRequest['type'], string> = {
+  pediatric:     'accessRequestResponseTab.type.pediatric',
+  pool:          'accessRequestResponseTab.type.pool',
+  orchestration: 'accessRequestResponseTab.type.orchestration',
+};
+
+const STATUS_LABEL_KEY: Record<'granted' | 'denied', string> = {
+  granted: 'accessRequestResponseTab.status.granted',
+  denied:  'accessRequestResponseTab.status.denied',
 };
 
 /** AccessRequest doesn't share Case's shape (order.facilityId /
@@ -41,6 +62,7 @@ function accessRequestMatchesScope(r: AccessRequest, scope: QaScope): boolean {
 }
 
 export const AccessRequestResponseTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [scope, setScope] = useState<QaScope>({ level: 'enterprise' });
   const [requests, setRequests] = useState<AccessRequest[]>([]);
@@ -82,8 +104,8 @@ export const AccessRequestResponseTab: React.FC = () => {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
       const inMonth = resolved.filter(r => {
-        const t = new Date(r.resolvedAt!).getTime();
-        return t >= monthStart && t < monthEnd;
+        const ts = new Date(r.resolvedAt!).getTime();
+        return ts >= monthStart && ts < monthEnd;
       });
       const avgHours = inMonth.length > 0
         ? +(inMonth.reduce((s, r) => s + hoursBetween(r.requestedAt, r.resolvedAt!), 0) / inMonth.length).toFixed(1)
@@ -107,13 +129,13 @@ export const AccessRequestResponseTab: React.FC = () => {
     exportQaReportRows(rows, `access-request-response-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading access request data…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('accessRequestResponseTab.loading')}</div>;
 
   return (
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>Export</button>
+        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
       </div>
 
       <div className="ps-defic-trend-card">
@@ -129,8 +151,8 @@ export const AccessRequestResponseTab: React.FC = () => {
                 <div className="ps-tat-trend__tooltip">
                   <div className="ps-tat-trend__tooltip-header">{label}</div>
                   {point?.avgHours !== null
-                    ? <div style={{ color: '#38bdf8' }}>Avg turnaround: {point.avgHours}h ({point.total} resolved)</div>
-                    : <div style={{ color: '#64748b' }}>No requests resolved this month</div>}
+                    ? <div className="ps-accessreq-trend-tooltip-value">{t('accessRequestResponseTab.tooltip.avgTurnaround', { hours: point.avgHours, count: point.total })}</div>
+                    : <div className="ps-defic-trend-tooltip-empty">{t('accessRequestResponseTab.tooltip.noRequestsResolvedThisMonth')}</div>}
                 </div>
               );
             }} />
@@ -142,35 +164,41 @@ export const AccessRequestResponseTab: React.FC = () => {
       <div className="ps-qa-summary-tiles">
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{avgTurnaroundHours !== null ? `${avgTurnaroundHours.toFixed(1)}h` : '—'}</div>
-          <div className="ps-qa-tile-label">Avg Turnaround</div>
+          <div className="ps-qa-tile-label">{t('countersignTurnaroundTab.tile.avgTurnaround')}</div>
         </div>
-        <div className="ps-qa-tile" style={pending.length > 0 ? { borderColor: '#f59e0b' } : undefined}>
-          <div className="ps-qa-tile-value" style={pending.length > 0 ? { color: '#f59e0b' } : undefined}>{pending.length}</div>
-          <div className="ps-qa-tile-label">Pending</div>
+        <div className={`ps-qa-tile${pending.length > 0 ? ' ps-qa-tile--warning' : ''}`}>
+          <div className={`ps-qa-tile-value${pending.length > 0 ? ' ps-qa-tile-value--warning' : ''}`}>{pending.length}</div>
+          <div className="ps-qa-tile-label">{t('auditLog.statusLabels.pending')}</div>
         </div>
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{grantedCount}</div>
-          <div className="ps-qa-tile-label">Granted</div>
+          <div className="ps-qa-tile-label">{t('accessRequestResponseTab.status.granted')}</div>
         </div>
         <div className="ps-qa-tile">
           <div className="ps-qa-tile-value">{deniedCount}</div>
-          <div className="ps-qa-tile-label">Denied</div>
+          <div className="ps-qa-tile-label">{t('accessRequestResponseTab.status.denied')}</div>
         </div>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>Pending ({pending.length})</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-defic-review-banner-label">{t('countersignTurnaroundTab.pendingBanner', { count: pending.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
-          <thead><tr><th className="ps-conf-th">Type</th><th className="ps-conf-th">Requested By</th><th className="ps-conf-th">Case</th><th className="ps-conf-th">Requested At</th><th className="ps-conf-th">Waiting</th></tr></thead>
+          <thead><tr>
+            <th className="ps-conf-th">{t('qualityAssurance.common.type')}</th>
+            <th className="ps-conf-th">{t('accessRequestResponseTab.headers.requestedBy')}</th>
+            <th className="ps-conf-th">{t('qualityAssurance.common.case')}</th>
+            <th className="ps-conf-th">{t('accessRequestResponseTab.headers.requestedAt')}</th>
+            <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.waiting')}</th>
+          </tr></thead>
           <tbody>
-            {pending.length === 0 && <tr><td className="ps-conf-td" colSpan={5}>Nothing pending — every access request has been resolved.</td></tr>}
+            {pending.length === 0 && <tr><td className="ps-conf-td" colSpan={5}>{t('accessRequestResponseTab.noPendingMessage')}</td></tr>}
             {pending.map(r => (
               <tr key={r.id} className={r.caseId ? 'ps-conf-tr-clickable' : undefined} onClick={r.caseId ? () => navigate(`/case/${r.caseId}/synoptic`) : undefined}>
-                <td className="ps-conf-td">{TYPE_LABELS[r.type]}</td>
+                <td className="ps-conf-td">{t(TYPE_LABEL_KEY[r.type])}</td>
                 <td className="ps-conf-td">{r.requestingUserName}</td>
-                <td className="ps-conf-td">{r.caseId ?? <span style={{ color: '#64748b', fontStyle: 'italic' }}>—</span>}</td>
+                <td className="ps-conf-td">{r.caseId ?? <span className="ps-conf-td--muted-italic">—</span>}</td>
                 <td className="ps-conf-td">{new Date(r.requestedAt).toLocaleString()}</td>
                 <td className="ps-conf-td">{hoursBetween(r.requestedAt, new Date().toISOString()).toFixed(1)}h</td>
               </tr>
@@ -179,26 +207,26 @@ export const AccessRequestResponseTab: React.FC = () => {
         </table>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>Resolved ({resolved.length})</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-defic-review-banner-label">{t('accessRequestResponseTab.resolvedBanner', { count: resolved.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
           <thead>
             <tr>
-              <th className="ps-conf-th">Type</th><th className="ps-conf-th">Requested By</th><th className="ps-conf-th">Status</th>
-              <th className="ps-conf-th">Turnaround</th><th className="ps-conf-th">Resolved By</th>
+              <th className="ps-conf-th">{t('qualityAssurance.common.type')}</th><th className="ps-conf-th">{t('accessRequestResponseTab.headers.requestedBy')}</th><th className="ps-conf-th">{t('qualityAssurance.common.status')}</th>
+              <th className="ps-conf-th">{t('countersignTurnaroundTab.headers.turnaround')}</th><th className="ps-conf-th">{t('accessRequestResponseTab.headers.resolvedBy')}</th>
             </tr>
           </thead>
           <tbody>
-            {resolved.length === 0 && <tr><td className="ps-conf-td" colSpan={5}>No resolved requests in this scope yet.</td></tr>}
+            {resolved.length === 0 && <tr><td className="ps-conf-td" colSpan={5}>{t('accessRequestResponseTab.noResolvedMessage')}</td></tr>}
             {resolved.map(r => (
               <tr key={r.id} className={r.caseId ? 'ps-conf-tr-clickable' : undefined} onClick={r.caseId ? () => navigate(`/case/${r.caseId}/synoptic`) : undefined}>
-                <td className="ps-conf-td">{TYPE_LABELS[r.type]}</td>
+                <td className="ps-conf-td">{t(TYPE_LABEL_KEY[r.type])}</td>
                 <td className="ps-conf-td">{r.requestingUserName}</td>
-                <td className="ps-conf-td" style={{ color: r.status === 'granted' ? '#34d399' : '#f87171' }}>{r.status}</td>
+                <td className={`ps-conf-td ${r.status === 'granted' ? 'ps-accessreq-status--granted' : 'ps-accessreq-status--denied'}`}>{t(STATUS_LABEL_KEY[r.status as 'granted' | 'denied'])}</td>
                 <td className="ps-conf-td">{hoursBetween(r.requestedAt, r.resolvedAt!).toFixed(1)}h</td>
-                <td className="ps-conf-td">{r.resolvedByUserName ?? <span style={{ color: '#64748b', fontStyle: 'italic' }}>—</span>}</td>
+                <td className="ps-conf-td">{r.resolvedByUserName ?? <span className="ps-conf-td--muted-italic">—</span>}</td>
               </tr>
             ))}
           </tbody>

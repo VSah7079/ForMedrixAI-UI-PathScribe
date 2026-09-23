@@ -18,7 +18,7 @@ describe('validateNhsNumber — real Modulus 11 checksum, per direct specificati
   it('rejects a wrong check digit', () => {
     const result = validateNhsNumber('9434765910'); // last digit changed from 9 to 0
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/checksum/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.checksumMismatch');
   });
 
   it('rejects the wrong length', () => {
@@ -37,7 +37,7 @@ describe('validateNhsNumber — real Modulus 11 checksum, per direct specificati
     // from an ordinary wrong-digit mismatch.
     const result = validateNhsNumber('1000000010');
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/no valid check digit/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.nhsNoValidCheckDigit');
   });
 });
 
@@ -53,19 +53,19 @@ describe('validateChiNumber — real self-validating structure (DOB + Modulus 11
   it('rejects an invalid month (13)', () => {
     const result = validateChiNumber('1513740014');
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/date of birth/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.chiInvalidDobMonth');
   });
 
   it('rejects an invalid day for a real month (31 in a 30-day month)', () => {
     const result = validateChiNumber('3104740014'); // 31 April doesn't exist
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/date of birth/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.chiInvalidDobDay');
   });
 
   it('rejects a wrong checksum even with a genuinely valid embedded date', () => {
     const result = validateChiNumber('1401740015'); // correct DOB, wrong check digit
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/checksum/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.checksumMismatch');
   });
 
   it('rejects the wrong length', () => {
@@ -99,13 +99,13 @@ describe('validateHcNumber — real Modulus 11 + allocated range, per direct spe
   it('rejects a genuinely out-of-range number (starts 31...) even with a correct checksum for those digits', () => {
     const result = validateHcNumber('3100000005');
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/range/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.hcOutOfRange');
   });
 
   it('rejects a wrong checksum for an in-range number', () => {
     const result = validateHcNumber('3201234568'); // correct range, wrong check digit
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/checksum/i);
+    expect(result.reasonKey).toBe('ukPatientIdValidation.checksumMismatch');
   });
 
   it('rejects the wrong length', () => {

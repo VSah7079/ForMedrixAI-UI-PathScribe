@@ -29,6 +29,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { Case } from '@/types/case/Case';
 import type { HistologyBlock, StainOrder, Specimen } from '@/types/case/Specimen';
 import type { Decant, Aliquot, MaterialLocation } from '@/types/case/Material';
@@ -295,7 +297,7 @@ function allSlidesReady(stains: StainOrder[]): boolean {
   return stains.length > 0 && stains.every(isSlideReady);
 }
 
-function buildFlatTree(specimens: Specimen[], fullAccession: string, query: string): FlatTreeItem[] {
+function buildFlatTree(specimens: Specimen[], fullAccession: string, query: string, t: TFunction): FlatTreeItem[] {
   const items: FlatTreeItem[] = [];
 
   for (const sp of specimens) {
@@ -311,22 +313,22 @@ function buildFlatTree(specimens: Specimen[], fullAccession: string, query: stri
       ...(sp.blocks ?? []).flatMap(b => b.stains ?? []),
       ...(sp.decants ?? []).flatMap(d => d.stains ?? []),
     ];
-    items.push({ id: sp.id, depth: 0, icon: '📁', title: `Specimen ${sp.label}`, displayId: spDisplayId, subtitle: sp.description || 'Specimen', locationHistory: sp.locationHistory, visible: spVisible, directMatch: specimenSelfMatches(sp, spDisplayId, query), readyForReview: allSlidesReady(allSpecimenSlides) });
+    items.push({ id: sp.id, depth: 0, icon: '📁', title: t('materialTrackingHistoryModal.itemTitle.specimen', { label: sp.label }), displayId: spDisplayId, subtitle: sp.description || t('materialTrackingHistoryModal.subtitle.specimenFallback'), locationHistory: sp.locationHistory, visible: spVisible, directMatch: specimenSelfMatches(sp, spDisplayId, query), readyForReview: allSlidesReady(allSpecimenSlides) });
 
     for (const block of sp.blocks ?? []) {
       const blockDisplayId = resolveBlockDisplayId(fullAccession, sp.label, block);
       const blockVisible = spVisible && blockMatches(block, blockDisplayId, query);
-      items.push({ id: block.id, depth: 1, icon: '📦', title: `Block ${block.label}`, displayId: blockDisplayId, subtitle: 'Tissue Cassette', locationHistory: block.locationHistory, visible: blockVisible, directMatch: blockSelfMatches(block, blockDisplayId, query), readyForReview: allSlidesReady(block.stains ?? []) });
+      items.push({ id: block.id, depth: 1, icon: '📦', title: t('materialTrackingHistoryModal.itemTitle.block', { label: block.label }), displayId: blockDisplayId, subtitle: t('materialTrackingHistoryModal.subtitle.block'), locationHistory: block.locationHistory, visible: blockVisible, directMatch: blockSelfMatches(block, blockDisplayId, query), readyForReview: allSlidesReady(block.stains ?? []) });
 
       (block.stains ?? []).forEach((slide, i) => {
         const level = `L${i + 1}`;
         const slideDisplayId = resolveSlideDisplayId(fullAccession, sp.label, block.label, level, slide);
         const slideVisible = blockVisible && slideMatches(slide, slideDisplayId, query);
-        items.push({ id: slide.id, depth: 2, icon: '🔬', title: `Slide ${block.label}-${level}`, displayId: slideDisplayId, subtitle: slide.stainName || 'Unstained', locationHistory: slide.locationHistory, visible: slideVisible, directMatch: slideSelfMatches(slide, slideDisplayId, query), readyForReview: isSlideReady(slide) });
+        items.push({ id: slide.id, depth: 2, icon: '🔬', title: t('materialTrackingHistoryModal.itemTitle.slide', { id: `${block.label}-${level}` }), displayId: slideDisplayId, subtitle: slide.stainName || t('materialTrackingHistoryModal.subtitle.unstained'), locationHistory: slide.locationHistory, visible: slideVisible, directMatch: slideSelfMatches(slide, slideDisplayId, query), readyForReview: isSlideReady(slide) });
 
         for (const aliquot of slide.aliquots ?? []) {
           const aliquotDisplayId = resolveAliquotDisplayId(fullAccession, sp.label, block.label, level, aliquot);
-          items.push({ id: aliquot.id, depth: 3, icon: '🧪', title: `Aliquot ${block.label}-${level}${aliquot.label}`, displayId: aliquotDisplayId, subtitle: aliquot.aliquotType, locationHistory: aliquot.locationHistory, visible: slideVisible && aliquotMatches(aliquot, aliquotDisplayId, query), directMatch: aliquotSelfMatches(aliquot, aliquotDisplayId, query), readyForReview: false });
+          items.push({ id: aliquot.id, depth: 3, icon: '🧪', title: t('materialTrackingHistoryModal.itemTitle.aliquot', { id: `${block.label}-${level}${aliquot.label}` }), displayId: aliquotDisplayId, subtitle: aliquot.aliquotType, locationHistory: aliquot.locationHistory, visible: slideVisible && aliquotMatches(aliquot, aliquotDisplayId, query), directMatch: aliquotSelfMatches(aliquot, aliquotDisplayId, query), readyForReview: false });
         }
       });
     }
@@ -334,17 +336,17 @@ function buildFlatTree(specimens: Specimen[], fullAccession: string, query: stri
     for (const decant of sp.decants ?? []) {
       const decantDisplayId = resolveDecantDisplayId(fullAccession, sp.label, decant);
       const decantVisible = spVisible && decantMatches(decant, decantDisplayId, query);
-      items.push({ id: decant.id, depth: 1, icon: '📦', title: `Decant ${decant.label}`, displayId: decantDisplayId, subtitle: DECANT_TYPE_LABEL[decant.decantType], locationHistory: decant.locationHistory, visible: decantVisible, directMatch: decantSelfMatches(decant, decantDisplayId, query), readyForReview: allSlidesReady(decant.stains ?? []) });
+      items.push({ id: decant.id, depth: 1, icon: '📦', title: t('materialTrackingHistoryModal.itemTitle.decant', { label: decant.label }), displayId: decantDisplayId, subtitle: DECANT_TYPE_LABEL[decant.decantType], locationHistory: decant.locationHistory, visible: decantVisible, directMatch: decantSelfMatches(decant, decantDisplayId, query), readyForReview: allSlidesReady(decant.stains ?? []) });
 
       (decant.stains ?? []).forEach((slide, i) => {
         const level = `L${i + 1}`;
         const slideDisplayId = resolveDecantSlideDisplayId(fullAccession, sp.label, decant.label, level, slide);
         const slideVisible = decantVisible && slideMatches(slide, slideDisplayId, query);
-        items.push({ id: slide.id, depth: 2, icon: '🔬', title: `Slide ${decant.label}-${level}`, displayId: slideDisplayId, subtitle: slide.stainName || 'Unstained', locationHistory: slide.locationHistory, visible: slideVisible, directMatch: slideSelfMatches(slide, slideDisplayId, query), readyForReview: isSlideReady(slide) });
+        items.push({ id: slide.id, depth: 2, icon: '🔬', title: t('materialTrackingHistoryModal.itemTitle.slide', { id: `${decant.label}-${level}` }), displayId: slideDisplayId, subtitle: slide.stainName || t('materialTrackingHistoryModal.subtitle.unstained'), locationHistory: slide.locationHistory, visible: slideVisible, directMatch: slideSelfMatches(slide, slideDisplayId, query), readyForReview: isSlideReady(slide) });
 
         for (const aliquot of slide.aliquots ?? []) {
           const aliquotDisplayId = resolveDecantAliquotDisplayId(fullAccession, sp.label, decant.label, level, aliquot);
-          items.push({ id: aliquot.id, depth: 3, icon: '🧪', title: `Aliquot ${decant.label}-${level}${aliquot.label}`, displayId: aliquotDisplayId, subtitle: aliquot.aliquotType, locationHistory: aliquot.locationHistory, visible: slideVisible && aliquotMatches(aliquot, aliquotDisplayId, query), directMatch: aliquotSelfMatches(aliquot, aliquotDisplayId, query), readyForReview: false });
+          items.push({ id: aliquot.id, depth: 3, icon: '🧪', title: t('materialTrackingHistoryModal.itemTitle.aliquot', { id: `${decant.label}-${level}${aliquot.label}` }), displayId: aliquotDisplayId, subtitle: aliquot.aliquotType, locationHistory: aliquot.locationHistory, visible: slideVisible && aliquotMatches(aliquot, aliquotDisplayId, query), directMatch: aliquotSelfMatches(aliquot, aliquotDisplayId, query), readyForReview: false });
         }
       });
     }
@@ -357,27 +359,26 @@ function buildFlatTree(specimens: Specimen[], fullAccession: string, query: stri
 // current live status/location (e.g., Slide A1-L1 · 🟢 Digital
 // Scanner 02)." ─────────────────────────────────────────────────────
 const SidebarRow: React.FC<{ item: FlatTreeItem; selected: boolean; onSelect: () => void }> = ({ item, selected, onSelect }) => {
+  const { t } = useTranslation();
   const loc = mostRecentLocation(item.locationHistory);
+  const tooltip = loc
+    ? (item.readyForReview
+        ? t('materialTrackingHistoryModal.sidebar.tooltipReadyWithLocation', { time: formatTimestamp(loc.at) })
+        : t('materialTrackingHistoryModal.sidebar.tooltipWithLocation', { time: formatTimestamp(loc.at) }))
+    : t('materialTrackingHistoryModal.sidebar.tooltipNoEvents');
   return (
     <button
       type="button"
       className={`ps-mth-sidebar-row${selected ? ' ps-mth-sidebar-row--selected' : ''}`}
-      style={{ paddingLeft: 14 + item.depth * 16 }}
+      style={{ '--ps-mth-row-depth': item.depth } as React.CSSProperties}
       onClick={onSelect}
     >
       <div className="ps-mth-sidebar-row-top">
         <span className="ps-mth-sidebar-icon">{item.icon}</span>
         <span className="ps-mth-sidebar-title">{item.title}</span>
       </div>
-      <div
-        className="ps-mth-sidebar-status"
-        title={
-          loc
-            ? `${item.readyForReview ? 'Ready for review. ' : ''}Most recent known location, reported ${formatTimestamp(loc.at)}. Click to see this item's full history.`
-            : 'No tracking events recorded for this item yet.'
-        }
-      >
-        {loc ? <>{item.readyForReview && <span className="ps-mth-sidebar-dot" />} {loc.location}</> : <span className="ps-mth-sidebar-status--none">No events yet</span>}
+      <div className="ps-mth-sidebar-status" title={tooltip}>
+        {loc ? <>{item.readyForReview && <span className="ps-mth-sidebar-dot" />} {loc.location}</> : <span className="ps-mth-sidebar-status--none">{t('materialTrackingHistoryModal.sidebar.noEventsYet')}</span>}
       </div>
     </button>
   );
@@ -389,6 +390,7 @@ const SidebarRow: React.FC<{ item: FlatTreeItem; selected: boolean; onSelect: ()
 // underlying stored history stays real, append-order chronological —
 // this never mutates it). ───────────────────────────────────────────
 const DetailTimeline: React.FC<{ item: FlatTreeItem }> = ({ item }) => {
+  const { t } = useTranslation();
   const displayHistory = useMemo(() => [...(item.locationHistory ?? [])].reverse(), [item.locationHistory]);
   return (
     <div className="ps-mth-detail">
@@ -400,7 +402,7 @@ const DetailTimeline: React.FC<{ item: FlatTreeItem }> = ({ item }) => {
         </div>
       </div>
       {displayHistory.length === 0 ? (
-        <div className="ps-mth-detail-empty">No tracking events yet for this item.</div>
+        <div className="ps-mth-detail-empty">{t('materialTrackingHistoryModal.detail.noEventsForItem')}</div>
       ) : (
         <div className="ps-mth-timeline">
           {displayHistory.map((event, i) => (
@@ -437,9 +439,10 @@ const PrintEventRow: React.FC<{ event: MaterialLocation }> = ({ event }) => (
   </div>
 );
 const PrintNode: React.FC<{ item: FlatTreeItem }> = ({ item }) => {
+  const { t } = useTranslation();
   const displayHistory = useMemo(() => [...(item.locationHistory ?? [])].reverse(), [item.locationHistory]);
   return (
-    <div className="ps-mth-node" style={{ marginLeft: item.depth * 14 }}>
+    <div className="ps-mth-node" style={{ '--ps-mth-node-depth': item.depth } as React.CSSProperties}>
       <div className="ps-mth-node-header">
         <span className="ps-mth-node-icon">{item.icon}</span>
         <span className="ps-mth-node-title">{item.title}: {item.displayId}</span>
@@ -447,7 +450,7 @@ const PrintNode: React.FC<{ item: FlatTreeItem }> = ({ item }) => {
       </div>
       <div className="ps-mth-node-body">
         {displayHistory.length === 0 ? (
-          <div className="ps-mth-event ps-mth-event--empty">No tracking events yet</div>
+          <div className="ps-mth-event ps-mth-event--empty">{t('materialTrackingHistoryModal.print.noEventsShort')}</div>
         ) : (
           displayHistory.map((event, i) => <PrintEventRow key={i} event={event} />)
         )}
@@ -457,11 +460,12 @@ const PrintNode: React.FC<{ item: FlatTreeItem }> = ({ item }) => {
 };
 
 const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> = ({ caseData, onClose }) => {
+  const { t } = useTranslation();
   const fullAccession = caseData.accession?.fullAccession ?? caseData.id;
   const specimens = caseData.specimens ?? [];
   const [query, setQuery] = useState('');
 
-  const flatItems = useMemo(() => buildFlatTree(specimens, fullAccession, query.trim()), [specimens, fullAccession, query]);
+  const flatItems = useMemo(() => buildFlatTree(specimens, fullAccession, query.trim(), t), [specimens, fullAccession, query, t]);
   const visibleItems = useMemo(() => flatItems.filter(i => i.visible), [flatItems]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -495,7 +499,7 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
   const handlePrint = () => {
     if (!hasAnyTrackingData(specimens)) {
       const proceed = window.confirm(
-        `${fullAccession} has no tracking events recorded yet — none of its specimens, blocks, slides, or aliquots have a real scan event. Print anyway?`,
+        t('materialTrackingHistoryModal.confirm.noDataPrint', { accession: fullAccession }),
       );
       if (!proceed) return;
     }
@@ -525,11 +529,11 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
       <div className="ps-modal-dark ps-mth-modal ps-mth-print-area" onClick={e => e.stopPropagation()}>
         <div className="ps-mth-header">
           <div>
-            <div className="ps-mth-title">📍 Hierarchy &amp; Scan Audit Log</div>
+            <div className="ps-mth-title">📍 {t('materialTrackingHistoryModal.header.title')}</div>
             <div className="ps-mth-case">{fullAccession}</div>
           </div>
           <div className="ps-mth-header-actions">
-            <button className="ps-btn-secondary ps-mth-print-btn" onClick={handlePrint}>🖨️ Print</button>
+            <button className="ps-btn-secondary ps-mth-print-btn" onClick={handlePrint}>🖨️ {t('materialTrackingHistoryModal.header.printButton')}</button>
             <button className="ps-mth-close" onClick={onClose}>✕</button>
           </div>
         </div>
@@ -537,11 +541,15 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
           <input
             className="ps-mth-search-input"
             type="text"
-            placeholder="Search by type, ID, location, action, tech/pathologist name…"
+            placeholder={t('materialTrackingHistoryModal.search.placeholder')}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
-          {query && <span className="ps-mth-search-count">{visibleItems.length} of {flatItems.length} items match</span>}
+          {query && (
+            <span className="ps-mth-search-count">
+              {t('materialTrackingHistoryModal.search.matchCount', { visible: visibleItems.length, count: flatItems.length })}
+            </span>
+          )}
         </div>
 
         {/* Real, per direct guidance's own Clinical Job History spec —
@@ -550,9 +558,9 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
             "hidden on print, print gets its own comprehensive section"
             posture as the split-pane view below — see this section's
             own print-only counterpart further down. */}
-        <div className="ps-mth-dispatch-history-section" style={{ padding: '0 16px 12px', maxHeight: 220, overflowY: 'auto' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8899aa', marginBottom: 8 }}>
-            🖨️ Cassette Dispatch &amp; Block Exception History
+        <div className="ps-mth-dispatch-history-section">
+          <div className="ps-mth-dispatch-history-label">
+            🖨️ {t('materialTrackingHistoryModal.dispatchHistory.label')}
           </div>
           <DispatchHistoryTimeline entries={dispatchHistory} colorNames={colorNames} />
         </div>
@@ -562,9 +570,9 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
         <div className="ps-mth-splitpane">
           <div className="ps-mth-sidebar">
             {specimens.length === 0 ? (
-              <div className="ps-mth-empty">No specimens on this case.</div>
+              <div className="ps-mth-empty">{t('materialTrackingHistoryModal.sidebar.noSpecimens')}</div>
             ) : visibleItems.length === 0 ? (
-              <div className="ps-mth-empty">No matches for "{query}".</div>
+              <div className="ps-mth-empty">{t('materialTrackingHistoryModal.sidebar.noMatches', { query })}</div>
             ) : (
               visibleItems.map(item => (
                 <SidebarRow key={item.id} item={item} selected={item.id === selectedItem?.id} onSelect={() => setSelectedId(item.id)} />
@@ -573,7 +581,7 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
           </div>
           <div className="ps-mth-detail-pane">
             {selectedItem ? <DetailTimeline item={selectedItem} /> : (
-              <div className="ps-mth-empty">Select an item on the left to see its full scan history.</div>
+              <div className="ps-mth-empty">{t('materialTrackingHistoryModal.detail.selectPrompt')}</div>
             )}
           </div>
         </div>
@@ -581,15 +589,15 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
         {/* Real, comprehensive full tree — print only. */}
         <div className="ps-mth-print-only-body">
           {specimens.length === 0 ? (
-            <div className="ps-mth-empty">No specimens on this case.</div>
+            <div className="ps-mth-empty">{t('materialTrackingHistoryModal.sidebar.noSpecimens')}</div>
           ) : (
             flatItems.map(item => <PrintNode key={item.id} item={item} />)
           )}
           {/* Real, per direct guidance's own Clinical Job History spec
               — same case-level history as the screen-only section
               above, included in the printed comprehensive record too. */}
-          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #444' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Cassette Dispatch &amp; Block Exception History</div>
+          <div className="ps-mth-print-dispatch-wrap">
+            <div className="ps-mth-print-dispatch-label">{t('materialTrackingHistoryModal.dispatchHistory.label')}</div>
             <DispatchHistoryTimeline entries={dispatchHistory} colorNames={colorNames} />
           </div>
         </div>

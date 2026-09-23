@@ -30,9 +30,20 @@ export interface CptModifierEntry {
  *  descriptions until a real, licensed customer imports the real
  *  text. Never the full, several-hundred-entry universal CPT modifier
  *  list - scoped to this app's own real domain. */
+// `problems` carries translation descriptors, not pre-built English
+// sentences — this is a pure, non-hook function with no access to
+// `useTranslation()`'s `t`, and its only consumer
+// (ModifierDictionarySection.tsx) needs translatable messages. Same
+// "return a descriptor, not English text" pattern
+// resolveCassetteLabelFitWarning.ts/ncciEditUtils.ts already
+// established (batches 92, 95).
+export interface ModifierUploadProblem {
+  row: number;
+}
+
 export interface ParsedModifierUpload {
   entries: CptModifierEntry[];
-  problems: string[];
+  problems: ModifierUploadProblem[];
 }
 
 /** Real, per direct guidance's own established upload pattern
@@ -42,12 +53,12 @@ export interface ParsedModifierUpload {
  *  shape) and returns real, parsed entries plus any real, honest
  *  problems found - never silently drops a malformed row. */
 export function parseModifierUploadRows(rows: any[]): ParsedModifierUpload {
-  const problems: string[] = [];
+  const problems: ModifierUploadProblem[] = [];
   const entries: CptModifierEntry[] = [];
   rows.forEach((row, i) => {
     const code = String(row.Code ?? row.code ?? '').trim();
     const description = String(row.Description ?? row.description ?? '').trim();
-    if (!code) { problems.push(`Row ${i + 1}: missing a real Code value — skipped.`); return; }
+    if (!code) { problems.push({ row: i + 1 }); return; }
     entries.push({ code, description: description || `Modifier ${code}` });
   });
   return { entries, problems };

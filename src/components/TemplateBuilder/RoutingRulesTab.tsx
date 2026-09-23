@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
 import { mockRoutingRuleService, buildRoutingRuleMap }       from '@/services/routingRules/mockRoutingRuleService';
@@ -29,6 +30,35 @@ import type { Physician }               from '@/services/physicians/IPhysicianSe
 
 // ── Add/Edit Rule Modal ───────────────────────────────────────────────────────
 
+// Persisted RoutingRuleType — translate only the displayed label, not the
+// underlying value (established codebase pattern for enum-like fields).
+const ENTITY_LABEL_KEY: Record<RoutingRuleType, string> = {
+  client: 'routingRulesTab.entity.facility',
+  physician: 'routingRulesTab.entity.physician',
+  protocol: 'routingRulesTab.entity.protocol',
+};
+
+// Resolution-pass identifiers (trace.pass / result.resolvedBy) are internal
+// keys, not on-screen text — only the number (language-independent) and the
+// core label (translated) are shown, composed as "Pass {{number}} — {{label}}"
+// or, in the priority-chain list, the core label alone.
+const PASS_NUMBER: Record<string, string> = {
+  'client-override': '0',
+  'client-override-enterprise': '0a',
+  'physician-preference': '0b',
+  'protocol': '1',
+  'subspecialty': '2',
+  'gold-standard': '3',
+};
+const PASS_CORE_LABEL_KEY: Record<string, string> = {
+  'client-override': 'routingRulesTab.pass.clientOverride',
+  'client-override-enterprise': 'routingRulesTab.pass.clientOverrideEnterprise',
+  'physician-preference': 'routingRulesTab.pass.physicianPreference',
+  'protocol': 'routingRulesTab.pass.protocol',
+  'subspecialty': 'routingRulesTab.pass.subspecialty',
+  'gold-standard': 'routingRulesTab.pass.goldStandard',
+};
+
 const RuleModal: React.FC<{
   type:       RoutingRuleType;
   rule?:      RoutingRule;
@@ -40,12 +70,13 @@ const RuleModal: React.FC<{
   onSave:     (rule: Partial<RoutingRule>) => void;
   onClose:    () => void;
 }> = ({ type, rule, templates, facilities, physicians, protocols, labs, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [entityId,    setEntityId]    = useState(rule?.entityId    ?? '');
   const [templateId,  setTemplateId]  = useState(rule?.templateId  ?? '');
   const [note,        setNote]        = useState(rule?.note        ?? '');
   const [performingLabFacilityId, setPerformingLabFacilityId] = useState(rule?.performingLabFacilityId ?? '');
 
-  const entityLabel = type === 'client' ? 'Facility' : type === 'physician' ? 'Physician' : 'Protocol';
+  const entityLabel = t(ENTITY_LABEL_KEY[type]);
   const entityList  = type === 'client'
     ? facilities.map(c => ({ id: c.id as string, name: `${c.name} (${c.assigningAuthority})` }))
     : type === 'physician'
@@ -53,7 +84,7 @@ const RuleModal: React.FC<{
     : protocols.map(p => ({ id: p.id, name: `${p.name}${p.status !== 'published' ? ` (${p.status})` : ''}` }));
 
   const selectedEntity   = entityList.find(e => e.id === entityId);
-  const selectedTemplate = templates.find(t => t.id === templateId);
+  const selectedTemplate = templates.find(tpl => tpl.id === templateId);
 
   const canSave = entityId && templateId;
 
@@ -62,7 +93,9 @@ const RuleModal: React.FC<{
       <div className="ps-modal-dark ps-modal-dark--narrow" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
           <span className="ps-modal-dark-title">
-            {rule ? 'Edit' : 'Add'} {entityLabel} Routing Rule
+            {rule
+              ? t('routingRulesTab.modal.editTitle', { entityLabel })
+              : t('routingRulesTab.modal.addTitle', { entityLabel })}
           </span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
@@ -76,7 +109,7 @@ const RuleModal: React.FC<{
               value={entityId}
               onChange={e => setEntityId(e.target.value)}
             >
-              <option value="">— Select {entityLabel.toLowerCase()} —</option>
+              <option value="">{t('routingRulesTab.modal.selectEntityPlaceholder', { entityLabel: entityLabel.toLowerCase() })}</option>
               {entityList.map(e => (
                 <option key={e.id} value={e.id}>{e.name}</option>
               ))}
@@ -84,43 +117,43 @@ const RuleModal: React.FC<{
           </div>
 
           <div>
-            <div className="ps-conf-label">Report Template</div>
+            <div className="ps-conf-label">{t('routingRulesTab.modal.reportTemplateLabel')}</div>
             <select
               className="ps-conf-select"
-              aria-label="Report Template"
+              aria-label={t('routingRulesTab.modal.reportTemplateLabel')}
               value={templateId}
               onChange={e => setTemplateId(e.target.value)}
             >
-              <option value="">— Select template —</option>
-              {templates.filter(t => t.status === 'published').map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+              <option value="">{t('routingRulesTab.modal.selectTemplatePlaceholder')}</option>
+              {templates.filter(tpl => tpl.status === 'published').map(tpl => (
+                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <div className="ps-conf-label">Note (optional)</div>
+            <div className="ps-conf-label">{t('routingRulesTab.modal.noteLabel')} ({t('common.optional')})</div>
             <input
               className="ps-conf-input"
               value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder="Why does this override exist?"
+              placeholder={t('routingRulesTab.modal.notePlaceholder')}
             />
           </div>
 
           <div>
-            <div className="ps-conf-label">Performing Lab</div>
+            <div className="ps-conf-label">{t('routingRulesTab.modal.performingLabLabel')}</div>
             <select
               className="ps-conf-select"
-              aria-label="Performing Lab"
+              aria-label={t('routingRulesTab.modal.performingLabLabel')}
               value={performingLabFacilityId}
               onChange={e => setPerformingLabFacilityId(e.target.value)}
             >
-              <option value="">— Global (every performing lab) —</option>
+              <option value="">{t('routingRulesTab.modal.globalLabPlaceholder')}</option>
               {labs.map(l => <option key={l.id as string} value={l.id as string}>{l.name}</option>)}
             </select>
             <p className="ps-rr-lab-hint">
-              A lab-specific rule is checked before a Global rule for that lab's own cases.
+              {t('routingRulesTab.modal.labHint')}
             </p>
           </div>
 
@@ -128,14 +161,14 @@ const RuleModal: React.FC<{
             <div className="ps-rr-preview">
               <span className="ps-rr-preview-arrow">→</span>
               <span className="ps-rr-preview-entity">{selectedEntity?.name}</span>
-              <span className="ps-rr-preview-always">always uses</span>
+              <span className="ps-rr-preview-always">{t('routingRulesTab.modal.alwaysUses')}</span>
               <span className="ps-rr-preview-template">{selectedTemplate?.name}</span>
             </div>
           )}
         </div>
 
         <div className="ps-modal-dark-footer">
-          <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('common.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canSave}
@@ -147,7 +180,7 @@ const RuleModal: React.FC<{
               active: true,
             })}
           >
-            {rule ? 'Save Changes' : 'Add Rule'}
+            {rule ? t('routingRulesTab.modal.saveChanges') : t('routingRulesTab.modal.addRule')}
           </button>
         </div>
       </div>
@@ -164,10 +197,11 @@ const RuleRow: React.FC<{
   onDelete:  () => void;
   onToggle:  () => void;
 }> = ({ rule, labs, onEdit, onDelete, onToggle }) => {
+  const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const labName = rule.performingLabFacilityId
     ? (labs.find(l => l.id === rule.performingLabFacilityId)?.name ?? rule.performingLabFacilityId)
-    : 'Global';
+    : t('routingRulesTab.global');
 
   return (
     <div className={`ps-rr-row${!rule.active ? ' ps-rr-row--inactive' : ''}`}>
@@ -182,19 +216,19 @@ const RuleRow: React.FC<{
         <button
           className={`ps-rr-toggle${rule.active ? ' ps-rr-toggle--on' : ''}`}
           onClick={onToggle}
-          title={rule.active ? 'Disable rule' : 'Enable rule'}
+          title={rule.active ? t('routingRulesTab.row.disableRule') : t('routingRulesTab.row.enableRule')}
         >
-          {rule.active ? 'Active' : 'Disabled'}
+          {rule.active ? t('common.active') : t('routingRulesTab.row.disabled')}
         </button>
-        <button className="ps-rr-btn" onClick={onEdit}>Edit</button>
+        <button className="ps-rr-btn" onClick={onEdit}>{t('common.edit')}</button>
         {confirmDelete ? (
           <>
-            <span className="ps-rr-confirm-text">Delete?</span>
-            <button className="ps-rr-btn ps-rr-btn--danger" onClick={onDelete}>Yes</button>
-            <button className="ps-rr-btn" onClick={() => setConfirmDelete(false)}>No</button>
+            <span className="ps-rr-confirm-text">{t('routingRulesTab.row.confirmDelete')}</span>
+            <button className="ps-rr-btn ps-rr-btn--danger" onClick={onDelete}>{t('common.yes')}</button>
+            <button className="ps-rr-btn" onClick={() => setConfirmDelete(false)}>{t('common.no')}</button>
           </>
         ) : (
-          <button className="ps-rr-btn ps-rr-btn--ghost" onClick={() => setConfirmDelete(true)}>Delete</button>
+          <button className="ps-rr-btn ps-rr-btn--ghost" onClick={() => setConfirmDelete(true)}>{t('common.delete')}</button>
         )}
       </div>
     </div>
@@ -211,6 +245,7 @@ const TestPanel: React.FC<{
   result:     any;
   onResult:   (r: any) => void;
 }> = ({ templates, facilities, physicians, rules, result, onResult }) => {
+  const { t } = useTranslation();
   const [synopticId,   setSynopticId]   = useState('');
   const [subspecialty, setSubspecialty] = useState('');
   const [clientId,     setClientId]     = useState('');
@@ -259,63 +294,60 @@ const TestPanel: React.FC<{
       _protocolOverrides:  protocolMap,
     } as any);
     const resolved = trace.result;
-    const template = templates.find(t => t.id === resolved.templateId);
+    const template = templates.find(tpl => tpl.id === resolved.templateId);
     onResult({ ...resolved, templateName: template?.name ?? resolved.templateId, passes: trace.passes });
   };
 
-  const PASS_LABELS: Record<string, string> = {
-    'client-override':           'Pass 0 — Facility override',
-    'client-override-enterprise': 'Pass 0a — Enterprise facility override',
-    'physician-preference':      'Pass 0b — Physician preference',
-    'protocol':                   'Pass 1 — Protocol match',
-    'subspecialty':               'Pass 2 — Subspecialty fallback',
-    'gold-standard':              'Pass 3 — Gold standard fallback',
-  };
+  const passLabel = (key: string): string =>
+    t('routingRulesTab.pass.numbered', { number: PASS_NUMBER[key] ?? '', label: t(PASS_CORE_LABEL_KEY[key] ?? '') });
 
   return (
     <div className="ps-rr-test">
-      <div className="ps-rr-test-title">🧪 Test Template Routing</div>
+      <div className="ps-rr-test-title">🧪 {t('routingRulesTab.test.title')}</div>
       <div className="ps-rr-test-subtitle">
-        Enter case details to see which template would be selected and why.
+        {t('routingRulesTab.test.subtitle')}
       </div>
 
       <div className="ps-rr-test-fields">
         <div>
-          <div className="ps-conf-label">Synoptic Template ID</div>
-          <select className="ps-conf-select" aria-label="Synoptic Template ID" value={synopticId} onChange={e => setSynopticId(e.target.value)}>
-            <option value="">— None —</option>
+          <div className="ps-conf-label">{t('routingRulesTab.test.synopticTemplateIdLabel')}</div>
+          <select className="ps-conf-select" aria-label={t('routingRulesTab.test.synopticTemplateIdLabel')} value={synopticId} onChange={e => setSynopticId(e.target.value)}>
+            <option value="">{t('routingRulesTab.test.none')}</option>
             {protocols.map(p => (
               <option key={p.id} value={p.id}>{p.name}{p.status !== 'published' ? ` (${p.status})` : ''}</option>
             ))}
           </select>
         </div>
         <div>
-          <div className="ps-conf-label">Subspecialty</div>
-          <select className="ps-conf-select" aria-label="Subspecialty" value={subspecialty} onChange={e => setSubspecialty(e.target.value)}>
-            <option value="">— Any —</option>
+          <div className="ps-conf-label">{t('routingRulesTab.test.subspecialtyLabel')}</div>
+          {/* These short codes are the subspecialty identifiers themselves —
+              shown as their own label (value === display text), not friendly
+              prose — so they stay literal like other internal data keys. */}
+          <select className="ps-conf-select" aria-label={t('routingRulesTab.test.subspecialtyLabel')} value={subspecialty} onChange={e => setSubspecialty(e.target.value)}>
+            <option value="">{t('routingRulesTab.test.any')}</option>
             {['breast','gi','thoracic','uro','derm','neuro','heme','gyn'].map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
         </div>
         <div>
-          <div className="ps-conf-label">Performing Facility</div>
-          <select className="ps-conf-select" aria-label="Performing Facility" value={clientId} onChange={e => setClientId(e.target.value)}>
-            <option value="">— None —</option>
+          <div className="ps-conf-label">{t('routingRulesTab.test.performingFacilityLabel')}</div>
+          <select className="ps-conf-select" aria-label={t('routingRulesTab.test.performingFacilityLabel')} value={clientId} onChange={e => setClientId(e.target.value)}>
+            <option value="">{t('routingRulesTab.test.none')}</option>
             {facilities.map(c => <option key={c.id as string} value={c.id as string}>{c.name}</option>)}
           </select>
         </div>
         <div>
-          <div className="ps-conf-label">Ordering Physician</div>
-          <select className="ps-conf-select" aria-label="Ordering Physician" value={physicianId} onChange={e => setPhysicianId(e.target.value)}>
-            <option value="">— None —</option>
+          <div className="ps-conf-label">{t('routingRulesTab.test.orderingPhysicianLabel')}</div>
+          <select className="ps-conf-select" aria-label={t('routingRulesTab.test.orderingPhysicianLabel')} value={physicianId} onChange={e => setPhysicianId(e.target.value)}>
+            <option value="">{t('routingRulesTab.test.none')}</option>
             {physicians.map(p => <option key={p.id as string} value={p.id as string}>{p.lastName}, {p.firstName}</option>)}
           </select>
         </div>
       </div>
 
       <button className="ps-conf-btn-primary ps-rr-test-btn" onClick={test}>
-        Test Routing →
+        {t('routingRulesTab.test.testRouting')} →
       </button>
 
       {result && (
@@ -324,11 +356,11 @@ const TestPanel: React.FC<{
           <div
             className={`ps-rr-result-pass ps-rr-pass--${result.resolvedBy ?? 'default'}`}
           >
-            {PASS_LABELS[result.resolvedBy] ?? result.resolvedBy}
+            {PASS_CORE_LABEL_KEY[result.resolvedBy] ? passLabel(result.resolvedBy) : result.resolvedBy}
           </div>
           {result.ambiguous && (
             <div className="ps-rr-result-warn">
-              ⚠️ Ambiguous — multiple templates qualify: {result.candidates.join(', ')}
+              ⚠️ {t('routingRulesTab.test.ambiguous', { candidates: result.candidates.join(', ') })}
             </div>
           )}
         </div>
@@ -340,6 +372,7 @@ const TestPanel: React.FC<{
 // ── Main Tab ──────────────────────────────────────────────────────────────────
 
 const RoutingRulesTab: React.FC = () => {
+  const { t } = useTranslation();
   const [rules,      setRules]      = useState<RoutingRule[]>([]);
   const [result,     setResult]     = useState<any>(null);
   const [templates,  setTemplates]  = useState<ReportTemplate[]>([]);
@@ -407,7 +440,7 @@ const RoutingRulesTab: React.FC = () => {
   const physicianRules = rules.filter(r => r.type === 'physician');
   const protocolRules  = rules.filter(r => r.type === 'protocol');
 
-  if (loading) return <div className="ps-conf-loading">Loading routing rules…</div>;
+  if (loading) return <div className="ps-conf-loading">{t('routingRulesTab.loading')}</div>;
 
   return (
     <div className="ps-rr-root">
@@ -415,10 +448,9 @@ const RoutingRulesTab: React.FC = () => {
       {/* Header */}
       <div className="ps-rr-header">
         <div>
-          <h2 className="tmpl-list-title">Template Routing Rules</h2>
+          <h2 className="tmpl-list-title">{t('routingRulesTab.header.title')}</h2>
           <p className="tmpl-list-subtitle">
-            Define which report template is selected for specific facilities or physicians.
-            Rules override the default protocol → subspecialty → gold standard chain.
+            {t('routingRulesTab.header.subtitle')}
           </p>
         </div>
       </div>
@@ -428,13 +460,13 @@ const RoutingRulesTab: React.FC = () => {
 
           {/* Priority chain reference */}
           <div className="ps-rr-priority">
-            <div className="ps-rr-priority-title">Resolution priority</div>
+            <div className="ps-rr-priority-title">{t('routingRulesTab.priority.title')}</div>
             {[
-              { pass: '0',   key: 'client-override',      label: 'Facility override' },
-              { pass: '0b',  key: 'physician-preference',  label: 'Physician preference' },
-              { pass: '1',   key: 'protocol',              label: 'Protocol match' },
-              { pass: '2',   key: 'subspecialty',          label: 'Subspecialty fallback' },
-              { pass: '3',   key: 'gold-standard',         label: 'Gold standard' },
+              { pass: '0',   key: 'client-override' },
+              { pass: '0b',  key: 'physician-preference' },
+              { pass: '1',   key: 'protocol' },
+              { pass: '2',   key: 'subspecialty' },
+              { pass: '3',   key: 'gold-standard' },
             ].map(p => {
               const trace = (result?.passes ?? []).find((tr: any) => tr.pass === p.key);
               const matched = !!trace?.matched;
@@ -448,12 +480,12 @@ const RoutingRulesTab: React.FC = () => {
                     unreached ? 'ps-rr-priority-row--unreached' : '',
                   ].filter(Boolean).join(' ')}
                 >
-                  <span className={`ps-rr-priority-pass ps-rr-pass--${p.key}`}>Pass {p.pass}</span>
-                  <span className="ps-rr-priority-label">{p.label}</span>
+                  <span className={`ps-rr-priority-pass ps-rr-pass--${p.key}`}>{t('routingRulesTab.pass.short', { number: p.pass })}</span>
+                  <span className="ps-rr-priority-label">{t(PASS_CORE_LABEL_KEY[p.key])}</span>
                   {trace && <span className="ps-rr-priority-result">{trace.detail}</span>}
-                  {['0','0b'].includes(p.pass) && <span className="ps-rr-priority-admin">← admin-defined</span>}
-                  {p.pass === '1' && <span className="ps-rr-priority-admin">← admin-extensible</span>}
-                  {matched && <span className="ps-rr-priority-check" title="This pass resolved the last test run">✓</span>}
+                  {['0','0b'].includes(p.pass) && <span className="ps-rr-priority-admin">← {t('routingRulesTab.priority.adminDefined')}</span>}
+                  {p.pass === '1' && <span className="ps-rr-priority-admin">← {t('routingRulesTab.priority.adminExtensible')}</span>}
+                  {matched && <span className="ps-rr-priority-check" title={t('routingRulesTab.priority.resolvedTitle')}>✓</span>}
                 </div>
               );
             })}
@@ -462,14 +494,14 @@ const RoutingRulesTab: React.FC = () => {
           {/* Facility overrides */}
           <div className="ps-rr-section">
             <div className="ps-rr-section-header">
-              <span className="ps-rr-section-title">Facility Overrides</span>
-              <span className="ps-rr-section-pass ps-rr-pass--client-override">Pass 0</span>
+              <span className="ps-rr-section-title">{t('routingRulesTab.section.facilityOverrides')}</span>
+              <span className="ps-rr-section-pass ps-rr-pass--client-override">{t('routingRulesTab.pass.short', { number: '0' })}</span>
               <button className="ps-section-add-btn" onClick={() => setModal({ type: 'client' })}>
-                + Add Facility Rule
+                + {t('routingRulesTab.section.addFacilityRule')}
               </button>
             </div>
             {clientRules.length === 0 ? (
-              <div className="ps-rr-empty">No facility overrides defined — routing falls through to protocol matching.</div>
+              <div className="ps-rr-empty">{t('routingRulesTab.section.noFacilityOverrides')}</div>
             ) : clientRules.map(r => (
               <RuleRow
                 key={r.id} rule={r} labs={labs}
@@ -483,18 +515,17 @@ const RoutingRulesTab: React.FC = () => {
           {/* Protocol mappings */}
           <div className="ps-rr-section">
             <div className="ps-rr-section-header">
-              <span className="ps-rr-section-title">Protocol Mappings</span>
-              <span className="ps-rr-section-pass ps-rr-pass--protocol">Pass 1</span>
+              <span className="ps-rr-section-title">{t('routingRulesTab.section.protocolMappings')}</span>
+              <span className="ps-rr-section-pass ps-rr-pass--protocol">{t('routingRulesTab.pass.short', { number: '1' })}</span>
               <button className="ps-section-add-btn" onClick={() => setModal({ type: 'protocol' })}>
-                + Add Protocol Mapping
+                + {t('routingRulesTab.section.addProtocolMapping')}
               </button>
             </div>
             <div className="ps-rr-note ps-rr-note--spaced">
-              These supplement — and take precedence over — the built-in protocol mapping table. Use
-              this to map a new or changed synoptic protocol to a template without a code deploy.
+              {t('routingRulesTab.section.protocolMappingsNote')}
             </div>
             {protocolRules.length === 0 ? (
-              <div className="ps-rr-empty">No admin-defined protocol mappings — routing uses the built-in mapping table only.</div>
+              <div className="ps-rr-empty">{t('routingRulesTab.section.noProtocolMappings')}</div>
             ) : protocolRules.map(r => (
               <RuleRow
                 key={r.id} rule={r} labs={labs}
@@ -508,14 +539,14 @@ const RoutingRulesTab: React.FC = () => {
           {/* Physician preferences */}
           <div className="ps-rr-section">
             <div className="ps-rr-section-header">
-              <span className="ps-rr-section-title">Physician Preferences</span>
-              <span className="ps-rr-section-pass ps-rr-pass--physician-preference">Pass 0b</span>
+              <span className="ps-rr-section-title">{t('routingRulesTab.section.physicianPreferences')}</span>
+              <span className="ps-rr-section-pass ps-rr-pass--physician-preference">{t('routingRulesTab.pass.short', { number: '0b' })}</span>
               <button className="ps-section-add-btn" onClick={() => setModal({ type: 'physician' })}>
-                + Add Physician Rule
+                + {t('routingRulesTab.section.addPhysicianRule')}
               </button>
             </div>
             {physicianRules.length === 0 ? (
-              <div className="ps-rr-empty">No physician preferences defined.</div>
+              <div className="ps-rr-empty">{t('routingRulesTab.section.noPhysicianPreferences')}</div>
             ) : physicianRules.map(r => (
               <RuleRow
                 key={r.id} rule={r} labs={labs}

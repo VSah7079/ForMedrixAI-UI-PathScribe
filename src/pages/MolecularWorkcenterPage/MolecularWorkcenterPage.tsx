@@ -43,22 +43,30 @@
 // already-working, heavily-tested component; forcing it into a
 // tab-constrained space would have been a real, risky rewrite for no
 // real, stated benefit.
+//
+// i18n note: `b.batchBarcode`/`.assayName`/`.targetInstrumentId`/
+// `.deckSlot`/`.plateBarcode` are real batch data — never translated.
+// The `STATUS_LABEL`/`TAB_LABELS` maps' display text is on-screen only
+// and has no export/persistence use in this file, so their values are
+// translation keys directly (a `_KEY`-style split map wasn't needed
+// since nothing here consumes the literal English text).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import '../../pathscribe.css';
 import { mockMolecularBatchService } from '../../services/molecular/mockMolecularBatchService';
 import type { MolecularBatch, MolecularBatchStatus } from '../../services/molecular/IMolecularBatchService';
 import MolecularBatchManagementPage from '../MolecularBatchManagement/MolecularBatchManagementPage';
 
-const STATUS_LABEL: Record<MolecularBatchStatus, { text: string; color: string }> = {
-  draft: { text: 'Draft', color: '#9ca3af' },
-  active: { text: 'Active', color: '#38bdf8' },
-  awaiting_results: { text: 'Awaiting Results', color: '#f59e0b' },
-  completed: { text: 'Completed', color: '#10B981' },
-  aborted: { text: 'Aborted', color: '#ef4444' },
-  superseded: { text: 'Superseded', color: '#6b7280' },
+const STATUS_LABEL_KEY: Record<MolecularBatchStatus, { key: string; color: string }> = {
+  draft:             { key: 'protocolShared.lifecycle.draft',              color: '#9ca3af' },
+  active:            { key: 'common.active',                               color: '#38bdf8' },
+  awaiting_results:  { key: 'molecularWorkcenterPage.status.awaitingResults', color: '#f59e0b' },
+  completed:         { key: 'auditLog.statusLabels.completed',             color: '#10B981' },
+  aborted:           { key: 'batchManagement.status.aborted',              color: '#ef4444' },
+  superseded:        { key: 'molecularWorkcenterPage.status.superseded',   color: '#6b7280' },
 };
 
 type WorkcenterTab = 'worklist' | 'active' | 'history' | 'qc';
@@ -82,14 +90,15 @@ export function workcenterTabForStatus(status: MolecularBatchStatus): Workcenter
   return 'history';
 }
 
-const TAB_LABELS: Record<WorkcenterTab, string> = {
-  worklist: 'Worklist & Plate Builder',
-  active: 'Active Runs & Batches',
-  history: 'History & Archive',
-  qc: 'QC & Specimen Association',
+const TAB_LABEL_KEY: Record<WorkcenterTab, string> = {
+  worklist: 'molecularWorkcenterPage.tab.worklist',
+  active:   'molecularWorkcenterPage.tab.active',
+  history:  'molecularWorkcenterPage.tab.history',
+  qc:       'molecularWorkcenterPage.tab.qc',
 };
 
 const MolecularWorkcenterPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
@@ -118,19 +127,19 @@ const MolecularWorkcenterPage: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                <th className="ps-conf-th">Batch</th>
-                <th className="ps-conf-th">Assay</th>
-                <th className="ps-conf-th">Instrument</th>
-                <th className="ps-conf-th">Plate</th>
-                <th className="ps-conf-th">Created</th>
-                <th className="ps-conf-th">Status</th>
+                <th className="ps-conf-th">{t('microtomyWorkstation.hardware.batch')}</th>
+                <th className="ps-conf-th">{t('molecularOrderQueue.col.assay')}</th>
+                <th className="ps-conf-th">{t('molecularOrderQueue.typeInstrument')}</th>
+                <th className="ps-conf-th">{t('molecularWorkcenterPage.plateHeader')}</th>
+                <th className="ps-conf-th">{t('molecularRackWorklistPage.colCreated')}</th>
+                <th className="ps-conf-th">{t('qualityAssurance.common.status')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading && (<tr><td className="ps-conf-empty-row" colSpan={6}>Loading…</td></tr>)}
+              {loading && (<tr><td className="ps-conf-empty-row" colSpan={6}>{t('common.loading')}</td></tr>)}
               {!loading && filtered.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={6}>{emptyMessage}</td></tr>)}
               {!loading && filtered.map(b => {
-                const status = STATUS_LABEL[b.status];
+                const status = STATUS_LABEL_KEY[b.status];
                 const statusVars = { '--status-bg': `${status.color}18`, '--status-color': status.color, '--status-border': `${status.color}33` } as React.CSSProperties;
                 return (
                   <tr key={b.id} className="ps-conf-tr ps-conf-tr--clickable" onClick={() => navigate(`/molecular-batch/${b.id}`)}>
@@ -140,7 +149,7 @@ const MolecularWorkcenterPage: React.FC = () => {
                     <td className="ps-conf-td">{b.plateBarcode}</td>
                     <td className="ps-conf-td">{new Date(b.createdAt).toLocaleString()}</td>
                     <td className="ps-conf-td">
-                      <span className="ps-status-badge" style={statusVars}>{status.text}</span>
+                      <span className="ps-status-badge" style={statusVars}>{t(status.key)}</span>
                     </td>
                   </tr>
                 );
@@ -156,16 +165,16 @@ const MolecularWorkcenterPage: React.FC = () => {
     <div className="ps-app-root ps-page-container ps-page-container--medium">
       <div className="ps-page-header-row">
         <div>
-          <h1 className="ps-page-title">Molecular Workspace</h1>
+          <h1 className="ps-page-title">{t('pathologyWorkspace.molecularTile.title')}</h1>
           <p className="ps-page-subtitle">
-            Batch and plate management for molecular diagnostics runs (HPV, CT/NG, respiratory PCR panels, targeted NGS).
+            {t('molecularWorkcenterPage.subtitle')}
           </p>
         </div>
         {activeTab !== 'qc' && (
           <div className="ps-flex-row-gap-8">
-            <button className="ps-btn-small" onClick={() => navigate('/molecular-rack')}>Extraction Racks</button>
-            <button className="ps-btn-small" onClick={() => navigate('/molecular-control-rules')}>Control Rules</button>
-            <button className="ps-conf-btn-secondary" onClick={() => navigate('/molecular-batch/new')}>+ New Batch</button>
+            <button className="ps-btn-small" onClick={() => navigate('/molecular-rack')}>{t('molecularRackWorklistPage.title')}</button>
+            <button className="ps-btn-small" onClick={() => navigate('/molecular-control-rules')}>{t('molecularWorkcenterPage.controlRulesButton')}</button>
+            <button className="ps-conf-btn-secondary" onClick={() => navigate('/molecular-batch/new')}>+ {t('molecularWorkcenterPage.newBatchButton')}</button>
           </div>
         )}
       </div>
@@ -176,14 +185,14 @@ const MolecularWorkcenterPage: React.FC = () => {
             key={tab}
             className={`ps-sub-tab-btn${activeTab === tab ? ' active' : ''}`}
             onClick={() => setTab(tab)}>
-            {TAB_LABELS[tab]}
+            {t(TAB_LABEL_KEY[tab])}
           </button>
         ))}
       </div>
 
-      {activeTab === 'worklist' && renderBatchTable(STATUSES_FOR_TAB.worklist, 'No draft batches yet. Use "+ New Batch" to start building one.')}
-      {activeTab === 'active' && renderBatchTable(STATUSES_FOR_TAB.active, 'No active runs right now.')}
-      {activeTab === 'history' && renderBatchTable(STATUSES_FOR_TAB.history, 'No completed, aborted, or superseded batches yet.')}
+      {activeTab === 'worklist' && renderBatchTable(STATUSES_FOR_TAB.worklist, t('molecularWorkcenterPage.emptyWorklist'))}
+      {activeTab === 'active' && renderBatchTable(STATUSES_FOR_TAB.active, t('molecularWorkcenterPage.emptyActive'))}
+      {activeTab === 'history' && renderBatchTable(STATUSES_FOR_TAB.history, t('molecularWorkcenterPage.emptyHistory'))}
       {activeTab === 'qc' && <MolecularBatchManagementPage />}
     </div>
   );

@@ -31,7 +31,17 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { resolveOrBoardRowDisplayState } from '@/services/intraopDashboard/resolveOrBoardRowDisplayState';
-import type { ActiveIntraopRequest } from '@/services/intraopDashboard/resolveActiveIntraopRequestsForLocations';
+import type { ActiveIntraopRequest, CurrentWorkflowStep } from '@/services/intraopDashboard/resolveActiveIntraopRequestsForLocations';
+
+// Real i18n-sweep fix: resolveCurrentWorkflowStep() used to return the
+// English display string directly, with no way to translate it. It now
+// returns a stable key; this map supplies the translated label.
+const WORKFLOW_STEP_LABEL_KEY: Record<CurrentWorkflowStep, string> = {
+  grossing:           'orSuiteDashboard.workflowStep.grossing',
+  touch_prep:         'orSuiteDashboard.workflowStep.touchPrep',
+  sectioning:         'orSuiteDashboard.workflowStep.sectioning',
+  pathologist_review: 'orSuiteDashboard.workflowStep.pathologistReview',
+};
 
 interface OrBoardRowProps {
   req: ActiveIntraopRequest;
@@ -73,7 +83,7 @@ const OrBoardRow: React.FC<OrBoardRowProps> = ({ req, hasFlashed, isDismissing, 
       <div className="ps-orboard-row-diagnostic">
         {isCompleted
           ? <span className="ps-orboard-row-preliminary">{t('orSuiteDashboard.preliminaryLabel', { diagnosis: req.frozenSectionDiagnosis ?? '' })}</span>
-          : <span className="ps-orboard-row-step">{req.currentWorkflowStep}</span>}
+          : <span className="ps-orboard-row-step">{t(WORKFLOW_STEP_LABEL_KEY[req.currentWorkflowStep])}</span>}
       </div>
       <div className="ps-orboard-row-actions">
         {isCompleted ? (

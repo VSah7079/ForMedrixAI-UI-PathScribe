@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import { PatientLinkSearch } from '@/pages/AccessionPage/PatientLinkSearch';
 import ConfirmModal from '../Common/ConfirmModal';
@@ -37,14 +38,16 @@ interface ReassignCasePatientPanelProps {
 }
 
 export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> = ({ caseData, onClose, onReassigned }) => {
+  const { t } = useTranslation();
   const [targetPatient, setTargetPatient] = useState<MasterPatientRecord | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<React.ReactNode | null>(null);
+  const [moveOk, setMoveOk] = useState<boolean | null>(null);
   const [sourceOrgId, setSourceOrgId] = useState<string | null>(null);
 
   const sourcePatientId = caseData.patient?.id;
-  const sourceName = `${caseData.patient?.firstName ?? ''} ${caseData.patient?.lastName ?? ''}`.trim() || '(unknown)';
+  const sourceName = `${caseData.patient?.firstName ?? ''} ${caseData.patient?.lastName ?? ''}`.trim() || t('reassignCasePatientPanel.unknownPatient');
   const sourceMrn = caseData.patient?.mrn ?? '—';
 
   // Real, per direct guidance: resolves organisationId from the real,
@@ -61,10 +64,23 @@ export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> =
     setBusy(true);
     try {
       const result = await mockPatientIndexService.moveCaseToPatient(caseData.id, sourcePatientId, targetPatient.id, new Date().toISOString());
-      setStatusMessage(result.moved
-        ? `✓ Case moved to ${targetPatient.firstName} ${targetPatient.lastName}. Encounter: ${result.encounterOutcome ?? 'none'}.`
-        : `⚠ Move failed: ${result.reason}`);
-      if (result.moved) onReassigned();
+      if (result.moved) {
+        setMoveOk(true);
+        setStatusMessage(
+          <>
+            {'✓ '}
+            {t('reassignCasePatientPanel.moveSuccessPrefix')}
+            {' '}
+            <span data-phi="name">{targetPatient.firstName} {targetPatient.lastName}</span>
+            {'. '}
+            {t('reassignCasePatientPanel.encounterLabel', { outcome: result.encounterOutcome ?? t('reassignCasePatientPanel.none') })}
+          </>
+        );
+        onReassigned();
+      } else {
+        setMoveOk(false);
+        setStatusMessage(`⚠ ${t('reassignCasePatientPanel.moveFailedPrefix')}: ${result.reason}`);
+      }
     } finally {
       setBusy(false);
       setConfirmOpen(false);
@@ -73,22 +89,25 @@ export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> =
 
   if (!sourcePatientId) {
     return (
-      <div className="ps-conf-table-wrap" style={{ padding: 16 }}>
-        <p className="ps-conf-hint" style={{ color: '#ef4444' }}>⚠ This case has no real, resolved patient identity to reassign from.</p>
-        <button className="ps-btn-ghost-dark" onClick={onClose}>Close</button>
+      <div className="ps-conf-table-wrap rcpp-panel">
+        <p className="ps-conf-hint rcpp-error-text">{'⚠ '}{t('reassignCasePatientPanel.noResolvedIdentity')}</p>
+        <button className="ps-btn-ghost-dark" onClick={onClose}>{t('reassignCasePatientPanel.close')}</button>
       </div>
     );
   }
 
   return (
-    <div className="ps-conf-table-wrap" style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className="ps-conf-table-wrap rcpp-panel">
+      <div className="rcpp-header-row">
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>Reassign Case Patient</div>
-          <p className="ps-conf-hint">
-            Case {caseData.accession?.fullAccession ?? caseData.id} is currently attributed to <strong>{sourceName}</strong> (MRN {sourceMrn}).
-            Moving it repoints only this one case — both identities stay independently active, and any other real case
-            under {sourceName.split(' ')[0] || 'this patient'} is untouched.
+          <div className="rcpp-title">{t('reassignCasePatientPanel.title')}</div>
+          <p className="ps-conf-hint" data-phi="true">
+            {t('reassignCasePatientPanel.attributionText', {
+              accession: caseData.accession?.fullAccession ?? caseData.id,
+              name: sourceName,
+              mrn: sourceMrn,
+              firstName: sourceName.split(' ')[0] || t('reassignCasePatientPanel.thisPatient'),
+            })}
           </p>
         </div>
         <button className="ps-btn-ghost-dark" onClick={onClose}>✕</button>
@@ -99,31 +118,39 @@ export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> =
           organisationId={sourceOrgId}
           confirmed={targetPatient}
           onConfirm={setTargetPatient}
-          title="Move to which patient?"
-          helpText="Search for the real, correct patient this case actually belongs to."
-          confirmButtonLabel="Select"
-          confirmedLabel="Target"
+          title={t('reassignCasePatientPanel.moveToWhichPatient')}
+          helpText={t('reassignCasePatientPanel.searchHelpText')}
+          confirmButtonLabel={t('reassignCasePatientPanel.select')}
+          confirmedLabel={t('reassignCasePatientPanel.target')}
         />
       )}
 
       {targetPatient && !statusMessage && (
-        <button className="ps-conf-btn-primary" style={{ marginTop: 10 }} onClick={() => setConfirmOpen(true)}>
-          Move Case
+        <button className="ps-conf-btn-primary rcpp-move-btn" onClick={() => setConfirmOpen(true)}>
+          {t('reassignCasePatientPanel.moveCase')}
         </button>
       )}
 
       {statusMessage && (
-        <p className="ps-conf-hint" style={{ color: statusMessage.startsWith('⚠') ? '#ef4444' : '#10b981', marginTop: 10 }}>
+        <p className="ps-conf-hint rcpp-status-text" style={{ color: moveOk === false ? '#ef4444' : '#10b981' }} data-phi={moveOk ? 'true' : undefined}>
           {statusMessage}
         </p>
       )}
 
       <ConfirmModal
         show={confirmOpen}
-        title="Confirm Case Reassignment"
-        message={`Move case ${caseData.accession?.fullAccession ?? caseData.id} from ${sourceName} to ${targetPatient?.firstName} ${targetPatient?.lastName}? Both identities stay independently active; only this one case moves.`}
-        confirmLabel={busy ? 'Working…' : 'Confirm'}
-        cancelLabel="Cancel"
+        title={t('reassignCasePatientPanel.confirmTitle')}
+        message={
+          <span data-phi="true">
+            {t('reassignCasePatientPanel.confirmMoveMessage', {
+              accession: caseData.accession?.fullAccession ?? caseData.id,
+              source: sourceName,
+              target: `${targetPatient?.firstName} ${targetPatient?.lastName}`,
+            })}
+          </span>
+        }
+        confirmLabel={busy ? t('reassignCasePatientPanel.working') : t('reassignCasePatientPanel.confirm')}
+        cancelLabel={t('reassignCasePatientPanel.cancel')}
         onConfirm={handleConfirm}
         onCancel={() => setConfirmOpen(false)}
       />

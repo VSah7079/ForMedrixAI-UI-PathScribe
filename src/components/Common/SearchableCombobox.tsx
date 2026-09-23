@@ -21,9 +21,17 @@
 //   - Full keyboard list navigation (Up/Down/Enter/Escape), since a
 //     search-driven list is far more natural to drive from the
 //     keyboard than a click-only one.
+//
+// i18n note: `placeholder`/`emptyText`/`noMatchText` are optional caller-
+// supplied props — most callers pass their own already-translated text,
+// so the defaults below (this component's own fallback copy, used when a
+// caller doesn't override them) are translated here rather than as plain
+// string defaults, since a hook can't be called inside a destructuring
+// default.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 
 export interface ComboboxOption {
@@ -57,9 +65,13 @@ interface SearchableComboboxProps {
 }
 
 export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
-  options, value, onChange, placeholder = 'Search…', emptyText = 'No options available',
-  noMatchText = 'No matches', className, disabled = false,
+  options, value, onChange, placeholder, emptyText,
+  noMatchText, className, disabled = false,
 }) => {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t('searchableCombobox.defaultPlaceholder');
+  const resolvedEmptyText = emptyText ?? t('searchableCombobox.defaultEmptyText');
+  const resolvedNoMatchText = noMatchText ?? t('searchableCombobox.defaultNoMatchText');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -134,7 +146,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
         aria-expanded={open}
       >
         <span className={selected ? 'ps-combobox-selected-label' : 'ps-dropdown-placeholder'}>
-          {selected ? selected.label : placeholder}
+          {selected ? selected.label : resolvedPlaceholder}
         </span>
         <svg
           className={`ps-dropdown-chevron${open ? ' ps-dropdown-chevron--open' : ''}`}
@@ -151,7 +163,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
               ref={inputRef}
               type="text"
               className="ps-combobox-search-input"
-              placeholder="Type to filter…"
+              placeholder={t('searchableCombobox.typeToFilterPlaceholder')}
               value={query}
               onChange={e => { setQuery(e.target.value); setHighlightedIndex(0); }}
               onKeyDown={handleKeyDown}
@@ -163,9 +175,9 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
           </div>
           <div id="ps-combobox-listbox" role="listbox">
             {options.length === 0 ? (
-              <div className="ps-dropdown-empty">{emptyText}</div>
+              <div className="ps-dropdown-empty">{resolvedEmptyText}</div>
             ) : filtered.length === 0 ? (
-              <div className="ps-dropdown-empty">{noMatchText}</div>
+              <div className="ps-dropdown-empty">{resolvedNoMatchText}</div>
             ) : filtered.map((opt, i) => (
               <div
                 key={opt.id}

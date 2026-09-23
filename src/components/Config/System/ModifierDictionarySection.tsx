@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import { mockModifierDictionaryService } from '@/services/billing/mockModifierDictionaryService';
 import type { ModifierTableVersion } from '@/services/billing/ModifierTableVersion';
@@ -37,29 +38,29 @@ function formatDate(iso: string): string {
  *  so correcting one modifier's description no longer requires a
  *  full spreadsheet round-trip. */
 const EntryModal: React.FC<{ entry: CptModifierEntry; onSave: (e: CptModifierEntry) => void; onClose: () => void; busy: boolean }> = ({ entry, onSave, onClose, busy }) => {
+  const { t } = useTranslation();
   const [description, setDescription] = useState(entry.description);
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
-        <div className="ps-ms-header">Edit — {entry.code}</div>
+        <div className="ps-ms-header">{t('modifierDictionarySection.entryModal.headerEdit', { code: entry.code })}</div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Code</label>
+            <label className="ps-conf-label">{t('modifierDictionarySection.entryModal.codeLabel')}</label>
             <input className="ps-conf-input" value={entry.code} disabled />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Description</label>
+            <label className="ps-conf-label">{t('modifierDictionarySection.entryModal.descriptionLabel')}</label>
             <input className="ps-conf-input" value={description} onChange={e => setDescription(e.target.value)} autoFocus />
           </div>
           <p className="ps-billing-reason-hint">
-            Saving submits a new version for approval — a different, real reviewer must approve it before it
-            replaces the active dictionary. See Pending Billing Rule Approvals.
+            {t('modifierDictionarySection.entryModal.disclosure')}
           </p>
         </div>
         <div className="ps-ms-footer">
-          <button className="ps-conf-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-conf-btn-primary" disabled={busy || !description.trim()} onClick={() => onSave({ ...entry, description: description.trim() })}>
-            {busy ? 'Submitting…' : 'Submit for Approval'}
+            {busy ? t('modifierDictionarySection.submitting') : t('modifierDictionarySection.submit')}
           </button>
         </div>
       </div>
@@ -68,6 +69,7 @@ const EntryModal: React.FC<{ entry: CptModifierEntry; onSave: (e: CptModifierEnt
 };
 
 const ModifierDictionarySection: React.FC = () => {
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<ModifierTableVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOlder, setShowOlder] = useState(false);
@@ -95,8 +97,8 @@ const ModifierDictionarySection: React.FC = () => {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   const activeVersion = versions.find(v => v.isActive) ?? null;
@@ -124,14 +126,14 @@ const ModifierDictionarySection: React.FC = () => {
     setBusy(false);
     if (res.ok === false) { setToast(res.error); return; }
     setEditingEntry(null);
-    setToast(`"${entry.code}" submitted for approval — see Pending Billing Rule Approvals.`);
+    setToast(t('modifierDictionarySection.toast.entrySubmitted', { code: entry.code }));
     refresh();
   };
 
   const handleFileUpload = async (file: File) => {
     setUploadError(null);
     if (!isCsvFile(file)) {
-      setUploadError(`"${file.name}" isn't a CSV file. Export/download the template, edit it in your spreadsheet editor, and save it as .csv before importing.`);
+      setUploadError(t('modifierDictionarySection.upload.invalidFileType', { fileName: file.name }));
       return;
     }
     try {
@@ -139,21 +141,21 @@ const ModifierDictionarySection: React.FC = () => {
       const rows = parseCsv(text);
       const { entries, problems } = parseModifierUploadRows(rows);
       if (entries.length === 0 && problems.length === 0) {
-        setUploadError('No real rows found in this file — check it has Code and Description columns.');
+        setUploadError(t('modifierDictionarySection.upload.noRowsFound'));
         return;
       }
-      if (problems.length > 0) setUploadError(problems.slice(0, 5).join(' '));
+      if (problems.length > 0) setUploadError(problems.slice(0, 5).map(p => t('modifierDictionarySection.upload.missingCodeRow', { row: p.row })).join(' '));
       setUploadPreview(entries);
       setUploadFileName(file.name);
       if (!uploadLabel) setUploadLabel(`Upload — ${file.name.replace(/\.csv$/i, '')}`);
     } catch {
-      setUploadError("Could not read this file — make sure it's a real .csv file.");
+      setUploadError(t('modifierDictionarySection.upload.readError'));
     }
   };
 
   const handleApplyUpload = async () => {
     if (!uploadPreview || uploadPreview.length === 0) return;
-    if (!confirmLicensed) { setUploadError('Confirm you hold a real, current AMA license for these modifier descriptions before importing.'); return; }
+    if (!confirmLicensed) { setUploadError(t('modifierDictionarySection.upload.confirmLicenseRequired')); return; }
     setBusy(true);
     const user = getSessionUser();
     const res = await mockModifierDictionaryService.createVersion({
@@ -166,7 +168,7 @@ const ModifierDictionarySection: React.FC = () => {
     });
     if (res.ok === false) { setBusy(false); setUploadError(res.error); return; }
     setBusy(false);
-    setToast(`"${res.data.label}" submitted for approval — see Pending Billing Rule Approvals.`);
+    setToast(t('modifierDictionarySection.toast.uploadSubmitted', { label: res.data.label }));
     setUploadPreview(null);
     setUploadFileName('');
     setUploadLabel('');
@@ -178,29 +180,20 @@ const ModifierDictionarySection: React.FC = () => {
     downloadCsv('ModifierDictionaryTemplate.csv', toCsv(TEMPLATE_EXAMPLE_ROWS));
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading Modifier Dictionary...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('modifierDictionarySection.loading')}</div>;
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">CPT Modifier Dictionary</h3>
+          <h3 className="ps-conf-section-title">{t('modifierDictionarySection.title')}</h3>
           <p className="ps-conf-section-subtitle">
-            The reference list of CPT modifiers this app can attach to a billing code — the two-digit or two-letter
-            suffixes (e.g. -26 Professional Component, -TC Technical Component, -59 Distinct Procedural Service)
-            that tell a payer how a procedure was actually performed or billed. Referenced from the Billing
-            Dictionary's own "Modifiers Commonly Associated" field as an informational guide for whoever is coding
-            a case — PathScribe does not currently validate or auto-append a modifier onto a resolved charge (see
-            the Limitations section of the Billing Capacity Review). The active version's descriptions are
-            synthetic placeholders until a real, licensed admin imports their own real AMA modifier text below,
-            using their own real license — PathScribe never embeds or redistributes that real, copyrighted text
-            itself. A single entry can also be corrected directly (Edit, below) without a full re-upload — like
-            every change here, it goes through the same real Four-Eyes approval process before it takes effect.
+            {t('modifierDictionarySection.subtitle')}
           </p>
         </div>
         <div className="ps-conf-row-actions">
-          <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>Download Template</button>
-          <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Spreadsheet</button>
+          <button className="ps-conf-btn-secondary" onClick={handleDownloadTemplate}>{t('modifierDictionarySection.downloadTemplate')}</button>
+          <button className="ps-conf-btn-secondary" onClick={() => fileInputRef.current?.click()}>{t('modifierDictionarySection.uploadSpreadsheet')}</button>
           <input ref={fileInputRef} type="file" hidden accept=".csv,text/csv"
             onChange={e => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
         </div>
@@ -209,7 +202,7 @@ const ModifierDictionarySection: React.FC = () => {
       {toast && <p className="ps-billing-reason-hint">{toast}</p>}
       {pendingCount > 0 && (
         <p className="ps-billing-reason-hint">
-          {pendingCount} version{pendingCount !== 1 ? 's' : ''} pending approval — see Pending Billing Rule Approvals.
+          {t('modifierDictionarySection.pendingApproval', { count: pendingCount })}
         </p>
       )}
 
@@ -217,22 +210,24 @@ const ModifierDictionarySection: React.FC = () => {
         <div className="ps-conf-table-wrap">
           <div className="ps-conf-section-header">
             <div>
-              <span className="ps-conf-status-text ps-conf-status-text--active">Active version</span>
+              <span className="ps-conf-status-text ps-conf-status-text--active">{t('modifierDictionarySection.activeVersion.eyebrow')}</span>
               <div className="ps-conf-identity-name">{activeVersion.label}</div>
             </div>
             <span className="ps-billing-reason-hint">
-              Effective {formatDate(activeVersion.effectiveDate)} — {activeVersion.licenseStatus === 'licensed' ? 'Real, licensed import' : 'Synthetic placeholder (no real AMA license on file)'}
+              {activeVersion.licenseStatus === 'licensed'
+                ? t('modifierDictionarySection.activeVersion.effectiveLicensed', { date: formatDate(activeVersion.effectiveDate) })
+                : t('modifierDictionarySection.activeVersion.effectiveSynthetic', { date: formatDate(activeVersion.effectiveDate) })}
             </span>
           </div>
           <div className="ps-conf-table-scroll">
             <table className="ps-conf-table">
-              <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th><th className="ps-conf-th">Actions</th></tr></thead>
+              <thead><tr><th className="ps-conf-th">{t('modifierDictionarySection.activeVersion.table.code')}</th><th className="ps-conf-th">{t('modifierDictionarySection.activeVersion.table.description')}</th><th className="ps-conf-th">{t('modifierDictionarySection.activeVersion.table.actions')}</th></tr></thead>
               <tbody>
                 {activeVersion.entries.map(e => (
                   <tr key={e.code} className="ps-conf-tr">
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{e.code}</span></td>
                     <td className="ps-conf-td">{e.description}</td>
-                    <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setEditingEntry(e)}>Edit</button></td>
+                    <td className="ps-conf-td"><button className="ps-conf-btn-row" onClick={() => setEditingEntry(e)}>{t('common.edit')}</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -244,23 +239,32 @@ const ModifierDictionarySection: React.FC = () => {
       {olderVersions.length > 0 && (
         <div className="ps-conf-form-field">
           <button className="ps-conf-btn-row" onClick={() => setShowOlder(o => !o)}>
-            {showOlder ? '▾ Hide' : '▸ Show'} {olderVersions.length} older version{olderVersions.length === 1 ? '' : 's'}
+            {showOlder
+              ? t('modifierDictionarySection.olderVersions.toggleHide', { count: olderVersions.length })
+              : t('modifierDictionarySection.olderVersions.toggleShow', { count: olderVersions.length })}
           </button>
           {showOlder && (
             <div className="ps-conf-table-wrap">
               <table className="ps-conf-table">
-                <thead><tr>{['Label', 'Effective', 'License', 'Approval Status'].map(h => <th key={h} className="ps-conf-th">{h}</th>)}</tr></thead>
+                <thead><tr>
+                  {([
+                    ['label', t('modifierDictionarySection.olderVersions.table.label')],
+                    ['effective', t('modifierDictionarySection.olderVersions.table.effective')],
+                    ['license', t('modifierDictionarySection.olderVersions.table.license')],
+                    ['approvalStatus', t('modifierDictionarySection.olderVersions.table.approvalStatus')],
+                  ] as const).map(([key, label]) => <th key={key} className="ps-conf-th">{label}</th>)}
+                </tr></thead>
                 <tbody>
                   {olderVersions.map(v => (
                     <tr key={v.id} className="ps-conf-tr">
                       <td className="ps-conf-td">{v.label}</td>
                       <td className="ps-conf-td">{formatDate(v.effectiveDate)}</td>
-                      <td className="ps-conf-td">{v.licenseStatus === 'licensed' ? 'Licensed' : 'Synthetic'}</td>
+                      <td className="ps-conf-td">{v.licenseStatus === 'licensed' ? t('modifierDictionarySection.olderVersions.license.licensed') : t('modifierDictionarySection.olderVersions.license.synthetic')}</td>
                       <td className="ps-conf-td">
-                        {v.approvalStatus === 'PENDING_APPROVAL' ? 'Pending approval'
-                          : v.approvalStatus === 'REJECTED' ? `Rejected${v.rejectionReason ? ` — ${v.rejectionReason}` : ''}`
-                          : v.approvalStatus === 'APPROVED' ? 'Approved (superseded)'
-                          : '—'}
+                        {v.approvalStatus === 'PENDING_APPROVAL' ? t('modifierDictionarySection.olderVersions.status.pending')
+                          : v.approvalStatus === 'REJECTED' ? (v.rejectionReason ? t('modifierDictionarySection.olderVersions.status.rejectedWithReason', { reason: v.rejectionReason }) : t('modifierDictionarySection.olderVersions.status.rejected'))
+                          : v.approvalStatus === 'APPROVED' ? t('modifierDictionarySection.olderVersions.status.approved')
+                          : t('modifierDictionarySection.olderVersions.status.none')}
                       </td>
                     </tr>
                   ))}
@@ -274,23 +278,23 @@ const ModifierDictionarySection: React.FC = () => {
       {uploadPreview && (
         <div className="ps-ms-overlay">
           <div className="ps-ms-modal ps-ms-modal--extra-wide">
-            <div className="ps-ms-header">Import Modifier Dictionary — {uploadFileName}</div>
+            <div className="ps-ms-header">{t('modifierDictionarySection.uploadModal.importTitle', { fileName: uploadFileName })}</div>
             <div className="ps-ms-body">
               {uploadError && <p className="ps-conf-error-text">{uploadError}</p>}
               <div className="ps-conf-form-row">
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">Version Label</label>
+                  <label className="ps-conf-label">{t('modifierDictionarySection.uploadModal.versionLabel')}</label>
                   <input className="ps-conf-input" value={uploadLabel} onChange={e => setUploadLabel(e.target.value)} />
                 </div>
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">Effective From</label>
+                  <label className="ps-conf-label">{t('modifierDictionarySection.uploadModal.effectiveFrom')}</label>
                   <input className="ps-conf-input" type="date" value={uploadEffectiveDate} onChange={e => setUploadEffectiveDate(e.target.value)} />
                 </div>
               </div>
               <div className="ps-conf-table-wrap">
                 <div className="ps-conf-table-scroll">
                   <table className="ps-conf-table">
-                    <thead><tr><th className="ps-conf-th">Code</th><th className="ps-conf-th">Description</th></tr></thead>
+                    <thead><tr><th className="ps-conf-th">{t('modifierDictionarySection.uploadModal.table.code')}</th><th className="ps-conf-th">{t('modifierDictionarySection.uploadModal.table.description')}</th></tr></thead>
                     <tbody>
                       {uploadPreview.map((e, i) => (
                         <tr key={`${e.code}-${i}`} className="ps-conf-tr">
@@ -305,18 +309,17 @@ const ModifierDictionarySection: React.FC = () => {
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label">
                   <input type="checkbox" checked={confirmLicensed} onChange={e => setConfirmLicensed(e.target.checked)} />
-                  {' '}I confirm my organization holds a real, current AMA license covering these modifier descriptions.
+                  {' '}{t('modifierDictionarySection.uploadModal.licenseConfirm')}
                 </label>
               </div>
               <p className="ps-billing-reason-hint">
-                This version will be submitted for approval — a different, real reviewer must approve it before it
-                replaces the active dictionary. See Pending Billing Rule Approvals.
+                {t('modifierDictionarySection.uploadModal.disclosure')}
               </p>
             </div>
             <div className="ps-ms-footer">
-              <button className="ps-conf-btn-secondary" onClick={() => { setUploadPreview(null); setUploadError(null); }}>Cancel</button>
+              <button className="ps-conf-btn-secondary" onClick={() => { setUploadPreview(null); setUploadError(null); }}>{t('common.cancel')}</button>
               <button className="ps-conf-btn-primary" disabled={busy || !confirmLicensed} onClick={handleApplyUpload}>
-                {busy ? 'Submitting…' : 'Submit for Approval'}
+                {busy ? t('modifierDictionarySection.submitting') : t('modifierDictionarySection.submit')}
               </button>
             </div>
           </div>
